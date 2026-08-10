@@ -2,7 +2,7 @@
 
 namespace Crab\Engine\Protocol;
 
-use Crab\Engine\EventLoop\TcpConnection;
+use Crab\Engine\Connection\TcpConnection;
 
 final class TextProtocol implements Protocol
 {

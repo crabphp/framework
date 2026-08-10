@@ -1,6 +1,6 @@
 <?php
 
-namespace Crab\Engine\EventLoop;
+namespace Crab\Engine\Connection;
 
 use Crab\Engine\Connection\ConnectionState;
 use Crab\Engine\EventLoop\EventLoop;
