@@ -55,6 +55,7 @@ final class Connection
     private bool $closed = false;
     private bool $readPaused = false;
     private bool $reading = false;
+    private bool $readWatching = false;
     private bool $readEnded = false;
     private bool $writeEnding = false;
     private bool $writeEnded = false;
@@ -142,6 +143,29 @@ final class Connection
             --$this->activities;
             $this->settleIfReady();
         };
+    }
+
+    /**
+     * Allocation-free beginActivity() for protocol owners. Every call must be
+     * paired with exactly one leaveActivity(), normally in a finally block.
+     *
+     * @internal
+     */
+    public function enterActivity(): void
+    {
+        if ($this->closed) {
+            throw new LogicException('Cannot begin service work on a closed connection.');
+        }
+        ++$this->activities;
+    }
+
+    /**
+     * @internal Releases one enterActivity() scope; valid after the socket closes.
+     */
+    public function leaveActivity(): void
+    {
+        --$this->activities;
+        $this->settleIfReady();
     }
 
     /**
@@ -349,18 +373,23 @@ final class Connection
 
     private function updateReadWatcher(): void
     {
-        if ($this->closed || $this->readEnded) {
+        // A read turn reconciles interest once when it ends, so a consumer that
+        // pauses and resumes within one turn costs no driver registration work.
+        if ($this->closed || $this->readEnded || $this->reading) {
             return;
         }
-        if ($this->readPaused || $this->reading || $this->dataHandler === null) {
-            if ($this->readWatcher !== null) {
+        if ($this->readPaused || $this->dataHandler === null) {
+            if ($this->readWatching) {
+                $this->readWatching = false;
                 $this->driver->disable($this->readWatcher);
             }
             return;
         }
         if ($this->readWatcher === null) {
             $this->readWatcher = $this->driver->onReadable($this->stream, $this->read(...));
-        } else {
+            $this->readWatching = true;
+        } elseif (!$this->readWatching) {
+            $this->readWatching = true;
             $this->driver->enable($this->readWatcher);
         }
     }
@@ -368,10 +397,14 @@ final class Connection
     private function read(): void
     {
         if ($this->closed || $this->readPaused || $this->reading || $this->readEnded) {
+            // Readiness during a suspended read turn must not spin the loop.
+            if ($this->readWatching && $this->readWatcher !== null) {
+                $this->readWatching = false;
+                $this->driver->disable($this->readWatcher);
+            }
             return;
         }
         $this->reading = true;
-        $this->driver->disable($this->readWatcher);
         try {
             $remaining = self::IO_BUDGET;
             do {
@@ -474,6 +507,7 @@ final class Connection
         $this->readEnded = true;
         $this->driver->cancel($this->readWatcher);
         $this->readWatcher = null;
+        $this->readWatching = false;
         $this->armCloseDeadline();
         if ($this->eofHandler !== null) {
             $this->invoke($this->eofHandler);

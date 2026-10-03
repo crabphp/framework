@@ -92,11 +92,4 @@ final class Body implements \Stringable
     }
 
     public function __toString(): string { return $this->contents(); }
-
-    public function __destruct()
-    {
-        if ($this->stream !== null) {
-            fclose($this->stream);
-        }
-    }
 }

@@ -69,12 +69,7 @@ final class ResponseEncoder
             $headers['connection'] = [$this->close ? 'close' : 'keep-alive'];
         }
         if (!isset($headers['date'])) {
-            $second = time();
-            if (self::$dateSecond !== $second) {
-                self::$dateSecond = $second;
-                self::$date = gmdate('D, d M Y H:i:s', $second) . ' GMT';
-            }
-            $headers['date'] = [self::$date];
+            $headers['date'] = [self::date()];
         }
         $this->head = 'HTTP/' . $request->version . ' ' . $response->status . ' ' . Response::reason($response->status) . "\r\n";
         foreach ($headers as $name => $values) {
@@ -89,15 +84,73 @@ final class ResponseEncoder
     }
 
     /**
+     * Encodes a small fixed-length response in one pass, producing the same
+     * bytes as the general encoder, or returns null when that encoder is
+     * required. $close carries a forced close in and the final decision out.
+     *
+     * @internal
+     */
+    public static function small(Response $response, Request $request, bool &$close): ?string
+    {
+        $body = $response->body;
+        $status = $response->status;
+        if (!is_string($body) || $status < 200 || $status === 204 || $status === 205 || $status === 304
+            || $request->method === 'HEAD') {
+            return null;
+        }
+        $block = $response->headerBlock();
+        $length = strlen($body);
+        // Leaves room for the status line and generated fields within 8 KiB.
+        if ($block === null || strlen($block) + $length > 7936) {
+            return null;
+        }
+        $close = $close || !$request->keepAlive();
+        $version = $request->version;
+        $reason = Response::reason($status);
+        $connection = $close ? 'close' : 'keep-alive';
+        $date = self::date();
+        return 'HTTP/' . $version . ' ' . $status . ' ' . $reason . "\r\n" . $block
+            . 'content-length: ' . $length . "\r\nconnection: " . $connection . "\r\ndate: " . $date . "\r\n\r\n" . $body;
+    }
+
+    /**
+     * Current HTTP date, formatted once per observed wall-clock second.
+     */
+    private static function date(): string
+    {
+        $second = time();
+        if (self::$dateSecond !== $second) {
+            self::$dateSecond = $second;
+            self::$date = gmdate('D, d M Y H:i:s', $second) . ' GMT';
+        }
+        return self::$date;
+    }
+
+    /**
+     * The complete message when it fits one bounded write; null means the
+     * response must be produced through bytes().
+     */
+    public function message(): ?string
+    {
+        if ($this->suppressBody) {
+            return $this->head;
+        }
+        // Small fixed responses can reach the socket in one write without
+        // constructing a second large copy for streamed or sizeable bodies.
+        if (is_string($this->response->body) && strlen($this->head) + strlen($this->response->body) <= 8192) {
+            return $this->head . $this->response->body;
+        }
+        return null;
+    }
+
+    /**
      * @return \Generator<int, string>
      */
     public function bytes(): \Generator
     {
-        // Small fixed responses can reach the socket in one write without
-        // constructing a second large copy for streamed or sizeable bodies.
-        if (!$this->suppressBody && is_string($this->response->body)
-            && strlen($this->head) + strlen($this->response->body) <= 8192) {
-            yield $this->head . $this->response->body;
+        $message = $this->message();
+        if ($message !== null) {
+            yield $message;
             return;
         }
         yield $this->head;

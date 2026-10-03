@@ -61,7 +61,7 @@ Unexpected exits receive exponential backoff and at most five restarts per slot 
 
 ## Byte transport and backpressure
 
-TCP uses nonblocking PHP streams, direct writes when the queue is empty, and a chunk FIFO with a head offset for partial writes. Writable interest exists only while output remains. Each read/write turn has a 256 KiB budget; reads are at most 64 KiB each. A short read ends the turn while preserving readiness for subsequent data or EOF. Accept batches are bounded at 64.
+TCP uses nonblocking PHP streams, direct writes when the queue is empty, and a chunk FIFO with a head offset for partial writes. Writable interest exists only while output remains. Each read/write turn has a 256 KiB budget; reads are at most 64 KiB each. A short read ends the turn while preserving readiness for subsequent data or EOF. Read interest is reconciled once when a read turn ends, so a consumer that pauses and resumes within one turn costs no driver registration work; a paused or suspended turn that sees readiness disables its watcher then. Accept batches are bounded at 64.
 
 `tryWrite(bytes)` is atomic at admission: accepted locally, temporarily rejected without consuming a prefix, or closed. It checks byte and entry caps before writing. An individually oversized call throws. Defaults are 1 MiB and 4,096 output entries.
 
@@ -83,11 +83,11 @@ Destinations are numeric IPv4/IPv6 addresses and valid ports. `send()` means loc
 
 ### HTTP/1.1
 
-Incremental parsing validates request lines, fields and framing: fixed lengths, chunked bodies, bounded extensions and trailers. Duplicate Content-Length, TE/CL ambiguity, invalid Host, obsolete folding and prohibited trailer fields are rejected. Persistent and pipelined requests execute sequentially per connection.
+Incremental parsing validates request lines, fields and framing: fixed lengths, chunked bodies, bounded extensions and trailers. Duplicate Content-Length, TE/CL ambiguity, invalid Host, obsolete folding and prohibited trailer fields are rejected. Persistent and pipelined requests execute sequentially per connection. The first request of a read turn runs inside that turn; pipelined successors each take a later scheduler turn. Each connection retains its last request line and field block, up to 4 KiB each, and reuses their parsed values when the next request repeats those bytes.
 
 Bodies allocate a bounded temporary spool on the first nonempty append, spilling beyond 64 KiB; empty bodies allocate no stream. Handlers start after complete framing. This bounds upload memory, but ordinary temporary-file I/O may block the worker. `Body::chunks()` streams a completed body afterward. Live handler reads during upload are not yet exposed.
 
-Strings receive Content-Length. Iterable responses use checked explicit lengths or chunked encoding and advance only as output capacity permits. HEAD/bodyless status semantics are explicit. Small fixed responses combine headers and body in one bounded write; larger responses retain streaming.
+Strings receive Content-Length. Iterable responses use checked explicit lengths or chunked encoding and advance only as output capacity permits. HEAD/bodyless status semantics are explicit. Small fixed responses combine headers and body in one bounded write; larger responses retain streaming. Small responses without explicit framing, Connection, Date or Upgrade fields take a one-pass encoder that produces the same bytes as the general one.
 
 Generated Date formatting is cached per observed wall-clock second, independently of monotonic deadlines. Reused Response objects retain normalized headers after two successful normalizations only when their header arrays contain no PHP references. Referenced headers are revalidated on every encode; new responses avoid reference scanning. Framing, generated headers and body iteration remain specific to each encoding.
 
@@ -121,7 +121,7 @@ Cancellation is cooperative. Worker tasks remain tracked until they finish, incl
 
 ## Performance and evidence
 
-The fast path is readiness → bounded read → one protocol owner → handler → capacity check → direct write or bounded queue. It has no service-container lookup, per-packet logging or parent-process coordination. Header-cache eligibility uses PHP's array-reference inspection when a Response is reused; ordinary fresh responses and established caches skip that inspection.
+The fast path is readiness → bounded read → one protocol owner → handler → capacity check → direct write or bounded queue, without a deferred callback, closure or generator per request. It has no service-container lookup, per-packet logging or parent-process coordination. Header-cache eligibility uses PHP's array-reference inspection when a Response is reused; ordinary fresh responses and established caches skip that inspection.
 
 Keep optimizations only after real socket checks and matched measurements. HTTP/WebSocket harnesses preserve raw trials, latency, errors, environment and source hashes, and serialize host load. Exact change patches make initial before/after experiments inspectable.
 

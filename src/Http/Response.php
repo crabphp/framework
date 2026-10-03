@@ -8,6 +8,7 @@ final readonly class Response
 {
     private bool $headersNormalized;
     private array $normalizedHeaders;
+    private string $headerBlock;
 
     /**
      * @param array<string, string|list<string>> $headers
@@ -43,11 +44,11 @@ final readonly class Response
                     throw new \InvalidArgumentException('Response header values must be strings.');
                 }
                 try {
-                    [$key, $value] = Parser::field($name . ':' . $value);
+                    $field = Parser::knownField($name . ':' . $value);
                 } catch (HttpException $error) {
                     throw new \InvalidArgumentException('Invalid response header.', previous: $error);
                 }
-                $headers[$key][] = $value;
+                $headers[$field[0]][] = $field[1];
             }
         }
         // Fresh responses pay no reference scan or retained-cache allocation.
@@ -68,6 +69,33 @@ final readonly class Response
             }
         }
         return $this->normalizedHeaders = $headers;
+    }
+
+    /**
+     * @internal Encoded explicit fields when none of them affects framing,
+     * connection handling or the generated Date; null selects the general
+     * encoder. Retained only once normalizedHeaders() has established reuse.
+     */
+    public function headerBlock(): ?string
+    {
+        if (isset($this->headerBlock)) {
+            return $this->headerBlock;
+        }
+        $headers = $this->normalizedHeaders();
+        if (isset($headers['content-length']) || isset($headers['transfer-encoding'])
+            || isset($headers['connection']) || isset($headers['date']) || isset($headers['upgrade'])) {
+            return null;
+        }
+        $block = '';
+        foreach ($headers as $name => $values) {
+            foreach ($values as $value) {
+                $block .= $name . ': ' . $value . "\r\n";
+            }
+        }
+        if (isset($this->normalizedHeaders)) {
+            $this->headerBlock = $block;
+        }
+        return $block;
     }
 
     public static function text(string $body, int $status = 200, array $headers = []): self

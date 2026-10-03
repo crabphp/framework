@@ -4,13 +4,36 @@ declare(strict_types=1);
 
 namespace Crab\Engine\Http;
 
+use Crab\Engine\Async\Cancellation;
+
 /**
  * Strict HTTP/1 message framing. next() consumes at most one complete request.
  */
 final class Parser
 {
     private const TOKEN = "[!#$%&'*+.^_`|~0-9A-Za-z-]+";
+    private const REQUEST_LINE = '/^(' . self::TOKEN . ') ([^\x00-\x20\x7F]+) HTTP\/([0-9]+\.[0-9]+)\r\n/';
+    private const FIELDS = '/\G(?:(' . self::TOKEN . '):[ \t]*+([\x09\x20-\x7E\x80-\xFF]*)\r\n|\r\n\z)/';
+    /**
+     * Largest request line or field block retained per connection for reuse.
+     */
+    private const MEMO_BYTES = 4096;
+    private const HOST = '/^(?:\[[0-9a-fA-F:.]+\]|[A-Za-z0-9._~%!$&\x27()*+;=-]+)(?::[0-9]{1,5})?$/D';
+    /**
+     * Validated field lines, bounded and reset when full. A line always
+     * validates to the same name and value, so entries never go stale.
+     *
+     * @var array<string, array{string, string}>
+     */
+    private static array $fields = [];
     private string $buffer = '';
+    private ?string $validHost = null;
+    private string $memoLine = '';
+    private string $memoMethod = '';
+    private string $memoTarget = '';
+    private string $memoVersion = '';
+    private string $memoFields = '';
+    private array $memoHeaders = [];
     private string $state = 'headers';
     private int $headerScan = 0;
     private string $method = '';
@@ -67,22 +90,30 @@ final class Parser
     {
         while (true) {
             if ($this->state === 'headers') {
-                $end = strpos($this->buffer, "\r\n\r\n", $this->headerScan);
+                $buffer = $this->buffer;
+                $end = strpos($buffer, "\r\n\r\n", $this->headerScan);
                 if ($end === false) {
-                    if (strlen($this->buffer) > $this->maxHeaderBytes) {
+                    if (strlen($buffer) > $this->maxHeaderBytes) {
                         throw new HttpException(431, 'Request headers are too large.');
                     }
-                    $this->headerScan = max(0, strlen($this->buffer) - 3);
+                    $this->headerScan = max(0, strlen($buffer) - 3);
                     return null;
                 }
-                if ($end + 4 > $this->maxHeaderBytes) {
+                $end += 4;
+                if ($end > $this->maxHeaderBytes) {
                     throw new HttpException(431, 'Request headers are too large.');
                 }
-                $head = substr($this->buffer, 0, $end);
-                $this->buffer = substr($this->buffer, $end + 4);
-                $this->parseHeaders($head);
-                if ($this->state === 'complete') {
-                    return $this->complete();
+                $this->headerScan = 0;
+                // A lone request needs no copy; the head keeps its blank line.
+                if ($end === strlen($buffer)) {
+                    $this->buffer = '';
+                    $request = $this->parseHead($buffer);
+                } else {
+                    $this->buffer = substr($buffer, $end);
+                    $request = $this->parseHead(substr($buffer, 0, $end));
+                }
+                if ($request !== null) {
+                    return $request;
                 }
             }
 
@@ -151,34 +182,68 @@ final class Parser
         }
     }
 
-    private function parseHeaders(string $head): void
+    /**
+     * Parses one head, including its terminating blank line. Bodyless requests
+     * return directly; framed bodies continue through the parser state.
+     */
+    private function parseHead(string $head): ?Request
     {
-        $lines = explode("\r\n", $head);
-        $line = array_shift($lines);
-        if (!preg_match('/^(' . self::TOKEN . ') ([^\x00-\x20\x7F]+) HTTP\/([0-9]+\.[0-9]+)$/D', $line, $match)) {
-            throw new HttpException(400, 'Malformed request line.');
+        // Persistent clients repeat their request line and, far more often,
+        // their field block byte for byte. Identical bytes always parse to the
+        // same values, so each part is validated and split once per change.
+        $fieldsAt = strpos($head, "\r\n") + 2;
+        if ($fieldsAt === strlen($this->memoLine) && strncmp($head, $this->memoLine, $fieldsAt) === 0) {
+            $method = $this->memoMethod;
+            $target = $this->memoTarget;
+            $version = $this->memoVersion;
+        } else {
+            if (!preg_match(self::REQUEST_LINE, $head, $line)) {
+                throw new HttpException(400, 'Malformed request line.');
+            }
+            $method = $line[1];
+            $target = $line[2];
+            $version = $line[3];
+            if ($version !== '1.1' && $version !== '1.0') {
+                throw new HttpException(505, 'Unsupported HTTP version.');
+            }
+            if ($fieldsAt <= self::MEMO_BYTES) {
+                $this->memoLine = $line[0];
+                $this->memoMethod = $method;
+                $this->memoTarget = $target;
+                $this->memoVersion = $version;
+            }
         }
-        [, $this->method, $this->target, $this->version] = $match;
-        if (!in_array($this->version, ['1.0', '1.1'], true)) {
-            throw new HttpException(505, 'Unsupported HTTP version.');
+        if (substr_compare($head, $this->memoFields, $fieldsAt) === 0) {
+            $headers = $this->memoHeaders;
+        } else {
+            $headers = $this->parseFields($head, $fieldsAt);
+            if (strlen($head) - $fieldsAt <= self::MEMO_BYTES) {
+                $this->memoFields = substr($head, $fieldsAt);
+                $this->memoHeaders = $headers;
+            }
         }
-        if (count($lines) > $this->maxHeaderCount) {
-            throw new HttpException(431, 'Too many header fields.');
-        }
-        $this->headers = [];
-        foreach ($lines as $line) {
-            [$name, $value] = self::field($line);
-            $this->headers[$name][] = $value;
-        }
-        $host = $this->headers['host'] ?? [];
-        if (count($host) > 1 || ($this->version === '1.1' && count($host) !== 1)) {
+        if ($version === '1.1' && !isset($headers['host'])) {
             throw new HttpException(400, 'HTTP/1.1 requires exactly one Host field.');
         }
-        if ($host !== [] && !preg_match('/^(?:\[[0-9a-fA-F:.]+\]|[A-Za-z0-9._~%!$&\x27()*+;=-]+)(?::[0-9]{1,5})?$/D', $host[0])) {
-            throw new HttpException(400, 'Invalid Host field.');
+        if ($method === 'CONNECT') {
+            throw new HttpException(501, 'CONNECT tunneling is not supported.');
         }
-        $this->validateTarget();
+        if ($target[0] !== '/' || str_contains($target, '#')) {
+            $headers = self::validateTarget($method, $target, $headers);
+        }
 
+        if (!isset($headers['content-length']) && !isset($headers['transfer-encoding'])) {
+            if (isset($headers['expect'])
+                && ($version !== '1.1' || strtolower(implode(',', $headers['expect'])) !== '100-continue')) {
+                throw new HttpException(417, 'Unsupported expectation.');
+            }
+            return new Request($method, $target, $version, $headers, new Body(), [], new Cancellation());
+        }
+
+        $this->method = $method;
+        $this->target = $target;
+        $this->version = $version;
+        $this->headers = $headers;
         $this->body = new Body();
         $this->trailers = [];
         $this->trailerBytes = 0;
@@ -217,32 +282,79 @@ final class Parser
             }
             $this->continue = $this->state !== 'complete';
         }
+        return $this->state === 'complete' ? $this->complete() : null;
     }
 
-    private function validateTarget(): void
+    /**
+     * Validates and splits the field block that starts at $offset and ends
+     * with the blank line, including the Host rules that need no request line.
+     *
+     * @return array<string, list<string>>
+     */
+    private function parseFields(string $head, int $offset): array
     {
-        if ($this->method === 'CONNECT') {
-            throw new HttpException(501, 'CONNECT tunneling is not supported.');
+        // One anchored scan validates and splits every field; the final match
+        // is the blank line, so an earlier malformed field cannot be skipped.
+        $count = (int) preg_match_all(self::FIELDS, $head, $fields, PREG_PATTERN_ORDER, $offset) - 1;
+        if ($count > $this->maxHeaderCount || ($count < 0 || $fields[1][$count] !== '')
+            && substr_count($head, "\r\n") - 2 > $this->maxHeaderCount) {
+            throw new HttpException(431, 'Too many header fields.');
         }
-        if ($this->target === '*') {
-            if ($this->method !== 'OPTIONS') {
+        if ($count < 0 || $fields[1][$count] !== '') {
+            throw new HttpException(400, 'Malformed header field.');
+        }
+        $headers = [];
+        $names = $fields[1];
+        $values = $fields[2];
+        for ($index = 0; $index < $count; ++$index) {
+            // The scan already consumed leading whitespace.
+            $value = $values[$index];
+            if ($value !== '' && ($value[-1] === ' ' || $value[-1] === "\t")) {
+                $value = rtrim($value, " \t");
+            }
+            $headers[strtolower($names[$index])][] = $value;
+        }
+        if (isset($headers['host'])) {
+            $host = $headers['host'];
+            if (isset($host[1])) {
+                throw new HttpException(400, 'HTTP/1.1 requires exactly one Host field.');
+            }
+            if ($host[0] !== $this->validHost) {
+                if (!preg_match(self::HOST, $host[0])) {
+                    throw new HttpException(400, 'Invalid Host field.');
+                }
+                $this->validHost = $host[0];
+            }
+        }
+        return $headers;
+    }
+
+    /**
+     * Validates asterisk and absolute-form targets; origin-form targets with
+     * no fragment never reach this path.
+     *
+     * @param array<string, list<string>> $headers
+     * @return array<string, list<string>>
+     */
+    private static function validateTarget(string $method, string $target, array $headers): array
+    {
+        if ($target === '*') {
+            if ($method !== 'OPTIONS') {
                 throw new HttpException(400, 'Asterisk target requires OPTIONS.');
             }
-            return;
+            return $headers;
         }
-        if (str_contains($this->target, '#')) {
+        if (str_contains($target, '#')) {
             throw new HttpException(400, 'Fragments are not allowed in request targets.');
         }
-        if (str_starts_with($this->target, '/')) {
-            return;
-        }
-        $parts = parse_url($this->target);
+        $parts = parse_url($target);
         if ($parts === false || !isset($parts['host'], $parts['scheme'])
             || !in_array(strtolower($parts['scheme']), ['http', 'https'], true)
             || isset($parts['user']) || isset($parts['pass'])) {
             throw new HttpException(400, 'Invalid request target.');
         }
-        $this->headers['host'] = [$parts['host'] . (isset($parts['port']) ? ':' . $parts['port'] : '')];
+        $headers['host'] = [$parts['host'] . (isset($parts['port']) ? ':' . $parts['port'] : '')];
+        return $headers;
     }
 
     /**
@@ -254,6 +366,26 @@ final class Parser
             throw new HttpException(400, 'Malformed header field.');
         }
         return [strtolower($match[1]), trim($match[2], " \t")];
+    }
+
+    /**
+     * field() for lines an application repeats, such as response headers.
+     *
+     * @return array{string, string}
+     */
+    public static function knownField(string $line): array
+    {
+        $field = self::$fields[$line] ?? null;
+        if ($field === null) {
+            $field = self::field($line);
+            if (strlen($line) <= 256) {
+                if (count(self::$fields) >= 256) {
+                    self::$fields = [];
+                }
+                self::$fields[$line] = $field;
+            }
+        }
+        return $field;
     }
 
     private function chunkLength(string $line): int
@@ -288,7 +420,8 @@ final class Parser
     private function complete(): Request
     {
         $this->body->rewind();
-        $request = new Request($this->method, $this->target, $this->version, $this->headers, $this->body, $this->trailers);
+        $request = new Request($this->method, $this->target, $this->version, $this->headers, $this->body,
+            $this->trailers, new Cancellation());
         $this->body = null;
         $this->headers = $this->trailers = [];
         $this->state = 'headers';

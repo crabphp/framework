@@ -36,6 +36,34 @@ CRAB_TARGETS = {"crab", "crab-jit"} | BEFORE_TARGETS
 PHP_TARGETS = CRAB_TARGETS | BASELINE_BACKENDS.keys()
 HTTP_ONLY_TARGETS = set(BASELINE_BACKENDS) | {"bun"}
 TARGETS = PHP_TARGETS | {"elysia", "bun"}
+BROWSER_HEADERS = {
+    "Connection": "keep-alive",
+    "sec-ch-ua": '"Chromium";v="128", "Not;A=Brand";v="24"',
+    "sec-ch-ua-mobile": "?0",
+    "sec-ch-ua-platform": '"macOS"',
+    "Upgrade-Insecure-Requests": "1",
+    "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36",
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+    "Sec-Fetch-Site": "none",
+    "Sec-Fetch-Mode": "navigate",
+    "Sec-Fetch-User": "?1",
+    "Sec-Fetch-Dest": "document",
+    "Accept-Encoding": "gzip, deflate, br, zstd",
+    "Accept-Language": "en-US,en;q=0.9",
+    "Cookie": "session=abcdef0123456789abcdef0123456789; theme=dark; _ga=GA1.1.123456789.1700000000",
+}
+
+
+def request_lua(mode):
+    """wrk request generator: fixed sends wrk's default request; the others rotate 997 prebuilt query strings."""
+    if mode == "fixed":
+        return ""
+    headers = "".join(f"  [{json.dumps(name)}] = {json.dumps(value)},\n" for name, value in BROWSER_HEADERS.items()) if mode != "varied" else ""
+    unique = "    crab_headers[\"X-Request-Id\"] = \"request-\" .. i\n" if mode == "browser-unique" else ""
+    return ("local crab_requests = {}\nlocal crab_next = 0\nlocal crab_headers = {\n" + headers + "}\n"
+            "init = function(args)\n  for i = 1, 997 do\n" + unique
+            + "    crab_requests[i] = wrk.format(\"GET\", \"/?r=\" .. i, crab_headers)\n  end\nend\n"
+            "request = function()\n  crab_next = crab_next % 997 + 1\n  return crab_requests[crab_next]\nend\n")
 
 
 def php_command(target):
@@ -318,6 +346,9 @@ def main():
     parser.add_argument("--baseline-source", help="Snapshot src directory required by crab-before and crab-before-jit.")
     parser.add_argument("--http-response", choices=("reuse", "fresh"), default="reuse",
                         help="Crab HTTP response object lifetime; other handlers remain unchanged.")
+    parser.add_argument("--http-request", choices=("fixed", "varied", "browser", "browser-unique"), default="fixed",
+                        help="fixed: one identical request; varied: rotating query strings; browser: rotating query strings with "
+                             "browser-sized headers; browser-unique: as browser, with one field value that differs on every request.")
     parser.add_argument("--bun", default="bun", help="Bun executable name or absolute path.")
     parser.add_argument("--concurrency", default="32,128")
     parser.add_argument("--threads", type=int, default=2, help="Maximum wrk threads; capped by concurrency.")
@@ -366,6 +397,7 @@ def main():
                           "WebSocket ps samples include warmup/handshake/drain; its client CPU/latency metrics cover measurement.",
                           "HTTP body is checked at readiness; wrk checks socket/status errors, not each response body.",
                           f"Crab HTTP response mode: {args.http_response}; Bun/Elysia handlers and WebSocket echo behavior are unchanged.",
+                          f"HTTP request mode: {args.http_request}; varied and browser modes rotate 997 query strings on the same route, browser modes add {len(BROWSER_HEADERS)} request fields, browser-unique also changes one field value per request.",
                           "crab-before targets load the provided source snapshot with the same benchmark fixture and installed dependencies.",
                           "Processes are owned groups; cleanup sends SIGTERM only, and unsuccessful cleanup fails the run."],
                 "trials": []}
@@ -373,7 +405,7 @@ def main():
     try:
         with tempfile.TemporaryDirectory(prefix="crab-compare-") as temporary:
             lua = Path(temporary) / "latency.lua"
-            lua.write_text(HTTP.LUA)
+            lua.write_text(HTTP.LUA + request_lua(args.http_request))
             for protocol in protocols:
                 for concurrency in concurrencies:
                     for payload in payloads if protocol == "ws" else [None]:

@@ -12,6 +12,11 @@ use Crab\Engine\Network\WriteResult;
  */
 final class HttpSession
 {
+    private const COMPLETE_NONE = 0;
+    private const COMPLETE_RESPONSE = 1;
+    private const COMPLETE_CONTINUE = 2;
+    private const COMPLETE_CLOSE = 3;
+
     private Parser $parser;
     private bool $busy = false;
     private bool $retired = false;
@@ -29,7 +34,9 @@ final class HttpSession
     private ?\Generator $output = null;
     private string $pending = '';
     private int $pendingOffset = 0;
-    private ?\Closure $afterOutput = null;
+    private int $completion = self::COMPLETE_NONE;
+    private bool $closeAfterResponse = false;
+    private ?Upgrade $upgrade = null;
     private ?Request $activeRequest = null;
 
     public function __construct(
@@ -69,14 +76,20 @@ final class HttpSession
                 return;
             }
             try {
+                $this->parser->append($bytes);
+            } catch (HttpException $error) {
+                $this->fail($error->status);
+                return;
+            }
+            if ($this->busy || $this->scheduled !== null) {
                 if ($this->deadlinePhase === 'idle') {
                     $this->armDeadline('headers');
                 }
-                $this->parser->append($bytes);
-                $this->schedule();
-            } catch (HttpException $error) {
-                $this->fail($error->status);
+                return;
             }
+            // The first request of a read turn runs without a scheduler round
+            // trip; pipelined successors keep their own deferred turns.
+            $this->process();
         });
         $this->armDeadline('headers');
     }
@@ -97,7 +110,7 @@ final class HttpSession
         if ($this->retired || $this->busy || $this->connection->isClosed()) {
             return;
         }
-        $releaseActivity = $this->connection->beginActivity();
+        $this->connection->enterActivity();
         try {
             $request = $this->parser->next();
             if ($request === null) {
@@ -114,18 +127,9 @@ final class HttpSession
                 if ($this->parser->takeContinue()) {
                     $this->busy = true;
                     $this->connection->pauseRead();
-                    $this->output = (static function (): \Generator { yield "HTTP/1.1 100 Continue\r\n\r\n"; })();
-                    $this->afterOutput = function (): void {
-                        $this->responseStarted = false;
-                        if ($this->draining) {
-                            $this->retire();
-                            $this->connection->end();
-                            return;
-                        }
-                        $this->busy = false;
-                        $this->connection->resumeRead();
-                        $this->schedule();
-                    };
+                    $this->pending = "HTTP/1.1 100 Continue\r\n\r\n";
+                    $this->pendingOffset = 0;
+                    $this->completion = self::COMPLETE_CONTINUE;
                     $this->pump();
                 }
                 return;
@@ -150,57 +154,117 @@ final class HttpSession
                 || !$request->hasToken('connection', 'upgrade') || $request->header('upgrade') === null)) {
                 throw new \UnexpectedValueException('Upgrade requires an active connection and upgrade request.');
             }
-            $encoder = new ResponseEncoder(
-                $upgrade?->response ?? $response,
-                $request,
-                $this->draining || $this->requests >= $this->maxRequests
-                    || ($this->peerEof && $this->parser->phase() === 'idle'),
-                $upgrade !== null,
-            );
-            $this->output = $encoder->bytes();
-            $this->afterOutput = function () use ($encoder, $upgrade, $request): void {
-                if ($upgrade !== null) {
-                    $unread = $this->parser->takeBufferedBytes();
-                    $this->retire();
-                    $this->connection->onData(static function (): void {});
-                    $this->connection->onEof(static function (): void {});
-                    $this->connection->onDrainRequest(static function (): void {});
-                    // The new owner may immediately pause; never override its
-                    // read-interest decision after handing the connection over.
+            $close = $this->draining || $this->requests >= $this->maxRequests
+                || ($this->peerEof && $this->parser->phase() === 'idle');
+            $message = $upgrade === null ? ResponseEncoder::small($response, $request, $close) : null;
+            if ($message === null) {
+                $encoder = new ResponseEncoder($upgrade?->response ?? $response, $request, $close, $upgrade !== null);
+                $close = $encoder->close;
+                $message = $encoder->message();
+                if ($message === null) {
+                    $this->output = $encoder->bytes();
+                }
+            }
+            if ($message !== null && $upgrade === null && !$close && $this->pending === ''
+                && strlen($message) <= 8192 && strlen($message) <= $this->connection->maxWriteSize()) {
+                // A complete persistent response needs no output state when
+                // the transport accepts it at once.
+                $result = $this->connection->tryWrite($message);
+                if ($result === WriteResult::Accepted) {
+                    $this->busy = false;
+                    $this->activeRequest = null;
+                    $request->cancellation->cancel();
+                    $phase = $this->parser->phase();
+                    $this->armDeadline($phase);
                     $this->connection->resumeRead();
-                    ($upgrade->handler)($this->connection, $request, $unread);
+                    if ($phase !== 'idle' || $this->peerEof) {
+                        $this->schedule();
+                    }
                     return;
                 }
-                if ($encoder->close || $this->draining) {
+                if ($result === WriteResult::Closed) {
                     $this->retire();
-                    $this->connection->end();
                     return;
                 }
-                $this->busy = false;
-                $this->releaseRequest();
-                $this->responseStarted = false;
-                $this->armDeadline($this->parser->phase());
-                $this->connection->resumeRead();
-                if ($this->parser->phase() !== 'idle' || $this->peerEof) {
-                    $this->schedule();
-                }
-            };
+            }
+            $this->closeAfterResponse = $close;
+            $this->upgrade = $upgrade;
+            $this->completion = self::COMPLETE_RESPONSE;
+            if ($message !== null) {
+                $this->pending = $message;
+                $this->pendingOffset = 0;
+            }
             $this->pump();
         } catch (HttpException $error) {
             $this->fail($error->status);
         } catch (\Throwable) {
             $this->fail(500);
         } finally {
-            $releaseActivity();
+            $this->connection->leaveActivity();
+        }
+    }
+
+    /**
+     * Runs once after the ordered output of the current message is accepted.
+     */
+    private function complete(): void
+    {
+        $completion = $this->completion;
+        $this->completion = self::COMPLETE_NONE;
+        if ($completion === self::COMPLETE_CONTINUE) {
+            $this->responseStarted = false;
+            if ($this->draining) {
+                $this->retire();
+                $this->connection->end();
+                return;
+            }
+            $this->busy = false;
+            $this->connection->resumeRead();
+            $this->schedule();
+            return;
+        }
+        if ($completion === self::COMPLETE_CLOSE) {
+            $this->retire();
+            $this->connection->end();
+            return;
+        }
+        $upgrade = $this->upgrade;
+        if ($upgrade !== null) {
+            $request = $this->activeRequest;
+            $unread = $this->parser->takeBufferedBytes();
+            $this->retire();
+            $this->connection->onData(static function (): void {});
+            $this->connection->onEof(static function (): void {});
+            $this->connection->onDrainRequest(static function (): void {});
+            // The new owner may immediately pause; never override its
+            // read-interest decision after handing the connection over.
+            $this->connection->resumeRead();
+            ($upgrade->handler)($this->connection, $request, $unread);
+            return;
+        }
+        if ($this->closeAfterResponse || $this->draining) {
+            $this->retire();
+            $this->connection->end();
+            return;
+        }
+        $this->busy = false;
+        $this->releaseRequest();
+        $this->responseStarted = false;
+        $phase = $this->parser->phase();
+        $this->armDeadline($phase);
+        $this->connection->resumeRead();
+        if ($phase !== 'idle' || $this->peerEof) {
+            $this->schedule();
         }
     }
 
     private function pump(): void
     {
-        if ($this->pumping || $this->retired || $this->output === null || $this->connection->isClosed()) {
+        if ($this->pumping || $this->retired || $this->completion === self::COMPLETE_NONE
+            || $this->connection->isClosed()) {
             return;
         }
-        $releaseActivity = $this->connection->beginActivity();
+        $this->connection->enterActivity();
         $this->pumping = true;
         try {
             for ($budget = 0; $budget < 64; ++$budget) {
@@ -208,11 +272,9 @@ final class HttpSession
                     return;
                 }
                 if ($this->pending === '') {
-                    if (!$this->output->valid()) {
+                    if ($this->output === null || !$this->output->valid()) {
                         $this->output = null;
-                        $finish = $this->afterOutput;
-                        $this->afterOutput = null;
-                        $finish?->__invoke();
+                        $this->complete();
                         return;
                     }
                     $this->pending = $this->output->current();
@@ -233,7 +295,7 @@ final class HttpSession
                 }
                 if ($this->pendingOffset === strlen($this->pending)) {
                     $this->pending = '';
-                    $this->output->next();
+                    $this->output?->next();
                 }
             }
             if ($this->writeScheduled === null) {
@@ -247,7 +309,7 @@ final class HttpSession
             $this->connection->close();
         } finally {
             $this->pumping = false;
-            $releaseActivity();
+            $this->connection->leaveActivity();
         }
     }
 
@@ -270,10 +332,7 @@ final class HttpSession
         $this->output = $encoder->bytes();
         $this->pending = '';
         $this->armDeadline('response');
-        $this->afterOutput = function (): void {
-            $this->retire();
-            $this->connection->end();
-        };
+        $this->completion = self::COMPLETE_CLOSE;
         $this->pump();
     }
 
@@ -337,7 +396,8 @@ final class HttpSession
         $this->deadline = $this->scheduled = $this->writeScheduled = null;
         $this->output = null;
         $this->pending = '';
-        $this->afterOutput = null;
+        $this->completion = self::COMPLETE_NONE;
+        $this->upgrade = null;
     }
 
     private function releaseRequest(): void

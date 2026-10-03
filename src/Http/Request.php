@@ -43,6 +43,16 @@ final readonly class Request
         if (!isset($this->headers['connection'])) {
             return $this->version === '1.1';
         }
+        $values = $this->headers['connection'];
+        if (isset($values[0]) && !isset($values[1])) {
+            // The two usual spellings need no token-list scan.
+            if ($values[0] === 'keep-alive' || $values[0] === 'Keep-Alive') {
+                return true;
+            }
+            if ($values[0] === 'close') {
+                return false;
+            }
+        }
         return !$this->hasToken('connection', 'close')
             && ($this->version === '1.1' || $this->hasToken('connection', 'keep-alive'));
     }
@@ -50,7 +60,8 @@ final readonly class Request
     public function path(): string
     {
         if (str_starts_with($this->target, '/')) {
-            return explode('?', $this->target, 2)[0];
+            $query = strpos($this->target, '?');
+            return $query === false ? $this->target : substr($this->target, 0, $query);
         }
         return parse_url($this->target, PHP_URL_PATH) ?: '/';
     }

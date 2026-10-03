@@ -32,6 +32,9 @@ final class Cancellation
                 ? $reason
                 : new CancelledException('Operation cancelled.', previous: $reason);
         }
+        if ($this->subscribers === []) {
+            return;
+        }
         $subscribers = $this->subscribers;
         $this->subscribers = [];
         foreach ($subscribers as $subscriber) {
