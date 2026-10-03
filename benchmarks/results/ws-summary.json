@@ -1,0 +1,261 @@
+{
+  "method": "Median of three trials per case; 0.5s warmup then 3s measurement per trial; one outstanding validated masked binary echo per connection; PHP 8.4, Revolt select, one worker.",
+  "patch": "benchmarks/changes/ws-single-frame.patch",
+  "cases": [
+    {
+      "payload_bytes": 64,
+      "concurrency": 1,
+      "baseline": {
+        "messages_per_second_median": 22848.084548156716,
+        "p50_ms_median": 0.039172184224790116,
+        "p95_ms_median": 0.0596264314107829,
+        "p99_ms_median": 0.07677583103875002,
+        "errors": 0,
+        "client_cpu_percent_median": 41.71197280392759,
+        "server_rss_bytes_max": 28688384
+      },
+      "optimized": {
+        "messages_per_second_median": 23909.20442204784,
+        "p50_ms_median": 0.03788791551937501,
+        "p95_ms_median": 0.05705606961601276,
+        "p99_ms_median": 0.075938030812973,
+        "errors": 0,
+        "client_cpu_percent_median": 42.43121299654874,
+        "server_rss_bytes_max": 28639232
+      },
+      "optimized-opcache": {
+        "messages_per_second_median": 24632.915600139615,
+        "p50_ms_median": 0.036644703732809,
+        "p95_ms_median": 0.05581204776084868,
+        "p99_ms_median": 0.074289407465618,
+        "errors": 0,
+        "client_cpu_percent_median": 43.45832968582574,
+        "server_rss_bytes_max": 32309248
+      },
+      "code_rate_change_percent": 4.644239965300412,
+      "opcache_rate_change_percent": 3.0269145109002693
+    },
+    {
+      "payload_bytes": 64,
+      "concurrency": 32,
+      "baseline": {
+        "messages_per_second_median": 83308.917857407,
+        "p50_ms_median": 0.3895531265906018,
+        "p95_ms_median": 0.4787869143322368,
+        "p99_ms_median": 0.557339959124612,
+        "errors": 0,
+        "client_cpu_percent_median": 91.1408101351612,
+        "server_rss_bytes_max": 28819456
+      },
+      "optimized": {
+        "messages_per_second_median": 89564.97251063536,
+        "p50_ms_median": 0.3571387961698077,
+        "p95_ms_median": 0.45844552320079546,
+        "p99_ms_median": 0.5513255284516454,
+        "errors": 0,
+        "client_cpu_percent_median": 96.93831782414189,
+        "server_rss_bytes_max": 28753920
+      },
+      "optimized-opcache": {
+        "messages_per_second_median": 92781.35219715095,
+        "p50_ms_median": 0.3238770450410837,
+        "p95_ms_median": 0.4892928797176697,
+        "p99_ms_median": 0.5820597809954261,
+        "errors": 0,
+        "client_cpu_percent_median": 99.00967303521455,
+        "server_rss_bytes_max": 32325632
+      },
+      "code_rate_change_percent": 7.509465750036903,
+      "opcache_rate_change_percent": 3.5911133519676675
+    },
+    {
+      "payload_bytes": 64,
+      "concurrency": 128,
+      "baseline": {
+        "messages_per_second_median": 83538.25620475964,
+        "p50_ms_median": 1.5612125063624074,
+        "p95_ms_median": 1.739908906207768,
+        "p99_ms_median": 1.8770242804831667,
+        "errors": 0,
+        "client_cpu_percent_median": 91.77131603877044,
+        "server_rss_bytes_max": 29786112
+      },
+      "optimized": {
+        "messages_per_second_median": 91565.9103059778,
+        "p50_ms_median": 1.416123719130964,
+        "p95_ms_median": 1.6481420999160363,
+        "p99_ms_median": 1.8367820928031817,
+        "errors": 0,
+        "client_cpu_percent_median": 98.02767343730679,
+        "server_rss_bytes_max": 29736960
+      },
+      "optimized-opcache": {
+        "messages_per_second_median": 93791.5491586822,
+        "p50_ms_median": 1.3269637039626339,
+        "p95_ms_median": 1.7780298473202751,
+        "p99_ms_median": 2.2323598364984476,
+        "errors": 0,
+        "client_cpu_percent_median": 99.77969062852442,
+        "server_rss_bytes_max": 33357824
+      },
+      "code_rate_change_percent": 9.609554311909108,
+      "opcache_rate_change_percent": 2.4306413219364886
+    },
+    {
+      "payload_bytes": 1024,
+      "concurrency": 1,
+      "baseline": {
+        "messages_per_second_median": 20765.34977256857,
+        "p50_ms_median": 0.041869360769705696,
+        "p95_ms_median": 0.06440141751386347,
+        "p99_ms_median": 0.08199773149766462,
+        "errors": 0,
+        "client_cpu_percent_median": 43.6725273457272,
+        "server_rss_bytes_max": 29786112
+      },
+      "optimized": {
+        "messages_per_second_median": 21132.441637096723,
+        "p50_ms_median": 0.041407572581111725,
+        "p95_ms_median": 0.06231059284441443,
+        "p99_ms_median": 0.08021926126027093,
+        "errors": 0,
+        "client_cpu_percent_median": 44.01935893254787,
+        "server_rss_bytes_max": 29736960
+      },
+      "optimized-opcache": {
+        "messages_per_second_median": 21810.837625584158,
+        "p50_ms_median": 0.0400518405145209,
+        "p95_ms_median": 0.060286609964708714,
+        "p99_ms_median": 0.07847889997270298,
+        "errors": 0,
+        "client_cpu_percent_median": 44.21790544013779,
+        "server_rss_bytes_max": 33357824
+      },
+      "code_rate_change_percent": 1.7678096855998415,
+      "opcache_rate_change_percent": 3.210211106399319
+    },
+    {
+      "payload_bytes": 1024,
+      "concurrency": 32,
+      "baseline": {
+        "messages_per_second_median": 75449.04625524255,
+        "p50_ms_median": 0.42031340240741505,
+        "p95_ms_median": 0.5394903313206053,
+        "p99_ms_median": 0.6279820344867174,
+        "errors": 0,
+        "client_cpu_percent_median": 96.74140593426458,
+        "server_rss_bytes_max": 29786112
+      },
+      "optimized": {
+        "messages_per_second_median": 80351.47318982563,
+        "p50_ms_median": 0.3811843784425638,
+        "p95_ms_median": 0.5634198826536145,
+        "p99_ms_median": 0.662981851981317,
+        "errors": 0,
+        "client_cpu_percent_median": 100.34739846697693,
+        "server_rss_bytes_max": 29736960
+      },
+      "optimized-opcache": {
+        "messages_per_second_median": 81051.615628516,
+        "p50_ms_median": 0.3770674933605118,
+        "p95_ms_median": 0.6078740428813931,
+        "p99_ms_median": 0.7230773439350248,
+        "errors": 0,
+        "client_cpu_percent_median": 100.90989488076349,
+        "server_rss_bytes_max": 33357824
+      },
+      "code_rate_change_percent": 6.497665879033487,
+      "opcache_rate_change_percent": 0.8713498469857806
+    },
+    {
+      "payload_bytes": 1024,
+      "concurrency": 128,
+      "baseline": {
+        "messages_per_second_median": 76358.66407743099,
+        "p50_ms_median": 1.68425360962966,
+        "p95_ms_median": 1.918147657328947,
+        "p99_ms_median": 2.0918453604436307,
+        "errors": 0,
+        "client_cpu_percent_median": 97.80236620198424,
+        "server_rss_bytes_max": 29786112
+      },
+      "optimized": {
+        "messages_per_second_median": 81650.22002473143,
+        "p50_ms_median": 1.544384373855665,
+        "p95_ms_median": 2.1376727064113434,
+        "p99_ms_median": 2.626317792929338,
+        "errors": 0,
+        "client_cpu_percent_median": 100.96557668467409,
+        "server_rss_bytes_max": 29753344
+      },
+      "optimized-opcache": {
+        "messages_per_second_median": 81915.31585565218,
+        "p50_ms_median": 1.5112699734420474,
+        "p95_ms_median": 2.461016986015136,
+        "p99_ms_median": 2.8641103693584613,
+        "errors": 0,
+        "client_cpu_percent_median": 101.07632376857558,
+        "server_rss_bytes_max": 33357824
+      },
+      "code_rate_change_percent": 6.929869728908011,
+      "opcache_rate_change_percent": 0.32467252487555776
+    }
+  ],
+  "limitations": [
+    "Client and server share the same host.",
+    "High-concurrency Node client approached/exceeded one CPU core; saturated results are achieved rates, not independently established server capacity.",
+    "Closed-loop latency is not a fixed-offered-load latency distribution.",
+    "1024-byte C128 throughput increased while p99 latency worsened; no universal latency improvement is claimed.",
+    "Baseline and optimized both have CLI OPcache disabled; optimized-opcache separately enables it with JIT disabled."
+  ],
+  "total_trials": 66,
+  "total_errors": 0,
+  "optimized_session_sha256": "4b1af65bb8645357f11ad83dbea81bb9ca992fdace1beff62432b1d2edb07010",
+  "tracked_release_snapshot": [
+    {
+      "payload_bytes": 64,
+      "concurrency": 32,
+      "messages_per_second_median": 92553.60791206568,
+      "latency_ms_median": {
+        "p50": 0.3382605806488938,
+        "p95": 0.4787869143322368,
+        "p99": 0.5634198826536145
+      },
+      "errors": 0
+    },
+    {
+      "payload_bytes": 64,
+      "concurrency": 128,
+      "messages_per_second_median": 94214.64061430506,
+      "latency_ms_median": {
+        "p50": 1.3560423225955751,
+        "p95": 1.7588661612774175,
+        "p99": 2.160961325282421
+      },
+      "errors": 0
+    },
+    {
+      "payload_bytes": 1024,
+      "concurrency": 32,
+      "messages_per_second_median": 81818.22955467939,
+      "latency_ms_median": {
+        "p50": 0.3729949553102456,
+        "p95": 0.601315259724944,
+        "p99": 0.684909772315291
+      },
+      "errors": 0
+    },
+    {
+      "payload_bytes": 1024,
+      "concurrency": 128,
+      "messages_per_second_median": 82648.77873589702,
+      "latency_ms_median": {
+        "p50": 1.4788651463444957,
+        "p95": 2.3823085107764785,
+        "p99": 2.8027169622519614
+      },
+      "errors": 0
+    }
+  ],
+  "tracked_release_source_hash_changes": []
+}

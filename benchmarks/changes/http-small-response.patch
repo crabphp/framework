@@ -1,0 +1,16 @@
+--- a/engine/src/Http/ResponseEncoder.php
++++ b/engine/src/Http/ResponseEncoder.php
+@@ -98,6 +98,13 @@
+     /** @return \Generator<int, string> */
+     public function bytes(): \Generator
+     {
++        // Small fixed responses can reach the socket in one write without
++        // constructing a second large copy for streamed or sizeable bodies.
++        if (!$this->suppressBody && is_string($this->response->body)
++            && strlen($this->head) + strlen($this->response->body) <= 8192) {
++            yield $this->head . $this->response->body;
++            return;
++        }
+         yield $this->head;
+         if ($this->suppressBody) {
+             return;

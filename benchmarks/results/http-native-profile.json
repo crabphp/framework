@@ -1,0 +1,21 @@
+{
+  "server_command": [
+    "php",
+    "-d",
+    "opcache.enable_cli=1",
+    "-d",
+    "opcache.jit=tracing",
+    "-d",
+    "opcache.jit_buffer_size=128M",
+    "/Users/daudau/Code/crabphp/engine/benchmarks/server.php",
+    "--protocol=http",
+    "--port=58568",
+    "--workers=1"
+  ],
+  "sampler_exit": 0,
+  "sampler_stdout": "",
+  "sampler_stderr": "Sampling process 95386 for 3 seconds with 1 millisecond of run time between samples\nSampling completed, processing symbols...\nSample analysis of process 95386 written to file /Users/daudau/Code/crabphp/engine/benchmarks/results/http-native-profile.txt\n",
+  "load_output": "Running 5s test @ http://127.0.0.1:58568/\n  2 threads and 32 connections\n  Thread Stats   Avg      Stdev     Max   +/- Stdev\n    Latency   736.40us    0.98ms  24.74ms   99.21%\n    Req/Sec    23.61k     1.74k   26.14k    60.78%\n  239602 requests in 5.10s, 35.87MB read\nRequests/sec:  46978.30\nTransfer/sec:      7.03MB\n",
+  "load_exit": 0,
+  "note": "Native sampling diagnostic run; not used for throughput comparisons."
+}

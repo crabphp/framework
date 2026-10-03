@@ -1,0 +1,59 @@
+--- a/src/Http/ResponseEncoder.php
++++ b/src/Http/ResponseEncoder.php
+@@ -9,6 +9,8 @@
+  */
+ final class ResponseEncoder
+ {
++    private static ?int $dateSecond = null;
++    private static string $date = '';
+     public readonly bool $close;
+     private string $head;
+     private bool $chunked = false;
+@@ -74,16 +76,21 @@
+             $headers['transfer-encoding'] = ['chunked'];
+         }
+ 
+-        $connectionTokens = array_map(trim(...), explode(',', strtolower(implode(',', $headers['connection'] ?? []))));
+         $this->close = !$upgrade && ($forceClose || !$request->keepAlive()
+-            || in_array('close', $connectionTokens, true)
++            || (isset($headers['connection']) && in_array('close',
++                array_map(trim(...), explode(',', strtolower(implode(',', $headers['connection'])))), true))
+             || (!$this->suppressBody && $this->expectedLength === null && !$this->chunked));
+         if (!$upgrade) {
+             unset($headers['upgrade']);
+             $headers['connection'] = [$this->close ? 'close' : 'keep-alive'];
+         }
+         if (!isset($headers['date'])) {
+-            $headers['date'] = [gmdate('D, d M Y H:i:s') . ' GMT'];
++            $second = time();
++            if (self::$dateSecond !== $second) {
++                self::$dateSecond = $second;
++                self::$date = gmdate('D, d M Y H:i:s', $second) . ' GMT';
++            }
++            $headers['date'] = [self::$date];
+         }
+         $this->head = 'HTTP/' . $request->version . ' ' . $response->status . ' ' . Response::reason($response->status) . "\r\n";
+         foreach ($headers as $name => $values) {
+--- a/src/Http/Request.php
++++ b/src/Http/Request.php
+@@ -30,12 +30,19 @@
+ 
+     public function hasToken(string $name, string $token): bool
+     {
+-        $tokens = array_map(trim(...), explode(',', strtolower($this->header($name) ?? '')));
++        $header = $this->header($name);
++        if ($header === null) {
++            return $token === '';
++        }
++        $tokens = array_map(trim(...), explode(',', strtolower($header)));
+         return in_array(strtolower($token), $tokens, true);
+     }
+ 
+     public function keepAlive(): bool
+     {
++        if (!isset($this->headers['connection'])) {
++            return $this->version === '1.1';
++        }
+         return !$this->hasToken('connection', 'close')
+             && ($this->version === '1.1' || $this->hasToken('connection', 'keep-alive'));
+     }

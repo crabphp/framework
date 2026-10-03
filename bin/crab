@@ -1,16 +1,32 @@
 #!/usr/bin/env php
-
 <?php
 
-use Crab\Engine\Crab;
-use Crab\Engine\Support\Cli;
+declare(strict_types=1);
 
-require dirname(__DIR__) . '/vendor/autoload.php';
+use Crab\Engine\Runtime;
 
-$command = Cli::command($argv);
+require $_composer_autoload_path ?? dirname(__DIR__).'/vendor/autoload.php';
 
-if ($command === 'start') {
-    Crab::run();
+if (!isset($argv[1]) || in_array($argv[1], ['--help', '-h'], true)) {
+    fwrite(STDOUT, "Usage: crab <config.php> [--single]\n"
+        ."The configuration file must return a Crab\\Engine\\Runtime.\n"
+        ."SIGINT/SIGTERM: graceful stop. SIGUSR1: rolling worker restart.\n");
+    exit(0);
 }
-
-echo 'Crab command: ' . $command . "\n";
+try {
+    if (count($argv) > 3 || (isset($argv[2]) && $argv[2] !== '--single')) {
+        throw new InvalidArgumentException('Only --single is supported after the configuration path.');
+    }
+    $file = realpath($argv[1]);
+    if ($file === false || !is_file($file)) {
+        throw new InvalidArgumentException('Configuration file does not exist.');
+    }
+    $runtime = require $file;
+    if (!$runtime instanceof Runtime) {
+        throw new UnexpectedValueException('Configuration must return a Crab\\Engine\\Runtime.');
+    }
+    $runtime->run(singleProcess: ($argv[2] ?? '') === '--single');
+} catch (Throwable $error) {
+    fwrite(STDERR, '[Crab] '.$error->getMessage()."\n");
+    exit(1);
+}

@@ -1,0 +1,13 @@
+--- a/engine/src/Http/HttpSession.php
++++ b/engine/src/Http/HttpSession.php
+@@ -176,7 +176,9 @@
+                 $this->responseStarted = false;
+                 $this->armDeadline($this->parser->phase());
+                 $this->connection->resumeRead();
+-                $this->schedule();
++                if ($this->parser->phase() !== 'idle' || $this->peerEof) {
++                    $this->schedule();
++                }
+             };
+             $this->pump();
+         } catch (HttpException $error) {

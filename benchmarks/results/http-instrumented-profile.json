@@ -1,0 +1,911 @@
+{
+    "pid": 97018,
+    "requests_completed": 130957,
+    "io_reads": {
+        "calls": 261940,
+        "empty": 130961,
+        "nonempty": 130957,
+        "short_nonempty": 130957,
+        "full": 0,
+        "failed": 22,
+        "bytes": 5369250
+    },
+    "elapsed_seconds": 7.225792458,
+    "process_cpu_user_seconds": 5.9970159999999995,
+    "process_cpu_system_seconds": 1.154107,
+    "observed_self_ms_including_select_wait": 4064.690084,
+    "observed_active_self_ms": 4054.775292,
+    "measured_probe_bookkeeping_ms": 2957.022711,
+    "open_span_count": 0,
+    "php": "8.4.19",
+    "jit": {
+        "enabled": true,
+        "on": true,
+        "kind": 5,
+        "opt_level": 4,
+        "opt_flags": 6,
+        "buffer_size": 134217712,
+        "buffer_free": 133993368
+    },
+    "loaded_files": {
+        "Crab\\Engine\\Http\\HttpSession": "/private/tmp/crab-http-profile/src/Http/HttpSession.php",
+        "Crab\\Engine\\Http\\Parser": "/private/tmp/crab-http-profile/src/Http/Parser.php",
+        "Crab\\Engine\\Network\\Connection": "/private/tmp/crab-http-profile/src/Network/Connection.php",
+        "Revolt\\EventLoop\\Driver\\StreamSelectDriver": "/private/tmp/crab-http-profile/revolt/EventLoop/Driver/StreamSelectDriver.php",
+        "Revolt\\EventLoop\\Internal\\AbstractDriver": "/private/tmp/crab-http-profile/revolt/EventLoop/Internal/AbstractDriver.php"
+    },
+    "manifest": "/private/tmp/crab-http-profile/manifest.json",
+    "notes": [
+        "Diagnostic instrumented copy, not a throughput benchmark; probes affect JIT and total cost.",
+        "Wall-time spans cover startup, warmup, measurement, drain and shutdown. Normalize by completed requests.",
+        "Inclusive spans overlap: never add them. Self removes complete directly nested spans on the same Fiber.",
+        "Self includes uninstrumented work and residual call/timestamp overhead; bookkeeping excludes that residual.",
+        "Select wait is wall waiting, not CPU, and is excluded from the observed-active denominator.",
+        "Observed-active self is not complete CPU accounting: event-loop work outside selected methods remains unmeasured.",
+        "The fixture handler does not suspend. Suspended user callbacks would make wall spans unsuitable as CPU estimates.",
+        "Generator valid/current/next are timed separately, never across yielded suspension."
+    ],
+    "spans": [
+        {
+            "name": "IO.fwrite.immediate",
+            "calls": 130957,
+            "calls_per_request": 1,
+            "inclusive_ms": 620.14408,
+            "self_ms": 620.14408,
+            "inclusive_us_per_call": 4.735478668570599,
+            "self_us_per_call": 4.735478668570599,
+            "self_us_per_request": 4.735478668570599,
+            "self_percent_of_observed_active": 15.294166392488712,
+            "max_inclusive_ms": 0.053
+        },
+        {
+            "name": "IO.fread",
+            "calls": 261940,
+            "calls_per_request": 2.000198538451553,
+            "inclusive_ms": 516.346878,
+            "self_ms": 516.346878,
+            "inclusive_us_per_call": 1.971241039932809,
+            "self_us_per_call": 1.971241039932809,
+            "self_us_per_request": 3.9428734470093234,
+            "self_percent_of_observed_active": 12.734290825406362,
+            "max_inclusive_ms": 0.062417
+        },
+        {
+            "name": "HttpSession::pump",
+            "calls": 130957,
+            "calls_per_request": 1,
+            "inclusive_ms": 2225.313679,
+            "self_ms": 273.867893,
+            "inclusive_us_per_call": 16.992705078766313,
+            "self_us_per_call": 2.0912810540864557,
+            "self_us_per_request": 2.0912810540864557,
+            "self_percent_of_observed_active": 6.754206417809058,
+            "max_inclusive_ms": 0.48325
+        },
+        {
+            "name": "ResponseEncoder::__construct",
+            "calls": 130957,
+            "calls_per_request": 1,
+            "inclusive_ms": 572.241559,
+            "self_ms": 259.362524,
+            "inclusive_us_per_call": 4.369690501462312,
+            "self_us_per_call": 1.9805166886840717,
+            "self_us_per_request": 1.9805166886840717,
+            "self_percent_of_observed_active": 6.396470958864667,
+            "max_inclusive_ms": 0.345666
+        },
+        {
+            "name": "HttpSession::process",
+            "calls": 130961,
+            "calls_per_request": 1.000030544377162,
+            "inclusive_ms": 4749.817573,
+            "self_ms": 203.206494,
+            "inclusive_us_per_call": 36.26894703766771,
+            "self_us_per_call": 1.5516565542413392,
+            "self_us_per_request": 1.5517039486243576,
+            "self_percent_of_observed_active": 5.011535273013102,
+            "max_inclusive_ms": 1.4415
+        },
+        {
+            "name": "Connection::read",
+            "calls": 130983,
+            "calls_per_request": 1.0001985384515528,
+            "inclusive_ms": 1776.694265,
+            "self_ms": 192.175846,
+            "inclusive_us_per_call": 13.564311895436813,
+            "self_us_per_call": 1.4671815884504096,
+            "self_us_per_request": 1.4674728804111274,
+            "self_percent_of_observed_active": 4.739494353217539,
+            "max_inclusive_ms": 0.453916
+        },
+        {
+            "name": "HttpSession::armDeadline",
+            "calls": 392860,
+            "calls_per_request": 2.9999160029628045,
+            "inclusive_ms": 1205.688626,
+            "self_ms": 151.361725,
+            "inclusive_us_per_call": 3.069003273430739,
+            "self_us_per_call": 0.3852815888611719,
+            "self_us_per_request": 1.1558124040715654,
+            "self_percent_of_observed_active": 3.7329251092812465,
+            "max_inclusive_ms": 0.939333
+        },
+        {
+            "name": "AbstractDriver::disable",
+            "calls": 785922,
+            "calls_per_request": 6.001374496972288,
+            "inclusive_ms": 627.354491,
+            "self_ms": 148.978607,
+            "inclusive_us_per_call": 0.798240144696293,
+            "self_us_per_call": 0.18955902366901548,
+            "self_us_per_request": 1.137614690318196,
+            "self_percent_of_observed_active": 3.6741519880012135,
+            "max_inclusive_ms": 0.932625
+        },
+        {
+            "name": "AbstractDriver::delay",
+            "calls": 392905,
+            "calls_per_request": 3.000259627205877,
+            "inclusive_ms": 141.139652,
+            "self_ms": 141.139652,
+            "inclusive_us_per_call": 0.3592208091014367,
+            "self_us_per_call": 0.3592208091014367,
+            "self_us_per_request": 1.07775569079927,
+            "self_percent_of_observed_active": 3.4808254918211134,
+            "max_inclusive_ms": 0.297209
+        },
+        {
+            "name": "Parser::parseHeaders",
+            "calls": 130957,
+            "calls_per_request": 1,
+            "inclusive_ms": 275.081427,
+            "self_ms": 125.928207,
+            "inclusive_us_per_call": 2.100547714135174,
+            "self_us_per_call": 0.9615996624846324,
+            "self_us_per_request": 0.9615996624846324,
+            "self_percent_of_observed_active": 3.1056765894883034,
+            "max_inclusive_ms": 0.39575
+        },
+        {
+            "name": "Cancellation.reason.construct",
+            "calls": 130957,
+            "calls_per_request": 1,
+            "inclusive_ms": 124.190873,
+            "self_ms": 124.190873,
+            "inclusive_us_per_call": 0.9483332162465542,
+            "self_us_per_call": 0.9483332162465542,
+            "self_us_per_request": 0.9483332162465542,
+            "self_percent_of_observed_active": 3.0628299734642854,
+            "max_inclusive_ms": 0.333875
+        },
+        {
+            "name": "AbstractDriver::cancel",
+            "calls": 523937,
+            "calls_per_request": 4.000832334277663,
+            "inclusive_ms": 723.210677,
+            "self_ms": 114.765652,
+            "inclusive_us_per_call": 1.3803390044986323,
+            "self_us_per_call": 0.21904475538089502,
+            "self_us_per_request": 0.8763613399818261,
+            "self_percent_of_observed_active": 2.830382542441516,
+            "max_inclusive_ms": 0.934583
+        },
+        {
+            "name": "TimerQueue::remove",
+            "calls": 261919,
+            "calls_per_request": 2.0000381804714524,
+            "inclusive_ms": 109.042372,
+            "self_ms": 109.042372,
+            "inclusive_us_per_call": 0.4163209694600239,
+            "self_us_per_call": 0.4163209694600239,
+            "self_us_per_request": 0.8326578342509373,
+            "self_percent_of_observed_active": 2.689233413628091,
+            "max_inclusive_ms": 0.926625
+        },
+        {
+            "name": "StreamSelectDriver::deactivate",
+            "calls": 523879,
+            "calls_per_request": 4.000389440808815,
+            "inclusive_ms": 295.563227,
+            "self_ms": 91.011639,
+            "inclusive_us_per_call": 0.5641822386467104,
+            "self_us_per_call": 0.17372645019174274,
+            "self_us_per_request": 0.6949734569362463,
+            "self_percent_of_observed_active": 2.244554443733648,
+            "max_inclusive_ms": 0.9305
+        },
+        {
+            "name": "Connection::updateReadWatcher",
+            "calls": 393024,
+            "calls_per_request": 3.0011683224264454,
+            "inclusive_ms": 387.874794,
+            "self_ms": 89.507031,
+            "inclusive_us_per_call": 0.9868984947484123,
+            "self_us_per_call": 0.22773935179531019,
+            "self_us_per_request": 0.6834841283780172,
+            "self_percent_of_observed_active": 2.2074473812789526,
+            "max_inclusive_ms": 0.076167
+        },
+        {
+            "name": "Parser::field",
+            "calls": 261915,
+            "calls_per_request": 2.0000076360942907,
+            "inclusive_ms": 80.48979,
+            "self_ms": 80.48979,
+            "inclusive_us_per_call": 0.30731263959681576,
+            "self_us_per_call": 0.30731263959681576,
+            "self_us_per_request": 0.6146276258619241,
+            "self_percent_of_observed_active": 1.9850616668895298,
+            "max_inclusive_ms": 0.040416
+        },
+        {
+            "name": "IO.select.poll",
+            "calls": 8204,
+            "calls_per_request": 0.06264651755919882,
+            "inclusive_ms": 65.8437,
+            "self_ms": 65.8437,
+            "inclusive_us_per_call": 8.025804485616773,
+            "self_us_per_call": 8.025804485616773,
+            "self_us_per_request": 0.5027887016348878,
+            "self_percent_of_observed_active": 1.623855707365793,
+            "max_inclusive_ms": 0.058375
+        },
+        {
+            "name": "Parser::next",
+            "calls": 130961,
+            "calls_per_request": 1.000030544377162,
+            "inclusive_ms": 601.645805,
+            "self_ms": 53.139934,
+            "inclusive_us_per_call": 4.594083773031667,
+            "self_us_per_call": 0.4057691526484984,
+            "self_us_per_request": 0.4057815466145376,
+            "self_percent_of_observed_active": 1.3105518844618629,
+            "max_inclusive_ms": 0.59875
+        },
+        {
+            "name": "Request::hasToken",
+            "calls": 130945,
+            "calls_per_request": 0.9999083668685141,
+            "inclusive_ms": 112.026574,
+            "self_ms": 48.115573,
+            "inclusive_us_per_call": 0.8555238764366719,
+            "self_us_per_call": 0.36744872274619117,
+            "self_us_per_request": 0.3674150522690654,
+            "self_percent_of_observed_active": 1.1866396911052302,
+            "max_inclusive_ms": 0.333833
+        },
+        {
+            "name": "AbstractDriver::enable",
+            "calls": 261995,
+            "calls_per_request": 2.00061852363753,
+            "inclusive_ms": 43.724007,
+            "self_ms": 43.724007,
+            "inclusive_us_per_call": 0.16688870779976717,
+            "self_us_per_call": 0.16688870779976717,
+            "self_us_per_request": 0.3338806402101453,
+            "self_percent_of_observed_active": 1.0783336646611883,
+            "max_inclusive_ms": 0.0385
+        },
+        {
+            "name": "ResponseEncoder.generator.valid",
+            "calls": 261914,
+            "calls_per_request": 2,
+            "inclusive_ms": 43.249943,
+            "self_ms": 43.249943,
+            "inclusive_us_per_call": 0.16513032140320869,
+            "self_us_per_call": 0.16513032140320869,
+            "self_us_per_request": 0.33026064280641737,
+            "self_percent_of_observed_active": 1.0666421659748044,
+            "max_inclusive_ms": 0.038875
+        },
+        {
+            "name": "Parser.request.construct",
+            "calls": 130957,
+            "calls_per_request": 1,
+            "inclusive_ms": 42.472702,
+            "self_ms": 42.472702,
+            "inclusive_us_per_call": 0.3243255572439808,
+            "self_us_per_call": 0.3243255572439808,
+            "self_us_per_request": 0.3243255572439808,
+            "self_percent_of_observed_active": 1.0474736314931654,
+            "max_inclusive_ms": 0.288375
+        },
+        {
+            "name": "Connection::beginActivity",
+            "calls": 261918,
+            "calls_per_request": 2.0000305443771618,
+            "inclusive_ms": 41.035284,
+            "self_ms": 41.035284,
+            "inclusive_us_per_call": 0.15667225620232286,
+            "self_us_per_call": 0.15667225620232286,
+            "self_us_per_request": 0.31334929786112997,
+            "self_percent_of_observed_active": 1.012023627572208,
+            "max_inclusive_ms": 0.040875
+        },
+        {
+            "name": "Parser::complete",
+            "calls": 130957,
+            "calls_per_request": 1,
+            "inclusive_ms": 183.32728,
+            "self_ms": 39.306663,
+            "inclusive_us_per_call": 1.399904396099483,
+            "self_us_per_call": 0.3001493849126049,
+            "self_us_per_request": 0.3001493849126049,
+            "self_percent_of_observed_active": 0.9693918939861194,
+            "max_inclusive_ms": 0.291708
+        },
+        {
+            "name": "StreamSelectDriver::activate",
+            "calls": 8207,
+            "calls_per_request": 0.0626694258420703,
+            "inclusive_ms": 149.244326,
+            "self_ms": 38.956531,
+            "inclusive_us_per_call": 18.18500377726331,
+            "self_us_per_call": 4.746744364566833,
+            "self_us_per_request": 0.29747574394648624,
+            "self_percent_of_observed_active": 0.9607568408750183,
+            "max_inclusive_ms": 0.916917
+        },
+        {
+            "name": "Connection::tryWrite",
+            "calls": 130957,
+            "calls_per_request": 1,
+            "inclusive_ms": 705.529376,
+            "self_ms": 37.537029,
+            "inclusive_us_per_call": 5.387488839848195,
+            "self_us_per_call": 0.2866362928289439,
+            "self_us_per_request": 0.2866362928289439,
+            "self_percent_of_observed_active": 0.925748686346686,
+            "max_inclusive_ms": 0.081625
+        },
+        {
+            "name": "AbstractDriver::defer",
+            "calls": 130961,
+            "calls_per_request": 1.000030544377162,
+            "inclusive_ms": 33.831772,
+            "self_ms": 33.831772,
+            "inclusive_us_per_call": 0.2583347103336108,
+            "self_us_per_call": 0.2583347103336108,
+            "self_us_per_request": 0.25834260100643724,
+            "self_percent_of_observed_active": 0.834368604019796,
+            "max_inclusive_ms": 0.180417
+        },
+        {
+            "name": "HttpSession.handler",
+            "calls": 130957,
+            "calls_per_request": 1,
+            "inclusive_ms": 96.396674,
+            "self_ms": 33.311251,
+            "inclusive_us_per_call": 0.7360940919538475,
+            "self_us_per_call": 0.2543678535702559,
+            "self_us_per_request": 0.2543678535702559,
+            "self_percent_of_observed_active": 0.8215313698325653,
+            "max_inclusive_ms": 0.130791
+        },
+        {
+            "name": "HttpSession::schedule",
+            "calls": 130973,
+            "calls_per_request": 1.000122177508648,
+            "inclusive_ms": 114.519495,
+            "self_ms": 32.715978,
+            "inclusive_us_per_call": 0.8743748329808434,
+            "self_us_per_call": 0.24979177387705864,
+            "self_us_per_request": 0.24982229281367166,
+            "self_percent_of_observed_active": 0.8068505809569286,
+            "max_inclusive_ms": 0.182792
+        },
+        {
+            "name": "TimerQueue::insert",
+            "calls": 261919,
+            "calls_per_request": 2.0000381804714524,
+            "inclusive_ms": 28.527729,
+            "self_ms": 28.527729,
+            "inclusive_us_per_call": 0.10891813499593385,
+            "self_us_per_call": 0.10891813499593385,
+            "self_us_per_request": 0.2178404285376116,
+            "self_percent_of_observed_active": 0.7035588151157157,
+            "max_inclusive_ms": 0.276959
+        },
+        {
+            "name": "Cancellation::cancel",
+            "calls": 130957,
+            "calls_per_request": 1,
+            "inclusive_ms": 201.843771,
+            "self_ms": 27.800065,
+            "inclusive_us_per_call": 1.5412980673045351,
+            "self_us_per_call": 0.21228391762181478,
+            "self_us_per_request": 0.21228391762181478,
+            "self_percent_of_observed_active": 0.6856129624457621,
+            "max_inclusive_ms": 0.335667
+        },
+        {
+            "name": "Request::keepAlive",
+            "calls": 130945,
+            "calls_per_request": 0.9999083668685141,
+            "inclusive_ms": 183.32856,
+            "self_ms": 26.8283,
+            "inclusive_us_per_call": 1.4000424605750506,
+            "self_us_per_call": 0.2048822024514109,
+            "self_us_per_request": 0.20486342845361455,
+            "self_percent_of_observed_active": 0.6616470227815524,
+            "max_inclusive_ms": 0.335875
+        },
+        {
+            "name": "HttpSession::releaseRequest",
+            "calls": 131011,
+            "calls_per_request": 1.0004123490916865,
+            "inclusive_ms": 274.67802,
+            "self_ms": 25.95411,
+            "inclusive_us_per_call": 2.096602728015205,
+            "self_us_per_call": 0.19810634221553913,
+            "self_us_per_request": 0.19818803118580908,
+            "self_percent_of_observed_active": 0.6400875050019911,
+            "max_inclusive_ms": 0.336875
+        },
+        {
+            "name": "Connection::settleIfReady",
+            "calls": 261985,
+            "calls_per_request": 2.000542162694625,
+            "inclusive_ms": 21.334157,
+            "self_ms": 21.31091,
+            "inclusive_us_per_call": 0.0814327423325763,
+            "self_us_per_call": 0.08134400824474683,
+            "self_us_per_request": 0.16273211817619523,
+            "self_percent_of_observed_active": 0.5255756106151197,
+            "max_inclusive_ms": 0.312625
+        },
+        {
+            "name": "Request::path",
+            "calls": 130957,
+            "calls_per_request": 1,
+            "inclusive_ms": 19.212612,
+            "self_ms": 19.212612,
+            "inclusive_us_per_call": 0.14670931679864385,
+            "self_us_per_call": 0.14670931679864385,
+            "self_us_per_request": 0.14670931679864385,
+            "self_percent_of_observed_active": 0.4738267996726266,
+            "max_inclusive_ms": 0.040083
+        },
+        {
+            "name": "Parser::append",
+            "calls": 130957,
+            "calls_per_request": 1,
+            "inclusive_ms": 18.508882,
+            "self_ms": 18.508882,
+            "inclusive_us_per_call": 0.1413355681635957,
+            "self_us_per_call": 0.1413355681635957,
+            "self_us_per_request": 0.1413355681635957,
+            "self_percent_of_observed_active": 0.4564712139910119,
+            "max_inclusive_ms": 0.039333
+        },
+        {
+            "name": "ResponseEncoder.generator.next",
+            "calls": 130957,
+            "calls_per_request": 1,
+            "inclusive_ms": 16.140094,
+            "self_ms": 16.140094,
+            "inclusive_us_per_call": 0.12324727964140901,
+            "self_us_per_call": 0.12324727964140901,
+            "self_us_per_request": 0.12324727964140901,
+            "self_percent_of_observed_active": 0.39805150317069654,
+            "max_inclusive_ms": 0.034833
+        },
+        {
+            "name": "Request::header",
+            "calls": 130945,
+            "calls_per_request": 0.9999083668685141,
+            "inclusive_ms": 15.907734,
+            "self_ms": 15.907734,
+            "inclusive_us_per_call": 0.12148408873954714,
+            "self_us_per_call": 0.12148408873954714,
+            "self_us_per_request": 0.12147295677207022,
+            "self_percent_of_observed_active": 0.39232097599552995,
+            "max_inclusive_ms": 0.036083
+        },
+        {
+            "name": "StreamSelectDriver::selectStreams",
+            "calls": 8207,
+            "calls_per_request": 0.0626694258420703,
+            "inclusive_ms": 92.88445,
+            "self_ms": 13.496986,
+            "inclusive_us_per_call": 11.317710491044231,
+            "self_us_per_call": 1.644570001218472,
+            "self_us_per_request": 0.1030642577334545,
+            "self_percent_of_observed_active": 0.3328664359435482,
+            "max_inclusive_ms": 5.540584
+        },
+        {
+            "name": "Parser.body.allocate",
+            "calls": 130957,
+            "calls_per_request": 1,
+            "inclusive_ms": 12.099663,
+            "self_ms": 12.099663,
+            "inclusive_us_per_call": 0.09239416755118093,
+            "self_us_per_call": 0.09239416755118093,
+            "self_us_per_request": 0.09239416755118093,
+            "self_percent_of_observed_active": 0.29840526610370793,
+            "max_inclusive_ms": 0.184917
+        },
+        {
+            "name": "IO.select.wait",
+            "calls": 3,
+            "calls_per_request": 2.2908282871476898e-5,
+            "inclusive_ms": 9.914792,
+            "self_ms": 9.914792,
+            "inclusive_us_per_call": 3304.9306666666666,
+            "self_us_per_call": 3304.9306666666666,
+            "self_us_per_request": 0.07571028658261872,
+            "self_percent_of_observed_active": 0.24452136767139004,
+            "max_inclusive_ms": 5.533833
+        },
+        {
+            "name": "ResponseEncoder.generator.current",
+            "calls": 130957,
+            "calls_per_request": 1,
+            "inclusive_ms": 9.610978,
+            "self_ms": 9.610978,
+            "inclusive_us_per_call": 0.0733903342318471,
+            "self_us_per_call": 0.0733903342318471,
+            "self_us_per_request": 0.0733903342318471,
+            "self_percent_of_observed_active": 0.2370286220043387,
+            "max_inclusive_ms": 0.0345
+        },
+        {
+            "name": "Body::rewind",
+            "calls": 130957,
+            "calls_per_request": 1,
+            "inclusive_ms": 9.389642,
+            "self_ms": 9.389642,
+            "inclusive_us_per_call": 0.07170019166596668,
+            "self_us_per_call": 0.07170019166596668,
+            "self_us_per_request": 0.07170019166596668,
+            "self_percent_of_observed_active": 0.2315699717941361,
+            "max_inclusive_ms": 0.042125
+        },
+        {
+            "name": "Body::__destruct",
+            "calls": 130957,
+            "calls_per_request": 1,
+            "inclusive_ms": 9.380666,
+            "self_ms": 9.380666,
+            "inclusive_us_per_call": 0.07163165008361523,
+            "self_us_per_call": 0.07163165008361523,
+            "self_us_per_request": 0.07163165008361523,
+            "self_percent_of_observed_active": 0.23134860317679967,
+            "max_inclusive_ms": 0.039334
+        },
+        {
+            "name": "StreamSelectDriver::dispatch",
+            "calls": 8207,
+            "calls_per_request": 0.0626694258420703,
+            "inclusive_ms": 105.074905,
+            "self_ms": 4.347635,
+            "inclusive_us_per_call": 12.803083343487268,
+            "self_us_per_call": 0.5297471670525161,
+            "self_us_per_request": 0.033198950800644486,
+            "self_percent_of_observed_active": 0.10722258786023992,
+            "max_inclusive_ms": 5.545417
+        },
+        {
+            "name": "TimerQueue::extract",
+            "calls": 8207,
+            "calls_per_request": 0.0626694258420703,
+            "inclusive_ms": 1.255581,
+            "self_ms": 1.255581,
+            "inclusive_us_per_call": 0.1529890337516754,
+            "self_us_per_call": 0.1529890337516754,
+            "self_us_per_request": 0.009587734905350611,
+            "self_percent_of_observed_active": 0.0309654890735188,
+            "max_inclusive_ms": 0.043084
+        },
+        {
+            "name": "AbstractDriver::onReadable",
+            "calls": 69,
+            "calls_per_request": 0.0005268905060439687,
+            "inclusive_ms": 0.244075,
+            "self_ms": 0.244075,
+            "inclusive_us_per_call": 3.53731884057971,
+            "self_us_per_call": 3.53731884057971,
+            "self_us_per_request": 0.0018637797139519079,
+            "self_percent_of_observed_active": 0.006019445774999065,
+            "max_inclusive_ms": 0.207917
+        }
+    ],
+    "edges": [
+        {
+            "edge": "HttpSession::process -> HttpSession::pump",
+            "calls": 130957,
+            "inclusive_ms": 2225.313679
+        },
+        {
+            "edge": "HttpSession::pump -> Connection::tryWrite",
+            "calls": 130957,
+            "inclusive_ms": 705.529376
+        },
+        {
+            "edge": "HttpSession::armDeadline -> AbstractDriver::cancel",
+            "calls": 392793,
+            "inclusive_ms": 625.839988
+        },
+        {
+            "edge": "Connection::tryWrite -> IO.fwrite.immediate",
+            "calls": 130957,
+            "inclusive_ms": 620.14408
+        },
+        {
+            "edge": "HttpSession::process -> Parser::next",
+            "calls": 130961,
+            "inclusive_ms": 601.645805
+        },
+        {
+            "edge": "HttpSession::process -> ResponseEncoder::__construct",
+            "calls": 130957,
+            "inclusive_ms": 572.241559
+        },
+        {
+            "edge": "Connection::read -> IO.fread",
+            "calls": 261940,
+            "inclusive_ms": 516.346878
+        },
+        {
+            "edge": "HttpSession::process -> HttpSession::armDeadline",
+            "calls": 130957,
+            "inclusive_ms": 465.453778
+        },
+        {
+            "edge": "Connection::read -> HttpSession::armDeadline",
+            "calls": 130892,
+            "inclusive_ms": 437.503724
+        },
+        {
+            "edge": "AbstractDriver::cancel -> AbstractDriver::disable",
+            "calls": 523937,
+            "inclusive_ms": 418.367388
+        },
+        {
+            "edge": "HttpSession::pump -> HttpSession::armDeadline",
+            "calls": 130944,
+            "inclusive_ms": 302.412
+        },
+        {
+            "edge": "AbstractDriver::disable -> StreamSelectDriver::deactivate",
+            "calls": 523879,
+            "inclusive_ms": 295.563227
+        },
+        {
+            "edge": "Parser::next -> Parser::parseHeaders",
+            "calls": 130957,
+            "inclusive_ms": 275.081427
+        },
+        {
+            "edge": "HttpSession::pump -> HttpSession::releaseRequest",
+            "calls": 130957,
+            "inclusive_ms": 274.673148
+        },
+        {
+            "edge": "HttpSession::releaseRequest -> Cancellation::cancel",
+            "calls": 130957,
+            "inclusive_ms": 201.843771
+        },
+        {
+            "edge": "HttpSession::process -> Connection::updateReadWatcher",
+            "calls": 130961,
+            "inclusive_ms": 187.923791
+        },
+        {
+            "edge": "ResponseEncoder::__construct -> Request::keepAlive",
+            "calls": 130945,
+            "inclusive_ms": 183.32856
+        },
+        {
+            "edge": "Parser::next -> Parser::complete",
+            "calls": 130957,
+            "inclusive_ms": 183.32728
+        },
+        {
+            "edge": "HttpSession::armDeadline -> AbstractDriver::delay",
+            "calls": 392860,
+            "inclusive_ms": 141.114366
+        },
+        {
+            "edge": "Cancellation::cancel -> Cancellation.reason.construct",
+            "calls": 130957,
+            "inclusive_ms": 124.190873
+        },
+        {
+            "edge": "Connection::read -> HttpSession::schedule",
+            "calls": 130973,
+            "inclusive_ms": 114.519495
+        },
+        {
+            "edge": "Connection::updateReadWatcher -> AbstractDriver::disable",
+            "calls": 131002,
+            "inclusive_ms": 112.820733
+        },
+        {
+            "edge": "Request::keepAlive -> Request::hasToken",
+            "calls": 130945,
+            "inclusive_ms": 112.026574
+        },
+        {
+            "edge": "StreamSelectDriver::deactivate -> TimerQueue::remove",
+            "calls": 261919,
+            "inclusive_ms": 109.042372
+        },
+        {
+            "edge": "HttpSession::pump -> Connection::updateReadWatcher",
+            "calls": 130957,
+            "inclusive_ms": 106.764847
+        },
+        {
+            "edge": "HttpSession::process -> HttpSession.handler",
+            "calls": 130957,
+            "inclusive_ms": 96.396674
+        },
+        {
+            "edge": "Connection::read -> AbstractDriver::disable",
+            "calls": 130983,
+            "inclusive_ms": 96.16637
+        },
+        {
+            "edge": "Connection::read -> Connection::updateReadWatcher",
+            "calls": 130983,
+            "inclusive_ms": 93.031819
+        },
+        {
+            "edge": "StreamSelectDriver::dispatch -> StreamSelectDriver::selectStreams",
+            "calls": 8207,
+            "inclusive_ms": 92.88445
+        },
+        {
+            "edge": "StreamSelectDriver::selectStreams -> IO.select.poll",
+            "calls": 8204,
+            "inclusive_ms": 65.8437
+        },
+        {
+            "edge": "Parser::parseHeaders -> Parser::field",
+            "calls": 130958,
+            "inclusive_ms": 44.191417
+        },
+        {
+            "edge": "Connection::updateReadWatcher -> AbstractDriver::enable",
+            "calls": 261889,
+            "inclusive_ms": 43.707677
+        },
+        {
+            "edge": "HttpSession::pump -> ResponseEncoder.generator.valid",
+            "calls": 261914,
+            "inclusive_ms": 43.249943
+        },
+        {
+            "edge": "Parser::complete -> Parser.request.construct",
+            "calls": 130957,
+            "inclusive_ms": 42.472702
+        },
+        {
+            "edge": "ResponseEncoder::__construct -> Parser::field",
+            "calls": 130957,
+            "inclusive_ms": 36.298373
+        },
+        {
+            "edge": "HttpSession::schedule -> AbstractDriver::defer",
+            "calls": 130961,
+            "inclusive_ms": 33.831772
+        },
+        {
+            "edge": "StreamSelectDriver::activate -> TimerQueue::insert",
+            "calls": 261919,
+            "inclusive_ms": 28.527729
+        },
+        {
+            "edge": "HttpSession::process -> Connection::beginActivity",
+            "calls": 130961,
+            "inclusive_ms": 23.203887
+        },
+        {
+            "edge": "HttpSession.handler -> Request::path",
+            "calls": 130957,
+            "inclusive_ms": 19.212612
+        },
+        {
+            "edge": "Connection::read -> Parser::append",
+            "calls": 130957,
+            "inclusive_ms": 18.508882
+        },
+        {
+            "edge": "HttpSession::pump -> Connection::beginActivity",
+            "calls": 130957,
+            "inclusive_ms": 17.831397
+        },
+        {
+            "edge": "HttpSession::pump -> ResponseEncoder.generator.next",
+            "calls": 130957,
+            "inclusive_ms": 16.140094
+        },
+        {
+            "edge": "Request::hasToken -> Request::header",
+            "calls": 130945,
+            "inclusive_ms": 15.907734
+        },
+        {
+            "edge": "HttpSession::pump -> Connection::settleIfReady",
+            "calls": 130970,
+            "inclusive_ms": 12.606623
+        },
+        {
+            "edge": "Parser::parseHeaders -> Parser.body.allocate",
+            "calls": 130957,
+            "inclusive_ms": 12.099663
+        },
+        {
+            "edge": "StreamSelectDriver::selectStreams -> IO.select.wait",
+            "calls": 3,
+            "inclusive_ms": 9.914792
+        },
+        {
+            "edge": "HttpSession::pump -> ResponseEncoder.generator.current",
+            "calls": 130957,
+            "inclusive_ms": 9.610978
+        },
+        {
+            "edge": "Parser::complete -> Body::rewind",
+            "calls": 130957,
+            "inclusive_ms": 9.389642
+        },
+        {
+            "edge": "HttpSession::process -> Connection::settleIfReady",
+            "calls": 130965,
+            "inclusive_ms": 8.147698
+        },
+        {
+            "edge": "StreamSelectDriver::dispatch -> TimerQueue::extract",
+            "calls": 8207,
+            "inclusive_ms": 1.255581
+        },
+        {
+            "edge": "Connection::read -> AbstractDriver::cancel",
+            "calls": 60,
+            "inclusive_ms": 0.594668
+        },
+        {
+            "edge": "Connection::read -> Connection::settleIfReady",
+            "calls": 22,
+            "inclusive_ms": 0.250419
+        },
+        {
+            "edge": "HttpSession::pump -> AbstractDriver::cancel",
+            "calls": 26,
+            "inclusive_ms": 0.04079
+        },
+        {
+            "edge": "Connection::updateReadWatcher -> AbstractDriver::onReadable",
+            "calls": 67,
+            "inclusive_ms": 0.035324
+        },
+        {
+            "edge": "HttpSession::process -> AbstractDriver::cancel",
+            "calls": 8,
+            "inclusive_ms": 0.018292
+        },
+        {
+            "edge": "Connection::read -> AbstractDriver::delay",
+            "calls": 16,
+            "inclusive_ms": 0.00933
+        },
+        {
+            "edge": "Connection::settleIfReady -> AbstractDriver::enable",
+            "calls": 39,
+            "inclusive_ms": 0.006289
+        },
+        {
+            "edge": "Connection::read -> HttpSession::releaseRequest",
+            "calls": 22,
+            "inclusive_ms": 0.002331
+        },
+        {
+            "edge": "HttpSession::process -> HttpSession::releaseRequest",
+            "calls": 4,
+            "inclusive_ms": 0.000417
+        }
+    ]
+}

@@ -1,0 +1,363 @@
+{
+  "kind": "bounded correctness verification",
+  "php_configuration": {
+    "version": "8.4.19",
+    "opcache.enable_cli": "1",
+    "opcache.jit": "",
+    "opcache.jit_buffer_size": "0",
+    "jit_status": {
+      "enabled": false,
+      "on": false,
+      "kind": 0,
+      "opt_level": 0,
+      "opt_flags": 0,
+      "buffer_size": 0,
+      "buffer_free": 0
+    }
+  },
+  "source_sha256": {
+    "benchmarks/baselines/bun.ts": "22c72a4fe8af25a34c8d801de4e504c7718576f1b367cab7a68b0211dd05655f",
+    "benchmarks/baselines/php.php": "52552cf5e0dd43e4cf304632d96fb3290aee21ca7e0b013684e7ddf687dfd67b",
+    "benchmarks/baselines/verify.py": "b2e0a10ee1d33ac2069ba70f0e5444958ab39d2bfb0f7f5216267a8d2ff0baa8",
+    "benchmarks/elysia/server.ts": "4a2e96009030a8265c525bff2c62e20b4c8b08c146d7388d2fbd93c888c0250a",
+    "composer.lock": "b2adc0615cae93a8555073ef26d3032938903ea673219cf95a342129744618d5",
+    "src/Async/Async.php": "462d129b2ba3c8f6b4de12111ed4046965041799e6b6edcf208446f1963a410a",
+    "src/Async/Cancellation.php": "2770894fc76251c322b2f1428c82e8d3089972751621ef20181367a29d6cf8a8",
+    "src/Async/CancelledException.php": "8204c5462beef2fe1ac613d07a9aa4d85a4ea894956cc67bc6b839607413a44b",
+    "src/Async/ConnectionStream.php": "34b6ebaa0a25b909c1466573d151281e6ee69acc922cc5640c86bf4c1e3c7c2d",
+    "src/Async/Task.php": "d27f91818bd71a41ad81186fb5bb2332bfcc090d6a11819c7d2bdfe0f0ab2ddf",
+    "src/Http/Body.php": "dd8d973adb64cf2f17c9f377bcbe29e0cda2e6301ff0d23f7d8c8d42404213c7",
+    "src/Http/HttpException.php": "937fe56951a46f213f339ca207bb22a8706c34cf93186ed6e2b04936fa568ddc",
+    "src/Http/HttpSession.php": "e727501f681fea4bddbd104879385009e549ad11a2d0b6de72f5922fc129db77",
+    "src/Http/Parser.php": "bafd681b149027a7fcaca3b6d36ed1d5aacb542bdb47c573c42b029abc296a1e",
+    "src/Http/Request.php": "7f07912cfc8680e249f51ca2742e2803bfc9c7fb401ed38ea9417f744a72777a",
+    "src/Http/Response.php": "eb32648b0c5536463ddf92ec6b7af5bf09170f975ce68645d273493f5c97ec69",
+    "src/Http/ResponseEncoder.php": "3e36f0f86470adec3724cf0f6880f462ee34c17522595cc6defaaf6167031900",
+    "src/Http/Upgrade.php": "b41c4a9cdc5b19b07287ec5fb39351a2355e88705e287878a2d4423efebf2dd8",
+    "src/Network/Connection.php": "8a9f2cae5b0ee425a1e76d3c04022f22398a2317c8403efc0c37c10a7d33d56c",
+    "src/Network/Connector.php": "879ccd3754442b1d29b7ae0e22e3bb52df88bb24d5cd179d26737d781f1554bf",
+    "src/Network/Listener.php": "4a2788d5b487999b659e6500ca3e722ca12dc896a9fc546ee7e17049d6b0494a",
+    "src/Network/UdpEndpoint.php": "357d6032f10b5a07f0a9455903955a13db51d18a04c5db9d6b13d3770de3ed72",
+    "src/Network/WriteResult.php": "0ba70bbf7825fff54a10b5cab9c397127bb76ec6cedcccd13207175daef4e4db",
+    "src/Process/Supervisor.php": "f2a3c48b2923303360cb32e53b1233dde986190062d1426419b502c0ed8f7202",
+    "src/Process/Worker.php": "2bb90b5620241fad580d38cd417a3f1be249bb6da84be5d67a9071ebbc8d69e1",
+    "src/Runtime.php": "a62808c1dc26ce2b3fada80b0d8c85119d9a60517e827c747a6adfdae15bd62c",
+    "src/Server/HttpServer.php": "03b6f676e4bb1071b02b1f896672a021723b324c43065e9cf7bd486a814cd140",
+    "src/Server/TcpServer.php": "e057200b16a002b991c5da12f6bec519f4d6174ddc5862b92d3f3d4de02b65af",
+    "src/Server/UdpServer.php": "a372e5daa02c28c42563923678891f66a9443851c3c627c3d4a8aca4289a36eb",
+    "src/Server/WebSocketServer.php": "ec9308f21cb6bc9449c1c777d1c19861b11eae7ef983938f93a46356bdd810f6",
+    "src/WebSocket/Config.php": "78c909152e9f443e1f339f92da9091d03469f81919601b77aea104eea712d250",
+    "src/WebSocket/MessageType.php": "7175e1c67355c289ced159167d5b8e3f5971922a3c05664763c6b0f33e548706",
+    "src/WebSocket/WebSocketSession.php": "d26b1184f2bfa065fd6805dffc2e7ecc9bbb94612ecb8bcbf0779a6e98743b6f",
+    "src/WorkerGroup.php": "9237db8cebb47105910968f4cc7b1859f7989a211f3df8fd658294a9c6882814"
+  },
+  "sources_unchanged_during_checks": true,
+  "records": [
+    {
+      "command": [
+        "php",
+        "-d",
+        "opcache.enable_cli=1",
+        "-d",
+        "opcache.jit=off",
+        "-d",
+        "opcache.jit_buffer_size=0",
+        "/Users/daudau/Code/crabphp/engine/benchmarks/baselines/php.php",
+        "--backend=select",
+        "--protocol=http",
+        "--port=54973"
+      ],
+      "status": "passed",
+      "pid": 15259,
+      "http": {
+        "status": "passed",
+        "checks": [
+          "exact body, headers, and Connection: close",
+          "three sequential requests on one persistent connection",
+          "fragmented request line, header name, and CRLF terminator",
+          "eight ordered pipelined responses without lost or extra bytes",
+          "explicit zero-length request body",
+          "explicit closing rejection of ten unsupported or invalid requests",
+          "bounded slow-reader pipeline preserves every response byte"
+        ],
+        "successful_requests": 2062,
+        "response": {
+          "raw_headers": "HTTP/1.1 200 OK\r\ncontent-type: text/plain; charset=utf-8\r\ncontent-length: 16\r\nconnection: close\r\ndate: Sat, 03 Oct 2026 07:42:32 GMT",
+          "body": "Hello from Crab\n",
+          "body_bytes": 16
+        },
+        "rejected_requests": 10,
+        "slow_reader_requests": 2048
+      },
+      "after_disconnects": {
+        "status": "passed",
+        "checks": [
+          "exact body, headers, and Connection: close",
+          "three sequential requests on one persistent connection",
+          "fragmented request line, header name, and CRLF terminator",
+          "eight ordered pipelined responses without lost or extra bytes"
+        ],
+        "successful_requests": 13,
+        "response": {
+          "raw_headers": "HTTP/1.1 200 OK\r\ncontent-type: text/plain; charset=utf-8\r\ncontent-length: 16\r\nconnection: close\r\ndate: Sat, 03 Oct 2026 07:42:33 GMT",
+          "body": "Hello from Crab\n",
+          "body_bytes": 16
+        }
+      },
+      "exit_code": 0,
+      "server_log": "",
+      "target": "php-select"
+    },
+    {
+      "command": [
+        "php",
+        "-d",
+        "opcache.enable_cli=1",
+        "-d",
+        "opcache.jit=off",
+        "-d",
+        "opcache.jit_buffer_size=0",
+        "/Users/daudau/Code/crabphp/engine/benchmarks/baselines/php.php",
+        "--backend=revolt",
+        "--protocol=http",
+        "--port=55020"
+      ],
+      "status": "passed",
+      "pid": 15261,
+      "http": {
+        "status": "passed",
+        "checks": [
+          "exact body, headers, and Connection: close",
+          "three sequential requests on one persistent connection",
+          "fragmented request line, header name, and CRLF terminator",
+          "eight ordered pipelined responses without lost or extra bytes",
+          "explicit zero-length request body",
+          "explicit closing rejection of ten unsupported or invalid requests",
+          "bounded slow-reader pipeline preserves every response byte"
+        ],
+        "successful_requests": 2062,
+        "response": {
+          "raw_headers": "HTTP/1.1 200 OK\r\ncontent-type: text/plain; charset=utf-8\r\ncontent-length: 16\r\nconnection: close\r\ndate: Sat, 03 Oct 2026 07:42:33 GMT",
+          "body": "Hello from Crab\n",
+          "body_bytes": 16
+        },
+        "rejected_requests": 10,
+        "slow_reader_requests": 2048
+      },
+      "after_disconnects": {
+        "status": "passed",
+        "checks": [
+          "exact body, headers, and Connection: close",
+          "three sequential requests on one persistent connection",
+          "fragmented request line, header name, and CRLF terminator",
+          "eight ordered pipelined responses without lost or extra bytes"
+        ],
+        "successful_requests": 13,
+        "response": {
+          "raw_headers": "HTTP/1.1 200 OK\r\ncontent-type: text/plain; charset=utf-8\r\ncontent-length: 16\r\nconnection: close\r\ndate: Sat, 03 Oct 2026 07:42:33 GMT",
+          "body": "Hello from Crab\n",
+          "body_bytes": 16
+        }
+      },
+      "exit_code": 0,
+      "server_log": "",
+      "target": "php-revolt"
+    },
+    {
+      "command": [
+        "php",
+        "-d",
+        "opcache.enable_cli=1",
+        "-d",
+        "opcache.jit=off",
+        "-d",
+        "opcache.jit_buffer_size=0",
+        "/Users/daudau/Code/crabphp/engine/benchmarks/baselines/php.php",
+        "--backend=transport",
+        "--protocol=http",
+        "--port=55067"
+      ],
+      "status": "passed",
+      "pid": 15262,
+      "http": {
+        "status": "passed",
+        "checks": [
+          "exact body, headers, and Connection: close",
+          "three sequential requests on one persistent connection",
+          "fragmented request line, header name, and CRLF terminator",
+          "eight ordered pipelined responses without lost or extra bytes",
+          "explicit zero-length request body",
+          "explicit closing rejection of ten unsupported or invalid requests",
+          "bounded slow-reader pipeline preserves every response byte"
+        ],
+        "successful_requests": 2062,
+        "response": {
+          "raw_headers": "HTTP/1.1 200 OK\r\ncontent-type: text/plain; charset=utf-8\r\ncontent-length: 16\r\nconnection: close\r\ndate: Sat, 03 Oct 2026 07:42:33 GMT",
+          "body": "Hello from Crab\n",
+          "body_bytes": 16
+        },
+        "rejected_requests": 10,
+        "slow_reader_requests": 2048
+      },
+      "after_disconnects": {
+        "status": "passed",
+        "checks": [
+          "exact body, headers, and Connection: close",
+          "three sequential requests on one persistent connection",
+          "fragmented request line, header name, and CRLF terminator",
+          "eight ordered pipelined responses without lost or extra bytes"
+        ],
+        "successful_requests": 13,
+        "response": {
+          "raw_headers": "HTTP/1.1 200 OK\r\ncontent-type: text/plain; charset=utf-8\r\ncontent-length: 16\r\nconnection: close\r\ndate: Sat, 03 Oct 2026 07:42:33 GMT",
+          "body": "Hello from Crab\n",
+          "body_bytes": 16
+        }
+      },
+      "exit_code": 0,
+      "server_log": "",
+      "target": "php-transport"
+    },
+    {
+      "command": [
+        "php",
+        "-d",
+        "opcache.enable_cli=1",
+        "-d",
+        "opcache.jit=off",
+        "-d",
+        "opcache.jit_buffer_size=0",
+        "/Users/daudau/Code/crabphp/engine/benchmarks/baselines/php.php",
+        "--backend=codec",
+        "--protocol=http",
+        "--port=55113"
+      ],
+      "status": "passed",
+      "pid": 15263,
+      "http": {
+        "status": "passed",
+        "checks": [
+          "exact body, headers, and Connection: close",
+          "three sequential requests on one persistent connection",
+          "fragmented request line, header name, and CRLF terminator",
+          "eight ordered pipelined responses without lost or extra bytes",
+          "explicit zero-length request body",
+          "explicit closing rejection of ten unsupported or invalid requests",
+          "bounded slow-reader pipeline preserves every response byte"
+        ],
+        "successful_requests": 2062,
+        "response": {
+          "raw_headers": "HTTP/1.1 200 OK\r\ncontent-type: text/plain; charset=utf-8\r\ncontent-length: 16\r\nconnection: close\r\ndate: Sat, 03 Oct 2026 07:42:33 GMT",
+          "body": "Hello from Crab\n",
+          "body_bytes": 16
+        },
+        "rejected_requests": 10,
+        "slow_reader_requests": 2048
+      },
+      "after_disconnects": {
+        "status": "passed",
+        "checks": [
+          "exact body, headers, and Connection: close",
+          "three sequential requests on one persistent connection",
+          "fragmented request line, header name, and CRLF terminator",
+          "eight ordered pipelined responses without lost or extra bytes"
+        ],
+        "successful_requests": 13,
+        "response": {
+          "raw_headers": "HTTP/1.1 200 OK\r\ncontent-type: text/plain; charset=utf-8\r\ncontent-length: 16\r\nconnection: close\r\ndate: Sat, 03 Oct 2026 07:42:33 GMT",
+          "body": "Hello from Crab\n",
+          "body_bytes": 16
+        }
+      },
+      "exit_code": 0,
+      "server_log": "",
+      "target": "php-codec"
+    },
+    {
+      "command": [
+        "/var/folders/tg/pyt0jkx51cd1_8n1q01dvpjh0000gn/T/crab-elysia-bun-1.4.2-64v2459i/bun-darwin-aarch64/bun",
+        "/Users/daudau/Code/crabphp/engine/benchmarks/baselines/bun.ts",
+        "--protocol=http",
+        "--port=55159"
+      ],
+      "status": "passed",
+      "pid": 15264,
+      "http": {
+        "status": "passed",
+        "checks": [
+          "exact body, headers, and Connection: close",
+          "three sequential requests on one persistent connection",
+          "fragmented request line, header name, and CRLF terminator",
+          "eight ordered pipelined responses without lost or extra bytes"
+        ],
+        "successful_requests": 13,
+        "response": {
+          "raw_headers": "HTTP/1.1 200 OK\r\nContent-Type: text/plain; charset=utf-8\r\nDate: Sat, 03 Oct 2026 07:42:33 GMT\r\nContent-Length: 16",
+          "body": "Hello from Crab\n",
+          "body_bytes": 16
+        }
+      },
+      "after_disconnects": {
+        "status": "passed",
+        "checks": [
+          "exact body, headers, and Connection: close",
+          "three sequential requests on one persistent connection",
+          "fragmented request line, header name, and CRLF terminator",
+          "eight ordered pipelined responses without lost or extra bytes"
+        ],
+        "successful_requests": 13,
+        "response": {
+          "raw_headers": "HTTP/1.1 200 OK\r\nContent-Type: text/plain; charset=utf-8\r\nDate: Sat, 03 Oct 2026 07:42:33 GMT\r\nContent-Length: 16",
+          "body": "Hello from Crab\n",
+          "body_bytes": 16
+        }
+      },
+      "exit_code": 0,
+      "server_log": "",
+      "target": "bun"
+    },
+    {
+      "command": [
+        "/var/folders/tg/pyt0jkx51cd1_8n1q01dvpjh0000gn/T/crab-elysia-bun-1.4.2-64v2459i/bun-darwin-aarch64/bun",
+        "/Users/daudau/Code/crabphp/engine/benchmarks/elysia/server.ts",
+        "--protocol=http",
+        "--port=55188"
+      ],
+      "status": "passed",
+      "pid": 15265,
+      "http": {
+        "status": "passed",
+        "checks": [
+          "exact body, headers, and Connection: close",
+          "three sequential requests on one persistent connection",
+          "fragmented request line, header name, and CRLF terminator",
+          "eight ordered pipelined responses without lost or extra bytes"
+        ],
+        "successful_requests": 13,
+        "response": {
+          "raw_headers": "HTTP/1.1 200 OK\r\nContent-Type: text/plain; charset=utf-8\r\nDate: Sat, 03 Oct 2026 07:42:33 GMT\r\nContent-Length: 16",
+          "body": "Hello from Crab\n",
+          "body_bytes": 16
+        }
+      },
+      "after_disconnects": {
+        "status": "passed",
+        "checks": [
+          "exact body, headers, and Connection: close",
+          "three sequential requests on one persistent connection",
+          "fragmented request line, header name, and CRLF terminator",
+          "eight ordered pipelined responses without lost or extra bytes"
+        ],
+        "successful_requests": 13,
+        "response": {
+          "raw_headers": "HTTP/1.1 200 OK\r\nContent-Type: text/plain; charset=utf-8\r\nDate: Sat, 03 Oct 2026 07:42:33 GMT\r\nContent-Length: 16",
+          "body": "Hello from Crab\n",
+          "body_bytes": 16
+        }
+      },
+      "exit_code": 0,
+      "server_log": "",
+      "target": "elysia"
+    }
+  ]
+}

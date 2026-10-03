@@ -1,0 +1,166 @@
+--- a/src/Http/Body.php
++++ b/src/Http/Body.php
+@@ -5,23 +5,16 @@
+ namespace Crab\Engine\Http;
+ 
+ /**
+- * A seekable request body. Uploads spill to a temporary file after 64 KiB.
++ * A seekable request body. Empty bodies need no stream; uploads spill to a
++ * temporary file after 64 KiB.
+  */
+ final class Body implements \Stringable
+ {
+     /**
+-     * @var resource
++     * @var resource|null
+      */
+-    private mixed $stream;
++    private mixed $stream = null;
+     private int $length = 0;
+-
+-    public function __construct()
+-    {
+-        $this->stream = fopen('php://temp/maxmemory:65536', 'w+b');
+-        if ($this->stream === false) {
+-            throw new \RuntimeException('Cannot allocate request body storage.');
+-        }
+-    }
+ 
+     /**
+      * @internal Parser-only mutation, before delivery to the handler.
+@@ -29,7 +22,17 @@
+     public function append(string $bytes): void
+     {
+         $length = strlen($bytes);
+-        if ($length !== 0 && fwrite($this->stream, $bytes) !== $length) {
++        if ($length === 0) {
++            return;
++        }
++        if ($this->stream === null) {
++            $stream = fopen('php://temp/maxmemory:65536', 'w+b');
++            if ($stream === false) {
++                throw new \RuntimeException('Cannot allocate request body storage.');
++            }
++            $this->stream = $stream;
++        }
++        if (fwrite($this->stream, $bytes) !== $length) {
+             throw new \RuntimeException('Cannot store request body.');
+         }
+         $this->length += $length;
+@@ -37,12 +40,20 @@
+ 
+     public function size(): int { return $this->length; }
+ 
+-    public function rewind(): void { rewind($this->stream); }
++    public function rewind(): void
++    {
++        if ($this->stream !== null) {
++            rewind($this->stream);
++        }
++    }
+ 
+     public function read(int $length = 8192): string
+     {
+         if ($length < 1) {
+             throw new \InvalidArgumentException('Read length must be positive.');
++        }
++        if ($this->stream === null) {
++            return '';
+         }
+         $bytes = fread($this->stream, $length);
+         if ($bytes === false) {
+@@ -67,6 +78,9 @@
+      */
+     public function contents(): string
+     {
++        if ($this->stream === null) {
++            return '';
++        }
+         $position = ftell($this->stream);
+         $this->rewind();
+         $bytes = stream_get_contents($this->stream);
+@@ -81,6 +95,8 @@
+ 
+     public function __destruct()
+     {
+-        fclose($this->stream);
++        if ($this->stream !== null) {
++            fclose($this->stream);
++        }
+     }
+ }
+--- a/tests/HttpTest.php
++++ b/tests/HttpTest.php
+@@ -60,6 +60,72 @@
+         }
+         self::assertTrue($request?->body->contents() === "a\0bcd", 'Fragmented chunks failed.');
+         self::assertTrue($request->trailers === ['x-checksum' => ['ok']], 'Trailer parsing failed.');
++    }
++
++    public function testEmptyBodyApisRemainEmptyAfterRewindAndEmptyAppends(): void
++    {
++        $body = new Body();
++        self::assertSame(0, $body->size());
++        self::assertSame('', $body->read());
++        self::assertSame('', $body->contents());
++        self::assertSame('', (string) $body);
++        self::assertSame([], iterator_to_array($body->chunks(2)));
++        $body->append('');
++        $body->rewind();
++        self::assertSame(0, $body->size());
++        self::assertSame('', $body->read(1));
++        self::assertSame('', $body->contents());
++        self::assertSame([], iterator_to_array($body->chunks()));
++    }
++
++    #[DataProvider('nonpositiveBodyReadSizes')]
++    public function testEmptyBodyRejectsNonpositiveReadSizes(int $size): void
++    {
++        $body = new Body();
++        $this->expectException(\InvalidArgumentException::class);
++        $body->read($size);
++    }
++
++    #[DataProvider('nonpositiveBodyReadSizes')]
++    public function testEmptyBodyRejectsNonpositiveChunkSizes(int $size): void
++    {
++        $body = new Body();
++        $this->expectException(\InvalidArgumentException::class);
++        iterator_to_array($body->chunks($size));
++    }
++
++    public static function nonpositiveBodyReadSizes(): iterable
++    {
++        yield 'zero' => [0];
++        yield 'negative' => [-1];
++    }
++
++    public function testEmptyBodyAcceptsLaterBytesAndMaterializationPreservesCursor(): void
++    {
++        $body = new Body();
++        $body->append('');
++        $body->rewind();
++        self::assertSame('', $body->read());
++        self::assertSame('', $body->contents());
++        self::assertSame([], iterator_to_array($body->chunks()));
++        $body->append('ab');
++        $body->append('');
++        $body->append("\0cd");
++        self::assertSame(5, $body->size());
++        self::assertSame('', $body->read(), 'Appending leaves the cursor after the written bytes.');
++        self::assertSame("ab\0cd", $body->contents());
++        self::assertSame('', $body->read(), 'Materialization must preserve an EOF cursor.');
++        $body->rewind();
++        self::assertSame('ab', $body->read(2));
++        self::assertSame("ab\0cd", $body->contents());
++        self::assertSame("\0", $body->read(1), 'contents() changed the current read position.');
++        self::assertSame("ab\0cd", (string) $body);
++        self::assertSame('cd', $body->read(2), 'String conversion changed the current read position.');
++        $body->append('ef');
++        self::assertSame(7, $body->size());
++        self::assertSame("ab\0cdef", $body->contents());
++        self::assertSame(['ab', "\0c", 'de', 'f'], iterator_to_array($body->chunks(2)));
++        self::assertSame('', $body->read(), 'Chunk iteration should leave the cursor at EOF.');
+     }
+ 
+     public function testSpoolsLargeBodiesAndReadsThemAsChunks(): void

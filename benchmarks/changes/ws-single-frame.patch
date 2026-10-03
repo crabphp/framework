@@ -1,0 +1,67 @@
+--- a/engine/src/WebSocket/WebSocketSession.php
++++ b/engine/src/WebSocket/WebSocketSession.php
+@@ -105,7 +105,9 @@
+     public function resumeRead(): void
+     {
+         $this->readPaused = false;
+-        $this->parse();
++        if ($this->parseContinuation === null) {
++            $this->parse();
++        }
+         if ($this->parseContinuation === null && !$this->failed && !$this->closeReceived && !$this->readPaused) {
+             $this->connection->resumeRead();
+         }
+@@ -135,7 +137,7 @@
+             throw new \LengthException('WebSocket chunk or assembled message exceeds its limit.');
+         }
+         $frame = self::encodeFrame($this->outgoingFragment ? 0 : 2, $chunk, $final);
+-        $result = $this->enqueue([$frame]);
++        $result = $this->enqueueFrame($frame);
+         if ($result === WriteResult::Accepted) {
+             $this->outgoingFragment = !$final;
+             $this->outgoingFragmentBytes = $final ? 0 : $this->outgoingFragmentBytes + strlen($chunk);
+@@ -348,6 +350,9 @@
+         if ($length > $this->config->maxMessageBytes) {
+             throw new \LengthException('WebSocket message exceeds its limit.');
+         }
++        if ($length <= $this->outgoingFrameBytes) {
++            return $this->enqueueFrame(self::encodeFrame($type->value, $message));
++        }
+         $frameCount = max(1, intdiv($length + $this->outgoingFrameBytes - 1, $this->outgoingFrameBytes));
+         if ($frameCount > $this->config->maxQueuedFrames
+             || $length + 2 * $frameCount > $this->config->maxQueuedOutputBytes) {
+@@ -382,6 +387,34 @@
+         foreach ($frames as $frame) {
+             $this->output->enqueue($frame);
+         }
++        $this->queuedBytes += $bytes;
++        $this->flush();
++        return WriteResult::Accepted;
++    }
++
++    private function enqueueFrame(string $frame): WriteResult
++    {
++        $bytes = strlen($frame);
++        if ($bytes > $this->config->maxQueuedOutputBytes) {
++            throw new \LengthException('Frame exceeds output capacity.');
++        }
++        if ($this->bufferedBytes() + $bytes > $this->config->maxQueuedOutputBytes
++            || $this->output->count() >= $this->config->maxQueuedFrames) {
++            $this->pressured = true;
++            return WriteResult::Backpressured;
++        }
++
++        // A complete frame can go straight to transport; it owns any partial write.
++        if (!$this->pumping && $this->output->isEmpty() && $this->control->isEmpty()) {
++            $result = $this->connection->tryWrite($frame);
++            if ($result !== WriteResult::Backpressured) {
++                return $result;
++            }
++            $this->output->enqueue($frame);
++            $this->queuedBytes += $bytes;
++            return WriteResult::Accepted;
++        }
++        $this->output->enqueue($frame);
+         $this->queuedBytes += $bytes;
+         $this->flush();
+         return WriteResult::Accepted;

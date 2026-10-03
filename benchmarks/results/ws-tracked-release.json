@@ -1,0 +1,542 @@
+{
+  "label": "tracked-release",
+  "timestamp_utc": "2026-10-02T23:43:45.431193+00:00",
+  "system": "macOS-26.7.1-arm64-arm-64bit",
+  "machine": "arm64",
+  "cpu_count": 8,
+  "php": "PHP 8.4.19 (cli) (built: Mar 10 2026 15:51:04) (NTS)\nCopyright (c) The PHP Group\nBuilt by Homebrew\nZend Engine v4.4.19, Copyright (c) Zend Technologies\n    with Zend OPcache v8.4.19, Copyright (c), by Zend Technologies",
+  "php_configuration": {
+    "opcache.enable_cli": "1",
+    "opcache.jit": "0",
+    "opcache.jit_buffer_size": "64M",
+    "memory_limit": "1024M",
+    "extensions": [
+      "Core",
+      "date",
+      "libxml",
+      "openssl",
+      "pcre",
+      "sqlite3",
+      "zlib",
+      "bcmath",
+      "bz2",
+      "calendar",
+      "ctype",
+      "curl",
+      "dba",
+      "dom",
+      "json",
+      "FFI",
+      "fileinfo",
+      "filter",
+      "ftp",
+      "gd",
+      "gettext",
+      "gmp",
+      "hash",
+      "iconv",
+      "intl",
+      "SPL",
+      "ldap",
+      "mbstring",
+      "session",
+      "standard",
+      "mysqlnd",
+      "mysqli",
+      "odbc",
+      "pcntl",
+      "PDO",
+      "pdo_dblib",
+      "pdo_mysql",
+      "PDO_ODBC",
+      "pdo_pgsql",
+      "pdo_sqlite",
+      "pgsql",
+      "Phar",
+      "posix",
+      "random",
+      "readline",
+      "Reflection",
+      "exif",
+      "shmop",
+      "SimpleXML",
+      "snmp",
+      "soap",
+      "sockets",
+      "sodium",
+      "sysvmsg",
+      "sysvsem",
+      "sysvshm",
+      "tidy",
+      "tokenizer",
+      "xml",
+      "xmlreader",
+      "xmlwriter",
+      "xsl",
+      "zip",
+      "redis",
+      "Zend OPcache"
+    ]
+  },
+  "driver": "Revolt StreamSelectDriver",
+  "workers": 1,
+  "server_command": [
+    "php",
+    "-d",
+    "opcache.enable_cli=1",
+    "-d",
+    "opcache.jit=0",
+    "/Users/daudau/Code/crabphp/engine/benchmarks/server.php",
+    "--protocol=ws",
+    "--host=127.0.0.1",
+    "--port=51186",
+    "--workers=1"
+  ],
+  "shared_host_client": true,
+  "method": "closed-loop, one in-flight masked binary echo per connection; validated payload; fresh connections per trial",
+  "results": [
+    {
+      "protocol": "websocket",
+      "concurrency": 32,
+      "payload_bytes": 64,
+      "inflight_per_connection": 1,
+      "warmup_seconds": 0.5,
+      "requested_seconds": 3,
+      "elapsed_seconds": 2.999759917,
+      "offered_messages": 278016,
+      "completed_messages": 277984,
+      "messages_per_second": 92668.7493971205,
+      "errors": 0,
+      "first_error": null,
+      "latency_ms": {
+        "p50": 0.3382605806488938,
+        "p95": 0.4787869143322368,
+        "p99": 0.5634198826536145,
+        "mean": 0.34369963968070083,
+        "max": 0.9860839999996642
+      },
+      "latency_histogram": "64 log2 buckets per doubling; reported upper bound, about 1.1% resolution",
+      "client": {
+        "node": "v24.10.0",
+        "cpu_user_seconds": 1.141324,
+        "cpu_system_seconds": 1.801279,
+        "rss_bytes": 68386816
+      },
+      "server_process": {
+        "rss_bytes_after_trial": 32571392,
+        "cpu_seconds_including_warmup_and_handshake": 3.4499999999999997,
+        "scope": "server process only; workers=1 measures the serving process"
+      },
+      "trial": 1
+    },
+    {
+      "protocol": "websocket",
+      "concurrency": 32,
+      "payload_bytes": 64,
+      "inflight_per_connection": 1,
+      "warmup_seconds": 0.5,
+      "requested_seconds": 3,
+      "elapsed_seconds": 3.000012709,
+      "offered_messages": 277694,
+      "completed_messages": 277662,
+      "messages_per_second": 92553.60791206568,
+      "errors": 0,
+      "first_error": null,
+      "latency_ms": {
+        "p50": 0.3419548861576455,
+        "p95": 0.4736186560213467,
+        "p99": 0.557339959124612,
+        "mean": 0.3441421532078582,
+        "max": 0.9094579999998587
+      },
+      "latency_histogram": "64 log2 buckets per doubling; reported upper bound, about 1.1% resolution",
+      "client": {
+        "node": "v24.10.0",
+        "cpu_user_seconds": 1.145186,
+        "cpu_system_seconds": 1.80007,
+        "rss_bytes": 68124672
+      },
+      "server_process": {
+        "rss_bytes_after_trial": 32555008,
+        "cpu_seconds_including_warmup_and_handshake": 3.45,
+        "scope": "server process only; workers=1 measures the serving process"
+      },
+      "trial": 2
+    },
+    {
+      "protocol": "websocket",
+      "concurrency": 32,
+      "payload_bytes": 64,
+      "inflight_per_connection": 1,
+      "warmup_seconds": 0.5,
+      "requested_seconds": 3,
+      "elapsed_seconds": 3.000001792,
+      "offered_messages": 277663,
+      "completed_messages": 277631,
+      "messages_per_second": 92543.6113872828,
+      "errors": 0,
+      "first_error": null,
+      "latency_ms": {
+        "p50": 0.33460607015033966,
+        "p95": 0.4892928797176697,
+        "p99": 0.5634198826536145,
+        "mean": 0.3441416563063925,
+        "max": 0.8671669999998812
+      },
+      "latency_histogram": "64 log2 buckets per doubling; reported upper bound, about 1.1% resolution",
+      "client": {
+        "node": "v24.10.0",
+        "cpu_user_seconds": 1.162277,
+        "cpu_system_seconds": 1.796958,
+        "rss_bytes": 68157440
+      },
+      "server_process": {
+        "rss_bytes_after_trial": 32555008,
+        "cpu_seconds_including_warmup_and_handshake": 3.4399999999999995,
+        "scope": "server process only; workers=1 measures the serving process"
+      },
+      "trial": 3
+    },
+    {
+      "protocol": "websocket",
+      "concurrency": 128,
+      "payload_bytes": 64,
+      "inflight_per_connection": 1,
+      "warmup_seconds": 0.5,
+      "requested_seconds": 3,
+      "elapsed_seconds": 3.0001667079999996,
+      "offered_messages": 281506,
+      "completed_messages": 281378,
+      "messages_per_second": 93787.4549603195,
+      "errors": 0,
+      "first_error": null,
+      "latency_ms": {
+        "p50": 1.3560423225955751,
+        "p95": 1.8169855283471577,
+        "p99": 2.2566795306144583,
+        "mean": 1.3624795760258477,
+        "max": 3.1757910000001175
+      },
+      "latency_histogram": "64 log2 buckets per doubling; reported upper bound, about 1.1% resolution",
+      "client": {
+        "node": "v24.10.0",
+        "cpu_user_seconds": 1.142976,
+        "cpu_system_seconds": 1.846318,
+        "rss_bytes": 77692928
+      },
+      "server_process": {
+        "rss_bytes_after_trial": 33325056,
+        "cpu_seconds_including_warmup_and_handshake": 3.4700000000000006,
+        "scope": "server process only; workers=1 measures the serving process"
+      },
+      "trial": 1
+    },
+    {
+      "protocol": "websocket",
+      "concurrency": 128,
+      "payload_bytes": 64,
+      "inflight_per_connection": 1,
+      "warmup_seconds": 0.5,
+      "requested_seconds": 3,
+      "elapsed_seconds": 3.000194167,
+      "offered_messages": 283420,
+      "completed_messages": 283292,
+      "messages_per_second": 94424.55528912439,
+      "errors": 0,
+      "first_error": null,
+      "latency_ms": {
+        "p50": 1.3708195446305822,
+        "p95": 1.6481420999160363,
+        "p99": 2.0249389710212617,
+        "mean": 1.3532933320672746,
+        "max": 2.9115829999999505
+      },
+      "latency_histogram": "64 log2 buckets per doubling; reported upper bound, about 1.1% resolution",
+      "client": {
+        "node": "v24.10.0",
+        "cpu_user_seconds": 1.142508,
+        "cpu_system_seconds": 1.830019,
+        "rss_bytes": 78151680
+      },
+      "server_process": {
+        "rss_bytes_after_trial": 33325056,
+        "cpu_seconds_including_warmup_and_handshake": 3.469999999999999,
+        "scope": "server process only; workers=1 measures the serving process"
+      },
+      "trial": 2
+    },
+    {
+      "protocol": "websocket",
+      "concurrency": 128,
+      "payload_bytes": 64,
+      "inflight_per_connection": 1,
+      "warmup_seconds": 0.5,
+      "requested_seconds": 3,
+      "elapsed_seconds": 3.000765042,
+      "offered_messages": 282844,
+      "completed_messages": 282716,
+      "messages_per_second": 94214.64061430506,
+      "errors": 0,
+      "first_error": null,
+      "latency_ms": {
+        "p50": 1.3560423225955751,
+        "p95": 1.7588661612774175,
+        "p99": 2.160961325282421,
+        "mean": 1.3561866099725834,
+        "max": 2.8635830000000624
+      },
+      "latency_histogram": "64 log2 buckets per doubling; reported upper bound, about 1.1% resolution",
+      "client": {
+        "node": "v24.10.0",
+        "cpu_user_seconds": 1.168426,
+        "cpu_system_seconds": 1.816639,
+        "rss_bytes": 77512704
+      },
+      "server_process": {
+        "rss_bytes_after_trial": 33325056,
+        "cpu_seconds_including_warmup_and_handshake": 3.4700000000000024,
+        "scope": "server process only; workers=1 measures the serving process"
+      },
+      "trial": 3
+    },
+    {
+      "protocol": "websocket",
+      "concurrency": 32,
+      "payload_bytes": 1024,
+      "inflight_per_connection": 1,
+      "warmup_seconds": 0.5,
+      "requested_seconds": 3,
+      "elapsed_seconds": 2.999991583,
+      "offered_messages": 245486,
+      "completed_messages": 245454,
+      "messages_per_second": 81818.22955467939,
+      "errors": 0,
+      "first_error": null,
+      "latency_ms": {
+        "p50": 0.3729949553102456,
+        "p95": 0.601315259724944,
+        "p99": 0.684909772315291,
+        "mean": 0.38817174200461463,
+        "max": 1.1354169999999613
+      },
+      "latency_histogram": "64 log2 buckets per doubling; reported upper bound, about 1.1% resolution",
+      "client": {
+        "node": "v24.10.0",
+        "cpu_user_seconds": 1.391823,
+        "cpu_system_seconds": 1.626779,
+        "rss_bytes": 72613888
+      },
+      "server_process": {
+        "rss_bytes_after_trial": 33325056,
+        "cpu_seconds_including_warmup_and_handshake": 3.4399999999999977,
+        "scope": "server process only; workers=1 measures the serving process"
+      },
+      "trial": 1
+    },
+    {
+      "protocol": "websocket",
+      "concurrency": 32,
+      "payload_bytes": 1024,
+      "inflight_per_connection": 1,
+      "warmup_seconds": 0.5,
+      "requested_seconds": 3,
+      "elapsed_seconds": 3.000064625,
+      "offered_messages": 246697,
+      "completed_messages": 246665,
+      "messages_per_second": 82219.89551308416,
+      "errors": 0,
+      "first_error": null,
+      "latency_ms": {
+        "p50": 0.36896628658612396,
+        "p95": 0.5948271276941197,
+        "p99": 0.684909772315291,
+        "mean": 0.3862715744065821,
+        "max": 1.139291999999955
+      },
+      "latency_histogram": "64 log2 buckets per doubling; reported upper bound, about 1.1% resolution",
+      "client": {
+        "node": "v24.10.0",
+        "cpu_user_seconds": 1.388507,
+        "cpu_system_seconds": 1.629708,
+        "rss_bytes": 72957952
+      },
+      "server_process": {
+        "rss_bytes_after_trial": 33325056,
+        "cpu_seconds_including_warmup_and_handshake": 3.4400000000000013,
+        "scope": "server process only; workers=1 measures the serving process"
+      },
+      "trial": 2
+    },
+    {
+      "protocol": "websocket",
+      "concurrency": 32,
+      "payload_bytes": 1024,
+      "inflight_per_connection": 1,
+      "warmup_seconds": 0.5,
+      "requested_seconds": 3,
+      "elapsed_seconds": 3.000165958,
+      "offered_messages": 242061,
+      "completed_messages": 242029,
+      "messages_per_second": 80671.87061923192,
+      "errors": 0,
+      "first_error": null,
+      "latency_ms": {
+        "p50": 0.3811843784425638,
+        "p95": 0.614504246503784,
+        "p99": 0.707561859565482,
+        "mean": 0.39369561899194755,
+        "max": 1.1136249999999563
+      },
+      "latency_histogram": "64 log2 buckets per doubling; reported upper bound, about 1.1% resolution",
+      "client": {
+        "node": "v24.10.0",
+        "cpu_user_seconds": 1.393952,
+        "cpu_system_seconds": 1.62495,
+        "rss_bytes": 72876032
+      },
+      "server_process": {
+        "rss_bytes_after_trial": 33325056,
+        "cpu_seconds_including_warmup_and_handshake": 3.4400000000000013,
+        "scope": "server process only; workers=1 measures the serving process"
+      },
+      "trial": 3
+    },
+    {
+      "protocol": "websocket",
+      "concurrency": 128,
+      "payload_bytes": 1024,
+      "inflight_per_connection": 1,
+      "warmup_seconds": 0.5,
+      "requested_seconds": 3,
+      "elapsed_seconds": 3.000057209,
+      "offered_messages": 249614,
+      "completed_messages": 249486,
+      "messages_per_second": 83160.41415862214,
+      "errors": 0,
+      "first_error": null,
+      "latency_ms": {
+        "p50": 1.4788651463444957,
+        "p95": 2.3823085107764785,
+        "p99": 2.8027169622519614,
+        "mean": 1.5354685412287243,
+        "max": 4.124832999999967
+      },
+      "latency_histogram": "64 log2 buckets per doubling; reported upper bound, about 1.1% resolution",
+      "client": {
+        "node": "v24.10.0",
+        "cpu_user_seconds": 1.391036,
+        "cpu_system_seconds": 1.638281,
+        "rss_bytes": 74579968
+      },
+      "server_process": {
+        "rss_bytes_after_trial": 33325056,
+        "cpu_seconds_including_warmup_and_handshake": 3.469999999999999,
+        "scope": "server process only; workers=1 measures the serving process"
+      },
+      "trial": 1
+    },
+    {
+      "protocol": "websocket",
+      "concurrency": 128,
+      "payload_bytes": 1024,
+      "inflight_per_connection": 1,
+      "warmup_seconds": 0.5,
+      "requested_seconds": 3,
+      "elapsed_seconds": 2.9999147080000004,
+      "offered_messages": 247319,
+      "completed_messages": 247191,
+      "messages_per_second": 82399.34266824495,
+      "errors": 0,
+      "first_error": null,
+      "latency_ms": {
+        "p50": 1.4788651463444957,
+        "p95": 2.4878265932400003,
+        "p99": 2.833247438261928,
+        "mean": 1.5495265963768985,
+        "max": 3.5909590000001117
+      },
+      "latency_histogram": "64 log2 buckets per doubling; reported upper bound, about 1.1% resolution",
+      "client": {
+        "node": "v24.10.0",
+        "cpu_user_seconds": 1.406255,
+        "cpu_system_seconds": 1.621636,
+        "rss_bytes": 74727424
+      },
+      "server_process": {
+        "rss_bytes_after_trial": 33325056,
+        "cpu_seconds_including_warmup_and_handshake": 3.469999999999999,
+        "scope": "server process only; workers=1 measures the serving process"
+      },
+      "trial": 2
+    },
+    {
+      "protocol": "websocket",
+      "concurrency": 128,
+      "payload_bytes": 1024,
+      "inflight_per_connection": 1,
+      "warmup_seconds": 0.5,
+      "requested_seconds": 3,
+      "elapsed_seconds": 3.0004557089999997,
+      "offered_messages": 248112,
+      "completed_messages": 247984,
+      "messages_per_second": 82648.77873589702,
+      "errors": 0,
+      "first_error": null,
+      "latency_ms": {
+        "p50": 1.5112699734420474,
+        "p95": 2.3566355429437085,
+        "p99": 2.8027169622519614,
+        "mean": 1.5448555803358317,
+        "max": 3.5875409999998737
+      },
+      "latency_histogram": "64 log2 buckets per doubling; reported upper bound, about 1.1% resolution",
+      "client": {
+        "node": "v24.10.0",
+        "cpu_user_seconds": 1.409919,
+        "cpu_system_seconds": 1.620261,
+        "rss_bytes": 75317248
+      },
+      "server_process": {
+        "rss_bytes_after_trial": 33325056,
+        "cpu_seconds_including_warmup_and_handshake": 3.469999999999999,
+        "scope": "server process only; workers=1 measures the serving process"
+      },
+      "trial": 3
+    }
+  ],
+  "source_sha256": {
+    "src/Async/Async.php": "797e2c8b2ea0c468604fe58c4627f7bb4ca51f519efb1ccb2c771ceaf9e912bf",
+    "src/Async/Cancellation.php": "d3aa31abf53b6c2b4fb124e79d0f73836801a207ba237b3fa3274a98d5cf1442",
+    "src/Async/CancelledException.php": "8204c5462beef2fe1ac613d07a9aa4d85a4ea894956cc67bc6b839607413a44b",
+    "src/Async/ConnectionStream.php": "bf954e6dfd2ff92425976fedf8d19187de89f794e5bc6478db9263ecf703371c",
+    "src/Async/Task.php": "01bb8b0f50db6ae548e018d830419e5b62466de3ed1264067a4d96e5344a1a96",
+    "src/Http/Body.php": "a49bd7cff766eb2207101c073a2e33e1d58df87cba938b41d62b03a8eabd6a6c",
+    "src/Http/HttpException.php": "937fe56951a46f213f339ca207bb22a8706c34cf93186ed6e2b04936fa568ddc",
+    "src/Http/HttpSession.php": "3236d8b157fcfcf1f8b8a7027d18050a31f755bbd366d9983c78f89c7d8ac6c9",
+    "src/Http/Parser.php": "92d37ea4bdd38fbe7c907959c826556411952029e224d4200daef3f3f316f002",
+    "src/Http/Request.php": "22310ca060ec5432d1c710ab2342e2a7c1a78dc3f2629e296889094ddc0e0683",
+    "src/Http/Response.php": "60d1aa597cbaee0b9b1e833ef2e643e51a39634e8b4b42e0380c2d1655a7ec7b",
+    "src/Http/ResponseEncoder.php": "98cfc2446d515ce254a949932f236557b27b084569e51a50c589eda723ea76c3",
+    "src/Http/Upgrade.php": "d941487b16414ffd2f4679afbdda3f08fe0d4351906ce6e32e305a2b8436ce13",
+    "src/Network/Connection.php": "c859ad5102df1ac8cc67fd8a7c5a9ae2951582cf4cb95eeda67b801cb0e607de",
+    "src/Network/Connector.php": "879ccd3754442b1d29b7ae0e22e3bb52df88bb24d5cd179d26737d781f1554bf",
+    "src/Network/Listener.php": "956006699e832429f131767aa5efc132490bcc64ff16686a910ab38cc8b52ab8",
+    "src/Network/UdpEndpoint.php": "55b987686803f98bfbba56c47ecb151e1a3c99b44467c8513b9a358527bd2b4c",
+    "src/Network/WriteResult.php": "0ba70bbf7825fff54a10b5cab9c397127bb76ec6cedcccd13207175daef4e4db",
+    "src/Process/Supervisor.php": "21455fb1f2d05aeaa0102e1b3fa434d06c380bd15ed513deb8aaf7fd9df5aa32",
+    "src/Process/Worker.php": "0748364b5b6b27e21115d9e5bdb732a3a5f354aece2a3f683ca95206a3ba7314",
+    "src/Runtime.php": "be8ea135cb64ca6aaa83a37b3267d246ec7be2cb65ff945b9448f8c1d832f366",
+    "src/Server/HttpServer.php": "4833d660d3d59475fe8e0c44e05b9866dbeca363d26e9c17ac6e577940f1e522",
+    "src/Server/TcpServer.php": "e057200b16a002b991c5da12f6bec519f4d6174ddc5862b92d3f3d4de02b65af",
+    "src/Server/UdpServer.php": "a372e5daa02c28c42563923678891f66a9443851c3c627c3d4a8aca4289a36eb",
+    "src/Server/WebSocketServer.php": "ec9308f21cb6bc9449c1c777d1c19861b11eae7ef983938f93a46356bdd810f6",
+    "src/WebSocket/Config.php": "78c909152e9f443e1f339f92da9091d03469f81919601b77aea104eea712d250",
+    "src/WebSocket/MessageType.php": "7175e1c67355c289ced159167d5b8e3f5971922a3c05664763c6b0f33e548706",
+    "src/WebSocket/WebSocketSession.php": "4b1af65bb8645357f11ad83dbea81bb9ca992fdace1beff62432b1d2edb07010",
+    "src/WorkerGroup.php": "aeb316ab1a0ebf6227c45f782eec193e7ba480312b9f591a06e4e1ee4f305bda",
+    "benchmarks/server.php": "32b4e9479ff3d07e0427bf0a55905f5adb76b63ac1c27cbcb4e0a150aa38bd97",
+    "benchmarks/websocket.mjs": "789c5bc4ccb7f380c0b7043aa4528b1dee34ac6868bd079dfe4f6f7ff4bfc784"
+  },
+  "revolt_version": "v1.0.9",
+  "server_exit_code": 0
+}

@@ -1,0 +1,1006 @@
+{
+  "label": "final",
+  "started_utc": "2026-10-02T23:28:55Z",
+  "notes": [
+    "Loopback on a shared development host; load generator and server share CPUs.",
+    "wrk is closed-loop; throughput does not establish open-loop overload capacity.",
+    "ps CPU percentages are OS sampling estimates; process RSS is summed including shared pages.",
+    "16-byte static response, persistent HTTP/1.1, maxRequests=1000000, explicit StreamSelectDriver."
+  ],
+  "environment": {
+    "platform": "macOS-26.7.1-arm64-arm-64bit",
+    "cpu": "Apple M1 Pro",
+    "php": "PHP 8.4.19 (cli) (built: Mar 10 2026 15:51:04) (NTS)\nCopyright (c) The PHP Group\nBuilt by Homebrew\nZend Engine v4.4.19, Copyright (c) Zend Technologies\n    with Zend OPcache v8.4.19, Copyright (c), by Zend Technologies",
+    "extensions": "[PHP Modules]\nbcmath\nbz2\ncalendar\nCore\nctype\ncurl\ndate\ndba\ndom\nexif\nFFI\nfileinfo\nfilter\nftp\ngd\ngettext\ngmp\nhash\niconv\nintl\njson\nldap\nlibxml\nmbstring\nmysqli\nmysqlnd\nodbc\nopenssl\npcntl\npcre\nPDO\npdo_dblib\npdo_mysql\nPDO_ODBC\npdo_pgsql\npdo_sqlite\npgsql\nPhar\nposix\nrandom\nreadline\nredis\nReflection\nsession\nshmop\nSimpleXML\nsnmp\nsoap\nsockets\nsodium\nSPL\nsqlite3\nstandard\nsysvmsg\nsysvsem\nsysvshm\ntidy\ntokenizer\nxml\nxmlreader\nxmlwriter\nxsl\nZend OPcache\nzip\nzlib\n\n[Zend Modules]\nZend OPcache",
+    "wrk": "wrk 4.2.0 [kqueue] Copyright (C) 2012 Will Glozer\nUsage: wrk <options> <url>                            \n  Options:                                            \n    -c, --connections <N>  Connections to keep open   \n    -d, --duration    <T>  Duration of test           \n    -t, --threads     <N>  Number of threads to use   \n                                                      \n    -s, --script      <S>  Load Lua script file       \n    -H, --header      <H>  Add header to request      \n        --latency          Print latency statistics   \n        --timeout     <T>  Socket/request timeout     \n    -v, --version          Print version details      \n                                                      \n  Numeric arguments may include a SI unit (1k, 1M, 1G)\n  Time arguments may include a time unit (2s, 2m, 2h)",
+    "python": "3.11.5",
+    "php_ini": "Configuration File (php.ini) Path: /opt/homebrew/etc/php/8.4\nLoaded Configuration File:         /opt/homebrew/etc/php/8.4/php.ini\nScan for additional .ini files in: /opt/homebrew/etc/php/8.4/conf.d\nAdditional .ini files parsed:      /opt/homebrew/etc/php/8.4/conf.d/20-xdebug.ini,\n/opt/homebrew/etc/php/8.4/conf.d/error_log.ini,\n/opt/homebrew/etc/php/8.4/conf.d/ext-opcache.ini,\n/opt/homebrew/etc/php/8.4/conf.d/max-execution.ini,\n/opt/homebrew/etc/php/8.4/conf.d/php-memory-limits.ini,\n/opt/homebrew/etc/php/8.4/conf.d/zlib.ini",
+    "opcache_enable_cli": true,
+    "opcache_jit": "off"
+  },
+  "source_sha256": {
+    "src/Async/Async.php": "797e2c8b2ea0c468604fe58c4627f7bb4ca51f519efb1ccb2c771ceaf9e912bf",
+    "src/Async/Cancellation.php": "d3aa31abf53b6c2b4fb124e79d0f73836801a207ba237b3fa3274a98d5cf1442",
+    "src/Async/CancelledException.php": "8204c5462beef2fe1ac613d07a9aa4d85a4ea894956cc67bc6b839607413a44b",
+    "src/Async/ConnectionStream.php": "bf954e6dfd2ff92425976fedf8d19187de89f794e5bc6478db9263ecf703371c",
+    "src/Async/Task.php": "01bb8b0f50db6ae548e018d830419e5b62466de3ed1264067a4d96e5344a1a96",
+    "src/Http/Body.php": "a49bd7cff766eb2207101c073a2e33e1d58df87cba938b41d62b03a8eabd6a6c",
+    "src/Http/HttpException.php": "937fe56951a46f213f339ca207bb22a8706c34cf93186ed6e2b04936fa568ddc",
+    "src/Http/HttpSession.php": "f2879da66d4ca5a998033ce795f60e68654bab280eddc89e9f20a57951680e58",
+    "src/Http/Parser.php": "92d37ea4bdd38fbe7c907959c826556411952029e224d4200daef3f3f316f002",
+    "src/Http/Request.php": "00f6c75566b063c108a784ecd35b27d5e49c41d2254d831bde8f702bca5f0808",
+    "src/Http/Response.php": "60d1aa597cbaee0b9b1e833ef2e643e51a39634e8b4b42e0380c2d1655a7ec7b",
+    "src/Http/ResponseEncoder.php": "98cfc2446d515ce254a949932f236557b27b084569e51a50c589eda723ea76c3",
+    "src/Http/Upgrade.php": "d941487b16414ffd2f4679afbdda3f08fe0d4351906ce6e32e305a2b8436ce13",
+    "src/Network/Connection.php": "d15af69c411a331385a2bf7158a701d36caab80c49a25833a1ea20f877075f7f",
+    "src/Network/Connector.php": "879ccd3754442b1d29b7ae0e22e3bb52df88bb24d5cd179d26737d781f1554bf",
+    "src/Network/Listener.php": "956006699e832429f131767aa5efc132490bcc64ff16686a910ab38cc8b52ab8",
+    "src/Network/UdpEndpoint.php": "55b987686803f98bfbba56c47ecb151e1a3c99b44467c8513b9a358527bd2b4c",
+    "src/Network/WriteResult.php": "0ba70bbf7825fff54a10b5cab9c397127bb76ec6cedcccd13207175daef4e4db",
+    "src/Process/Supervisor.php": "21455fb1f2d05aeaa0102e1b3fa434d06c380bd15ed513deb8aaf7fd9df5aa32",
+    "src/Process/Worker.php": "bb8dafd0140e2a6cfe58a0887cee07d698f0dc04bf7cf275d265b05cc024ba5d",
+    "src/Runtime.php": "be8ea135cb64ca6aaa83a37b3267d246ec7be2cb65ff945b9448f8c1d832f366",
+    "src/Server/HttpServer.php": "4833d660d3d59475fe8e0c44e05b9866dbeca363d26e9c17ac6e577940f1e522",
+    "src/Server/TcpServer.php": "e057200b16a002b991c5da12f6bec519f4d6174ddc5862b92d3f3d4de02b65af",
+    "src/Server/UdpServer.php": "a372e5daa02c28c42563923678891f66a9443851c3c627c3d4a8aca4289a36eb",
+    "src/Server/WebSocketServer.php": "ec9308f21cb6bc9449c1c777d1c19861b11eae7ef983938f93a46356bdd810f6",
+    "src/WebSocket/Config.php": "78c909152e9f443e1f339f92da9091d03469f81919601b77aea104eea712d250",
+    "src/WebSocket/MessageType.php": "7175e1c67355c289ced159167d5b8e3f5971922a3c05664763c6b0f33e548706",
+    "src/WebSocket/WebSocketSession.php": "4b1af65bb8645357f11ad83dbea81bb9ca992fdace1beff62432b1d2edb07010",
+    "src/WorkerGroup.php": "aeb316ab1a0ebf6227c45f782eec193e7ba480312b9f591a06e4e1ee4f305bda"
+  },
+  "revolt": "v1.0.9",
+  "configuration": {
+    "label": "final",
+    "workers": "1,2",
+    "concurrency": "32",
+    "duration": 4,
+    "trials": 3,
+    "warmup": 1,
+    "output": null
+  },
+  "cases": [
+    {
+      "workers": 1,
+      "concurrency": 32,
+      "server_command": [
+        "php",
+        "-d",
+        "opcache.enable_cli=1",
+        "-d",
+        "opcache.jit=off",
+        "/Users/daudau/Code/crabphp/engine/benchmarks/server.php",
+        "--protocol=http",
+        "--port=64726",
+        "--workers=1"
+      ],
+      "trials": [
+        {
+          "command": [
+            "wrk",
+            "-t",
+            "2",
+            "-c",
+            "32",
+            "-d",
+            "4s",
+            "--timeout",
+            "2s",
+            "--latency",
+            "-s",
+            "/var/folders/tg/pyt0jkx51cd1_8n1q01dvpjh0000gn/T/crab-http-bench-hw2y10si/latency.lua",
+            "http://127.0.0.1:64726/"
+          ],
+          "raw_output": "Running 4s test @ http://127.0.0.1:64726/\n  2 threads and 32 connections\n  Thread Stats   Avg      Stdev     Max   +/- Stdev\n    Latency   846.14us   56.63us   1.32ms   80.88%\n    Req/Sec    18.94k   300.07    19.30k    87.80%\n  Latency Distribution\n     50%  830.00us\n     75%    0.86ms\n     90%    0.92ms\n     99%    1.05ms\n  154474 requests in 4.10s, 23.13MB read\nRequests/sec:  37671.49\nTransfer/sec:      5.64MB\nCRAB_METRICS {\"requests\":154474,\"duration_us\":4100555,\"p50_ms\":0.830000,\"p95_ms\":0.967000,\"p99_ms\":1.048000,\"connect_errors\":0,\"read_errors\":0,\"write_errors\":0,\"status_errors\":0,\"timeouts\":0}\n",
+          "metrics": {
+            "requests": 154474,
+            "duration_us": 4100555,
+            "p50_ms": 0.83,
+            "p95_ms": 0.967,
+            "p99_ms": 1.048,
+            "connect_errors": 0,
+            "read_errors": 0,
+            "write_errors": 0,
+            "status_errors": 0,
+            "timeouts": 0,
+            "requests_per_second": 37671.48593300175
+          },
+          "samples": [
+            {
+              "server_cpu_percent": 97.8,
+              "server_rss_bytes": 32325632,
+              "load_cpu_percent": 0.0,
+              "load_rss_bytes": 2277376
+            },
+            {
+              "server_cpu_percent": 91.2,
+              "server_rss_bytes": 32325632,
+              "load_cpu_percent": 16.4,
+              "load_rss_bytes": 2883584
+            },
+            {
+              "server_cpu_percent": 96.6,
+              "server_rss_bytes": 32325632,
+              "load_cpu_percent": 29.7,
+              "load_rss_bytes": 2883584
+            },
+            {
+              "server_cpu_percent": 97.4,
+              "server_rss_bytes": 32325632,
+              "load_cpu_percent": 34.8,
+              "load_rss_bytes": 2883584
+            },
+            {
+              "server_cpu_percent": 99.2,
+              "server_rss_bytes": 32325632,
+              "load_cpu_percent": 36.7,
+              "load_rss_bytes": 2883584
+            },
+            {
+              "server_cpu_percent": 99.9,
+              "server_rss_bytes": 32325632,
+              "load_cpu_percent": 37.0,
+              "load_rss_bytes": 2883584
+            },
+            {
+              "server_cpu_percent": 100.0,
+              "server_rss_bytes": 32325632,
+              "load_cpu_percent": 37.6,
+              "load_rss_bytes": 2883584
+            },
+            {
+              "server_cpu_percent": 98.7,
+              "server_rss_bytes": 32325632,
+              "load_cpu_percent": 38.0,
+              "load_rss_bytes": 2883584
+            },
+            {
+              "server_cpu_percent": 100.0,
+              "server_rss_bytes": 32325632,
+              "load_cpu_percent": 38.3,
+              "load_rss_bytes": 2883584
+            },
+            {
+              "server_cpu_percent": 98.1,
+              "server_rss_bytes": 32325632,
+              "load_cpu_percent": 37.9,
+              "load_rss_bytes": 2883584
+            },
+            {
+              "server_cpu_percent": 98.0,
+              "server_rss_bytes": 32325632,
+              "load_cpu_percent": 38.1,
+              "load_rss_bytes": 2883584
+            },
+            {
+              "server_cpu_percent": 98.7,
+              "server_rss_bytes": 32325632,
+              "load_cpu_percent": 37.4,
+              "load_rss_bytes": 2883584
+            },
+            {
+              "server_cpu_percent": 98.8,
+              "server_rss_bytes": 32325632,
+              "load_cpu_percent": 35.7,
+              "load_rss_bytes": 2899968
+            },
+            {
+              "server_cpu_percent": 99.7,
+              "server_rss_bytes": 32325632,
+              "load_cpu_percent": 37.0,
+              "load_rss_bytes": 2899968
+            },
+            {
+              "server_cpu_percent": 99.0,
+              "server_rss_bytes": 32325632,
+              "load_cpu_percent": 37.3,
+              "load_rss_bytes": 2899968
+            },
+            {
+              "server_cpu_percent": 98.1,
+              "server_rss_bytes": 32325632,
+              "load_cpu_percent": 37.7,
+              "load_rss_bytes": 2899968
+            },
+            {
+              "server_cpu_percent": 99.7,
+              "server_rss_bytes": 32325632,
+              "load_cpu_percent": 37.8,
+              "load_rss_bytes": 2899968
+            },
+            {
+              "server_cpu_percent": 98.4,
+              "server_rss_bytes": 32309248,
+              "load_cpu_percent": 38.0,
+              "load_rss_bytes": 2899968
+            },
+            {
+              "server_cpu_percent": 99.6,
+              "server_rss_bytes": 32309248,
+              "load_cpu_percent": 38.0,
+              "load_rss_bytes": 2899968
+            }
+          ],
+          "peak_server_rss_bytes": 32325632
+        },
+        {
+          "command": [
+            "wrk",
+            "-t",
+            "2",
+            "-c",
+            "32",
+            "-d",
+            "4s",
+            "--timeout",
+            "2s",
+            "--latency",
+            "-s",
+            "/var/folders/tg/pyt0jkx51cd1_8n1q01dvpjh0000gn/T/crab-http-bench-hw2y10si/latency.lua",
+            "http://127.0.0.1:64726/"
+          ],
+          "raw_output": "Running 4s test @ http://127.0.0.1:64726/\n  2 threads and 32 connections\n  Thread Stats   Avg      Stdev     Max   +/- Stdev\n    Latency   848.74us   68.70us   2.11ms   86.10%\n    Req/Sec    18.89k   565.89    19.24k    97.56%\n  Latency Distribution\n     50%  830.00us\n     75%    0.86ms\n     90%    0.93ms\n     99%    1.10ms\n  154020 requests in 4.10s, 23.06MB read\nRequests/sec:  37564.99\nTransfer/sec:      5.62MB\nCRAB_METRICS {\"requests\":154020,\"duration_us\":4100094,\"p50_ms\":0.830000,\"p95_ms\":0.976000,\"p99_ms\":1.099000,\"connect_errors\":0,\"read_errors\":0,\"write_errors\":0,\"status_errors\":0,\"timeouts\":0}\n",
+          "metrics": {
+            "requests": 154020,
+            "duration_us": 4100094,
+            "p50_ms": 0.83,
+            "p95_ms": 0.976,
+            "p99_ms": 1.099,
+            "connect_errors": 0,
+            "read_errors": 0,
+            "write_errors": 0,
+            "status_errors": 0,
+            "timeouts": 0,
+            "requests_per_second": 37564.99241236908
+          },
+          "samples": [
+            {
+              "server_cpu_percent": 51.1,
+              "server_rss_bytes": 32309248,
+              "load_cpu_percent": 0.0,
+              "load_rss_bytes": 2883584
+            },
+            {
+              "server_cpu_percent": 69.2,
+              "server_rss_bytes": 32309248,
+              "load_cpu_percent": 22.2,
+              "load_rss_bytes": 2932736
+            },
+            {
+              "server_cpu_percent": 88.9,
+              "server_rss_bytes": 32309248,
+              "load_cpu_percent": 33.2,
+              "load_rss_bytes": 2932736
+            },
+            {
+              "server_cpu_percent": 94.0,
+              "server_rss_bytes": 32309248,
+              "load_cpu_percent": 37.7,
+              "load_rss_bytes": 2932736
+            },
+            {
+              "server_cpu_percent": 97.4,
+              "server_rss_bytes": 32309248,
+              "load_cpu_percent": 38.8,
+              "load_rss_bytes": 2932736
+            },
+            {
+              "server_cpu_percent": 98.1,
+              "server_rss_bytes": 32309248,
+              "load_cpu_percent": 40.0,
+              "load_rss_bytes": 2932736
+            },
+            {
+              "server_cpu_percent": 98.3,
+              "server_rss_bytes": 32309248,
+              "load_cpu_percent": 40.3,
+              "load_rss_bytes": 2932736
+            },
+            {
+              "server_cpu_percent": 99.6,
+              "server_rss_bytes": 32309248,
+              "load_cpu_percent": 40.7,
+              "load_rss_bytes": 2932736
+            },
+            {
+              "server_cpu_percent": 99.2,
+              "server_rss_bytes": 32309248,
+              "load_cpu_percent": 40.7,
+              "load_rss_bytes": 2932736
+            },
+            {
+              "server_cpu_percent": 100.0,
+              "server_rss_bytes": 32309248,
+              "load_cpu_percent": 40.6,
+              "load_rss_bytes": 2932736
+            },
+            {
+              "server_cpu_percent": 98.7,
+              "server_rss_bytes": 32309248,
+              "load_cpu_percent": 40.5,
+              "load_rss_bytes": 2932736
+            },
+            {
+              "server_cpu_percent": 99.9,
+              "server_rss_bytes": 32309248,
+              "load_cpu_percent": 40.7,
+              "load_rss_bytes": 2932736
+            },
+            {
+              "server_cpu_percent": 99.4,
+              "server_rss_bytes": 32309248,
+              "load_cpu_percent": 40.7,
+              "load_rss_bytes": 2932736
+            },
+            {
+              "server_cpu_percent": 98.6,
+              "server_rss_bytes": 32309248,
+              "load_cpu_percent": 40.1,
+              "load_rss_bytes": 2932736
+            },
+            {
+              "server_cpu_percent": 99.1,
+              "server_rss_bytes": 32309248,
+              "load_cpu_percent": 40.6,
+              "load_rss_bytes": 2932736
+            },
+            {
+              "server_cpu_percent": 98.5,
+              "server_rss_bytes": 32309248,
+              "load_cpu_percent": 40.7,
+              "load_rss_bytes": 2932736
+            },
+            {
+              "server_cpu_percent": 98.8,
+              "server_rss_bytes": 32309248,
+              "load_cpu_percent": 40.7,
+              "load_rss_bytes": 2932736
+            },
+            {
+              "server_cpu_percent": 99.0,
+              "server_rss_bytes": 32309248,
+              "load_cpu_percent": 40.5,
+              "load_rss_bytes": 2932736
+            }
+          ],
+          "peak_server_rss_bytes": 32309248
+        },
+        {
+          "command": [
+            "wrk",
+            "-t",
+            "2",
+            "-c",
+            "32",
+            "-d",
+            "4s",
+            "--timeout",
+            "2s",
+            "--latency",
+            "-s",
+            "/var/folders/tg/pyt0jkx51cd1_8n1q01dvpjh0000gn/T/crab-http-bench-hw2y10si/latency.lua",
+            "http://127.0.0.1:64726/"
+          ],
+          "raw_output": "Running 4s test @ http://127.0.0.1:64726/\n  2 threads and 32 connections\n  Thread Stats   Avg      Stdev     Max   +/- Stdev\n    Latency   843.46us   54.81us   1.25ms   81.63%\n    Req/Sec    19.01k   176.20    19.32k    75.61%\n  Latency Distribution\n     50%  828.00us\n     75%    0.85ms\n     90%    0.92ms\n     99%    1.05ms\n  154999 requests in 4.10s, 23.21MB read\nRequests/sec:  37803.20\nTransfer/sec:      5.66MB\nCRAB_METRICS {\"requests\":154999,\"duration_us\":4100156,\"p50_ms\":0.828000,\"p95_ms\":0.962000,\"p99_ms\":1.046000,\"connect_errors\":0,\"read_errors\":0,\"write_errors\":0,\"status_errors\":0,\"timeouts\":0}\n",
+          "metrics": {
+            "requests": 154999,
+            "duration_us": 4100156,
+            "p50_ms": 0.828,
+            "p95_ms": 0.962,
+            "p99_ms": 1.046,
+            "connect_errors": 0,
+            "read_errors": 0,
+            "write_errors": 0,
+            "status_errors": 0,
+            "timeouts": 0,
+            "requests_per_second": 37803.19578084346
+          },
+          "samples": [
+            {
+              "server_cpu_percent": 99.9,
+              "server_rss_bytes": 32309248,
+              "load_cpu_percent": 0.0,
+              "load_rss_bytes": 2277376
+            },
+            {
+              "server_cpu_percent": 95.1,
+              "server_rss_bytes": 32325632,
+              "load_cpu_percent": 20.8,
+              "load_rss_bytes": 2883584
+            },
+            {
+              "server_cpu_percent": 98.3,
+              "server_rss_bytes": 32325632,
+              "load_cpu_percent": 32.7,
+              "load_rss_bytes": 2883584
+            },
+            {
+              "server_cpu_percent": 97.6,
+              "server_rss_bytes": 32325632,
+              "load_cpu_percent": 35.2,
+              "load_rss_bytes": 2883584
+            },
+            {
+              "server_cpu_percent": 99.3,
+              "server_rss_bytes": 32325632,
+              "load_cpu_percent": 37.9,
+              "load_rss_bytes": 2883584
+            },
+            {
+              "server_cpu_percent": 98.2,
+              "server_rss_bytes": 32325632,
+              "load_cpu_percent": 38.9,
+              "load_rss_bytes": 2883584
+            },
+            {
+              "server_cpu_percent": 98.8,
+              "server_rss_bytes": 32325632,
+              "load_cpu_percent": 39.5,
+              "load_rss_bytes": 2883584
+            },
+            {
+              "server_cpu_percent": 100.0,
+              "server_rss_bytes": 32325632,
+              "load_cpu_percent": 39.5,
+              "load_rss_bytes": 2883584
+            },
+            {
+              "server_cpu_percent": 98.2,
+              "server_rss_bytes": 32325632,
+              "load_cpu_percent": 38.8,
+              "load_rss_bytes": 2883584
+            },
+            {
+              "server_cpu_percent": 100.0,
+              "server_rss_bytes": 32325632,
+              "load_cpu_percent": 39.1,
+              "load_rss_bytes": 2883584
+            },
+            {
+              "server_cpu_percent": 98.5,
+              "server_rss_bytes": 32325632,
+              "load_cpu_percent": 39.2,
+              "load_rss_bytes": 2883584
+            },
+            {
+              "server_cpu_percent": 99.1,
+              "server_rss_bytes": 32325632,
+              "load_cpu_percent": 39.4,
+              "load_rss_bytes": 2883584
+            },
+            {
+              "server_cpu_percent": 100.0,
+              "server_rss_bytes": 32325632,
+              "load_cpu_percent": 39.8,
+              "load_rss_bytes": 2883584
+            },
+            {
+              "server_cpu_percent": 98.9,
+              "server_rss_bytes": 32325632,
+              "load_cpu_percent": 39.7,
+              "load_rss_bytes": 2883584
+            },
+            {
+              "server_cpu_percent": 99.3,
+              "server_rss_bytes": 32325632,
+              "load_cpu_percent": 39.9,
+              "load_rss_bytes": 2883584
+            },
+            {
+              "server_cpu_percent": 99.4,
+              "server_rss_bytes": 32325632,
+              "load_cpu_percent": 39.9,
+              "load_rss_bytes": 2883584
+            },
+            {
+              "server_cpu_percent": 98.2,
+              "server_rss_bytes": 32325632,
+              "load_cpu_percent": 39.3,
+              "load_rss_bytes": 2883584
+            },
+            {
+              "server_cpu_percent": 98.4,
+              "server_rss_bytes": 32325632,
+              "load_cpu_percent": 39.4,
+              "load_rss_bytes": 2883584
+            },
+            {
+              "server_cpu_percent": 99.0,
+              "server_rss_bytes": 32325632,
+              "load_cpu_percent": 39.5,
+              "load_rss_bytes": 2883584
+            }
+          ],
+          "peak_server_rss_bytes": 32325632
+        }
+      ],
+      "median_requests_per_second": 37671.48593300175
+    },
+    {
+      "workers": 2,
+      "concurrency": 32,
+      "server_command": [
+        "php",
+        "-d",
+        "opcache.enable_cli=1",
+        "-d",
+        "opcache.jit=off",
+        "/Users/daudau/Code/crabphp/engine/benchmarks/server.php",
+        "--protocol=http",
+        "--port=64874",
+        "--workers=2"
+      ],
+      "trials": [
+        {
+          "command": [
+            "wrk",
+            "-t",
+            "2",
+            "-c",
+            "32",
+            "-d",
+            "4s",
+            "--timeout",
+            "2s",
+            "--latency",
+            "-s",
+            "/var/folders/tg/pyt0jkx51cd1_8n1q01dvpjh0000gn/T/crab-http-bench-hw2y10si/latency.lua",
+            "http://127.0.0.1:64874/"
+          ],
+          "raw_output": "Running 4s test @ http://127.0.0.1:64874/\n  2 threads and 32 connections\n  Thread Stats   Avg      Stdev     Max   +/- Stdev\n    Latency   442.04us   75.07us   0.93ms   70.28%\n    Req/Sec    35.83k   434.55    36.62k    67.07%\n  Latency Distribution\n     50%  450.00us\n     75%  488.00us\n     90%  528.00us\n     99%  659.00us\n  292392 requests in 4.10s, 43.78MB read\nRequests/sec:  71309.47\nTransfer/sec:     10.68MB\nCRAB_METRICS {\"requests\":292392,\"duration_us\":4100325,\"p50_ms\":0.450000,\"p95_ms\":0.575000,\"p99_ms\":0.659000,\"connect_errors\":0,\"read_errors\":0,\"write_errors\":0,\"status_errors\":0,\"timeouts\":0}\n",
+          "metrics": {
+            "requests": 292392,
+            "duration_us": 4100325,
+            "p50_ms": 0.45,
+            "p95_ms": 0.575,
+            "p99_ms": 0.659,
+            "connect_errors": 0,
+            "read_errors": 0,
+            "write_errors": 0,
+            "status_errors": 0,
+            "timeouts": 0,
+            "requests_per_second": 71309.46937133033
+          },
+          "samples": [
+            {
+              "server_cpu_percent": 192.70000000000002,
+              "server_rss_bytes": 50954240,
+              "load_cpu_percent": 0.0,
+              "load_rss_bytes": 1884160
+            },
+            {
+              "server_cpu_percent": 178.39999999999998,
+              "server_rss_bytes": 51003392,
+              "load_cpu_percent": 31.4,
+              "load_rss_bytes": 2899968
+            },
+            {
+              "server_cpu_percent": 188.9,
+              "server_rss_bytes": 51003392,
+              "load_cpu_percent": 56.4,
+              "load_rss_bytes": 2899968
+            },
+            {
+              "server_cpu_percent": 193.60000000000002,
+              "server_rss_bytes": 51003392,
+              "load_cpu_percent": 65.4,
+              "load_rss_bytes": 2899968
+            },
+            {
+              "server_cpu_percent": 194.5,
+              "server_rss_bytes": 51003392,
+              "load_cpu_percent": 67.8,
+              "load_rss_bytes": 2899968
+            },
+            {
+              "server_cpu_percent": 195.7,
+              "server_rss_bytes": 51003392,
+              "load_cpu_percent": 69.0,
+              "load_rss_bytes": 2899968
+            },
+            {
+              "server_cpu_percent": 195.3,
+              "server_rss_bytes": 51003392,
+              "load_cpu_percent": 70.3,
+              "load_rss_bytes": 2899968
+            },
+            {
+              "server_cpu_percent": 195.4,
+              "server_rss_bytes": 51003392,
+              "load_cpu_percent": 70.8,
+              "load_rss_bytes": 2899968
+            },
+            {
+              "server_cpu_percent": 195.4,
+              "server_rss_bytes": 51003392,
+              "load_cpu_percent": 70.4,
+              "load_rss_bytes": 2899968
+            },
+            {
+              "server_cpu_percent": 195.0,
+              "server_rss_bytes": 51003392,
+              "load_cpu_percent": 70.8,
+              "load_rss_bytes": 2899968
+            },
+            {
+              "server_cpu_percent": 196.89999999999998,
+              "server_rss_bytes": 51003392,
+              "load_cpu_percent": 70.2,
+              "load_rss_bytes": 2899968
+            },
+            {
+              "server_cpu_percent": 195.5,
+              "server_rss_bytes": 51003392,
+              "load_cpu_percent": 70.9,
+              "load_rss_bytes": 2916352
+            },
+            {
+              "server_cpu_percent": 196.39999999999998,
+              "server_rss_bytes": 51003392,
+              "load_cpu_percent": 70.8,
+              "load_rss_bytes": 2916352
+            },
+            {
+              "server_cpu_percent": 197.0,
+              "server_rss_bytes": 51003392,
+              "load_cpu_percent": 71.0,
+              "load_rss_bytes": 2916352
+            },
+            {
+              "server_cpu_percent": 196.5,
+              "server_rss_bytes": 51003392,
+              "load_cpu_percent": 70.7,
+              "load_rss_bytes": 2916352
+            },
+            {
+              "server_cpu_percent": 196.3,
+              "server_rss_bytes": 51003392,
+              "load_cpu_percent": 70.6,
+              "load_rss_bytes": 2916352
+            },
+            {
+              "server_cpu_percent": 196.8,
+              "server_rss_bytes": 51003392,
+              "load_cpu_percent": 70.4,
+              "load_rss_bytes": 2916352
+            },
+            {
+              "server_cpu_percent": 197.1,
+              "server_rss_bytes": 51003392,
+              "load_cpu_percent": 71.4,
+              "load_rss_bytes": 2916352
+            },
+            {
+              "server_cpu_percent": 196.10000000000002,
+              "server_rss_bytes": 51003392,
+              "load_cpu_percent": 71.6,
+              "load_rss_bytes": 2916352
+            }
+          ],
+          "peak_server_rss_bytes": 51003392
+        },
+        {
+          "command": [
+            "wrk",
+            "-t",
+            "2",
+            "-c",
+            "32",
+            "-d",
+            "4s",
+            "--timeout",
+            "2s",
+            "--latency",
+            "-s",
+            "/var/folders/tg/pyt0jkx51cd1_8n1q01dvpjh0000gn/T/crab-http-bench-hw2y10si/latency.lua",
+            "http://127.0.0.1:64874/"
+          ],
+          "raw_output": "Running 4s test @ http://127.0.0.1:64874/\n  2 threads and 32 connections\n  Thread Stats   Avg      Stdev     Max   +/- Stdev\n    Latency   445.85us   80.42us   1.53ms   72.76%\n    Req/Sec    35.56k     1.67k   37.56k    84.15%\n  Latency Distribution\n     50%  453.00us\n     75%  491.00us\n     90%  535.00us\n     99%  682.00us\n  290020 requests in 4.10s, 43.42MB read\nRequests/sec:  70734.62\nTransfer/sec:     10.59MB\nCRAB_METRICS {\"requests\":290020,\"duration_us\":4100114,\"p50_ms\":0.453000,\"p95_ms\":0.583000,\"p99_ms\":0.682000,\"connect_errors\":0,\"read_errors\":0,\"write_errors\":0,\"status_errors\":0,\"timeouts\":0}\n",
+          "metrics": {
+            "requests": 290020,
+            "duration_us": 4100114,
+            "p50_ms": 0.453,
+            "p95_ms": 0.583,
+            "p99_ms": 0.682,
+            "connect_errors": 0,
+            "read_errors": 0,
+            "write_errors": 0,
+            "status_errors": 0,
+            "timeouts": 0,
+            "requests_per_second": 70734.6185984097
+          },
+          "samples": [
+            {
+              "server_cpu_percent": 100.1,
+              "server_rss_bytes": 50954240,
+              "load_cpu_percent": 0.0,
+              "load_rss_bytes": 2867200
+            },
+            {
+              "server_cpu_percent": 130.89999999999998,
+              "server_rss_bytes": 50954240,
+              "load_cpu_percent": 35.8,
+              "load_rss_bytes": 2932736
+            },
+            {
+              "server_cpu_percent": 170.6,
+              "server_rss_bytes": 50954240,
+              "load_cpu_percent": 57.4,
+              "load_rss_bytes": 2949120
+            },
+            {
+              "server_cpu_percent": 186.39999999999998,
+              "server_rss_bytes": 50954240,
+              "load_cpu_percent": 65.5,
+              "load_rss_bytes": 2949120
+            },
+            {
+              "server_cpu_percent": 192.5,
+              "server_rss_bytes": 50954240,
+              "load_cpu_percent": 67.7,
+              "load_rss_bytes": 2949120
+            },
+            {
+              "server_cpu_percent": 194.60000000000002,
+              "server_rss_bytes": 50954240,
+              "load_cpu_percent": 69.5,
+              "load_rss_bytes": 2949120
+            },
+            {
+              "server_cpu_percent": 194.0,
+              "server_rss_bytes": 50954240,
+              "load_cpu_percent": 70.7,
+              "load_rss_bytes": 2949120
+            },
+            {
+              "server_cpu_percent": 195.3,
+              "server_rss_bytes": 50954240,
+              "load_cpu_percent": 70.8,
+              "load_rss_bytes": 2949120
+            },
+            {
+              "server_cpu_percent": 195.4,
+              "server_rss_bytes": 50954240,
+              "load_cpu_percent": 71.4,
+              "load_rss_bytes": 2949120
+            },
+            {
+              "server_cpu_percent": 196.2,
+              "server_rss_bytes": 50954240,
+              "load_cpu_percent": 71.5,
+              "load_rss_bytes": 2949120
+            },
+            {
+              "server_cpu_percent": 196.10000000000002,
+              "server_rss_bytes": 50954240,
+              "load_cpu_percent": 70.9,
+              "load_rss_bytes": 2949120
+            },
+            {
+              "server_cpu_percent": 196.0,
+              "server_rss_bytes": 50954240,
+              "load_cpu_percent": 70.7,
+              "load_rss_bytes": 2949120
+            },
+            {
+              "server_cpu_percent": 197.1,
+              "server_rss_bytes": 50954240,
+              "load_cpu_percent": 71.0,
+              "load_rss_bytes": 2949120
+            },
+            {
+              "server_cpu_percent": 194.8,
+              "server_rss_bytes": 50954240,
+              "load_cpu_percent": 71.3,
+              "load_rss_bytes": 2949120
+            },
+            {
+              "server_cpu_percent": 196.1,
+              "server_rss_bytes": 50954240,
+              "load_cpu_percent": 71.2,
+              "load_rss_bytes": 2949120
+            },
+            {
+              "server_cpu_percent": 195.0,
+              "server_rss_bytes": 50954240,
+              "load_cpu_percent": 70.9,
+              "load_rss_bytes": 2949120
+            },
+            {
+              "server_cpu_percent": 196.4,
+              "server_rss_bytes": 50954240,
+              "load_cpu_percent": 70.8,
+              "load_rss_bytes": 2949120
+            },
+            {
+              "server_cpu_percent": 195.2,
+              "server_rss_bytes": 50954240,
+              "load_cpu_percent": 70.6,
+              "load_rss_bytes": 2949120
+            },
+            {
+              "server_cpu_percent": 195.5,
+              "server_rss_bytes": 50954240,
+              "load_cpu_percent": 69.7,
+              "load_rss_bytes": 2949120
+            }
+          ],
+          "peak_server_rss_bytes": 50954240
+        },
+        {
+          "command": [
+            "wrk",
+            "-t",
+            "2",
+            "-c",
+            "32",
+            "-d",
+            "4s",
+            "--timeout",
+            "2s",
+            "--latency",
+            "-s",
+            "/var/folders/tg/pyt0jkx51cd1_8n1q01dvpjh0000gn/T/crab-http-bench-hw2y10si/latency.lua",
+            "http://127.0.0.1:64874/"
+          ],
+          "raw_output": "Running 4s test @ http://127.0.0.1:64874/\n  2 threads and 32 connections\n  Thread Stats   Avg      Stdev     Max   +/- Stdev\n    Latency   444.88us   54.98us   1.67ms   82.69%\n    Req/Sec    35.58k   791.04    36.52k    93.90%\n  Latency Distribution\n     50%  432.00us\n     75%  455.00us\n     90%  512.00us\n     99%  640.00us\n  290266 requests in 4.10s, 43.46MB read\nRequests/sec:  70792.03\nTransfer/sec:     10.60MB\nCRAB_METRICS {\"requests\":290266,\"duration_us\":4100264,\"p50_ms\":0.432000,\"p95_ms\":0.554000,\"p99_ms\":0.640000,\"connect_errors\":0,\"read_errors\":0,\"write_errors\":0,\"status_errors\":0,\"timeouts\":0}\n",
+          "metrics": {
+            "requests": 290266,
+            "duration_us": 4100264,
+            "p50_ms": 0.432,
+            "p95_ms": 0.554,
+            "p99_ms": 0.64,
+            "connect_errors": 0,
+            "read_errors": 0,
+            "write_errors": 0,
+            "status_errors": 0,
+            "timeouts": 0,
+            "requests_per_second": 70792.02704996556
+          },
+          "samples": [
+            {
+              "server_cpu_percent": 90.69999999999999,
+              "server_rss_bytes": 50954240,
+              "load_cpu_percent": 0.0,
+              "load_rss_bytes": 2277376
+            },
+            {
+              "server_cpu_percent": 142.8,
+              "server_rss_bytes": 50954240,
+              "load_cpu_percent": 39.6,
+              "load_rss_bytes": 2899968
+            },
+            {
+              "server_cpu_percent": 163.6,
+              "server_rss_bytes": 50954240,
+              "load_cpu_percent": 50.6,
+              "load_rss_bytes": 2899968
+            },
+            {
+              "server_cpu_percent": 183.5,
+              "server_rss_bytes": 50954240,
+              "load_cpu_percent": 61.6,
+              "load_rss_bytes": 2899968
+            },
+            {
+              "server_cpu_percent": 189.7,
+              "server_rss_bytes": 50954240,
+              "load_cpu_percent": 66.5,
+              "load_rss_bytes": 2899968
+            },
+            {
+              "server_cpu_percent": 193.8,
+              "server_rss_bytes": 50954240,
+              "load_cpu_percent": 68.1,
+              "load_rss_bytes": 2899968
+            },
+            {
+              "server_cpu_percent": 196.2,
+              "server_rss_bytes": 50954240,
+              "load_cpu_percent": 68.5,
+              "load_rss_bytes": 2899968
+            },
+            {
+              "server_cpu_percent": 195.8,
+              "server_rss_bytes": 50954240,
+              "load_cpu_percent": 69.1,
+              "load_rss_bytes": 2899968
+            },
+            {
+              "server_cpu_percent": 196.4,
+              "server_rss_bytes": 50954240,
+              "load_cpu_percent": 69.2,
+              "load_rss_bytes": 2899968
+            },
+            {
+              "server_cpu_percent": 197.9,
+              "server_rss_bytes": 50954240,
+              "load_cpu_percent": 69.3,
+              "load_rss_bytes": 2899968
+            },
+            {
+              "server_cpu_percent": 193.9,
+              "server_rss_bytes": 50954240,
+              "load_cpu_percent": 70.0,
+              "load_rss_bytes": 2916352
+            },
+            {
+              "server_cpu_percent": 195.4,
+              "server_rss_bytes": 50954240,
+              "load_cpu_percent": 69.0,
+              "load_rss_bytes": 2916352
+            },
+            {
+              "server_cpu_percent": 195.3,
+              "server_rss_bytes": 50954240,
+              "load_cpu_percent": 68.4,
+              "load_rss_bytes": 2916352
+            },
+            {
+              "server_cpu_percent": 195.8,
+              "server_rss_bytes": 50954240,
+              "load_cpu_percent": 68.0,
+              "load_rss_bytes": 2916352
+            },
+            {
+              "server_cpu_percent": 195.8,
+              "server_rss_bytes": 50954240,
+              "load_cpu_percent": 68.4,
+              "load_rss_bytes": 2916352
+            },
+            {
+              "server_cpu_percent": 199.1,
+              "server_rss_bytes": 50954240,
+              "load_cpu_percent": 69.7,
+              "load_rss_bytes": 2916352
+            },
+            {
+              "server_cpu_percent": 196.1,
+              "server_rss_bytes": 50954240,
+              "load_cpu_percent": 70.1,
+              "load_rss_bytes": 2916352
+            },
+            {
+              "server_cpu_percent": 197.5,
+              "server_rss_bytes": 50954240,
+              "load_cpu_percent": 69.4,
+              "load_rss_bytes": 2916352
+            },
+            {
+              "server_cpu_percent": 196.3,
+              "server_rss_bytes": 50954240,
+              "load_cpu_percent": 0.0,
+              "load_rss_bytes": 0
+            }
+          ],
+          "peak_server_rss_bytes": 50954240
+        }
+      ],
+      "median_requests_per_second": 70792.02704996556
+    }
+  ],
+  "body_allocation_probe": {
+    "iterations": 100000,
+    "empty_body_open_streams": 2,
+    "duration_ms": [
+      34.723541,
+      34.963875,
+      35.131917
+    ]
+  },
+  "response_encoder_segment_bytes": [
+    157
+  ],
+  "server_logs": [
+    {
+      "workers": 1,
+      "exit_code": 0,
+      "output": ""
+    },
+    {
+      "workers": 2,
+      "exit_code": 0,
+      "output": ""
+    }
+  ]
+}

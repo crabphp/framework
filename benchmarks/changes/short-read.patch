@@ -1,0 +1,58 @@
+--- a/src/Network/Connection.php
++++ b/src/Network/Connection.php
+@@ -375,7 +375,8 @@
+         try {
+             $remaining = self::IO_BUDGET;
+             do {
+-                $bytes = @fread($this->stream, min(self::READ_CHUNK_SIZE, $remaining));
++                $readSize = min(self::READ_CHUNK_SIZE, $remaining);
++                $bytes = @fread($this->stream, $readSize);
+                 if ($bytes === false) {
+                     $this->close();
+                     return;
+@@ -386,8 +387,13 @@
+                     }
+                     return;
+                 }
+-                $remaining -= strlen($bytes);
++                $received = strlen($bytes);
++                $remaining -= $received;
+                 $this->invoke($this->dataHandler, $bytes);
++                if ($received < $readSize) {
++                    // Readiness will report further bytes or EOF on a later turn.
++                    return;
++                }
+             } while (!$this->closed && !$this->readPaused && $remaining > 0);
+         } finally {
+             $this->reading = false;
+--- a/tests/TransportTest.php
++++ b/tests/TransportTest.php
+@@ -39,6 +39,28 @@
+         $this->until($loop, static function () use (&$received): bool { return strlen($received) === 8; });
+         self::assertSame("\0binary\xff", $received);
+         self::assertSame(0, $oldReaderCalls, 'Reader ownership was not replaced.');
++    }
++
++    public function testShortReadsContinueUntilDataAndHalfCloseAreDelivered(): void
++    {
++        [$loop, $connection, $peer] = $this->connectedPair();
++        $events = [];
++        $connection->onData(static function (Connection $connection, string $bytes) use ($loop, $peer, &$events): void {
++            $events[] = $bytes;
++            if (count($events) === 1) {
++                $loop->defer(static function () use ($peer): void {
++                    fwrite($peer, 'second');
++                    stream_socket_shutdown($peer, STREAM_SHUT_WR);
++                });
++            }
++        });
++        $connection->onEof(static function (Connection $connection) use (&$events): void {
++            $events[] = 'EOF';
++            $connection->close();
++        });
++        fwrite($peer, 'first');
++        $this->until($loop, static fn () => $connection->isClosed());
++        self::assertSame(['first', 'second', 'EOF'], $events);
+     }
+ 
+     public function testPartialWritesRejectAtomicallyAndNotifyBelowWatermark(): void

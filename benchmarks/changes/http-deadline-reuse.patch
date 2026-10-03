@@ -1,0 +1,221 @@
+--- a/src/Http/HttpSession.php
++++ b/src/Http/HttpSession.php
+@@ -23,6 +23,8 @@
+     private ?string $scheduled = null;
+     private ?string $writeScheduled = null;
+     private ?string $deadline = null;
++    private float $deadlineAt = 0;
++    private float $deadlineScheduledAt = 0;
+     private string $deadlinePhase = '';
+     private ?\Generator $output = null;
+     private string $pending = '';
+@@ -280,9 +282,6 @@
+         if ($phase === $this->deadlinePhase && $this->deadline !== null) {
+             return;
+         }
+-        if ($this->deadline !== null) {
+-            $this->connection->loop()->cancel($this->deadline);
+-        }
+         $this->deadlinePhase = $phase;
+         $seconds = match ($phase) {
+             'body' => $this->bodyTimeout,
+@@ -290,15 +289,37 @@
+             'response' => $this->responseTimeout,
+             default => $this->headerTimeout,
+         };
+-        $this->deadline = $this->connection->loop()->delay($seconds, function () use ($phase): void {
+-            $this->deadline = null;
+-            if ($phase === 'idle' || $phase === 'response') {
+-                $this->retire();
+-                $this->connection->close();
+-            } else {
+-                $this->fail(408);
+-            }
+-        });
++        $this->deadlineAt = hrtime(true) / 1_000_000_000 + $seconds;
++        if ($this->deadline !== null) {
++            // An earlier wake-up can check the current phase without allocating
++            // another timer on every successful request/response transition.
++            if ($this->deadlineScheduledAt <= $this->deadlineAt) {
++                return;
++            }
++            $this->connection->loop()->cancel($this->deadline);
++        }
++        $this->deadlineScheduledAt = $this->deadlineAt;
++        $this->deadline = $this->connection->loop()->delay($seconds, $this->checkDeadline(...));
++    }
++
++    private function checkDeadline(): void
++    {
++        $this->deadline = null;
++        if ($this->retired) {
++            return;
++        }
++        $remaining = $this->deadlineAt - hrtime(true) / 1_000_000_000;
++        if ($remaining > 0) {
++            $this->deadlineScheduledAt = $this->deadlineAt;
++            $this->deadline = $this->connection->loop()->delay($remaining, $this->checkDeadline(...));
++            return;
++        }
++        if ($this->deadlinePhase === 'idle' || $this->deadlinePhase === 'response') {
++            $this->retire();
++            $this->connection->close();
++        } else {
++            $this->fail(408);
++        }
+     }
+ 
+     private function retire(): void
+--- a/tests/HttpTest.php
++++ b/tests/HttpTest.php
+@@ -376,6 +376,99 @@
+     {
+         yield 'headers' => ["GET / HTTP/1.1\r\nHost: x\r\n", 'headerTimeout'];
+         yield 'body' => ["POST / HTTP/1.1\r\nHost: x\r\nContent-Length: 4\r\n\r\na", 'bodyTimeout'];
++    }
++
++    public function testLaterBodyDeadlineSurvivesTheEarlierHeaderTimer(): void
++    {
++        $output = $this->exchangeFragments([
++            [0, "POST / HTTP/1.1\r\nHost: x\r\nContent-Length: 4\r\nConnection: close\r\n\r\na"],
++            [0.12, 'bcd'],
++        ], static fn(Request $request): string => $request->body->contents(), [
++            'headerTimeout' => 0.03,
++            'bodyTimeout' => 0.5,
++        ]);
++        self::assertStringStartsWith('HTTP/1.1 200', $output);
++        self::assertStringEndsWith('abcd', $output);
++    }
++
++    public function testEarlierBodyDeadlineReplacesTheLaterHeaderTimer(): void
++    {
++        $handled = false;
++        $output = $this->exchangeFragments([
++            [0, "POST / HTTP/1.1\r\nHost: x\r\nContent-Length: 4\r\nConnection: close\r\n\r\na"],
++            [0.3, 'bcd'],
++        ], static function () use (&$handled): string {
++            $handled = true;
++            return 'too late';
++        }, [
++            'headerTimeout' => 1,
++            'bodyTimeout' => 0.05,
++        ]);
++        self::assertStringStartsWith('HTTP/1.1 408', $output);
++        self::assertFalse($handled, 'A body completed after its deadline reached the handler.');
++    }
++
++    public function testPartialBodyDoesNotRefreshItsAbsoluteDeadline(): void
++    {
++        $handled = false;
++        $output = $this->exchangeFragments([
++            [0, "POST / HTTP/1.1\r\nHost: x\r\nContent-Length: 4\r\nConnection: close\r\n\r\na"],
++            [0.06, 'b'],
++            [0.14, 'c'],
++            [0.3, 'd'],
++        ], static function () use (&$handled): string {
++            $handled = true;
++            return 'too late';
++        }, [
++            'headerTimeout' => 0.03,
++            'bodyTimeout' => 0.2,
++        ]);
++        self::assertStringStartsWith('HTTP/1.1 408', $output);
++        self::assertFalse($handled, 'Receiving partial body bytes refreshed the body deadline.');
++    }
++
++    public function testReusedHeaderTimerCancelsTheCurrentResponseAtItsDeadline(): void
++    {
++        $cleanedUp = false;
++        $survivedHeaderDeadline = false;
++        $output = $this->exchange("GET / HTTP/1.1\r\nHost: x\r\n\r\n", static function (Request $request) use (&$cleanedUp, &$survivedHeaderDeadline): string {
++            try {
++                Async::sleep(EventLoop::getDriver(), 0.07, $request->cancellation);
++                $survivedHeaderDeadline = true;
++                Async::sleep(EventLoop::getDriver(), 10, $request->cancellation);
++                return 'too late';
++            } finally {
++                $cleanedUp = true;
++            }
++        }, ['headerTimeout' => 0.03, 'responseTimeout' => 0.12]);
++        self::assertSame('', $output, 'Response expiry must close without writing a request-timeout response.');
++        self::assertTrue($survivedHeaderDeadline, 'The previous header deadline expired the current response early.');
++        self::assertTrue($cleanedUp, 'The current response timeout did not cancel its handler.');
++    }
++
++    public function testReusedTimerPreservesTheIdleDeadlineBetweenRequests(): void
++    {
++        $output = $this->exchangeFragments([
++            [0, "GET /one HTTP/1.1\r\nHost: x\r\n\r\n"],
++            [0.12, "GET /two HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n"],
++        ], static fn(Request $request): string => $request->target, [
++            'headerTimeout' => 0.03,
++            'idleTimeout' => 0.5,
++        ]);
++        self::assertSame(2, substr_count($output, 'HTTP/1.1 200'));
++        self::assertStringContainsString('/one', $output);
++        self::assertStringEndsWith('/two', $output);
++    }
++
++    public function testReusedTimerClosesAnIdleConnectionWithout408(): void
++    {
++        $output = $this->exchange("GET / HTTP/1.1\r\nHost: x\r\n\r\n", static fn(): string => 'ok', [
++            'headerTimeout' => 0.02,
++            'idleTimeout' => 0.08,
++        ]);
++        self::assertSame(1, substr_count($output, 'HTTP/1.1 '));
++        self::assertStringStartsWith('HTTP/1.1 200', $output);
++        self::assertStringEndsWith('ok', $output);
+     }
+ 
+     #[DataProvider('activityProvider')]
+@@ -486,6 +579,50 @@
+         return $output;
+     }
+ 
++    /**
++     * @param list<array{float|int, string}> $fragments Bytes sent at offsets from loop startup.
++     */
++    private function exchangeFragments(array $fragments, callable $handler, array $options): string
++    {
++        $loop = $this->newLoop();
++        [$serverSocket, $client] = $this->pair();
++        stream_set_blocking($client, false);
++        $connection = $this->connection($loop, $serverSocket);
++        (new HttpServer($handler, ...$options))->attach($connection);
++        $output = '';
++        $sends = [];
++        foreach ($fragments as [$seconds, $bytes]) {
++            $send = $this->guardCallback(static function () use ($connection, $client, $bytes): void {
++                if ($connection->isClosed()) {
++                    return;
++                }
++                self::assertSame(strlen($bytes), fwrite($client, $bytes), 'Fragment write failed.');
++            });
++            if ($seconds === 0 || $seconds === 0.0) {
++                $send();
++            } else {
++                $sends[] = $loop->delay($seconds, $send);
++            }
++        }
++        $watchdog = $loop->delay(2, static function () use ($connection): void {
++            $connection->close();
++            throw new RuntimeException('Fragmented HTTP exchange timed out.');
++        });
++        $loop->onReadable($client, static function (string $id) use ($loop, $client, &$output, $watchdog, $sends): void {
++            $output .= fread($client, 65536);
++            if (feof($client)) {
++                foreach ([$id, $watchdog, ...$sends] as $pending) {
++                    $loop->cancel($pending);
++                }
++                fclose($client);
++            }
++        });
++        $loop->run();
++        self::assertTrue($connection->isClosed(), 'Server connection did not close.');
++        self::assertSame([], $loop->getIdentifiers(), 'Fragmented HTTP exchange leaked loop registrations.');
++        return $output;
++    }
++
+     private function newLoop(): StreamSelectDriver
+     {
+         $loop = new StreamSelectDriver();

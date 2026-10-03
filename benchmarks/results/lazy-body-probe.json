@@ -1,0 +1,20 @@
+{
+  "before": {
+    "iterations": 100000,
+    "empty_body_open_streams": 2,
+    "duration_ms": [
+      33.999167,
+      33.91175,
+      34.012792
+    ]
+  },
+  "after": {
+    "iterations": 100000,
+    "empty_body_open_streams": 0,
+    "duration_ms": [
+      7.253209,
+      7.280959,
+      7.223542
+    ]
+  }
+}

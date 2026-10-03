@@ -1,0 +1,1910 @@
+Analysis of sampling php (pid 95386) every 1 millisecond
+Process:         php [95386]
+Path:            /opt/homebrew/*/php
+Load Address:    0x104010000
+Identifier:      php
+Version:         0
+Code Type:       ARM64
+Platform:        macOS
+Parent Process:  Python [95362]
+Target Type:     live task
+
+Date/Time:       2026-10-03 13:20:10.269 +0700
+Launch Time:     2026-10-03 13:20:07.956 +0700
+OS Version:      macOS 26.7.1 (25G309)
+Report Version:  7
+Analysis Tool:   /usr/bin/sample
+
+Physical footprint:         17.3M
+Physical footprint (peak):  17.3M
+Idle exit:                  untracked
+----
+
+Call graph:
+    2462 Thread_15420198   DispatchQueue_1: com.apple.main-thread  (serial)
+    + 2462 make_fcontext  (in php) + 24  [0x1043a21f8]
+    +   2462 zend_fiber_trampoline  (in php) + 76  [0x1044a7d0c]
+    +     2462 zend_fiber_execute  (in php) + 336  [0x1044a8124]
+    +       2462 zend_call_function  (in php) + 1432  [0x104442248]
+    +         2420 execute_ex  (in php) + 116  [0x104448550]
+    +         ! 776 ???  (in <unknown binary>)  [0x11754255c]
+    +         ! : 774 zif_fwrite  (in php) + 204  [0x104313440]
+    +         ! : | 774 _php_stream_write  (in php) + 104  [0x1043bbb94]
+    +         ! : |   772 _php_stream_write_buffer  (in php) + 160  [0x1043bc3e8]
+    +         ! : |   + 772 php_sockop_write  (in php) + 96  [0x1043c22f4]
+    +         ! : |   +   771 __sendto  (in libsystem_kernel.dylib) + 8,0  [0x18625c390,0x18625c388]
+    +         ! : |   +   1 DYLD-STUB$$send  (in php) + 4  [0x10450a728]
+    +         ! : |   2 _php_stream_write_buffer  (in php) + 160,176  [0x1043bc3e8,0x1043bc3f8]
+    +         ! : 2 zif_fwrite  (in php) + 0,156  [0x104313374,0x104313410]
+    +         ! 467 ???  (in <unknown binary>)  [0x117528abc]
+    +         ! : 467 zif_fread  (in php) + 136  [0x104314fc4]
+    +         ! :   456 php_stream_read_to_str  (in php) + 80  [0x1043bb918]
+    +         ! :   | 452 _php_stream_read  (in php) + 276  [0x1043bb828]
+    +         ! :   | + 448 php_sockop_read  (in php) + 348  [0x1043c2608]
+    +         ! :   | + ! 447 __recvfrom  (in libsystem_kernel.dylib) + 8  [0x18625c3bc]
+    +         ! :   | + ! 1 DYLD-STUB$$__recvfrom  (in libsystem_c.dylib) + 8  [0x1861a2418]
+    +         ! :   | + 3 php_sockop_read  (in php) + 436  [0x1043c2660]
+    +         ! :   | + 1 php_openssl_sockop_io  (in php) + 0  [0x10405f89c]
+    +         ! :   | 2 _php_stream_read  (in php) + 68,148  [0x1043bb758,0x1043bb7a8]
+    +         ! :   | 1 php_openssl_sockop_io  (in php) + 1044  [0x10405fcb0]
+    +         ! :   | 1 php_sockop_read  (in php) + 316  [0x1043c25e8]
+    +         ! :   5 php_stream_read_to_str  (in php) + 40  [0x1043bb8f0]
+    +         ! :   | 5 zend_mm_alloc_large  (in php) + 32  [0x1044041b0]
+    +         ! :   |   5 zend_mm_alloc_pages  (in php) + 84,112,...  [0x104404834,0x104404850,...]
+    +         ! :   4 php_stream_read_to_str  (in php) + 144  [0x1043bb958]
+    +         ! :   | 2 zend_mm_realloc_slow  (in php) + 204  [0x10440453c]
+    +         ! :   | + 2 _platform_memmove  (in libsystem_platform.dylib) + 420,428  [0x1862a5504,0x1862a550c]
+    +         ! :   | 2 zend_mm_realloc_slow  (in php) + 56,136  [0x1044044a8,0x1044044f8]
+    +         ! :   2 php_stream_read_to_str  (in php) + 108,116  [0x1043bb934,0x1043bb93c]
+    +         ! 198 ZEND_DO_FCALL_SPEC_RETVAL_UNUSED_HANDLER  (in php) + 368  [0x10446ad2c]
+    +         ! : 198 zim_Closure___invoke  (in php) + 76  [0x104421bc0]
+    +         ! :   198 _call_user_function_impl  (in php) + 80  [0x104441ca4]
+    +         ! :     194 zend_call_function  (in php) + 1432  [0x104442248]
+    +         ! :     | 188 execute_ex  (in php) + 116  [0x104448550]
+    +         ! :     | + 70 ???  (in <unknown binary>)  [0x117551698]
+    +         ! :     | + ! 69 ZEND_NEW_SPEC_CONST_UNUSED_HANDLER  (in php) + 64  [0x10446d018]
+    +         ! :     | + ! : 69 object_init_ex  (in php) + 64  [0x104408874]
+    +         ! :     | + ! :   60 zend_default_exception_new  (in php) + 88  [0x104440838]
+    +         ! :     | + ! :   | 32 zend_fetch_debug_backtrace  (in php) + 740,760,...  [0x1044204ac,0x1044204c0,...]
+    +         ! :     | + ! :   | 10 zend_fetch_debug_backtrace  (in php) + 1872  [0x104420918]
+    +         ! :     | + ! :   | + 7 zend_hash_real_init_mixed  (in php) + 48  [0x1044aec1c]
+    +         ! :     | + ! :   | + ! 7 _emalloc_320  (in php) + 24,44,...  [0x1044012e4,0x1044012f8,...]
+    +         ! :     | + ! :   | + 3 zend_hash_real_init_mixed  (in php) + 20,28,...  [0x1044aec00,0x1044aec08,...]
+    +         ! :     | + ! :   | 7 zend_fetch_debug_backtrace  (in php) + 4044  [0x104421194]
+    +         ! :     | + ! :   | + 6 zend_hash_next_index_insert_new  (in php) + 40,188,...  [0x1044b258c,0x1044b2620,...]
+    +         ! :     | + ! :   | + 1 zend_hash_next_index_insert_new  (in php) + 120  [0x1044b25dc]
+    +         ! :     | + ! :   | +   1 zend_hash_packed_grow  (in php) + 84  [0x1044aea0c]
+    +         ! :     | + ! :   | +     1 _erealloc2  (in php) + 432  [0x104403348]
+    +         ! :     | + ! :   | 5 zend_fetch_debug_backtrace  (in php) + 1864  [0x104420910]
+    +         ! :     | + ! :   | + 3 _zend_new_array_0  (in php) + 12  [0x1044ae848]
+    +         ! :     | + ! :   | + ! 3 _emalloc_56  (in php) + 16,44,...  [0x104400db4,0x104400dd0,...]
+    +         ! :     | + ! :   | + 2 _zend_new_array_0  (in php) + 0,64  [0x1044ae83c,0x1044ae87c]
+    +         ! :     | + ! :   | 4 zend_fetch_debug_backtrace  (in php) + 4064  [0x1044211a8]
+    +         ! :     | + ! :   | + 2 zend_array_destroy  (in php) + 328  [0x1044b40a0]
+    +         ! :     | + ! :   | + ! 2 _efree  (in php) + 20,60  [0x104402b2c,0x104402b54]
+    +         ! :     | + ! :   | + 1 _efree_56  (in php) + 16  [0x104401e78]
+    +         ! :     | + ! :   | + 1 zend_array_destroy  (in php) + 340  [0x1044b40ac]
+    +         ! :     | + ! :   | 1 zend_fetch_debug_backtrace  (in php) + 3472  [0x104420f58]
+    +         ! :     | + ! :   | + 1 _zend_new_array  (in php) + 24  [0x1044ae89c]
+    +         ! :     | + ! :   | +   1 _emalloc_56  (in php) + 16  [0x104400db4]
+    +         ! :     | + ! :   | 1 zend_fetch_debug_backtrace  (in php) + 3488  [0x104420f68]
+    +         ! :     | + ! :   |   1 zend_hash_real_init_packed  (in php) + 72  [0x1044aebc0]
+    +         ! :     | + ! :   2 zend_default_exception_new  (in php) + 324  [0x104440924]
+    +         ! :     | + ! :   | 2 zend_update_property_ex  (in php) + 56  [0x10440fcc4]
+    +         ! :     | + ! :   |   1 zend_std_write_property  (in php) + 992  [0x1044de298]
+    +         ! :     | + ! :   |   + 1 zend_verify_property_type  (in php) + 24  [0x104444620]
+    +         ! :     | + ! :   |   1 zend_std_write_property  (in php) + 196  [0x1044ddf7c]
+    +         ! :     | + ! :   2 zend_default_exception_new  (in php) + 376  [0x104440958]
+    +         ! :     | + ! :   | 2 zend_update_property_ex  (in php) + 56  [0x10440fcc4]
+    +         ! :     | + ! :   |   2 zend_std_write_property  (in php) + 992  [0x1044de298]
+    +         ! :     | + ! :   |     2 zend_verify_property_type  (in php) + 24  [0x104444620]
+    +         ! :     | + ! :   1 zend_default_exception_new  (in php) + 48  [0x104440810]
+    +         ! :     | + ! :   | 1 object_properties_init  (in php) + 0  [0x104408104]
+    +         ! :     | + ! :   1 zend_default_exception_new  (in php) + 228  [0x1044408c4]
+    +         ! :     | + ! :   | 1 _platform_strlen  (in libsystem_platform.dylib) + 0  [0x1862a2ac0]
+    +         ! :     | + ! :   1 zend_default_exception_new  (in php) + 244  [0x1044408d4]
+    +         ! :     | + ! :   | 1 _emalloc  (in php) + 136  [0x104402aac]
+    +         ! :     | + ! :   1 zend_default_exception_new  (in php) + 284  [0x1044408fc]
+    +         ! :     | + ! :   | 1 _platform_memmove  (in libsystem_platform.dylib) + 420  [0x1862a5504]
+    +         ! :     | + ! :   1 zend_default_exception_new  (in php) + 400  [0x104440970]
+    +         ! :     | + ! :     1 zend_update_property_ex  (in php) + 56  [0x10440fcc4]
+    +         ! :     | + ! :       1 zend_std_write_property  (in php) + 1048  [0x1044de2d0]
+    +         ! :     | + ! 1 ZEND_NEW_SPEC_CONST_UNUSED_HANDLER  (in php) + 0  [0x10446cfd8]
+    +         ! :     | + 13 ???  (in <unknown binary>)  [0x11753a2c8]
+    +         ! :     | + ! 13 zif_hrtime  (in php) + 36  [0x10432131c]
+    +         ! :     | + !   12 mach_absolute_time  (in libsystem_kernel.dylib) + 108  [0x18625810c]
+    +         ! :     | + !   1 DYLD-STUB$$mach_absolute_time  (in php) + 4  [0x10450a080]
+    +         ! :     | + 11 ???  (in <unknown binary>)  [0x117551768]
+    +         ! :     | + ! 5 zim_Exception___construct  (in php) + 132  [0x10443d3b4]
+    +         ! :     | + ! : 5 zend_parse_parameters  (in php) + 32  [0x10440762c]
+    +         ! :     | + ! :   3 zend_parse_va_args  (in php) + 0,192,...  [0x104407304,0x1044073c4,...]
+    +         ! :     | + ! :   2 zend_parse_va_args  (in php) + 468  [0x1044074d8]
+    +         ! :     | + ! :     2 zend_parse_arg  (in php) + 836,1624  [0x104406aa0,0x104406db4]
+    +         ! :     | + ! 4 zim_Exception___construct  (in php) + 116,12,...  [0x10443d3a4,0x10443d33c,...]
+    +         ! :     | + ! 1 zim_Exception___construct  (in php) + 60  [0x10443d36c]
+    +         ! :     | + ! : 1 instanceof_function_slow  (in php) + 4  [0x1044eb15c]
+    +         ! :     | + ! 1 zim_Exception___construct  (in php) + 216  [0x10443d408]
+    +         ! :     | + !   1 zend_update_property_ex  (in php) + 56  [0x10440fcc4]
+    +         ! :     | + !     1 zend_std_write_property  (in php) + 128  [0x1044ddf38]
+    +         ! :     | + 8 ???  (in <unknown binary>)  [0x1175396e4]
+    +         ! :     | + ! 8 ZEND_UNSET_DIM_SPEC_VAR_CV_HANDLER  (in php) + 188  [0x104471610]
+    +         ! :     | + !   8 zend_hash_del  (in php) + 452  [0x1044b3120]
+    +         ! :     | + !     7 zend_objects_store_del  (in php) + 188  [0x1044e1bac]
+    +         ! :     | + !     : 6 zend_object_std_dtor  (in php) + 92  [0x1044e1e18]
+    +         ! :     | + !     : | 3 zend_objects_store_del  (in php) + 188  [0x1044e1bac]
+    +         ! :     | + !     : | + 1 zend_closure_free_storage  (in php) + 20  [0x1044229d4]
+    +         ! :     | + !     : | + ! 1 zend_object_std_dtor  (in php) + 108  [0x1044e1e28]
+    +         ! :     | + !     : | + 1 zend_closure_free_storage  (in php) + 72  [0x104422a08]
+    +         ! :     | + !     : | + ! 1 destroy_op_array  (in php) + 4  [0x1044e367c]
+    +         ! :     | + !     : | + 1 zval_ptr_dtor  (in php) + 20  [0x1044f5ddc]
+    +         ! :     | + !     : | 1 rc_dtor_func  (in php) + 0  [0x1044f5db0]
+    +         ! :     | + !     : | 1 zend_object_dtor_property  (in php) + 12  [0x1044e1ce0]
+    +         ! :     | + !     : | 1 zend_objects_store_del  (in php) + 60  [0x1044e1b2c]
+    +         ! :     | + !     : 1 zend_object_std_dtor  (in php) + 20  [0x1044e1dd0]
+    +         ! :     | + !     1 zend_objects_store_del  (in php) + 176  [0x1044e1ba0]
+    +         ! :     | + 5 ???  (in <unknown binary>)  [0x117551fc8]
+    +         ! :     | + ! 3 zend_jit_assign_obj_helper  (in opcache.so) + 12  [0x107ee1f74]
+    +         ! :     | + ! 2 zend_jit_assign_obj_helper  (in opcache.so) + 84  [0x107ee1fbc]
+    +         ! :     | + !   2 zend_std_write_property  (in php) + 56,980  [0x1044ddef0,0x1044de28c]
+    +         ! :     | + 5 zend_leave_helper_SPEC  (in php) + 0,120,...  [0x1044a1ac8,0x1044a1b40,...]
+    +         ! :     | + 4 ???  (in <unknown binary>)  [0x117539c30]
+    +         ! :     | + ! 4 ZEND_DECLARE_LAMBDA_FUNCTION_SPEC_CONST_HANDLER  (in php) + 96  [0x10448b030]
+    +         ! :     | + !   1 zend_create_closure_ex  (in php) + 64  [0x1044230dc]
+    +         ! :     | + !   : 1 object_init_ex  (in php) + 64  [0x104408874]
+    +         ! :     | + !   :   1 zend_closure_new  (in php) + 84  [0x1044229b0]
+    +         ! :     | + !   :     1 zend_object_std_init  (in php) + 0  [0x1044e1c44]
+    +         ! :     | + !   1 zend_create_closure_ex  (in php) + 460  [0x104423268]
+    +         ! :     | + !   : 1 zend_array_dup  (in php) + 556  [0x1044afd24]
+    +         ! :     | + !   :   1 _emalloc  (in php) + 184  [0x104402adc]
+    +         ! :     | + !   1 zend_create_closure_ex  (in php) + 584  [0x1044232e4]
+    +         ! :     | + !   : 1 _platform_memset  (in libsystem_platform.dylib) + 140  [0x1862a511c]
+    +         ! :     | + !   1 zend_create_closure_ex  (in php) + 0  [0x10442309c]
+    +         ! :     | + 4 ???  (in <unknown binary>)  [0x117552108]
+    +         ! :     | + ! 3 zend_handle_undef_args  (in php) + 648  [0x104448234]
+    +         ! :     | + ! : 3 zend_get_default_from_internal_arg_info  (in php) + 0,44,...  [0x10441084c,0x104410878,...]
+    +         ! :     | + ! 1 zend_handle_undef_args  (in php) + 608  [0x10444820c]
+    +         ! :     | + 3 ???  (in <unknown binary>)  [0x117551fec]
+    +         ! :     | + ! 2 zend_jit_fetch_obj_r_slow  (in opcache.so) + 76  [0x107ee876c]
+    +         ! :     | + ! : 2 zend_std_read_property  (in php) + 116,688  [0x1044dd2b0,0x1044dd4ec]
+    +         ! :     | + ! 1 zend_jit_fetch_obj_r_slow  (in opcache.so) + 84  [0x107ee8774]
+    +         ! :     | + 3 ZEND_ASSIGN_OBJ_SPEC_UNUSED_CONST_OP_DATA_VAR_HANDLER  (in php) + 0,64,...  [0x10445c1bc,0x10445c1fc,...]
+    +         ! :     | + 2 ???  (in <unknown binary>)  [0x117539d10]
+    +         ! :     | + ! 1 zend_jit_verify_arg_slow  (in opcache.so) + 76  [0x107ee9008]
+    +         ! :     | + ! : 1 zend_check_user_type_slow  (in php) + 48  [0x1044446cc]
+    +         ! :     | + ! 1 zend_jit_verify_arg_slow  (in opcache.so) + 0  [0x107ee8fbc]
+    +         ! :     | + 2 ???  (in <unknown binary>)  [0x117551f80]
+    +         ! :     | + ! 2 zend_jit_assign_obj_helper  (in opcache.so) + 84  [0x107ee1fbc]
+    +         ! :     | + !   2 zend_std_write_property  (in php) + 56,1076  [0x1044ddef0,0x1044de2ec]
+    +         ! :     | + 2 ???  (in <unknown binary>)  [0x117552c2c]
+    +         ! :     | + ! 2 zend_jit_assign_to_typed_prop  (in opcache.so) + 52,152  [0x107ee11e8,0x107ee124c]
+    +         ! :     | + 2 ???  (in <unknown binary>)  [0x117539f84]
+    +         ! :     | + 2 ???  (in <unknown binary>)  [0x11755270c]
+    +         ! :     | + 2 ???  (in <unknown binary>)  [0x117553010]
+    +         ! :     | + 2 ZEND_ASSIGN_DIM_SPEC_VAR_TMPVAR_OP_DATA_CV_HANDLER  (in php) + 132  [0x104454204]
+    +         ! :     | + 2 ZEND_QM_ASSIGN_SPEC_VAR_HANDLER  (in php) + 36  [0x104464224]
+    +         ! :     | + 2 zend_jit_leave_top_func_helper  (in opcache.so) + 40,220  [0x107e8a8d4,0x107e8a988]
+    +         ! :     | + 1 ???  (in <unknown binary>)  [0x11753988c]
+    +         ! :     | + ! 1 zend_jit_assign_to_typed_prop  (in opcache.so) + 104  [0x107ee121c]
+    +         ! :     | + 1 ???  (in <unknown binary>)  [0x1175398c0]
+    +         ! :     | + ! 1 zend_hash_find  (in php) + 60  [0x1044b5ffc]
+    +         ! :     | + 1 ???  (in <unknown binary>)  [0x117539ad4]
+    +         ! :     | + ! 1 zend_check_user_type_slow  (in php) + 160  [0x10444473c]
+    +         ! :     | + 1 ???  (in <unknown binary>)  [0x117539c58]
+    +         ! :     | + ! 1 ZEND_BIND_LEXICAL_SPEC_TMP_CV_HANDLER  (in php) + 24  [0x10449449c]
+    +         ! :     | + 1 ???  (in <unknown binary>)  [0x117539d48]
+    +         ! :     | + ! 1 ZEND_NEW_SPEC_CONST_UNUSED_HANDLER  (in php) + 76  [0x10446d024]
+    +         ! :     | + 1 ???  (in <unknown binary>)  [0x117539fa0]
+    +         ! :     | + ! 1 zif_str_increment  (in php) + 164  [0x104347a44]
+    +         ! :     | + 1 ???  (in <unknown binary>)  [0x11753a074]
+    +         ! :     | + ! 1 zend_jit_assign_to_typed_prop  (in opcache.so) + 464  [0x107ee1384]
+    +         ! :     | + 1 ???  (in <unknown binary>)  [0x11753a4a4]
+    +         ! :     | + ! 1 zend_jit_assign_obj_helper  (in opcache.so) + 84  [0x107ee1fbc]
+    +         ! :     | + !   1 zend_std_write_property  (in php) + 1072  [0x1044de2e8]
+    +         ! :     | + 1 ???  (in <unknown binary>)  [0x117545d44]
+    +         ! :     | + ! 1 zend_jit_assign_to_typed_prop  (in opcache.so) + 152  [0x107ee124c]
+    +         ! :     | + 1 ???  (in <unknown binary>)  [0x1175471d8]
+    +         ! :     | + ! 1 ZEND_FETCH_OBJ_UNSET_SPEC_UNUSED_CONST_HANDLER  (in php) + 88  [0x10447b9a8]
+    +         ! :     | + 1 ???  (in <unknown binary>)  [0x117547200]
+    +         ! :     | + ! 1 ZEND_UNSET_DIM_SPEC_VAR_CV_HANDLER  (in php) + 164  [0x1044715f8]
+    +         ! :     | + 1 ???  (in <unknown binary>)  [0x117548404]
+    +         ! :     | + ! 1 zend_std_write_property  (in php) + 1556  [0x1044de4cc]
+    +         ! :     | + 1 ???  (in <unknown binary>)  [0x1175514d0]
+    +         ! :     | + ! 1 ZEND_JMP_NULL_SPEC_CV_HANDLER  (in php) + 32  [0x104497d10]
+    +         ! :     | + 1 ???  (in <unknown binary>)  [0x117551964]
+    +         ! :     | + ! 1 zend_jit_assign_to_typed_prop  (in opcache.so) + 132  [0x107ee1238]
+    +         ! :     | + 1 ???  (in <unknown binary>)  [0x117553034]
+    +         ! :     | + ! 1 zend_hash_find  (in php) + 88  [0x1044b6018]
+    +         ! :     | + 1 ???  (in <unknown binary>)  [0x1175531d4]
+    +         ! :     | + ! 1 ZEND_INSTANCEOF_SPEC_CV_CONST_HANDLER  (in php) + 20  [0x10448a8b8]
+    +         ! :     | + 1 ???  (in <unknown binary>)  [0x1175536b4]
+    +         ! :     | + ! 1 zend_is_identical  (in php) + 8  [0x1044eae80]
+    +         ! :     | + 1 ???  (in <unknown binary>)  [0x1175394f4]
+    +         ! :     | + 1 ???  (in <unknown binary>)  [0x11753977c]
+    +         ! :     | + 1 ???  (in <unknown binary>)  [0x117539858]
+    +         ! :     | + 1 ???  (in <unknown binary>)  [0x1175398c0]
+    +         ! :     | + 1 ???  (in <unknown binary>)  [0x117539a30]
+    +         ! :     | + 1 ???  (in <unknown binary>)  [0x117539e54]
+    +         ! :     | + 1 ???  (in <unknown binary>)  [0x11753a0f8]
+    +         ! :     | + 1 ???  (in <unknown binary>)  [0x11753aed8]
+    +         ! :     | + 1 ???  (in <unknown binary>)  [0x117547244]
+    +         ! :     | + 1 ???  (in <unknown binary>)  [0x11754729c]
+    +         ! :     | + 1 ???  (in <unknown binary>)  [0x1175511d4]
+    +         ! :     | + 1 ???  (in <unknown binary>)  [0x1175522f8]
+    +         ! :     | + 1 ???  (in <unknown binary>)  [0x1175526ac]
+    +         ! :     | + 1 ???  (in <unknown binary>)  [0x117552a4c]
+    +         ! :     | + 1 ???  (in <unknown binary>)  [0x117552bb8]
+    +         ! :     | + 1 ???  (in <unknown binary>)  [0x117552c48]
+    +         ! :     | + 1 ???  (in <unknown binary>)  [0x117552eb4]
+    +         ! :     | + 1 ???  (in <unknown binary>)  [0x117553014]
+    +         ! :     | + 1 ???  (in <unknown binary>)  [0x117553900]
+    +         ! :     | + 1 ???  (in <unknown binary>)  [0x1175539b8]
+    +         ! :     | + 1 ZEND_ASSIGN_DIM_SPEC_VAR_TMPVAR_OP_DATA_CV_HANDLER  (in php) + 108  [0x1044541ec]
+    +         ! :     | + ! 1 zend_fetch_dimension_address_inner_W  (in php) + 156  [0x10449eb08]
+    +         ! :     | + !   1 zend_hash_lookup  (in php) + 44  [0x1044b16b4]
+    +         ! :     | + !     1 zend_string_hash_func  (in php) + 0  [0x1044f0b48]
+    +         ! :     | + 1 ZEND_FETCH_OBJ_R_SPEC_CV_CONST_HANDLER  (in php) + 40  [0x1044751b8]
+    +         ! :     | + 1 ZEND_INIT_STATIC_METHOD_CALL_SPEC_UNUSED_UNUSED_HANDLER  (in php) + 44  [0x104480a18]
+    +         ! :     | + ! 1 zend_fetch_class  (in php) + 172  [0x104443194]
+    +         ! :     | + !   1 zend_get_executed_scope  (in php) + 8  [0x104441a28]
+    +         ! :     | + 1 ZEND_UNSET_DIM_SPEC_VAR_CV_HANDLER  (in php) + 264  [0x10447165c]
+    +         ! :     | + 1 zend_assign_to_typed_prop  (in php) + 164  [0x10449ed6c]
+    +         ! :     | + 1 zend_jit_find_method_tmp_helper  (in opcache.so) + 96  [0x107ee9208]
+    +         ! :     | + 1 zend_jit_vm_stack_free_args_helper  (in opcache.so) + 76  [0x107ee57a8]
+    +         ! :     | 3 execute_ex  (in php) + 104,120  [0x104448544,0x104448554]
+    +         ! :     | 2 ZEND_FETCH_OBJ_R_SPEC_CV_CONST_HANDLER  (in php) + 196,204  [0x104475254,0x10447525c]
+    +         ! :     | 1 ZEND_INIT_STATIC_METHOD_CALL_SPEC_UNUSED_UNUSED_HANDLER  (in php) + 432  [0x104480b9c]
+    +         ! :     3 zend_call_function  (in php) + 172  [0x104441d5c]
+    +         ! :     | 3 zend_is_callable_ex  (in php) + 88  [0x10440e224]
+    +         ! :     |   3 zend_is_callable_at_frame  (in php) + 48,1084,...  [0x10440d3b0,0x10440d7bc,...]
+    +         ! :     1 zend_init_func_execute_data  (in php) + 204  [0x104446d4c]
+    +         ! 98 ZEND_DO_FCALL_BY_NAME_SPEC_RETVAL_USED_HANDLER  (in php) + 316  [0x104487f68]
+    +         ! : 41 zif_feof  (in php) + 96  [0x104312de8]
+    +         ! : | 41 _php_stream_eof  (in php) + 76  [0x1043bba28]
+    +         ! : |   39 php_openssl_sockop_set_option  (in php) + 1636  [0x10405e480]
+    +         ! : |   + 38 __recvfrom  (in libsystem_kernel.dylib) + 8  [0x18625c3bc]
+    +         ! : |   + 1 __recvfrom  (in libsystem_kernel.dylib) + 28  [0x18625c3d0]
+    +         ! : |   +   1 cerror  (in libsystem_kernel.dylib) + 60  [0x186259610]
+    +         ! : |   1 php_openssl_sockop_set_option  (in php) + 2244  [0x10405e6e0]
+    +         ! : |   + 1 __error  (in libsystem_kernel.dylib) + 0  [0x186258618]
+    +         ! : |   1 php_openssl_sockop_set_option  (in php) + 0  [0x10405de1c]
+    +         ! : 23 php_date  (in php) + 128  [0x104020e38]
+    +         ! : | 21 php_format_date  (in php) + 112  [0x1040209a8]
+    +         ! : | + 11 date_format  (in php) + 2192  [0x1040206ec]
+    +         ! : | + ! 10 ap_php_slprintf  (in php) + 40  [0x1043b414c]
+    +         ! : | + ! : 7 strx_printv  (in php) + 904,80,...  [0x1043b44f4,0x1043b41bc,...]
+    +         ! : | + ! : 3 strx_printv  (in php) + 1972  [0x1043b4920]
+    +         ! : | + ! :   2 _platform_strlen  (in libsystem_platform.dylib) + 16,64  [0x1862a2ad0,0x1862a2b00]
+    +         ! : | + ! :   1 DYLD-STUB$$strlen  (in php) + 0  [0x10450ae74]
+    +         ! : | + ! 1 ap_php_slprintf  (in php) + 8  [0x1043b412c]
+    +         ! : | + 5 date_format  (in php) + 24,388,...  [0x10401fe74,0x10401ffe0,...]
+    +         ! : | + 2 date_format  (in php) + 588  [0x1040200a8]
+    +         ! : | + ! 1 timelib_day_of_week  (in php) + 0  [0x10402d6bc]
+    +         ! : | + ! 1 timelib_day_of_week_ex  (in php) + 248  [0x10402d7bc]
+    +         ! : | + 2 date_format  (in php) + 2252  [0x104020728]
+    +         ! : | + ! 1 DYLD-STUB$$memcpy  (in php) + 8  [0x10450a0cc]
+    +         ! : | + ! 1 _platform_memmove  (in libsystem_platform.dylib) + 0  [0x1862a5360]
+    +         ! : | + 1 smart_str_erealloc  (in php) + 68  [0x1044eee28]
+    +         ! : | 1 php_format_date  (in php) + 40  [0x104020960]
+    +         ! : | + 1 timelib_time_ctor  (in php) + 0  [0x104045fc4]
+    +         ! : | 1 php_format_date  (in php) + 124  [0x1040209b4]
+    +         ! : |   1 timelib_time_dtor  (in php) + 16  [0x104045fe0]
+    +         ! : 10 php_date  (in php) + 280  [0x104020ed0]
+    +         ! : | 10 php_time  (in php) + 24  [0x10401d8a8]
+    +         ! : |   10 gettimeofday  (in libsystem_c.dylib) + 56  [0x18612fdc0]
+    +         ! : |     6 __commpage_gettimeofday_internal  (in libsystem_kernel.dylib) + 44  [0x186259c24]
+    +         ! : |     + 6 mach_absolute_time  (in libsystem_kernel.dylib) + 108,112  [0x18625810c,0x186258110]
+    +         ! : |     3 __commpage_gettimeofday_internal  (in libsystem_kernel.dylib) + 80,0  [0x186259c48,0x186259bf8]
+    +         ! : |     1 DYLD-STUB$$__commpage_gettimeofday  (in libsystem_c.dylib) + 8  [0x1861a22b8]
+    +         ! : 10 zif_array_map  (in php) + 380  [0x1042fd1dc]
+    +         ! : | 5 zend_call_function  (in php) + 1512  [0x104442298]
+    +         ! : | + 5 zend_closure_internal_handler  (in php) + 32  [0x1044238bc]
+    +         ! : | +   5 zif_trim  (in php) + 0,92,...  [0x1043450f8,0x104345154,...]
+    +         ! : | 5 zend_call_function  (in php) + 76,700,...  [0x104441cfc,0x104441f6c,...]
+    +         ! : 2 zif_array_map  (in php) + 148  [0x1042fd0f4]
+    +         ! : | 2 zend_fcall_info_init  (in php) + 48  [0x10440e3a8]
+    +         ! : |   1 zend_is_callable_ex  (in php) + 88  [0x10440e224]
+    +         ! : |   + 1 zend_is_callable_at_frame  (in php) + 572  [0x10440d5bc]
+    +         ! : |   1 zend_is_callable_ex  (in php) + 68  [0x10440e210]
+    +         ! : 2 zif_array_map  (in php) + 344,464  [0x1042fd1b8,0x1042fd230]
+    +         ! : 2 zif_gmdate  (in php) + 0  [0x104020f00]
+    +         ! : 1 php_date  (in php) + 0  [0x104020db8]
+    +         ! : 1 zif_array_map  (in php) + 160  [0x1042fd100]
+    +         ! : | 1 zend_release_fcall_info_cache  (in php) + 16  [0x10440d194]
+    +         ! : 1 zif_array_map  (in php) + 244  [0x1042fd154]
+    +         ! : | 1 zend_hash_real_init  (in php) + 48  [0x1044aea90]
+    +         ! : |   1 _emalloc_160  (in php) + 64  [0x1044010fc]
+    +         ! : 1 zif_explode  (in php) + 152  [0x104346d90]
+    +         ! : | 1 _zend_new_array_0  (in php) + 64  [0x1044ae87c]
+    +         ! : 1 zif_explode  (in php) + 300  [0x104346e24]
+    +         ! : | 1 zend_hash_index_add_new  (in php) + 116  [0x1044b21dc]
+    +         ! : 1 zif_feof  (in php) + 88  [0x104312de0]
+    +         ! : | 1 zend_fetch_resource2  (in php) + 104  [0x1044db654]
+    +         ! : 1 zif_strtolower  (in php) + 68  [0x104347910]
+    +         ! : | 1 zend_string_tolower_ex  (in php) + 104  [0x1044ec2f4]
+    +         ! : 1 zif_strtolower  (in php) + 40  [0x1043478f4]
+    +         ! 66 ZEND_DO_ICALL_SPEC_RETVAL_USED_HANDLER  (in php) + 84  [0x1044875b4]
+    +         ! : 56 zif_stream_select  (in php) + 1012  [0x10434213c]
+    +         ! : | 56 __select  (in libsystem_kernel.dylib) + 8  [0x186262e80]
+    +         ! : 4 zif_stream_select  (in php) + 328  [0x104341e90]
+    +         ! : | 2 zend_fetch_resource2  (in php) + 112  [0x1044db65c]
+    +         ! : | 1 _php_stream_cast  (in php) + 524  [0x1043b672c]
+    +         ! : | 1 stream_array_to_fd_set  (in php) + 184  [0x1043423a8]
+    +         ! : 4 zif_stream_select  (in php) + 1036  [0x104342154]
+    +         ! : | 2 stream_array_from_fd_set  (in php) + 208  [0x104342524]
+    +         ! : | + 2 _php_stream_cast  (in php) + 32,44  [0x1043b6540,0x1043b654c]
+    +         ! : | 1 zend_fetch_resource2  (in php) + 112  [0x1044db65c]
+    +         ! : | 1 zend_hash_index_update  (in php) + 504  [0x1044b28f8]
+    +         ! : 2 zif_stream_select  (in php) + 184,476  [0x104341e00,0x104341f24]
+    +         ! 34 zend_leave_helper_SPEC  (in php) + 160  [0x1044a1b68]
+    +         ! : 32 zend_objects_store_del  (in php) + 188  [0x1044e1bac]
+    +         ! : | 27 zend_object_std_dtor  (in php) + 92  [0x1044e1e18]
+    +         ! : | + 21 zend_objects_store_del  (in php) + 188  [0x1044e1bac]
+    +         ! : | + ! 19 zend_object_std_dtor  (in php) + 92  [0x1044e1e18]
+    +         ! : | + ! : 19 zend_objects_store_del  (in php) + 188  [0x1044e1bac]
+    +         ! : | + ! :   18 zend_object_std_dtor  (in php) + 92  [0x1044e1e18]
+    +         ! : | + ! :   | 16 zend_array_destroy  (in php) + 296  [0x1044b4080]
+    +         ! : | + ! :   | + 5 zend_array_destroy  (in php) + 328  [0x1044b40a0]
+    +         ! : | + ! :   | + ! 5 _efree  (in php) + 20,40,...  [0x104402b2c,0x104402b40,...]
+    +         ! : | + ! :   | + 5 zend_array_destroy  (in php) + 20,48,...  [0x1044b3f6c,0x1044b3f88,...]
+    +         ! : | + ! :   | + 3 zend_array_destroy  (in php) + 184  [0x1044b4010]
+    +         ! : | + ! :   | + ! 2 zend_array_destroy  (in php) + 56,276  [0x1044b3f90,0x1044b406c]
+    +         ! : | + ! :   | + ! 1 _efree_56  (in php) + 80  [0x104401eb8]
+    +         ! : | + ! :   | + 2 _efree_56  (in php) + 16,28  [0x104401e78,0x104401e84]
+    +         ! : | + ! :   | + 1 rc_dtor_func  (in php) + 16  [0x1044f5dc0]
+    +         ! : | + ! :   | 1 zend_array_destroy  (in php) + 292  [0x1044b407c]
+    +         ! : | + ! :   | 1 zend_object_dtor_property  (in php) + 24  [0x1044e1cec]
+    +         ! : | + ! :   1 zend_object_std_dtor  (in php) + 92  [0x1044e1e18]
+    +         ! : | + ! 1 zend_object_std_dtor  (in php) + 48  [0x1044e1dec]
+    +         ! : | + ! : 1 zend_object_dtor_dynamic_properties  (in php) + 0  [0x1044e1ca0]
+    +         ! : | + ! 1 zend_object_std_dtor  (in php) + 20  [0x1044e1dd0]
+    +         ! : | + 2 zend_objects_store_del  (in php) + 100  [0x1044e1b54]
+    +         ! : | + ! 2 zend_objects_destroy_object  (in php) + 360  [0x1044e2024]
+    +         ! : | + !   2 zend_call_known_function  (in php) + 84  [0x1044426e8]
+    +         ! : | + !     1 zend_call_function  (in php) + 1396  [0x104442224]
+    +         ! : | + !     : 1 zend_init_func_execute_data  (in php) + 84  [0x104446cd4]
+    +         ! : | + !     1 zend_call_function  (in php) + 700  [0x104441f6c]
+    +         ! : | + 1 zend_array_destroy  (in php) + 452  [0x1044b411c]
+    +         ! : | + ! 1 zend_array_destroy  (in php) + 240  [0x1044b4048]
+    +         ! : | + 1 zend_array_destroy  (in php) + 488  [0x1044b4140]
+    +         ! : | + ! 1 _efree  (in php) + 40  [0x104402b40]
+    +         ! : | + 1 zend_array_destroy  (in php) + 56  [0x1044b3f90]
+    +         ! : | + 1 zend_object_dtor_property  (in php) + 12  [0x1044e1ce0]
+    +         ! : | 2 zend_closure_free_storage  (in php) + 60  [0x1044229fc]
+    +         ! : | + 2 zend_destroy_static_vars  (in php) + 52  [0x1044e4868]
+    +         ! : | +   1 zend_array_destroy  (in php) + 184  [0x1044b4010]
+    +         ! : | +   ! 1 zend_reference_destroy  (in php) + 0  [0x1044f5f6c]
+    +         ! : | +   1 zend_array_destroy  (in php) + 88  [0x1044b3fb0]
+    +         ! : | 1 zend_closure_free_storage  (in php) + 20  [0x1044229d4]
+    +         ! : | + 1 zend_object_std_dtor  (in php) + 48  [0x1044e1dec]
+    +         ! : | +   1 zend_object_dtor_dynamic_properties  (in php) + 48  [0x1044e1cd0]
+    +         ! : | 1 zend_closure_free_storage  (in php) + 72  [0x104422a08]
+    +         ! : | + 1 destroy_op_array  (in php) + 40  [0x1044e36a0]
+    +         ! : | +   1 _efree  (in php) + 112  [0x104402b88]
+    +         ! : | 1 zend_objects_store_del  (in php) + 260  [0x1044e1bf4]
+    +         ! : 1 zend_objects_store_del  (in php) + 220  [0x1044e1bcc]
+    +         ! : | 1 gc_remove_from_buffer  (in php) + 72  [0x1044a98f4]
+    +         ! : 1 zend_objects_store_del  (in php) + 120  [0x1044e1b68]
+    +         ! 23 ???  (in <unknown binary>)  [0x11752e854]
+    +         ! : 20 php_do_pcre_match  (in php) + 284  [0x104063240]
+    +         ! : | 15 php_pcre_match_impl  (in php) + 728  [0x1040621fc]
+    +         ! : | + 8 pcre2_jit_match_8  (in libpcre2-8.0.dylib) + 212  [0x10578dd30]
+    +         ! : | + ! 2 ???  (in <unknown binary>)  [0x105adfbac]
+    +         ! : | + ! 1 ???  (in <unknown binary>)  [0x105adfbf8]
+    +         ! : | + ! 1 ???  (in <unknown binary>)  [0x105adfc80]
+    +         ! : | + ! 1 ???  (in <unknown binary>)  [0x105adfcf0]
+    +         ! : | + ! 1 ???  (in <unknown binary>)  [0x105adfdb8]
+    +         ! : | + ! 1 ???  (in <unknown binary>)  [0x105adfee0]
+    +         ! : | + ! 1 ???  (in <unknown binary>)  [0x105adfef4]
+    +         ! : | + 6 pcre2_jit_match_8  (in libpcre2-8.0.dylib) + 96,0,...  [0x10578dcbc,0x10578dc5c,...]
+    +         ! : | + 1 ???  (in <unknown binary>)  [0x105adfb80]
+    +         ! : | 3 php_pcre_match_impl  (in php) + 1928  [0x1040626ac]
+    +         ! : | + 2 populate_subpat_array  (in php) + 560  [0x104062e98]
+    +         ! : | + ! 2 _emalloc  (in php) + 20,28  [0x104402a38,0x104402a40]
+    +         ! : | + 1 populate_subpat_array  (in php) + 592  [0x104062eb8]
+    +         ! : | +   1 _platform_memmove  (in libsystem_platform.dylib) + 452  [0x1862a5524]
+    +         ! : | 1 php_pcre_match_impl  (in php) + 560  [0x104062154]
+    +         ! : | + 1 pcre2_get_ovector_pointer_8  (in libpcre2-8.0.dylib) + 0  [0x1057c0a68]
+    +         ! : | 1 populate_subpat_array  (in php) + 1180  [0x104063104]
+    +         ! : 2 php_do_pcre_match  (in php) + 192  [0x1040631e4]
+    +         ! : | 1 pcre_get_compiled_regex_cache_ex  (in php) + 120  [0x1040614d0]
+    +         ! : | + 1 zend_hash_find  (in php) + 28  [0x1044b5fdc]
+    +         ! : | 1 pcre_get_compiled_regex_cache_ex  (in php) + 456  [0x104061620]
+    +         ! : 1 php_do_pcre_match  (in php) + 260  [0x104063228]
+    +         ! 12 ???  (in <unknown binary>)  [0x11753896c]
+    +         ! : 12 php_do_pcre_match  (in php) + 284  [0x104063240]
+    +         ! :   6 php_pcre_match_impl  (in php) + 1928  [0x1040626ac]
+    +         ! :   | 3 populate_subpat_array  (in php) + 592  [0x104062eb8]
+    +         ! :   | + 3 _platform_memmove  (in libsystem_platform.dylib) + 428,452  [0x1862a550c,0x1862a5524]
+    +         ! :   | 1 populate_subpat_array  (in php) + 560  [0x104062e98]
+    +         ! :   | + 1 _emalloc  (in php) + 28  [0x104402a40]
+    +         ! :   | 1 populate_subpat_array  (in php) + 716  [0x104062f34]
+    +         ! :   | + 1 zend_hash_next_index_insert_new  (in php) + 332  [0x1044b26b0]
+    +         ! :   | 1 populate_subpat_array  (in php) + 700  [0x104062f24]
+    +         ! :   4 php_pcre_match_impl  (in php) + 728  [0x1040621fc]
+    +         ! :   | 3 pcre2_jit_match_8  (in libpcre2-8.0.dylib) + 212  [0x10578dd30]
+    +         ! :   | + 2 ???  (in <unknown binary>)  [0x105adf968]
+    +         ! :   | + 1 ???  (in <unknown binary>)  [0x105adfa00]
+    +         ! :   | 1 pcre2_jit_match_8  (in libpcre2-8.0.dylib) + 0  [0x10578dc5c]
+    +         ! :   1 php_pcre_match_impl  (in php) + 80  [0x104061f74]
+    +         ! :   | 1 _zend_new_array_0  (in php) + 12  [0x1044ae848]
+    +         ! :   |   1 _emalloc_56  (in php) + 44  [0x104400dd0]
+    +         ! :   1 php_pcre_match_impl  (in php) + 1892  [0x104062688]
+    +         ! :     1 DYLD-STUB$$pcre2_get_mark_8  (in php) + 4  [0x10450a3a4]
+    +         ! 12 ???  (in <unknown binary>)  [0x11754181c]
+    +         ! : 12 zim_Generator_valid  (in php) + 112  [0x1044ad1e0]
+    +         ! :   10 zend_generator_resume  (in php) + 332  [0x1044acb5c]
+    +         ! :   | 8 execute_ex  (in php) + 116  [0x104448550]
+    +         ! :   | + 2 ZEND_FETCH_OBJ_R_SPEC_UNUSED_CONST_HANDLER  (in php) + 56,84  [0x104474ad8,0x104474af4]
+    +         ! :   | + 2 ZEND_INIT_NS_FCALL_BY_NAME_SPEC_CONST_HANDLER  (in php) + 36,68  [0x10446d5fc,0x10446d61c]
+    +         ! :   | + 1 ZEND_CONCAT_SPEC_TMPVAR_TMPVAR_HANDLER  (in php) + 300  [0x104449fc4]
+    +         ! :   | + ! 1 _platform_memmove  (in libsystem_platform.dylib) + 180  [0x1862a5414]
+    +         ! :   | + 1 ZEND_CONCAT_SPEC_TMPVAR_TMPVAR_HANDLER  (in php) + 0  [0x104449e98]
+    +         ! :   | + 1 ZEND_DO_FCALL_BY_NAME_SPEC_RETVAL_USED_HANDLER  (in php) + 344  [0x104487f84]
+    +         ! :   | + 1 ZEND_SEND_FUNC_ARG_SPEC_VAR_UNUSED_HANDLER  (in php) + 20  [0x104494ac4]
+    +         ! :   | 1 ZEND_FETCH_OBJ_R_SPEC_UNUSED_CONST_HANDLER  (in php) + 184  [0x104474b58]
+    +         ! :   | 1 execute_ex  (in php) + 104  [0x104448544]
+    +         ! :   2 zend_generator_resume  (in php) + 44,112  [0x1044aca3c,0x1044aca80]
+    +         ! 10 ???  (in <unknown binary>)  [0x11753c5a8]
+    +         ! : 4 _erealloc  (in php) + 708,712  [0x104402eb0,0x104402eb4]
+    +         ! : 3 concat_function  (in php) + 60,108,...  [0x1044e9854,0x1044e9884,...]
+    +         ! : 2 zend_jit_assign_op_to_typed_prop  (in opcache.so) + 52  [0x107ee0bd4]
+    +         ! : 1 concat_function  (in php) + 648  [0x1044e9aa0]
+    +         ! :   1 _platform_memmove  (in libsystem_platform.dylib) + 12  [0x1862a536c]
+    +         ! 9 ???  (in <unknown binary>)  [0x1175396e4]
+    +         ! : 9 ZEND_UNSET_DIM_SPEC_VAR_CV_HANDLER  (in php) + 188  [0x104471610]
+    +         ! :   9 zend_hash_del  (in php) + 452  [0x1044b3120]
+    +         ! :     7 zend_objects_store_del  (in php) + 188  [0x1044e1bac]
+    +         ! :     | 5 zend_object_std_dtor  (in php) + 92  [0x1044e1e18]
+    +         ! :     | + 3 zend_objects_store_del  (in php) + 188  [0x1044e1bac]
+    +         ! :     | + ! 1 zend_closure_free_storage  (in php) + 72  [0x104422a08]
+    +         ! :     | + ! : 1 destroy_op_array  (in php) + 80  [0x1044e36c8]
+    +         ! :     | + ! 1 zend_closure_free_storage  (in php) + 128  [0x104422a40]
+    +         ! :     | + ! 1 zend_destroy_static_vars  (in php) + 80  [0x1044e4884]
+    +         ! :     | + 1 zend_object_dtor_property  (in php) + 12  [0x1044e1ce0]
+    +         ! :     | + 1 zend_objects_store_del  (in php) + 76  [0x1044e1b3c]
+    +         ! :     | 1 zend_object_dtor_property  (in php) + 108  [0x1044e1d40]
+    +         ! :     | 1 zend_objects_store_del  (in php) + 256  [0x1044e1bf0]
+    +         ! :     2 zend_objects_store_del  (in php) + 228  [0x1044e1bd4]
+    +         ! :       2 _efree  (in php) + 28,124  [0x104402b34,0x104402b94]
+    +         ! 9 ???  (in <unknown binary>)  [0x1175400c4]
+    +         ! : 8 ZEND_DECLARE_LAMBDA_FUNCTION_SPEC_CONST_HANDLER  (in php) + 96  [0x10448b030]
+    +         ! : | 4 zend_create_closure_ex  (in php) + 172,212,...  [0x104423148,0x104423170,...]
+    +         ! : | 2 zend_create_closure_ex  (in php) + 460  [0x104423268]
+    +         ! : | + 1 zend_array_dup  (in php) + 960  [0x1044afeb8]
+    +         ! : | + ! 1 _platform_memmove  (in libsystem_platform.dylib) + 36  [0x1862a5384]
+    +         ! : | + 1 zend_array_dup  (in php) + 556  [0x1044afd24]
+    +         ! : | 2 zend_create_closure_ex  (in php) + 584  [0x1044232e4]
+    +         ! : |   2 _platform_memset  (in libsystem_platform.dylib) + 140,160  [0x1862a511c,0x1862a5130]
+    +         ! : 1 ZEND_DECLARE_LAMBDA_FUNCTION_SPEC_CONST_HANDLER  (in php) + 44  [0x10448affc]
+    +         ! 9 zend_leave_helper_SPEC  (in php) + 160,84,...  [0x1044a1b68,0x1044a1b1c,...]
+    +         ! 8 ???  (in <unknown binary>)  [0x11752df4c]
+    +         ! : 6 zflf_strpos_3  (in php) + 244  [0x10434a22c]
+    +         ! : | 3 _zend_strpos  (in php) + 20,32,...  [0x104349e74,0x104349e80,...]
+    +         ! : | 2 _zend_strpos  (in php) + 276  [0x104349f74]
+    +         ! : | + 2 _platform_memcmp  (in libsystem_platform.dylib) + 0,272  [0x1862a2f10,0x1862a3020]
+    +         ! : | 1 _zend_strpos  (in php) + 240  [0x104349f50]
+    +         ! : |   1 DYLD-STUB$$memchr  (in php) + 4  [0x10450a0b0]
+    +         ! : 2 zflf_strpos_3  (in php) + 0  [0x10434a138]
+    +         ! 7 ???  (in <unknown binary>)  [0x11752c6f0]
+    +         ! : 5 zflf_trim_2  (in php) + 360  [0x104345798]
+    +         ! : | 5 php_charmask  (in php) + 72,0,...  [0x10434ccb0,0x10434cc68,...]
+    +         ! : 1 zflf_trim_2  (in php) + 508  [0x10434582c]
+    +         ! : | 1 _emalloc  (in php) + 0  [0x104402a24]
+    +         ! : 1 zflf_trim_2  (in php) + 488  [0x104345818]
+    +         ! 7 ???  (in <unknown binary>)  [0x11754075c]
+    +         ! : 6 zif_hrtime  (in php) + 36  [0x10432131c]
+    +         ! : | 6 mach_absolute_time  (in libsystem_kernel.dylib) + 108  [0x18625810c]
+    +         ! : 1 zif_hrtime  (in php) + 0  [0x1043212f8]
+    +         ! 7 ???  (in <unknown binary>)  [0x11754093c]
+    +         ! : 6 zend_jit_assign_obj_helper  (in opcache.so) + 84  [0x107ee1fbc]
+    +         ! : | 4 zend_std_write_property  (in php) + 648,924,...  [0x1044de140,0x1044de254,...]
+    +         ! : | 2 zend_std_write_property  (in php) + 1848  [0x1044de5f0]
+    +         ! : |   2 zend_asymmetric_property_has_set_access  (in php) + 36  [0x1044dcfac]
+    +         ! : |     2 zend_get_executed_scope  (in php) + 0,8  [0x104441a20,0x104441a28]
+    +         ! : 1 zend_std_write_property  (in php) + 1556  [0x1044de4cc]
+    +         ! 7 ???  (in <unknown binary>)  [0x117544ef0]
+    +         ! : 6 ZEND_DECLARE_LAMBDA_FUNCTION_SPEC_CONST_HANDLER  (in php) + 96  [0x10448b030]
+    +         ! : | 6 zend_create_closure_ex  (in php) + 212,448,...  [0x104423170,0x10442325c,...]
+    +         ! : 1 ZEND_DECLARE_LAMBDA_FUNCTION_SPEC_CONST_HANDLER  (in php) + 16  [0x10448afe0]
+    +         ! 6 ???  (in <unknown binary>)  [0x1175401dc]
+    +         ! : 4 ZEND_NEW_SPEC_CONST_UNUSED_HANDLER  (in php) + 64  [0x10446d018]
+    +         ! : | 2 object_init_ex  (in php) + 192,228  [0x1044088f4,0x104408918]
+    +         ! : | 1 object_init_ex  (in php) + 96  [0x104408894]
+    +         ! : | + 1 zend_objects_new  (in php) + 0  [0x1044e2170]
+    +         ! : | 1 zend_objects_new  (in php) + 100  [0x1044e21d4]
+    +         ! : 2 zend_std_get_constructor  (in php) + 40  [0x1044e0acc]
+    +         ! 6 ???  (in <unknown binary>)  [0x11754cd40]
+    +         ! : 6 ZEND_DECLARE_LAMBDA_FUNCTION_SPEC_CONST_HANDLER  (in php) + 96  [0x10448b030]
+    +         ! :   3 zend_create_closure_ex  (in php) + 460  [0x104423268]
+    +         ! :   | 2 zend_array_dup  (in php) + 960  [0x1044afeb8]
+    +         ! :   | + 2 _platform_memmove  (in libsystem_platform.dylib) + 12,36  [0x1862a536c,0x1862a5384]
+    +         ! :   | 1 zend_array_dup  (in php) + 952  [0x1044afeb0]
+    +         ! :   2 zend_create_closure_ex  (in php) + 584  [0x1044232e4]
+    +         ! :   | 2 _platform_memset  (in libsystem_platform.dylib) + 180  [0x1862a5144]
+    +         ! :   1 zend_create_closure_ex  (in php) + 64  [0x1044230dc]
+    +         ! :     1 object_init_ex  (in php) + 64  [0x104408874]
+    +         ! :       1 zend_closure_new  (in php) + 20  [0x104422970]
+    +         ! :         1 _emalloc_384  (in php) + 44  [0x10440137c]
+    +         ! 6 ZEND_UNSET_CV_SPEC_CV_UNUSED_HANDLER  (in php) + 120  [0x10448d210]
+    +         ! : 5 zend_objects_store_del  (in php) + 188  [0x1044e1bac]
+    +         ! : | 5 zend_object_std_dtor  (in php) + 92  [0x1044e1e18]
+    +         ! : |   2 zend_objects_store_del  (in php) + 188  [0x1044e1bac]
+    +         ! : |   + 1 zend_closure_free_storage  (in php) + 20  [0x1044229d4]
+    +         ! : |   + ! 1 zend_object_std_dtor  (in php) + 40  [0x1044e1de4]
+    +         ! : |   + 1 zend_closure_free_storage  (in php) + 4  [0x1044229c4]
+    +         ! : |   1 _efree  (in php) + 132  [0x104402b9c]
+    +         ! : |   1 zend_object_dtor_property  (in php) + 12  [0x1044e1ce0]
+    +         ! : |   1 zend_objects_store_del  (in php) + 228  [0x1044e1bd4]
+    +         ! : |     1 _efree  (in php) + 0  [0x104402b18]
+    +         ! : 1 zend_objects_store_del  (in php) + 76  [0x1044e1b3c]
+    +         ! 5 ???  (in <unknown binary>)  [0x11752c2e4]
+    +         ! : 5 php_do_pcre_match  (in php) + 284  [0x104063240]
+    +         ! :   2 php_pcre_match_impl  (in php) + 728  [0x1040621fc]
+    +         ! :   | 1 pcre2_jit_match_8  (in libpcre2-8.0.dylib) + 212  [0x10578dd30]
+    +         ! :   | + 1 ???  (in <unknown binary>)  [0x105adf968]
+    +         ! :   | 1 pcre2_jit_match_8  (in libpcre2-8.0.dylib) + 156  [0x10578dcf8]
+    +         ! :   2 php_pcre_match_impl  (in php) + 452,2020  [0x1040620e8,0x104062708]
+    +         ! :   1 php_pcre_match_impl  (in php) + 560  [0x104062154]
+    +         ! :     1 pcre2_get_ovector_pointer_8  (in libpcre2-8.0.dylib) + 0  [0x1057c0a68]
+    +         ! 5 ???  (in <unknown binary>)  [0x11752c560]
+    +         ! : 4 zif_strtolower  (in php) + 68  [0x104347910]
+    +         ! : | 3 zend_string_tolower_ex  (in php) + 0,496  [0x1044ec28c,0x1044ec47c]
+    +         ! : | 1 zend_string_tolower_ex  (in php) + 572  [0x1044ec4c8]
+    +         ! : |   1 DYLD-STUB$$memcpy  (in php) + 4  [0x10450a0c8]
+    +         ! : 1 zend_string_tolower_ex  (in php) + 660  [0x1044ec520]
+    +         ! 5 ???  (in <unknown binary>)  [0x11753cd64]
+    +         ! : 5 zend_array_destroy  (in php) + 452  [0x1044b411c]
+    +         ! :   2 rc_dtor_func  (in php) + 16  [0x1044f5dc0]
+    +         ! :   1 _efree_56  (in php) + 52  [0x104401e9c]
+    +         ! :   1 zend_array_destroy  (in php) + 296  [0x1044b4080]
+    +         ! :   | 1 _efree  (in php) + 0  [0x104402b18]
+    +         ! :   1 zend_array_destroy  (in php) + 240  [0x1044b4048]
+    +         ! 5 ???  (in <unknown binary>)  [0x117542eac]
+    +         ! : 4 zend_generator_resume  (in php) + 332  [0x1044acb5c]
+    +         ! : | 2 execute_ex  (in php) + 116  [0x104448550]
+    +         ! : | + 1 ZEND_GENERATOR_RETURN_SPEC_CONST_HANDLER  (in php) + 76  [0x104490090]
+    +         ! : | + ! 1 zend_generator_close  (in php) + 0  [0x1044ac1dc]
+    +         ! : | + 1 ZEND_GENERATOR_RETURN_SPEC_CONST_HANDLER  (in php) + 44  [0x104490070]
+    +         ! : | 2 execute_ex  (in php) + 120  [0x104448554]
+    +         ! : 1 zend_generator_resume  (in php) + 404  [0x1044acba4]
+    +         ! 5 ???  (in <unknown binary>)  [0x117544fd0]
+    +         ! : 5 ZEND_NEW_SPEC_CONST_UNUSED_HANDLER  (in php) + 64  [0x10446d018]
+    +         ! :   4 object_init_ex  (in php) + 96  [0x104408894]
+    +         ! :   | 3 zend_objects_new  (in php) + 48  [0x1044e21a0]
+    +         ! :   | + 3 _emalloc  (in php) + 20,136  [0x104402a38,0x104402aac]
+    +         ! :   | 1 zend_objects_new  (in php) + 40  [0x1044e2198]
+    +         ! :   1 object_init_ex  (in php) + 192  [0x1044088f4]
+    +         ! 5 ???  (in <unknown binary>)  [0x117548404]
+    +         ! : 4 zend_jit_assign_obj_helper  (in opcache.so) + 84  [0x107ee1fbc]
+    +         ! : | 1 zend_std_write_property  (in php) + 188  [0x1044ddf74]
+    +         ! : | + 1 zend_hash_find  (in php) + 184  [0x1044b6078]
+    +         ! : | 1 zend_std_write_property  (in php) + 992  [0x1044de298]
+    +         ! : | + 1 zend_verify_property_type  (in php) + 24  [0x104444620]
+    +         ! : | 1 zend_std_write_property  (in php) + 1848  [0x1044de5f0]
+    +         ! : | + 1 zend_asymmetric_property_has_set_access  (in php) + 36  [0x1044dcfac]
+    +         ! : | +   1 zend_get_executed_scope  (in php) + 8  [0x104441a28]
+    +         ! : | 1 zend_std_write_property  (in php) + 1520  [0x1044de4a8]
+    +         ! : 1 zend_jit_assign_obj_helper  (in opcache.so) + 40  [0x107ee1f90]
+    +         ! 5 ???  (in <unknown binary>)  [0x11754c734]
+    +         ! : 4 ZEND_DECLARE_LAMBDA_FUNCTION_SPEC_CONST_HANDLER  (in php) + 96  [0x10448b030]
+    +         ! : | 3 zend_create_closure_ex  (in php) + 124,156,...  [0x104423118,0x104423138,...]
+    +         ! : | 1 zend_array_dup  (in php) + 1860  [0x1044b023c]
+    +         ! : 1 zend_create_closure_ex  (in php) + 684  [0x104423348]
+    +         ! 5 ZEND_DO_FCALL_BY_NAME_SPEC_RETVAL_USED_HANDLER  (in php) + 0,56,...  [0x104487e2c,0x104487e64,...]
+    +         ! 5 ZEND_FETCH_OBJ_R_SPEC_UNUSED_CONST_HANDLER  (in php) + 28,56,...  [0x104474abc,0x104474ad8,...]
+    +         ! 5 ZEND_JMP_SPEC_HANDLER  (in php) + 0,32  [0x1044659f8,0x104465a18]
+    +         ! 4 ???  (in <unknown binary>)  [0x117525f54]
+    +         ! : 2 zend_jit_assign_to_typed_prop  (in opcache.so) + 80,132  [0x107ee1204,0x107ee1238]
+    +         ! : 2 zend_verify_property_type  (in php) + 48  [0x104444638]
+    +         ! 4 ???  (in <unknown binary>)  [0x11752e490]
+    +         ! : 4 zif_explode  (in php) + 200  [0x104346dc0]
+    +         ! :   1 php_explode  (in php) + 236  [0x104346644]
+    +         ! :   | 1 _platform_memmove  (in libsystem_platform.dylib) + 0  [0x1862a5360]
+    +         ! :   1 php_explode  (in php) + 716  [0x104346824]
+    +         ! :   | 1 _platform_memchr  (in libsystem_platform.dylib) + 120  [0x1862a2e78]
+    +         ! :   1 php_explode  (in php) + 876  [0x1043468c4]
+    +         ! :   | 1 _platform_memmove  (in libsystem_platform.dylib) + 444  [0x1862a551c]
+    +         ! :   1 php_explode  (in php) + 652  [0x1043467e4]
+    +         ! 4 ???  (in <unknown binary>)  [0x117530534]
+    +         ! : 2 zend_jit_inc_typed_prop  (in opcache.so) + 108,116  [0x107edf7f8,0x107edf800]
+    +         ! : 1 zend_jit_inc_typed_prop  (in opcache.so) + 152  [0x107edf824]
+    +         ! : | 1 zend_verify_property_type  (in php) + 0  [0x104444608]
+    +         ! : 1 zend_jit_inc_typed_prop  (in opcache.so) + 176  [0x107edf83c]
+    +         ! :   1 zval_ptr_dtor  (in php) + 0  [0x1044f5dc8]
+    +         ! 4 ???  (in <unknown binary>)  [0x117530574]
+    +         ! : 4 ZEND_DECLARE_LAMBDA_FUNCTION_SPEC_CONST_HANDLER  (in php) + 96  [0x10448b030]
+    +         ! :   2 zend_create_closure_ex  (in php) + 460  [0x104423268]
+    +         ! :   | 1 zend_array_dup  (in php) + 556  [0x1044afd24]
+    +         ! :   | + 1 _emalloc  (in php) + 104  [0x104402a8c]
+    +         ! :   | 1 zend_array_dup  (in php) + 952  [0x1044afeb0]
+    +         ! :   1 zend_create_closure_ex  (in php) + 64  [0x1044230dc]
+    +         ! :   | 1 object_init_ex  (in php) + 64  [0x104408874]
+    +         ! :   |   1 zend_closure_new  (in php) + 60  [0x104422998]
+    +         ! :   1 zend_create_closure_ex  (in php) + 192  [0x10442315c]
+    +         ! 4 ???  (in <unknown binary>)  [0x11753476c]
+    +         ! : 3 ZEND_UNSET_DIM_SPEC_VAR_TMPVAR_HANDLER  (in php) + 32,108,...  [0x104471264,0x1044712b0,...]
+    +         ! : 1 ZEND_UNSET_DIM_SPEC_VAR_TMPVAR_HANDLER  (in php) + 192  [0x104471304]
+    +         ! :   1 zend_hash_del  (in php) + 224  [0x1044b303c]
+    +         ! 4 ???  (in <unknown binary>)  [0x117538e88]
+    +         ! : 3 zend_reference_destroy  (in php) + 108  [0x1044f5fd8]
+    +         ! : | 2 zend_array_destroy  (in php) + 296  [0x1044b4080]
+    +         ! : | + 1 _efree  (in php) + 28  [0x104402b34]
+    +         ! : | + 1 rc_dtor_func  (in php) + 16  [0x1044f5dc0]
+    +         ! : | 1 zend_array_destroy  (in php) + 60  [0x1044b3f94]
+    +         ! : 1 zend_reference_destroy  (in php) + 36  [0x1044f5f90]
+    +         ! 4 ???  (in <unknown binary>)  [0x11754a230]
+    +         ! : 4 zend_jit_pre_dec_obj_helper  (in opcache.so) + 60  [0x107ee0110]
+    +         ! :   2 zend_std_get_property_ptr_ptr  (in php) + 68,192  [0x1044df100,0x1044df17c]
+    +         ! :   1 zend_std_get_property_ptr_ptr  (in php) + 212  [0x1044df190]
+    +         ! :   | 1 zend_hash_find  (in php) + 28  [0x1044b5fdc]
+    +         ! :   1 zend_std_get_property_ptr_ptr  (in php) + 248  [0x1044df1b4]
+    +         ! :     1 zend_get_executed_scope  (in php) + 28  [0x104441a3c]
+    +         ! 4 ???  (in <unknown binary>)  [0x1175565d8]
+    +         ! : 4 zif_hrtime  (in php) + 36  [0x10432131c]
+    +         ! :   4 mach_absolute_time  (in libsystem_kernel.dylib) + 108  [0x18625810c]
+    +         ! 4 ???  (in <unknown binary>)  [0x117535a94]
+    +         ! 4 ???  (in <unknown binary>)  [0x117549fe0]
+    +         ! 4 ZEND_ASSIGN_OBJ_SPEC_UNUSED_CONST_OP_DATA_CONST_HANDLER  (in php) + 364,60,...  [0x10445bcb4,0x10445bb84,...]
+    +         ! 4 ZEND_CONCAT_SPEC_TMPVAR_TMPVAR_HANDLER  (in php) + 468  [0x10444a06c]
+    +         ! : 2 concat_function  (in php) + 1020  [0x1044e9c14]
+    +         ! : | 1 zend_long_to_str  (in php) + 212  [0x1044e6670]
+    +         ! : | + 1 _emalloc  (in php) + 120  [0x104402a9c]
+    +         ! : | 1 zend_long_to_str  (in php) + 252  [0x1044e6698]
+    +         ! : |   1 _platform_memmove  (in libsystem_platform.dylib) + 12  [0x1862a536c]
+    +         ! : 1 concat_function  (in php) + 648  [0x1044e9aa0]
+    +         ! : | 1 _platform_memmove  (in libsystem_platform.dylib) + 0  [0x1862a5360]
+    +         ! : 1 concat_function  (in php) + 996  [0x1044e9bfc]
+    +         ! 4 ZEND_DO_FCALL_BY_NAME_SPEC_RETVAL_USED_HANDLER  (in php) + 380  [0x104487fa8]
+    +         ! : 2 zend_objects_store_del  (in php) + 188  [0x1044e1bac]
+    +         ! : | 1 zend_closure_free_storage  (in php) + 20  [0x1044229d4]
+    +         ! : | + 1 zend_object_std_dtor  (in php) + 40  [0x1044e1de4]
+    +         ! : | 1 zend_closure_free_storage  (in php) + 4  [0x1044229c4]
+    +         ! : 1 zend_array_destroy  (in php) + 80  [0x1044b3fa8]
+    +         ! : 1 zend_objects_store_del  (in php) + 0  [0x1044e1af0]
+    +         ! 4 ZEND_FETCH_OBJ_R_SPEC_CV_CONST_HANDLER  (in php) + 40,192  [0x1044751b8,0x104475250]
+    +         ! 4 ZEND_INIT_ARRAY_SPEC_TMP_UNUSED_HANDLER  (in php) + 76  [0x10446da04]
+    +         ! : 3 ZEND_ADD_ARRAY_ELEMENT_SPEC_TMP_UNUSED_HANDLER  (in php) + 44  [0x10446e930]
+    +         ! : | 3 zend_hash_next_index_insert  (in php) + 40,168,...  [0x1044b236c,0x1044b23ec,...]
+    +         ! : 1 zend_hash_next_index_insert  (in php) + 504  [0x1044b253c]
+    +         ! 3 ???  (in <unknown binary>)  [0x11752a6b0]
+    +         ! : 3 zend_jit_assign_obj_helper  (in opcache.so) + 84  [0x107ee1fbc]
+    +         ! :   3 zend_std_write_property  (in php) + 872,956,...  [0x1044de220,0x1044de274,...]
+    +         ! 3 ???  (in <unknown binary>)  [0x117532834]
+    +         ! : 3 zflf_preg_match_2  (in php) + 268  [0x104063428]
+    +         ! :   2 php_pcre_match_impl  (in php) + 728  [0x1040621fc]
+    +         ! :   | 2 pcre2_jit_match_8  (in libpcre2-8.0.dylib) + 212  [0x10578dd30]
+    +         ! :   |   1 ???  (in <unknown binary>)  [0x105adf5e4]
+    +         ! :   |   1 ???  (in <unknown binary>)  [0x105adf5f0]
+    +         ! :   1 php_pcre_match_impl  (in php) + 724  [0x1040621f8]
+    +         ! 3 ???  (in <unknown binary>)  [0x117535f18]
+    +         ! : 2 ZEND_UNSET_DIM_SPEC_VAR_CV_HANDLER  (in php) + 32,44  [0x104471574,0x104471580]
+    +         ! : 1 ZEND_UNSET_DIM_SPEC_VAR_CV_HANDLER  (in php) + 476  [0x104471730]
+    +         ! :   1 zend_hash_index_del  (in php) + 100  [0x1044b3b44]
+    +         ! 3 ???  (in <unknown binary>)  [0x117537068]
+    +         ! : 3 ZEND_NEW_SPEC_CONST_UNUSED_HANDLER  (in php) + 64  [0x10446d018]
+    +         ! :   2 object_init_ex  (in php) + 96  [0x104408894]
+    +         ! :   | 2 zend_objects_new  (in php) + 20,76  [0x1044e2184,0x1044e21bc]
+    +         ! :   1 object_init_ex  (in php) + 192  [0x1044088f4]
+    +         ! 3 ???  (in <unknown binary>)  [0x117537344]
+    +         ! : 3 zval_update_constant_ex  (in php) + 24  [0x104441bec]
+    +         ! :   2 zval_update_constant_with_ctx  (in php) + 280  [0x104441b74]
+    +         ! :   | 2 zend_ast_evaluate_ex  (in php) + 84  [0x104411da0]
+    +         ! :   |   1 zend_ast_evaluate_inner  (in php) + 3176  [0x104412a24]
+    +         ! :   |   + 1 _emalloc  (in php) + 104  [0x104402a8c]
+    +         ! :   |   1 zend_ast_evaluate_inner  (in php) + 1608  [0x104412404]
+    +         ! :   1 zval_update_constant_with_ctx  (in php) + 20  [0x104441a70]
+    +         ! 3 ???  (in <unknown binary>)  [0x1175387a8]
+    +         ! : 2 zend_jit_fast_concat_helper  (in opcache.so) + 12,180  [0x107edb43c,0x107edb4e4]
+    +         ! : 1 zend_jit_fast_concat_helper  (in opcache.so) + 100  [0x107edb494]
+    +         ! :   1 _emalloc  (in php) + 0  [0x104402a24]
+    +         ! 3 ???  (in <unknown binary>)  [0x11753c510]
+    +         ! : 1 _erealloc  (in php) + 712  [0x104402eb4]
+    +         ! : 1 zend_jit_fast_concat_tmp_helper  (in opcache.so) + 124  [0x107edb5a0]
+    +         ! : | 1 _erealloc  (in php) + 40  [0x104402c14]
+    +         ! : 1 zend_jit_fast_concat_tmp_helper  (in opcache.so) + 252  [0x107edb620]
+    +         ! :   1 _platform_memmove  (in libsystem_platform.dylib) + 452  [0x1862a5524]
+    +         ! 3 ???  (in <unknown binary>)  [0x11753c534]
+    +         ! : 1 _erealloc  (in php) + 712  [0x104402eb4]
+    +         ! : 1 zend_jit_fast_concat_tmp_helper  (in opcache.so) + 252  [0x107edb620]
+    +         ! : | 1 DYLD-STUB$$memcpy  (in opcache.so) + 4  [0x107eed308]
+    +         ! : 1 zend_jit_fast_concat_tmp_helper  (in opcache.so) + 36  [0x107edb548]
+    +         ! 3 ???  (in <unknown binary>)  [0x117544a1c]
+    +         ! : 2 concat_function  (in php) + 24,1076  [0x1044e9830,0x1044e9c4c]
+    +         ! : 1 zend_jit_assign_op_to_typed_prop  (in opcache.so) + 0  [0x107ee0ba0]
+    +         ! 3 ???  (in <unknown binary>)  [0x117545228]
+    +         ! : 2 zif_str_increment  (in php) + 48,164  [0x1043479d0,0x104347a44]
+    +         ! : 1 zif_str_increment  (in php) + 148  [0x104347a34]
+    +         ! :   1 _platform_memmove  (in libsystem_platform.dylib) + 460  [0x1862a552c]
+    +         ! 3 ???  (in <unknown binary>)  [0x1175483c0]
+    +         ! : 2 zend_jit_verify_arg_slow  (in opcache.so) + 48  [0x107ee8fec]
+    +         ! : 1 zend_jit_verify_arg_slow  (in opcache.so) + 76  [0x107ee9008]
+    +         ! :   1 zend_check_user_type_slow  (in php) + 80  [0x1044446ec]
+    +         ! 3 ???  (in <unknown binary>)  [0x11754c650]
+    +         ! : 2 ZEND_GENERATOR_CREATE_SPEC_HANDLER  (in php) + 48  [0x10448ac68]
+    +         ! : | 2 object_init_ex  (in php) + 64  [0x104408874]
+    +         ! : |   2 zend_generator_create  (in php) + 104  [0x1044adc4c]
+    +         ! : |     2 zend_object_std_init  (in php) + 72  [0x1044e1c8c]
+    +         ! : 1 ZEND_GENERATOR_CREATE_SPEC_HANDLER  (in php) + 20  [0x10448ac4c]
+    +         ! 3 ???  (in <unknown binary>)  [0x11752bf10]
+    +         ! 3 ???  (in <unknown binary>)  [0x11752c008]
+    +         ! 3 ???  (in <unknown binary>)  [0x117531608]
+    +         ! 3 ???  (in <unknown binary>)  [0x1175403e8]
+    +         ! 3 ???  (in <unknown binary>)  [0x11754267c]
+    +         ! 3 ???  (in <unknown binary>)  [0x1175428a8]
+    +         ! 3 ???  (in <unknown binary>)  [0x117547540]
+    +         ! 3 ZEND_ASSIGN_DIM_SPEC_VAR_TMPVAR_OP_DATA_CV_HANDLER  (in php) + 108  [0x1044541ec]
+    +         ! : 3 zend_fetch_dimension_address_inner_W  (in php) + 156  [0x10449eb08]
+    +         ! :   3 zend_hash_lookup  (in php) + 256  [0x1044b1788]
+    +         ! :     3 zend_hash_rehash  (in php) + 140,184,...  [0x1044aedfc,0x1044aee28,...]
+    +         ! 3 ZEND_ASSIGN_OBJ_SPEC_UNUSED_CONST_OP_DATA_CONST_HANDLER  (in php) + 432  [0x10445bcf8]
+    +         ! : 1 zend_generator_close  (in php) + 204  [0x1044ac2a8]
+    +         ! : 1 zend_objects_store_del  (in php) + 188  [0x1044e1bac]
+    +         ! : | 1 zend_generator_free_storage  (in php) + 24  [0x1044add0c]
+    +         ! : 1 zend_objects_store_del  (in php) + 228  [0x1044e1bd4]
+    +         ! :   1 _efree  (in php) + 132  [0x104402b9c]
+    +         ! 3 ZEND_ASSIGN_OBJ_SPEC_UNUSED_CONST_OP_DATA_VAR_HANDLER  (in php) + 124  [0x10445c238]
+    +         ! : 3 zend_assign_to_typed_prop  (in php) + 108,132,...  [0x10449ed34,0x10449ed4c,...]
+    +         ! 3 ZEND_ASSIGN_OBJ_SPEC_UNUSED_CONST_OP_DATA_VAR_HANDLER  (in php) + 0,64,...  [0x10445c1bc,0x10445c1fc,...]
+    +         ! 3 ZEND_CONCAT_SPEC_TMPVAR_CONST_HANDLER  (in php) + 144  [0x104449d14]
+    +         ! : 3 _erealloc  (in php) + 264,356,...  [0x104402cf4,0x104402d50,...]
+    +         ! 3 ZEND_CONCAT_SPEC_TMPVAR_CONST_HANDLER  (in php) + 0,144  [0x104449c84,0x104449d14]
+    +         ! 3 ZEND_DO_FCALL_SPEC_RETVAL_UNUSED_HANDLER  (in php) + 52,200,...  [0x10446abf0,0x10446ac84,...]
+    +         ! 3 ZEND_INIT_METHOD_CALL_SPEC_CV_CONST_HANDLER  (in php) + 344  [0x10447efd0]
+    +         ! : 1 zend_closure_get_method  (in php) + 28  [0x104422a9c]
+    +         ! : 1 zend_get_closure_invoke_method  (in php) + 20  [0x104422770]
+    +         ! : | 1 _emalloc_256  (in php) + 92  [0x1044012a4]
+    +         ! : 1 zend_get_closure_invoke_method  (in php) + 48  [0x10442278c]
+    +         ! 2 ???  (in <unknown binary>)  [0x11752a65c]
+    +         ! : 2 zend_jit_assign_obj_helper  (in opcache.so) + 84  [0x107ee1fbc]
+    +         ! :   1 zend_std_write_property  (in php) + 188  [0x1044ddf74]
+    +         ! :   | 1 zend_hash_find  (in php) + 168  [0x1044b6068]
+    +         ! :   1 zend_std_write_property  (in php) + 196  [0x1044ddf7c]
+    +         ! 2 ???  (in <unknown binary>)  [0x11752aee0]
+    +         ! : 1 ZEND_INSTANCEOF_SPEC_CV_CONST_HANDLER  (in php) + 100  [0x10448a908]
+    +         ! : | 1 instanceof_function_slow  (in php) + 4  [0x1044eb15c]
+    +         ! : 1 ZEND_INSTANCEOF_SPEC_CV_CONST_HANDLER  (in php) + 84  [0x10448a8f8]
+    +         ! 2 ???  (in <unknown binary>)  [0x11752b2d4]
+    +         ! : 2 zend_hash_lookup  (in php) + 116  [0x1044b16fc]
+    +         ! 2 ???  (in <unknown binary>)  [0x11752b994]
+    +         ! : 1 zim_SplDoublyLinkedList_push  (in php) + 44  [0x1042dd038]
+    +         ! : | 1 zend_parse_parameters  (in php) + 32  [0x10440762c]
+    +         ! : |   1 zend_parse_va_args  (in php) + 300  [0x104407430]
+    +         ! : 1 zim_SplDoublyLinkedList_push  (in php) + 68  [0x1042dd050]
+    +         ! :   1 spl_ptr_llist_push  (in php) + 4  [0x1042dd064]
+    +         ! 2 ???  (in <unknown binary>)  [0x11752bea4]
+    +         ! : 2 zend_jit_verify_return_slow  (in opcache.so) + 60  [0x107ee907c]
+    +         ! :   1 DYLD-STUB$$zend_check_user_type_slow  (in opcache.so) + 4  [0x107eed728]
+    +         ! :   1 zend_check_user_type_slow  (in php) + 108  [0x104444708]
+    +         ! :     1 instanceof_function_slow  (in php) + 36  [0x1044eb17c]
+    +         ! 2 ???  (in <unknown binary>)  [0x11752e230]
+    +         ! : 1 zend_jit_assign_to_typed_prop  (in opcache.so) + 328  [0x107ee12fc]
+    +         ! : | 1 _efree  (in php) + 60  [0x104402b54]
+    +         ! : 1 zend_jit_assign_to_typed_prop  (in opcache.so) + 168  [0x107ee125c]
+    +         ! 2 ???  (in <unknown binary>)  [0x11752ee90]
+    +         ! : 2 zif_count  (in php) + 0,188  [0x1042edf40,0x1042edffc]
+    +         ! 2 ???  (in <unknown binary>)  [0x11752efd4]
+    +         ! : 2 ZEND_FE_RESET_R_SPEC_CV_HANDLER  (in php) + 28,36  [0x104472ebc,0x104472ec4]
+    +         ! 2 ???  (in <unknown binary>)  [0x11752fa7c]
+    +         ! : 1 zend_jit_assign_to_typed_prop  (in opcache.so) + 152  [0x107ee124c]
+    +         ! : | 1 zend_verify_property_type  (in php) + 24  [0x104444620]
+    +         ! : 1 zend_jit_assign_to_typed_prop  (in opcache.so) + 188  [0x107ee1270]
+    +         ! 2 ???  (in <unknown binary>)  [0x11753059c]
+    +         ! : 2 ZEND_BIND_LEXICAL_SPEC_TMP_CV_HANDLER  (in php) + 92  [0x1044944e0]
+    +         ! :   2 _emalloc_32  (in php) + 44,52  [0x104400c44,0x104400c4c]
+    +         ! 2 ???  (in <unknown binary>)  [0x117532b18]
+    +         ! : 1 zflf_str_contains_2  (in php) + 268  [0x1043497e8]
+    +         ! : | 1 _platform_memchr  (in libsystem_platform.dylib) + 76  [0x1862a2e4c]
+    +         ! : 1 zflf_str_contains_2  (in php) + 444  [0x104349898]
+    +         ! 2 ???  (in <unknown binary>)  [0x117532ce8]
+    +         ! : 2 zend_jit_assign_to_typed_prop  (in opcache.so) + 152  [0x107ee124c]
+    +         ! :   1 zend_check_and_resolve_property_or_class_constant_class_type  (in php) + 264  [0x10449ce54]
+    +         ! :   1 zend_verify_property_type  (in php) + 100  [0x10444466c]
+    +         ! :     1 zend_check_and_resolve_property_or_class_constant_class_type  (in php) + 12  [0x10449cd58]
+    +         ! 2 ???  (in <unknown binary>)  [0x11753483c]
+    +         ! : 2 ZEND_UNSET_DIM_SPEC_VAR_CV_HANDLER  (in php) + 476  [0x104471730]
+    +         ! :   1 zend_hash_index_del  (in php) + 396  [0x1044b3c6c]
+    +         ! :   | 1 zend_array_destroy  (in php) + 328  [0x1044b40a0]
+    +         ! :   |   1 _efree  (in php) + 132  [0x104402b9c]
+    +         ! :   1 zend_hash_index_del  (in php) + 300  [0x1044b3c0c]
+    +         ! 2 ???  (in <unknown binary>)  [0x117534be8]
+    +         ! : 2 zend_is_identical  (in php) + 104,196  [0x1044eaee0,0x1044eaf3c]
+    +         ! 2 ???  (in <unknown binary>)  [0x1175355e4]
+    +         ! : 1 ZEND_INSTANCEOF_SPEC_CV_CONST_HANDLER  (in php) + 248  [0x10448a99c]
+    +         ! : | 1 zend_hash_find  (in php) + 104  [0x1044b6028]
+    +         ! : 1 ZEND_INSTANCEOF_SPEC_CV_CONST_HANDLER  (in php) + 148  [0x10448a938]
+    +         ! 2 ???  (in <unknown binary>)  [0x1175373c0]
+    +         ! : 2 zend_jit_assign_obj_helper  (in opcache.so) + 84  [0x107ee1fbc]
+    +         ! :   2 zend_std_write_property  (in php) + 68  [0x1044ddefc]
+    +         ! 2 ???  (in <unknown binary>)  [0x117537414]
+    +         ! : 1 zend_jit_assign_obj_helper  (in opcache.so) + 84  [0x107ee1fbc]
+    +         ! : | 1 zend_std_write_property  (in php) + 68  [0x1044ddefc]
+    +         ! : 1 zend_jit_assign_obj_helper  (in opcache.so) + 40  [0x107ee1f90]
+    +         ! 2 ???  (in <unknown binary>)  [0x117537954]
+    +         ! : 2 zend_jit_assign_to_typed_prop  (in opcache.so) + 172,176  [0x107ee1260,0x107ee1264]
+    +         ! 2 ???  (in <unknown binary>)  [0x1175387dc]
+    +         ! : 1 _erealloc  (in php) + 712  [0x104402eb4]
+    +         ! : 1 zend_jit_fast_concat_tmp_helper  (in opcache.so) + 124  [0x107edb5a0]
+    +         ! :   1 _erealloc  (in php) + 424  [0x104402d94]
+    +         ! :     1 _platform_memmove  (in libsystem_platform.dylib) + 420  [0x1862a5504]
+    +         ! 2 ???  (in <unknown binary>)  [0x11754198c]
+    +         ! : 2 zim_Generator_current  (in php) + 12,24  [0x1044ad23c,0x1044ad248]
+    +         ! 2 ???  (in <unknown binary>)  [0x11754200c]
+    +         ! : 2 zend_is_identical  (in php) + 104,196  [0x1044eaee0,0x1044eaf3c]
+    +         ! 2 ???  (in <unknown binary>)  [0x117543be4]
+    +         ! : 1 ZEND_UNSET_DIM_SPEC_VAR_TMPVAR_HANDLER  (in php) + 192  [0x104471304]
+    +         ! : | 1 zend_hash_del  (in php) + 228  [0x1044b3040]
+    +         ! : 1 ZEND_UNSET_DIM_SPEC_VAR_TMPVAR_HANDLER  (in php) + 36  [0x104471268]
+    +         ! 2 ???  (in <unknown binary>)  [0x1175469ec]
+    +         ! : 2 ZEND_UNSET_DIM_SPEC_VAR_CV_HANDLER  (in php) + 188  [0x104471610]
+    +         ! :   2 zend_hash_del  (in php) + 452  [0x1044b3120]
+    +         ! :     2 zval_ptr_dtor  (in php) + 0,64  [0x1044f5dc8,0x1044f5e08]
+    +         ! 2 ???  (in <unknown binary>)  [0x117548458]
+    +         ! : 2 zend_jit_assign_obj_helper  (in opcache.so) + 84  [0x107ee1fbc]
+    +         ! :   2 zend_std_write_property  (in php) + 992  [0x1044de298]
+    +         ! :     2 zend_check_and_resolve_property_or_class_constant_class_type  (in php) + 264  [0x10449ce54]
+    +         ! 2 ???  (in <unknown binary>)  [0x11754acb0]
+    +         ! : 1 _efree_56  (in php) + 28  [0x104401e84]
+    +         ! : 1 zend_array_destroy  (in php) + 24  [0x1044b3f70]
+    +         ! 2 ???  (in <unknown binary>)  [0x11754b3f8]
+    +         ! : 2 ZEND_NEW_SPEC_CONST_UNUSED_HANDLER  (in php) + 64  [0x10446d018]
+    +         ! :   2 object_init_ex  (in php) + 192  [0x1044088f4]
+    +         ! 2 ???  (in <unknown binary>)  [0x11754c75c]
+    +         ! : 1 ZEND_BIND_LEXICAL_SPEC_TMP_CV_HANDLER  (in php) + 176  [0x104494534]
+    +         ! : | 1 zend_closure_bind_var_ex  (in php) + 60  [0x104423880]
+    +         ! : |   1 zval_ptr_dtor  (in php) + 0  [0x1044f5dc8]
+    +         ! : 1 ZEND_BIND_LEXICAL_SPEC_TMP_CV_HANDLER  (in php) + 20  [0x104494498]
+    +         ! 2 ???  (in <unknown binary>)  [0x11754e91c]
+    +         ! : 2 zif_strtolower  (in php) + 68  [0x104347910]
+    +         ! :   2 zend_string_tolower_ex  (in php) + 56,452  [0x1044ec2c4,0x1044ec450]
+    +         ! 2 ???  (in <unknown binary>)  [0x11754ed80]
+    +         ! : 1 zend_is_identical  (in php) + 144  [0x1044eaf08]
+    +         ! : | 1 _platform_memcmp  (in libsystem_platform.dylib) + 0  [0x1862a2f10]
+    +         ! : 1 zend_is_identical  (in php) + 196  [0x1044eaf3c]
+    +         ! 2 ???  (in <unknown binary>)  [0x11752be18]
+    +         ! 2 ???  (in <unknown binary>)  [0x1175305d8]
+    +         ! 2 ???  (in <unknown binary>)  [0x117533f8c]
+    +         ! 2 ???  (in <unknown binary>)  [0x1175346a0]
+    +         ! 2 ???  (in <unknown binary>)  [0x11753c960]
+    +         ! 2 ???  (in <unknown binary>)  [0x11753f22c]
+    +         ! 2 ???  (in <unknown binary>)  [0x11753ff80]
+    +         ! 2 ???  (in <unknown binary>)  [0x117542408]
+    +         ! 2 ???  (in <unknown binary>)  [0x1175426b0]
+    +         ! 2 ???  (in <unknown binary>)  [0x1175451dc]
+    +         ! 2 ???  (in <unknown binary>)  [0x11754ac34]
+    +         ! 2 ???  (in <unknown binary>)  [0x11755743c]
+    +         ! 2 ZEND_ASSIGN_DIM_SPEC_CV_CONST_OP_DATA_TMP_HANDLER  (in php) + 92  [0x1044564d4]
+    +         ! : 1 zend_fetch_dimension_address_inner_W_CONST  (in php) + 132  [0x10449e4d8]
+    +         ! : 1 zend_hash_lookup  (in php) + 28  [0x1044b16a4]
+    +         ! 2 ZEND_ASSIGN_OBJ_SPEC_UNUSED_CONST_OP_DATA_CONST_HANDLER  (in php) + 128  [0x10445bbc8]
+    +         ! : 2 zend_assign_to_typed_prop  (in php) + 44,60  [0x10449ecf4,0x10449ed04]
+    +         ! 2 ZEND_ASSIGN_OBJ_SPEC_UNUSED_CONST_OP_DATA_CV_HANDLER  (in php) + 432  [0x10445c76c]
+    +         ! : 1 zend_std_write_property  (in php) + 1848  [0x1044de5f0]
+    +         ! : | 1 zend_asymmetric_property_has_set_access  (in php) + 36  [0x1044dcfac]
+    +         ! : |   1 zend_get_executed_scope  (in php) + 8  [0x104441a28]
+    +         ! : 1 zend_std_write_property  (in php) + 88  [0x1044ddf10]
+    +         ! 2 ZEND_ASSIGN_OBJ_SPEC_UNUSED_CONST_OP_DATA_CV_HANDLER  (in php) + 0,44  [0x10445c5bc,0x10445c5e8]
+    +         ! 2 ZEND_ASSIGN_OBJ_SPEC_UNUSED_CONST_OP_DATA_TMP_HANDLER  (in php) + 352  [0x10445bfe8]
+    +         ! : 2 zend_std_write_property  (in php) + 448,956  [0x1044de078,0x1044de274]
+    +         ! 2 ZEND_ASSIGN_OBJ_SPEC_UNUSED_CONST_OP_DATA_TMP_HANDLER  (in php) + 0,412  [0x10445be88,0x10445c024]
+    +         ! 2 ZEND_BOOL_NOT_SPEC_CV_HANDLER  (in php) + 24,32  [0x10444b378,0x10444b380]
+    +         ! 2 ZEND_CALLABLE_CONVERT_SPEC_UNUSED_UNUSED_HANDLER  (in php) + 40  [0x104497eb8]
+    +         ! : 2 zend_closure_from_frame  (in php) + 316  [0x10442357c]
+    +         ! :   1 zend_create_closure_ex  (in php) + 64  [0x1044230dc]
+    +         ! :   | 1 object_init_ex  (in php) + 64  [0x104408874]
+    +         ! :   |   1 zend_closure_new  (in php) + 72  [0x1044229a4]
+    +         ! :   1 zend_create_closure_ex  (in php) + 404  [0x104423230]
+    +         ! 2 ZEND_FETCH_DIM_IS_SPEC_CV_CONST_HANDLER  (in php) + 0,60  [0x1044790e4,0x104479120]
+    +         ! 2 ZEND_INIT_NS_FCALL_BY_NAME_SPEC_CONST_HANDLER  (in php) + 0,36  [0x10446d5d8,0x10446d5fc]
+    +         ! 2 ZEND_INIT_STATIC_METHOD_CALL_SPEC_CONST_CONST_HANDLER  (in php) + 36,248  [0x10447f530,0x10447f604]
+    +         ! 2 ZEND_JMPNZ_SPEC_CV_HANDLER  (in php) + 20,28  [0x1044661f8,0x104466200]
+    +         ! 2 ZEND_JMPZ_SPEC_TMPVAR_HANDLER  (in php) + 0,32  [0x104465b94,0x104465bb4]
+    +         ! 2 ZEND_RETURN_SPEC_CONST_HANDLER  (in php) + 0  [0x10446b7d4]
+    +         ! 2 ZEND_SEND_VAR_EX_SIMPLE_SPEC_CV_UNUSED_HANDLER  (in php) + 20,84  [0x10449bc0c,0x10449bc4c]
+    +         ! 2 zend_hash_find  (in php) + 104  [0x1044b6028]
+    +         ! 2 zend_hash_index_lookup  (in php) + 420  [0x1044b2ac8]
+    +         ! 2 zend_jit_init_func_run_time_cache_helper  (in opcache.so) + 160  [0x107ee39bc]
+    +         ! 2 zim_SplDoublyLinkedList_push  (in php) + 72  [0x1042dd054]
+    +         ! 1 ???  (in <unknown binary>)  [0x11752599c]
+    +         ! : 1 zend_hash_lookup  (in php) + 116  [0x1044b16fc]
+    +         ! 1 ???  (in <unknown binary>)  [0x1175260e8]
+    +         ! : 1 zend_jit_assign_to_typed_prop  (in opcache.so) + 152  [0x107ee124c]
+    +         ! :   1 DYLD-STUB$$zend_verify_property_type  (in opcache.so) + 4  [0x107eedd28]
+    +         ! 1 ???  (in <unknown binary>)  [0x117526358]
+    +         ! : 1 zend_jit_verify_arg_slow  (in opcache.so) + 76  [0x107ee9008]
+    +         ! :   1 zend_check_user_type_slow  (in php) + 108  [0x104444708]
+    +         ! :     1 instanceof_function_slow  (in php) + 76  [0x1044eb1a4]
+    +         ! 1 ???  (in <unknown binary>)  [0x117526494]
+    +         ! : 1 zim_SplDoublyLinkedList_push  (in php) + 44  [0x1042dd038]
+    +         ! :   1 zend_parse_parameters  (in php) + 32  [0x10440762c]
+    +         ! :     1 zend_parse_va_args  (in php) + 468  [0x1044074d8]
+    +         ! :       1 zend_parse_arg  (in php) + 240  [0x10440684c]
+    +         ! 1 ???  (in <unknown binary>)  [0x117527364]
+    +         ! : 1 zim_SplDoublyLinkedList_isEmpty  (in php) + 40  [0x1042dd490]
+    +         ! :   1 spl_dllist_object_count_elements  (in php) + 24  [0x1042dd4dc]
+    +         ! 1 ???  (in <unknown binary>)  [0x1175280fc]
+    +         ! : 1 zend_hash_find  (in php) + 0  [0x1044b5fc0]
+    +         ! 1 ???  (in <unknown binary>)  [0x11752829c]
+    +         ! : 1 ZEND_INSTANCEOF_SPEC_CV_CONST_HANDLER  (in php) + 100  [0x10448a908]
+    +         ! :   1 instanceof_function_slow  (in php) + 4  [0x1044eb15c]
+    +         ! 1 ???  (in <unknown binary>)  [0x1175283f4]
+    +         ! : 1 ???  (in <unknown binary>)  [0x117524d00]
+    +         ! 1 ???  (in <unknown binary>)  [0x117528a40]
+    +         ! : 1 zflf_min_2  (in php) + 0  [0x1042ef8c8]
+    +         ! 1 ???  (in <unknown binary>)  [0x11752a618]
+    +         ! : 1 zend_check_user_type_slow  (in php) + 160  [0x10444473c]
+    +         ! 1 ???  (in <unknown binary>)  [0x11752a884]
+    +         ! : 1 zend_jit_symtable_lookup_w  (in opcache.so) + 116  [0x107edde58]
+    +         ! :   1 zend_hash_lookup  (in php) + 44  [0x1044b16b4]
+    +         ! :     1 zend_string_hash_func  (in php) + 0  [0x1044f0b48]
+    +         ! 1 ???  (in <unknown binary>)  [0x11752a9c0]
+    +         ! : 1 zend_jit_symtable_lookup_w  (in opcache.so) + 116  [0x107edde58]
+    +         ! :   1 zend_hash_lookup  (in php) + 72  [0x1044b16d0]
+    +         ! 1 ???  (in <unknown binary>)  [0x11752ac44]
+    +         ! : 1 gc_possible_root  (in php) + 96  [0x1044a96ac]
+    +         ! 1 ???  (in <unknown binary>)  [0x11752b02c]
+    +         ! : 1 ZEND_TYPE_CHECK_SPEC_TMPVAR_HANDLER  (in php) + 64  [0x104485040]
+    +         ! :   1 zend_rsrc_list_get_rsrc_type  (in php) + 24  [0x1044dbc60]
+    +         ! :     1 zend_hash_index_find  (in php) + 68  [0x1044b6368]
+    +         ! 1 ???  (in <unknown binary>)  [0x11752b2a0]
+    +         ! : 1 zend_hash_index_lookup  (in php) + 360  [0x1044b2a8c]
+    +         ! 1 ???  (in <unknown binary>)  [0x11752b2c0]
+    +         ! : 1 ???  (in <unknown binary>)  [0x117524f10]
+    +         ! :   1 _zend_new_array_0  (in php) + 64  [0x1044ae87c]
+    +         ! 1 ???  (in <unknown binary>)  [0x11752b2ec]
+    +         ! : 1 ???  (in <unknown binary>)  [0x117524ce4]
+    +         ! 1 ???  (in <unknown binary>)  [0x11752b858]
+    +         ! : 1 zend_jit_verify_arg_slow  (in opcache.so) + 48  [0x107ee8fec]
+    +         ! 1 ???  (in <unknown binary>)  [0x11752bac4]
+    +         ! : 1 zend_jit_assign_to_typed_prop  (in opcache.so) + 56  [0x107ee11ec]
+    +         ! 1 ???  (in <unknown binary>)  [0x11752c0e8]
+    +         ! : 1 ZEND_INIT_STATIC_METHOD_CALL_SPEC_UNUSED_CONST_HANDLER  (in php) + 232  [0x104480620]
+    +         ! 1 ???  (in <unknown binary>)  [0x11752c614]
+    +         ! : 1 ZEND_INIT_ARRAY_SPEC_VAR_UNUSED_HANDLER  (in php) + 44  [0x10446db64]
+    +         ! :   1 _zend_new_array  (in php) + 64  [0x1044ae8c4]
+    +         ! 1 ???  (in <unknown binary>)  [0x11752c800]
+    +         ! : 1 zend_reference_destroy  (in php) + 108  [0x1044f5fd8]
+    +         ! :   1 zend_array_destroy  (in php) + 240  [0x1044b4048]
+    +         ! 1 ???  (in <unknown binary>)  [0x11752c948]
+    +         ! : 1 zend_array_destroy  (in php) + 20  [0x1044b3f6c]
+    +         ! 1 ???  (in <unknown binary>)  [0x11752ca08]
+    +         ! : 1 zend_hash_next_index_insert  (in php) + 40  [0x1044b236c]
+    +         ! 1 ???  (in <unknown binary>)  [0x11752e5f0]
+    +         ! : 1 _emalloc_32  (in php) + 92  [0x104400c74]
+    +         ! 1 ???  (in <unknown binary>)  [0x11752e670]
+    +         ! : 1 zif_array_shift  (in php) + 20  [0x1042f5408]
+    +         ! 1 ???  (in <unknown binary>)  [0x11752ed78]
+    +         ! : 1 ZEND_IN_ARRAY_SPEC_TMP_CONST_HANDLER  (in php) + 68  [0x104495134]
+    +         ! :   1 zend_hash_find  (in php) + 112  [0x1044b6030]
+    +         ! 1 ???  (in <unknown binary>)  [0x11752faf4]
+    +         ! : 1 zend_jit_assign_to_typed_prop  (in opcache.so) + 168  [0x107ee125c]
+    +         ! 1 ???  (in <unknown binary>)  [0x11752fbdc]
+    +         ! : 1 ZEND_UNSET_DIM_SPEC_VAR_CV_HANDLER  (in php) + 188  [0x104471610]
+    +         ! :   1 zend_hash_del  (in php) + 468  [0x1044b3130]
+    +         ! 1 ???  (in <unknown binary>)  [0x117531bb0]
+    +         ! : 1 ???  (in <unknown binary>)  [0x117524a3c]
+    +         ! 1 ???  (in <unknown binary>)  [0x117531d84]
+    +         ! : 1 zend_jit_symtable_lookup_w  (in opcache.so) + 0  [0x107eddde4]
+    +         ! 1 ???  (in <unknown binary>)  [0x1175325bc]
+    +         ! : 1 zend_is_identical  (in php) + 132  [0x1044eaefc]
+    +         ! 1 ???  (in <unknown binary>)  [0x1175329c0]
+    +         ! : 1 zend_is_identical  (in php) + 8  [0x1044eae80]
+    +         ! 1 ???  (in <unknown binary>)  [0x117532a50]
+    +         ! : 1 zend_is_identical  (in php) + 188  [0x1044eaf34]
+    +         ! 1 ???  (in <unknown binary>)  [0x117532c00]
+    +         ! : 1 zflf_str_starts_with_2  (in php) + 244  [0x104349b48]
+    +         ! :   1 _platform_memcmp  (in libsystem_platform.dylib) + 272  [0x1862a3020]
+    +         ! 1 ???  (in <unknown binary>)  [0x117532c8c]
+    +         ! : 1 ZEND_NEW_SPEC_CONST_UNUSED_HANDLER  (in php) + 64  [0x10446d018]
+    +         ! :   1 object_init_ex  (in php) + 96  [0x104408894]
+    +         ! :     1 zend_objects_new  (in php) + 48  [0x1044e21a0]
+    +         ! :       1 _emalloc  (in php) + 128  [0x104402aa4]
+    +         ! 1 ???  (in <unknown binary>)  [0x117532d70]
+    +         ! : 1 zend_jit_assign_to_typed_prop  (in opcache.so) + 56  [0x107ee11ec]
+    +         ! 1 ???  (in <unknown binary>)  [0x117532ee8]
+    +         ! : 1 zend_hash_find_known_hash  (in php) + 36  [0x1044b60b4]
+    +         ! 1 ???  (in <unknown binary>)  [0x117533188]
+    +         ! : 1 zend_reference_destroy  (in php) + 108  [0x1044f5fd8]
+    +         ! :   1 _efree_56  (in php) + 16  [0x104401e78]
+    +         ! 1 ???  (in <unknown binary>)  [0x117533c8c]
+    +         ! : 1 zend_jit_assign_to_typed_prop  (in opcache.so) + 152  [0x107ee124c]
+    +         ! :   1 zend_verify_property_type  (in php) + 56  [0x104444640]
+    +         ! 1 ???  (in <unknown binary>)  [0x1175343e8]
+    +         ! : 1 ZEND_INSTANCEOF_SPEC_CV_CONST_HANDLER  (in php) + 72  [0x10448a8ec]
+    +         ! 1 ???  (in <unknown binary>)  [0x1175345e0]
+    +         ! : 1 ZEND_INSTANCEOF_SPEC_CV_CONST_HANDLER  (in php) + 32  [0x10448a8c4]
+    +         ! 1 ???  (in <unknown binary>)  [0x11753471c]
+    +         ! : 1 ZEND_FETCH_OBJ_UNSET_SPEC_UNUSED_CONST_HANDLER  (in php) + 116  [0x10447b9c4]
+    +         ! 1 ???  (in <unknown binary>)  [0x1175352c0]
+    +         ! : 1 zend_jit_assign_to_typed_prop  (in opcache.so) + 252  [0x107ee12b0]
+    +         ! 1 ???  (in <unknown binary>)  [0x117535424]
+    +         ! : 1 zend_hash_find  (in php) + 72  [0x1044b6008]
+    +         ! 1 ???  (in <unknown binary>)  [0x1175355a8]
+    +         ! : 1 ZEND_INSTANCEOF_SPEC_CV_CONST_HANDLER  (in php) + 84  [0x10448a8f8]
+    +         ! 1 ???  (in <unknown binary>)  [0x117535d44]
+    +         ! : 1 ZEND_ASSIGN_DIM_SPEC_VAR_CV_OP_DATA_TMP_HANDLER  (in php) + 152  [0x104455540]
+    +         ! 1 ???  (in <unknown binary>)  [0x117535e48]
+    +         ! : 1 zend_jit_symtable_lookup_w  (in opcache.so) + 116  [0x107edde58]
+    +         ! :   1 DYLD-STUB$$zend_hash_lookup  (in opcache.so) + 0  [0x107eed9d0]
+    +         ! 1 ???  (in <unknown binary>)  [0x117535f68]
+    +         ! : 1 ZEND_UNSET_DIM_SPEC_VAR_CV_HANDLER  (in php) + 188  [0x104471610]
+    +         ! :   1 zend_hash_del  (in php) + 360  [0x1044b30c4]
+    +         ! 1 ???  (in <unknown binary>)  [0x117537564]
+    +         ! : 1 zend_jit_assign_obj_helper  (in opcache.so) + 84  [0x107ee1fbc]
+    +         ! :   1 zend_std_write_property  (in php) + 1840  [0x1044de5e8]
+    +         ! 1 ???  (in <unknown binary>)  [0x1175375b8]
+    +         ! : 1 zend_jit_assign_obj_helper  (in opcache.so) + 84  [0x107ee1fbc]
+    +         ! :   1 zend_std_write_property  (in php) + 1804  [0x1044de5c4]
+    +         ! 1 ???  (in <unknown binary>)  [0x117537a14]
+    +         ! : 1 zend_jit_assign_to_typed_prop  (in opcache.so) + 168  [0x107ee125c]
+    +         ! 1 ???  (in <unknown binary>)  [0x117538d78]
+    +         ! : 1 zflf_trim_2  (in php) + 152  [0x1043456c8]
+    +         ! 1 ???  (in <unknown binary>)  [0x117539058]
+    +         ! : 1 zend_hash_next_index_insert  (in php) + 480  [0x1044b2524]
+    +         ! 1 ???  (in <unknown binary>)  [0x11753c4e4]
+    +         ! : 1 zend_jit_fast_concat_helper  (in opcache.so) + 148  [0x107edb4c4]
+    +         ! :   1 _platform_memmove  (in libsystem_platform.dylib) + 452  [0x1862a5524]
+    +         ! 1 ???  (in <unknown binary>)  [0x11753c5dc]
+    +         ! : 1 _efree  (in php) + 20  [0x104402b2c]
+    +         ! 1 ???  (in <unknown binary>)  [0x11753cc24]
+    +         ! : 1 zend_jit_assign_op_to_typed_prop  (in opcache.so) + 84  [0x107ee0bf4]
+    +         ! 1 ???  (in <unknown binary>)  [0x11753ce34]
+    +         ! : 1 _efree  (in php) + 0  [0x104402b18]
+    +         ! 1 ???  (in <unknown binary>)  [0x11753cf38]
+    +         ! : 1 zend_array_destroy  (in php) + 48  [0x1044b3f88]
+    +         ! 1 ???  (in <unknown binary>)  [0x11753d748]
+    +         ! : 1 zflf_in_array_3  (in php) + 40  [0x1042f0c88]
+    +         ! 1 ???  (in <unknown binary>)  [0x11753f254]
+    +         ! : 1 ZEND_INSTANCEOF_SPEC_CV_CONST_HANDLER  (in php) + 128  [0x10448a924]
+    +         ! 1 ???  (in <unknown binary>)  [0x11753f404]
+    +         ! : 1 zend_jit_verify_arg_slow  (in opcache.so) + 76  [0x107ee9008]
+    +         ! :   1 zend_check_user_type_slow  (in php) + 48  [0x1044446cc]
+    +         ! 1 ???  (in <unknown binary>)  [0x11753f684]
+    +         ! : 1 zif_assert  (in php) + 184  [0x1042ffc80]
+    +         ! :   1 zend_is_true  (in php) + 48  [0x1044e8730]
+    +         ! 1 ???  (in <unknown binary>)  [0x11753f82c]
+    +         ! : 1 ???  (in <unknown binary>)  [0x117524ccc]
+    +         ! 1 ???  (in <unknown binary>)  [0x11753f920]
+    +         ! : 1 zend_jit_symtable_lookup_w  (in opcache.so) + 116  [0x107edde58]
+    +         ! :   1 zend_hash_lookup  (in php) + 44  [0x1044b16b4]
+    +         ! 1 ???  (in <unknown binary>)  [0x1175400ec]
+    +         ! : 1 ZEND_BIND_LEXICAL_SPEC_TMP_CV_HANDLER  (in php) + 48  [0x1044944b4]
+    +         ! 1 ???  (in <unknown binary>)  [0x1175401a4]
+    +         ! : 1 zend_check_user_type_slow  (in php) + 160  [0x10444473c]
+    +         ! 1 ???  (in <unknown binary>)  [0x117540434]
+    +         ! : 1 zif_str_increment  (in php) + 80  [0x1043479f0]
+    +         ! :   1 zend_string_only_has_ascii_alphanumeric  (in php) + 88  [0x1044eb208]
+    +         ! 1 ???  (in <unknown binary>)  [0x117540508]
+    +         ! : 1 zend_jit_assign_to_typed_prop  (in opcache.so) + 152  [0x107ee124c]
+    +         ! :   1 DYLD-STUB$$zend_verify_property_type  (in opcache.so) + 4  [0x107eedd28]
+    +         ! 1 ???  (in <unknown binary>)  [0x1175407cc]
+    +         ! : 1 ZEND_CAST_SPEC_VAR_HANDLER  (in php) + 804  [0x1044681c0]
+    +         ! :   1 zval_get_double_func  (in php) + 20  [0x1044e6fac]
+    +         ! 1 ???  (in <unknown binary>)  [0x1175416f8]
+    +         ! : 1 zend_is_identical  (in php) + 60  [0x1044eaeb4]
+    +         ! 1 ???  (in <unknown binary>)  [0x117541a3c]
+    +         ! : 1 zend_jit_assign_to_typed_prop  (in opcache.so) + 60  [0x107ee11f0]
+    +         ! 1 ???  (in <unknown binary>)  [0x117542434]
+    +         ! : 1 ZEND_BEGIN_SILENCE_SPEC_HANDLER  (in php) + 132  [0x10446a9b0]
+    +         ! 1 ???  (in <unknown binary>)  [0x1175426ec]
+    +         ! : 1 zend_jit_verify_return_slow  (in opcache.so) + 20  [0x107ee9054]
+    +         ! 1 ???  (in <unknown binary>)  [0x1175427f4]
+    +         ! : 1 ZEND_FETCH_CLASS_CONSTANT_SPEC_CONST_CONST_HANDLER  (in php) + 44  [0x104493260]
+    +         ! 1 ???  (in <unknown binary>)  [0x117542a5c]
+    +         ! : 1 zif_strlen  (in php) + 0  [0x10441c62c]
+    +         ! 1 ???  (in <unknown binary>)  [0x117542b60]
+    +         ! : 1 zend_jit_assign_op_to_typed_prop  (in opcache.so) + 160  [0x107ee0c40]
+    +         ! :   1 add_function  (in php) + 20  [0x1044e722c]
+    +         ! 1 ???  (in <unknown binary>)  [0x117542d94]
+    +         ! : 1 zend_jit_assign_to_typed_prop  (in opcache.so) + 304  [0x107ee12e4]
+    +         ! 1 ???  (in <unknown binary>)  [0x11754377c]
+    +         ! : 1 zend_jit_assign_to_typed_prop  (in opcache.so) + 64  [0x107ee11f4]
+    +         ! 1 ???  (in <unknown binary>)  [0x117543b04]
+    +         ! : 1 ZEND_CAST_SPEC_TMP_HANDLER  (in php) + 220  [0x104467c60]
+    +         ! 1 ???  (in <unknown binary>)  [0x117543b94]
+    +         ! : 1 ZEND_FETCH_OBJ_UNSET_SPEC_UNUSED_CONST_HANDLER  (in php) + 88  [0x10447b9a8]
+    +         ! 1 ???  (in <unknown binary>)  [0x117543c8c]
+    +         ! : 1 ZEND_FETCH_OBJ_UNSET_SPEC_UNUSED_CONST_HANDLER  (in php) + 52  [0x10447b984]
+    +         ! 1 ???  (in <unknown binary>)  [0x117544fa8]
+    +         ! : 1 zend_jit_verify_arg_slow  (in opcache.so) + 36  [0x107ee8fe0]
+    +         ! 1 ???  (in <unknown binary>)  [0x117545d44]
+    +         ! : 1 zend_jit_assign_to_typed_prop  (in opcache.so) + 132  [0x107ee1238]
+    +         ! 1 ???  (in <unknown binary>)  [0x117546004]
+    +         ! : 1 zend_jit_verify_arg_slow  (in opcache.so) + 48  [0x107ee8fec]
+    +         ! 1 ???  (in <unknown binary>)  [0x11754602c]
+    +         ! : 1 ZEND_INSTANCEOF_SPEC_CV_CONST_HANDLER  (in php) + 20  [0x10448a8b8]
+    +         ! 1 ???  (in <unknown binary>)  [0x1175460a4]
+    +         ! : 1 ZEND_INSTANCEOF_SPEC_CV_CONST_HANDLER  (in php) + 32  [0x10448a8c4]
+    +         ! 1 ???  (in <unknown binary>)  [0x117546244]
+    +         ! : 1 zend_jit_verify_arg_slow  (in opcache.so) + 12  [0x107ee8fc8]
+    +         ! 1 ???  (in <unknown binary>)  [0x1175468cc]
+    +         ! : 1 zend_jit_symtable_lookup_w  (in opcache.so) + 116  [0x107edde58]
+    +         ! :   1 zend_hash_lookup  (in php) + 0  [0x1044b1688]
+    +         ! 1 ???  (in <unknown binary>)  [0x11754752c]
+    +         ! : 1 zend_fetch_static_prop_helper_SPEC  (in php) + 404  [0x1044a6ed4]
+    +         ! 1 ???  (in <unknown binary>)  [0x117549fdc]
+    +         ! : 1 ZEND_BIND_STATIC_SPEC_CV_HANDLER  (in php) + 60  [0x1044945bc]
+    +         ! 1 ???  (in <unknown binary>)  [0x11754a570]
+    +         ! : 1 gc_possible_root  (in php) + 4  [0x1044a9650]
+    +         ! 1 ???  (in <unknown binary>)  [0x11754a634]
+    +         ! : 1 zend_jit_inc_typed_prop  (in opcache.so) + 176  [0x107edf83c]
+    +         ! :   1 zval_ptr_dtor  (in php) + 64  [0x1044f5e08]
+    +         ! 1 ???  (in <unknown binary>)  [0x11754a800]
+    +         ! : 1 zend_jit_verify_arg_slow  (in opcache.so) + 60  [0x107ee8ff8]
+    +         ! 1 ???  (in <unknown binary>)  [0x11754ab44]
+    +         ! : 1 zif_explode  (in php) + 92  [0x104346d54]
+    +         ! 1 ???  (in <unknown binary>)  [0x11754c3ac]
+    +         ! : 1 ZEND_CALLABLE_CONVERT_SPEC_UNUSED_UNUSED_HANDLER  (in php) + 24  [0x104497ea8]
+    +         ! 1 ???  (in <unknown binary>)  [0x11754c6d8]
+    +         ! : 1 zend_jit_assign_to_typed_prop  (in opcache.so) + 152  [0x107ee124c]
+    +         ! :   1 zend_check_and_resolve_property_or_class_constant_class_type  (in php) + 260  [0x10449ce50]
+    +         ! 1 ???  (in <unknown binary>)  [0x11754cd68]
+    +         ! : 1 ZEND_BIND_LEXICAL_SPEC_TMP_CV_HANDLER  (in php) + 36  [0x1044944a8]
+    +         ! 1 ???  (in <unknown binary>)  [0x11754ce88]
+    +         ! : 1 zend_jit_assign_to_typed_prop  (in opcache.so) + 132  [0x107ee1238]
+    +         ! 1 ???  (in <unknown binary>)  [0x11754d26c]
+    +         ! : 1 zend_jit_assign_to_typed_prop  (in opcache.so) + 168  [0x107ee125c]
+    +         ! 1 ???  (in <unknown binary>)  [0x11754d4f4]
+    +         ! : 1 zend_hash_find  (in php) + 28  [0x1044b5fdc]
+    +         ! 1 ???  (in <unknown binary>)  [0x11754dc28]
+    +         ! : 1 zend_jit_assign_to_typed_prop  (in opcache.so) + 328  [0x107ee12fc]
+    +         ! :   1 zend_array_destroy  (in php) + 404  [0x1044b40ec]
+    +         ! 1 ???  (in <unknown binary>)  [0x117524780]
+    +         ! 1 ???  (in <unknown binary>)  [0x1175247ac]
+    +         ! 1 ???  (in <unknown binary>)  [0x117524f3c]
+    +         ! 1 ???  (in <unknown binary>)  [0x1175252f8]
+    +         ! 1 ???  (in <unknown binary>)  [0x11752532c]
+    +         ! 1 ???  (in <unknown binary>)  [0x117525620]
+    +         ! 1 ???  (in <unknown binary>)  [0x117525624]
+    +         ! 1 ???  (in <unknown binary>)  [0x117525e74]
+    +         ! 1 ???  (in <unknown binary>)  [0x117525f38]
+    +         ! 1 ???  (in <unknown binary>)  [0x117525f40]
+    +         ! 1 ???  (in <unknown binary>)  [0x117526168]
+    +         ! 1 ???  (in <unknown binary>)  [0x1175263f4]
+    +         ! 1 ???  (in <unknown binary>)  [0x117526b94]
+    +         ! 1 ???  (in <unknown binary>)  [0x117526bcc]
+    +         ! 1 ???  (in <unknown binary>)  [0x11752727c]
+    +         ! 1 ???  (in <unknown binary>)  [0x1175276a8]
+    +         ! 1 ???  (in <unknown binary>)  [0x117527744]
+    +         ! 1 ???  (in <unknown binary>)  [0x117528144]
+    +         ! 1 ???  (in <unknown binary>)  [0x117528a4c]
+    +         ! 1 ???  (in <unknown binary>)  [0x117528cc4]
+    +         ! 1 ???  (in <unknown binary>)  [0x1175291cc]
+    +         ! 1 ???  (in <unknown binary>)  [0x11752a808]
+    +         ! 1 ???  (in <unknown binary>)  [0x11752ac08]
+    +         ! 1 ???  (in <unknown binary>)  [0x11752adf4]
+    +         ! 1 ???  (in <unknown binary>)  [0x11752aef4]
+    +         ! 1 ???  (in <unknown binary>)  [0x11752b154]
+    +         ! 1 ???  (in <unknown binary>)  [0x11752b200]
+    +         ! 1 ???  (in <unknown binary>)  [0x11752b3ac]
+    +         ! 1 ???  (in <unknown binary>)  [0x11752b664]
+    +         ! 1 ???  (in <unknown binary>)  [0x11752b780]
+    +         ! 1 ???  (in <unknown binary>)  [0x11752beb8]
+    +         ! 1 ???  (in <unknown binary>)  [0x11752c1e4]
+    +         ! 1 ???  (in <unknown binary>)  [0x11752c5e8]
+    +         ! 1 ???  (in <unknown binary>)  [0x11752c900]
+    +         ! 1 ???  (in <unknown binary>)  [0x11752cd40]
+    +         ! 1 ???  (in <unknown binary>)  [0x11752ddcc]
+    +         ! 1 ???  (in <unknown binary>)  [0x11752e3a0]
+    +         ! 1 ???  (in <unknown binary>)  [0x11752e6f8]
+    +         ! 1 ???  (in <unknown binary>)  [0x11752e754]
+    +         ! 1 ???  (in <unknown binary>)  [0x11752e838]
+    +         ! 1 ???  (in <unknown binary>)  [0x11752ead0]
+    +         ! 1 ???  (in <unknown binary>)  [0x11752eb00]
+    +         ! 1 ???  (in <unknown binary>)  [0x11752f5c4]
+    +         ! 1 ???  (in <unknown binary>)  [0x11752f668]
+    +         ! 1 ???  (in <unknown binary>)  [0x11752fdb8]
+    +         ! 1 ???  (in <unknown binary>)  [0x1175300f4]
+    +         ! 1 ???  (in <unknown binary>)  [0x117530508]
+    +         ! 1 ???  (in <unknown binary>)  [0x117530618]
+    +         ! 1 ???  (in <unknown binary>)  [0x117530f34]
+    +         ! 1 ???  (in <unknown binary>)  [0x1175311e8]
+    +         ! 1 ???  (in <unknown binary>)  [0x11753129c]
+    +         ! 1 ???  (in <unknown binary>)  [0x1175312f8]
+    +         ! 1 ???  (in <unknown binary>)  [0x1175313f0]
+    +         ! 1 ???  (in <unknown binary>)  [0x117531444]
+    +         ! 1 ???  (in <unknown binary>)  [0x117531490]
+    +         ! 1 ???  (in <unknown binary>)  [0x1175314f0]
+    +         ! 1 ???  (in <unknown binary>)  [0x1175315ac]
+    +         ! 1 ???  (in <unknown binary>)  [0x117531718]
+    +         ! 1 ???  (in <unknown binary>)  [0x117531780]
+    +         ! 1 ???  (in <unknown binary>)  [0x1175317b8]
+    +         ! 1 ???  (in <unknown binary>)  [0x117531a4c]
+    +         ! 1 ???  (in <unknown binary>)  [0x117531b98]
+    +         ! 1 ???  (in <unknown binary>)  [0x1175323b8]
+    +         ! 1 ???  (in <unknown binary>)  [0x117532450]
+    +         ! 1 ???  (in <unknown binary>)  [0x1175325e4]
+    +         ! 1 ???  (in <unknown binary>)  [0x117532954]
+    +         ! 1 ???  (in <unknown binary>)  [0x117532d5c]
+    +         ! 1 ???  (in <unknown binary>)  [0x117533b98]
+    +         ! 1 ???  (in <unknown binary>)  [0x117533c80]
+    +         ! 1 ???  (in <unknown binary>)  [0x117534778]
+    +         ! 1 ???  (in <unknown binary>)  [0x1175349f8]
+    +         ! 1 ???  (in <unknown binary>)  [0x117534e0c]
+    +         ! 1 ???  (in <unknown binary>)  [0x117535848]
+    +         ! 1 ???  (in <unknown binary>)  [0x117535acc]
+    +         ! 1 ???  (in <unknown binary>)  [0x117535f24]
+    +         ! 1 ???  (in <unknown binary>)  [0x117535f74]
+    +         ! 1 ???  (in <unknown binary>)  [0x117536050]
+    +         ! 1 ???  (in <unknown binary>)  [0x1175360f4]
+    +         ! 1 ???  (in <unknown binary>)  [0x1175370f0]
+    +         ! 1 ???  (in <unknown binary>)  [0x1175373b8]
+    +         ! 1 ???  (in <unknown binary>)  [0x117537420]
+    +         ! 1 ???  (in <unknown binary>)  [0x1175376bc]
+    +         ! 1 ???  (in <unknown binary>)  [0x117537794]
+    +         ! 1 ???  (in <unknown binary>)  [0x117537dec]
+    +         ! 1 ???  (in <unknown binary>)  [0x11753876c]
+    +         ! 1 ???  (in <unknown binary>)  [0x1175394e4]
+    +         ! 1 ???  (in <unknown binary>)  [0x1175394fc]
+    +         ! 1 ???  (in <unknown binary>)  [0x11753954c]
+    +         ! 1 ???  (in <unknown binary>)  [0x117539618]
+    +         ! 1 ???  (in <unknown binary>)  [0x1175396c8]
+    +         ! 1 ???  (in <unknown binary>)  [0x11753b380]
+    +         ! 1 ???  (in <unknown binary>)  [0x11753b558]
+    +         ! 1 ???  (in <unknown binary>)  [0x11753b880]
+    +         ! 1 ???  (in <unknown binary>)  [0x11753b960]
+    +         ! 1 ???  (in <unknown binary>)  [0x11753b9c0]
+    +         ! 1 ???  (in <unknown binary>)  [0x11753baac]
+    +         ! 1 ???  (in <unknown binary>)  [0x11753beac]
+    +         ! 1 ???  (in <unknown binary>)  [0x11753c0f4]
+    +         ! 1 ???  (in <unknown binary>)  [0x11753c120]
+    +         ! 1 ???  (in <unknown binary>)  [0x11753c188]
+    +         ! 1 ???  (in <unknown binary>)  [0x11753c2b0]
+    +         ! 1 ???  (in <unknown binary>)  [0x11753c450]
+    +         ! 1 ???  (in <unknown binary>)  [0x11753c52c]
+    +         ! 1 ???  (in <unknown binary>)  [0x11753c654]
+    +         ! 1 ???  (in <unknown binary>)  [0x11753c708]
+    +         ! 1 ???  (in <unknown binary>)  [0x11753c76c]
+    +         ! 1 ???  (in <unknown binary>)  [0x11753c874]
+    +         ! 1 ???  (in <unknown binary>)  [0x11753caac]
+    +         ! 1 ???  (in <unknown binary>)  [0x11753cbcc]
+    +         ! 1 ???  (in <unknown binary>)  [0x11753d54c]
+    +         ! 1 ???  (in <unknown binary>)  [0x11753e674]
+    +         ! 1 ???  (in <unknown binary>)  [0x11753e684]
+    +         ! 1 ???  (in <unknown binary>)  [0x11753e7a8]
+    +         ! 1 ???  (in <unknown binary>)  [0x11753ee38]
+    +         ! 1 ???  (in <unknown binary>)  [0x11753f53c]
+    +         ! 1 ???  (in <unknown binary>)  [0x11753f5cc]
+    +         ! 1 ???  (in <unknown binary>)  [0x11753f66c]
+    +         ! 1 ???  (in <unknown binary>)  [0x11753fa8c]
+    +         ! 1 ???  (in <unknown binary>)  [0x11753fb50]
+    +         ! 1 ???  (in <unknown binary>)  [0x11753fe58]
+    +         ! 1 ???  (in <unknown binary>)  [0x11753ff28]
+    +         ! 1 ???  (in <unknown binary>)  [0x117540594]
+    +         ! 1 ???  (in <unknown binary>)  [0x1175408d4]
+    +         ! 1 ???  (in <unknown binary>)  [0x117541878]
+    +         ! 1 ???  (in <unknown binary>)  [0x117541958]
+    +         ! 1 ???  (in <unknown binary>)  [0x117541f5c]
+    +         ! 1 ???  (in <unknown binary>)  [0x117542584]
+    +         ! 1 ???  (in <unknown binary>)  [0x117542808]
+    +         ! 1 ???  (in <unknown binary>)  [0x117543794]
+    +         ! 1 ???  (in <unknown binary>)  [0x1175445f0]
+    +         ! 1 ???  (in <unknown binary>)  [0x1175446e4]
+    +         ! 1 ???  (in <unknown binary>)  [0x117544c50]
+    +         ! 1 ???  (in <unknown binary>)  [0x117544d98]
+    +         ! 1 ???  (in <unknown binary>)  [0x117544f88]
+    +         ! 1 ???  (in <unknown binary>)  [0x117544fe4]
+    +         ! 1 ???  (in <unknown binary>)  [0x1175450dc]
+    +         ! 1 ???  (in <unknown binary>)  [0x1175451c0]
+    +         ! 1 ???  (in <unknown binary>)  [0x1175457a0]
+    +         ! 1 ???  (in <unknown binary>)  [0x117545834]
+    +         ! 1 ???  (in <unknown binary>)  [0x117545954]
+    +         ! 1 ???  (in <unknown binary>)  [0x117545ee4]
+    +         ! 1 ???  (in <unknown binary>)  [0x117546518]
+    +         ! 1 ???  (in <unknown binary>)  [0x117546758]
+    +         ! 1 ???  (in <unknown binary>)  [0x117546b78]
+    +         ! 1 ???  (in <unknown binary>)  [0x117546b84]
+    +         ! 1 ???  (in <unknown binary>)  [0x117547538]
+    +         ! 1 ???  (in <unknown binary>)  [0x117547980]
+    +         ! 1 ???  (in <unknown binary>)  [0x117547990]
+    +         ! 1 ???  (in <unknown binary>)  [0x117547d0c]
+    +         ! 1 ???  (in <unknown binary>)  [0x117547d3c]
+    +         ! 1 ???  (in <unknown binary>)  [0x117548410]
+    +         ! 1 ???  (in <unknown binary>)  [0x11754869c]
+    +         ! 1 ???  (in <unknown binary>)  [0x117548d38]
+    +         ! 1 ???  (in <unknown binary>)  [0x117549e80]
+    +         ! 1 ???  (in <unknown binary>)  [0x117549ff0]
+    +         ! 1 ???  (in <unknown binary>)  [0x11754a04c]
+    +         ! 1 ???  (in <unknown binary>)  [0x11754a42c]
+    +         ! 1 ???  (in <unknown binary>)  [0x11754a680]
+    +         ! 1 ???  (in <unknown binary>)  [0x11754a6cc]
+    +         ! 1 ???  (in <unknown binary>)  [0x11754a828]
+    +         ! 1 ???  (in <unknown binary>)  [0x11754a848]
+    +         ! 1 ???  (in <unknown binary>)  [0x11754a928]
+    +         ! 1 ???  (in <unknown binary>)  [0x11754abb0]
+    +         ! 1 ???  (in <unknown binary>)  [0x11754ade0]
+    +         ! 1 ???  (in <unknown binary>)  [0x11754af24]
+    +         ! 1 ???  (in <unknown binary>)  [0x11754b1bc]
+    +         ! 1 ???  (in <unknown binary>)  [0x11754b2b8]
+    +         ! 1 ???  (in <unknown binary>)  [0x11754b2d0]
+    +         ! 1 ???  (in <unknown binary>)  [0x11754b3d8]
+    +         ! 1 ???  (in <unknown binary>)  [0x11754b3f0]
+    +         ! 1 ???  (in <unknown binary>)  [0x11754bb74]
+    +         ! 1 ???  (in <unknown binary>)  [0x11754bba0]
+    +         ! 1 ???  (in <unknown binary>)  [0x11754c3b8]
+    +         ! 1 ???  (in <unknown binary>)  [0x11754c608]
+    +         ! 1 ???  (in <unknown binary>)  [0x11754caf0]
+    +         ! 1 ???  (in <unknown binary>)  [0x11754cd0c]
+    +         ! 1 ???  (in <unknown binary>)  [0x11754cda4]
+    +         ! 1 ???  (in <unknown binary>)  [0x11754d44c]
+    +         ! 1 ???  (in <unknown binary>)  [0x11754e8bc]
+    +         ! 1 ???  (in <unknown binary>)  [0x11754ede8]
+    +         ! 1 ???  (in <unknown binary>)  [0x11754f65c]
+    +         ! 1 ???  (in <unknown binary>)  [0x117556214]
+    +         ! 1 ZEND_ASSIGN_DIM_SPEC_CV_CONST_OP_DATA_TMP_HANDLER  (in php) + 40  [0x1044564a0]
+    +         ! 1 ZEND_ASSIGN_DIM_SPEC_VAR_TMPVAR_OP_DATA_CV_HANDLER  (in php) + 284  [0x10445429c]
+    +         ! 1 ZEND_BIND_LEXICAL_SPEC_TMP_CV_HANDLER  (in php) + 196  [0x104494548]
+    +         ! 1 ZEND_CAST_SPEC_VAR_HANDLER  (in php) + 260  [0x104467fa0]
+    +         ! 1 ZEND_CHECK_FUNC_ARG_SPEC_UNUSED_UNUSED_QUICK_HANDLER  (in php) + 52  [0x10447caf0]
+    +         ! 1 ZEND_COALESCE_SPEC_TMP_HANDLER  (in php) + 88  [0x10449236c]
+    +         ! 1 ZEND_DO_FCALL_SPEC_RETVAL_USED_HANDLER  (in php) + 204  [0x10446afd4]
+    +         ! 1 ZEND_DO_ICALL_SPEC_RETVAL_UNUSED_HANDLER  (in php) + 84  [0x10448742c]
+    +         ! : 1 zif_set_error_handler  (in php) + 192  [0x10441f250]
+    +         ! 1 ZEND_DO_ICALL_SPEC_RETVAL_USED_HANDLER  (in php) + 148  [0x1044875f4]
+    +         ! 1 ZEND_FETCH_OBJ_FUNC_ARG_SPEC_CV_CONST_HANDLER  (in php) + 12  [0x10447ad4c]
+    +         ! 1 ZEND_FETCH_OBJ_UNSET_SPEC_UNUSED_CONST_HANDLER  (in php) + 164  [0x10447b9f4]
+    +         ! 1 ZEND_FETCH_OBJ_W_SPEC_UNUSED_CONST_HANDLER  (in php) + 16  [0x1044767a4]
+    +         ! 1 ZEND_FE_RESET_R_SPEC_CV_HANDLER  (in php) + 52  [0x104472ed4]
+    +         ! 1 ZEND_FRAMELESS_ICALL_3_SPEC_HANDLER  (in php) + 0  [0x1044989c4]
+    +         ! 1 ZEND_GENERATOR_CREATE_SPEC_HANDLER  (in php) + 320  [0x10448ad78]
+    +         ! 1 ZEND_INIT_ARRAY_SPEC_TMP_UNUSED_HANDLER  (in php) + 44  [0x10446d9e4]
+    +         ! : 1 _zend_new_array  (in php) + 24  [0x1044ae89c]
+    +         ! :   1 _emalloc_56  (in php) + 64  [0x104400de4]
+    +         ! 1 ZEND_INIT_DYNAMIC_CALL_SPEC_CV_HANDLER  (in php) + 0  [0x1044872f8]
+    +         ! 1 ZEND_INIT_METHOD_CALL_SPEC_UNUSED_CONST_HANDLER  (in php) + 104  [0x10447e98c]
+    +         ! 1 ZEND_INIT_STATIC_METHOD_CALL_SPEC_UNUSED_UNUSED_HANDLER  (in php) + 188  [0x104480aa8]
+    +         ! : 1 instanceof_function_slow  (in php) + 12  [0x1044eb164]
+    +         ! 1 ZEND_INIT_STATIC_METHOD_CALL_SPEC_UNUSED_UNUSED_HANDLER  (in php) + 144  [0x104480a7c]
+    +         ! 1 ZEND_IN_ARRAY_SPEC_TMP_CONST_HANDLER  (in php) + 284  [0x10449520c]
+    +         ! 1 ZEND_IS_IDENTICAL_SPEC_CV_CONST_HANDLER  (in php) + 96  [0x10444bf64]
+    +         ! : 1 zend_is_identical  (in php) + 144  [0x1044eaf08]
+    +         ! :   1 _platform_memcmp  (in libsystem_platform.dylib) + 0  [0x1862a2f10]
+    +         ! 1 ZEND_IS_IDENTICAL_SPEC_TMP_CONST_HANDLER  (in php) + 80  [0x10444b8d8]
+    +         ! : 1 zend_is_identical  (in php) + 56  [0x1044eaeb0]
+    +         ! 1 ZEND_IS_IDENTICAL_SPEC_TMP_CONST_HANDLER  (in php) + 76  [0x10444b8d4]
+    +         ! 1 ZEND_IS_NOT_IDENTICAL_SPEC_TMP_CONST_HANDLER  (in php) + 80  [0x10444c564]
+    +         ! : 1 zend_is_identical  (in php) + 12  [0x1044eae84]
+    +         ! 1 ZEND_JMPNZ_EX_SPEC_CV_HANDLER  (in php) + 0  [0x104466c9c]
+    +         ! 1 ZEND_JMPNZ_EX_SPEC_TMPVAR_HANDLER  (in php) + 24  [0x104466aa4]
+    +         ! 1 ZEND_JMPNZ_SPEC_TMPVAR_HANDLER  (in php) + 0  [0x104466034]
+    +         ! 1 ZEND_JMPZ_EX_SPEC_TMPVAR_HANDLER  (in php) + 24  [0x104466524]
+    +         ! 1 ZEND_JMP_NULL_SPEC_CV_HANDLER  (in php) + 172  [0x104497d9c]
+    +         ! 1 ZEND_RECV_SPEC_UNUSED_HANDLER  (in php) + 68  [0x10446bce4]
+    +         ! 1 ZEND_TYPE_CHECK_SPEC_CV_HANDLER  (in php) + 128  [0x1044851b0]
+    +         ! 1 ZEND_TYPE_CHECK_SPEC_TMPVAR_HANDLER  (in php) + 264  [0x104485108]
+    +         ! 1 ZEND_UNSET_DIM_SPEC_VAR_CV_HANDLER  (in php) + 264  [0x10447165c]
+    +         ! 1 ZEND_VERIFY_RETURN_TYPE_SPEC_VAR_UNUSED_HANDLER  (in php) + 0  [0x1044857c4]
+    +         ! 1 _erealloc  (in php) + 712  [0x104402eb4]
+    +         ! 1 concat_function  (in php) + 784  [0x1044e9b28]
+    +         ! 1 php_do_pcre_match  (in php) + 312  [0x10406325c]
+    +         ! 1 zend_assign_to_typed_prop  (in php) + 172  [0x10449ed74]
+    +         ! 1 zend_jit_assign_to_typed_prop  (in opcache.so) + 340  [0x107ee1308]
+    +         ! 1 zend_jit_fast_concat_tmp_helper  (in opcache.so) + 276  [0x107edb638]
+    +         ! 1 zend_jit_symtable_lookup_w  (in opcache.so) + 120  [0x107edde5c]
+    +         ! 1 zend_jit_verify_arg_slow  (in opcache.so) + 92  [0x107ee9018]
+    +         ! 1 zend_jit_verify_return_slow  (in opcache.so) + 68  [0x107ee9084]
+    +         ! 1 zflf_substr_3  (in php) + 488  [0x10434b8c8]
+    +         ! 1 zif_assert  (in php) + 236  [0x1042ffcb4]
+    +         ! 1 zif_str_increment  (in php) + 460  [0x104347b6c]
+    +         ! 1 zim_Generator_valid  (in php) + 72  [0x1044ad1b8]
+    +         30 execute_ex  (in php) + 104,116,...  [0x104448544,0x104448550,...]
+    +         2 ZEND_FETCH_OBJ_R_SPEC_CV_CONST_HANDLER  (in php) + 196,204  [0x104475254,0x10447525c]
+    +         1 ???  (in <unknown binary>)  [0x11753c150]
+    +         1 ???  (in <unknown binary>)  [0x11753eb60]
+    +         1 ???  (in <unknown binary>)  [0x11754e650]
+    +         1 ZEND_COALESCE_SPEC_VAR_HANDLER  (in php) + 236  [0x104492464]
+    +         1 ZEND_DO_FCALL_BY_NAME_SPEC_RETVAL_USED_HANDLER  (in php) + 212  [0x104487f00]
+    +         1 ZEND_FETCH_OBJ_R_SPEC_UNUSED_CONST_HANDLER  (in php) + 184  [0x104474b58]
+    +         1 ZEND_FETCH_OBJ_W_SPEC_UNUSED_CONST_HANDLER  (in php) + 192  [0x104476854]
+    +         1 ZEND_INIT_METHOD_CALL_SPEC_UNUSED_CONST_HANDLER  (in php) + 216  [0x10447e9fc]
+    +         1 ZEND_INIT_NS_FCALL_BY_NAME_SPEC_CONST_HANDLER  (in php) + 168  [0x10446d680]
+    +         1 ZEND_VERIFY_RETURN_TYPE_SPEC_TMP_UNUSED_HANDLER  (in php) + 96  [0x104485594]
+    2462 Thread_15420199
+    + 2462 start_wqthread  (in libsystem_pthread.dylib) + 8  [0x186296c10]
+    +   2462 _pthread_wqthread  (in libsystem_pthread.dylib) + 368  [0x186297f0c]
+    +     2462 __workq_kernreturn  (in libsystem_kernel.dylib) + 8  [0x1862599f0]
+    2270 Thread_15420200
+      2270 start_wqthread  (in libsystem_pthread.dylib) + 8  [0x186296c10]
+        2270 _pthread_wqthread  (in libsystem_pthread.dylib) + 368  [0x186297f0c]
+          2270 __workq_kernreturn  (in libsystem_kernel.dylib) + 8  [0x1862599f0]
+
+Total number in stack (recursive counted multiple, when >=5):
+        21       zend_jit_assign_to_typed_prop  (in opcache.so) + 0  [0x107ee11b4]
+        18       zend_std_write_property  (in php) + 0  [0x1044ddeb8]
+        17       _platform_memmove  (in libsystem_platform.dylib) + 0  [0x1862a5360]
+        15       zend_array_destroy  (in php) + 0  [0x1044b3f58]
+        14       _efree  (in php) + 0  [0x104402b18]
+        12       zend_hash_find  (in php) + 0  [0x1044b5fc0]
+        12       zend_jit_assign_obj_helper  (in opcache.so) + 84  [0x107ee1fbc]
+        11       _emalloc  (in php) + 0  [0x104402a24]
+        11       zend_objects_store_del  (in php) + 188  [0x1044e1bac]
+        10       zend_is_identical  (in php) + 0  [0x1044eae78]
+        9       ZEND_INSTANCEOF_SPEC_CV_CONST_HANDLER  (in php) + 0  [0x10448a8a4]
+        8       zend_jit_verify_arg_slow  (in opcache.so) + 0  [0x107ee8fbc]
+        8       zend_objects_store_del  (in php) + 0  [0x1044e1af0]
+        7       _erealloc  (in php) + 0  [0x104402bec]
+        7       zend_create_closure_ex  (in php) + 0  [0x10442309c]
+        7       zend_verify_property_type  (in php) + 0  [0x104444608]
+        6       ZEND_DECLARE_LAMBDA_FUNCTION_SPEC_CONST_HANDLER  (in php) + 96  [0x10448b030]
+        6       ZEND_NEW_SPEC_CONST_UNUSED_HANDLER  (in php) + 64  [0x10446d018]
+        6       _efree_56  (in php) + 0  [0x104401e68]
+        6       instanceof_function_slow  (in php) + 0  [0x1044eb158]
+        6       object_init_ex  (in php) + 64  [0x104408874]
+        6       zend_check_user_type_slow  (in php) + 0  [0x10444469c]
+        6       zend_hash_lookup  (in php) + 0  [0x1044b1688]
+        6       zend_jit_assign_to_typed_prop  (in opcache.so) + 152  [0x107ee124c]
+        6       zend_object_dtor_property  (in php) + 0  [0x1044e1cd4]
+        6       zend_object_std_dtor  (in php) + 0  [0x1044e1dbc]
+        6       zend_object_std_dtor  (in php) + 92  [0x1044e1e18]
+        5       ZEND_BIND_LEXICAL_SPEC_TMP_CV_HANDLER  (in php) + 0  [0x104494484]
+        5       ZEND_FETCH_OBJ_UNSET_SPEC_UNUSED_CONST_HANDLER  (in php) + 0  [0x10447b950]
+        5       ZEND_UNSET_DIM_SPEC_VAR_CV_HANDLER  (in php) + 188  [0x104471610]
+        5       zend_get_executed_scope  (in php) + 0  [0x104441a20]
+        5       zend_jit_symtable_lookup_w  (in opcache.so) + 116  [0x107edde58]
+        5       zval_ptr_dtor  (in php) + 0  [0x1044f5dc8]
+
+Sort by top of stack, same collapsed (when >= 5):
+        __workq_kernreturn  (in libsystem_kernel.dylib)        4732
+        __sendto  (in libsystem_kernel.dylib)        771
+        __recvfrom  (in libsystem_kernel.dylib)        485
+        __select  (in libsystem_kernel.dylib)        56
+        execute_ex  (in php)        36
+        zend_fetch_debug_backtrace  (in php)        32
+        mach_absolute_time  (in libsystem_kernel.dylib)        28
+        zend_std_write_property  (in php)        27
+        zend_jit_assign_to_typed_prop  (in opcache.so)        24
+        _platform_memmove  (in libsystem_platform.dylib)        21
+        _efree  (in php)        20
+        zend_array_destroy  (in php)        20
+        zend_create_closure_ex  (in php)        17
+        _emalloc  (in php)        14
+        zend_leave_helper_SPEC  (in php)        14
+        zend_hash_find  (in php)        13
+        _erealloc  (in php)        12
+        zend_is_identical  (in php)        12
+        ZEND_FETCH_OBJ_R_SPEC_CV_CONST_HANDLER  (in php)        9
+        ZEND_FETCH_OBJ_R_SPEC_UNUSED_CONST_HANDLER  (in php)        9
+        ZEND_INSTANCEOF_SPEC_CV_CONST_HANDLER  (in php)        9
+        zend_jit_verify_arg_slow  (in opcache.so)        9
+        zend_verify_property_type  (in php)        9
+        pcre2_jit_match_8  (in libpcre2-8.0.dylib)        8
+        zend_objects_store_del  (in php)        8
+        ZEND_DO_FCALL_BY_NAME_SPEC_RETVAL_USED_HANDLER  (in php)        7
+        _efree_56  (in php)        7
+        _emalloc_320  (in php)        7
+        concat_function  (in php)        7
+        strx_printv  (in php)        7
+        zend_assign_to_typed_prop  (in php)        7
+        zend_hash_lookup  (in php)        7
+        zend_hash_next_index_insert_new  (in php)        7
+        zend_string_tolower_ex  (in php)        7
+        ZEND_ASSIGN_OBJ_SPEC_UNUSED_CONST_OP_DATA_VAR_HANDLER  (in php)        6
+        _emalloc_56  (in php)        6
+        instanceof_function_slow  (in php)        6
+        object_init_ex  (in php)        6
+        zend_call_function  (in php)        6
+        zend_check_user_type_slow  (in php)        6
+        zend_get_executed_scope  (in php)        6
+        zend_hash_next_index_insert  (in php)        6
+        zend_object_dtor_property  (in php)        6
+        zend_object_std_dtor  (in php)        6
+        zval_ptr_dtor  (in php)        6
+        ZEND_BIND_LEXICAL_SPEC_TMP_CV_HANDLER  (in php)        5
+        ZEND_FETCH_OBJ_UNSET_SPEC_UNUSED_CONST_HANDLER  (in php)        5
+        ZEND_INIT_NS_FCALL_BY_NAME_SPEC_CONST_HANDLER  (in php)        5
+        ZEND_JMP_SPEC_HANDLER  (in php)        5
+        ZEND_UNSET_DIM_SPEC_VAR_CV_HANDLER  (in php)        5
+        _platform_memcmp  (in libsystem_platform.dylib)        5
+        _platform_memset  (in libsystem_platform.dylib)        5
+        date_format  (in php)        5
+        php_charmask  (in php)        5
+        rc_dtor_func  (in php)        5
+        zend_check_and_resolve_property_or_class_constant_class_type  (in php)        5
+        zend_jit_assign_obj_helper  (in opcache.so)        5
+        zend_mm_alloc_pages  (in php)        5
+        zend_objects_new  (in php)        5
+        zif_trim  (in php)        5
+
+Binary Images:
+       0x104010000 -        0x104f57fcf +php (0) <2D936951-6F15-3786-AE26-4BEE658A88DA> /opt/homebrew/*/php
+       0x1052b4000 -        0x1052bfffb +liblber.2.dylib (0) <EC190080-D953-3907-B28D-398AD6338C66> /opt/homebrew/*/liblber.2.dylib
+       0x1052d4000 -        0x1052dfffb +libicuio.78.3.dylib (0) <9058D468-B1A3-3567-B78C-2C412DE2DF30> /opt/homebrew/*/libicuio.78.3.dylib
+       0x105304000 -        0x105357fff +libsybdb.5.dylib (0) <5C4A0814-1E7A-3BC0-B20E-AB1B32C08575> /opt/homebrew/*/libsybdb.5.dylib
+       0x105374000 -        0x10537bff7 +libargon2.1.dylib (0) <B1B29BB7-6E73-3BA8-BE74-810E68F474A5> /opt/homebrew/*/libargon2.1.dylib
+       0x105400000 -        0x105493ff7 +libtidy.5.8.0.dylib (0) <003592C2-535B-327E-82CB-12EC757076C3> /opt/homebrew/*/libtidy.5.8.0.dylib
+       0x1054dc000 -        0x105517ffb +libldap.2.dylib (0) <4EEFE40D-BFC2-35FC-A4A3-FE23D1726137> /opt/homebrew/*/libldap.2.dylib
+       0x10553c000 -        0x105543fff +libngtcp2_crypto_ossl.0.dylib (0) <89B3E1E0-1CD1-37CC-B13B-DB4CDB3C364F> /opt/homebrew/*/libngtcp2_crypto_ossl.0.dylib
+       0x105558000 -        0x105563ffb +libbrotlidec.1.2.0.dylib (0) <CD735994-1AB6-32AC-99FC-0A3D9DAC4B3B> /opt/homebrew/*/libbrotlidec.1.2.0.dylib
+       0x105578000 -        0x10559ffff +libintl.8.dylib (0) <70E0DCC8-D48B-3F5B-B2A5-9A5F7C701501> /opt/homebrew/*/libintl.8.dylib
+       0x1055b4000 -        0x1055c7fff +libzip.5.5.dylib (0) <F583E1E5-C706-3C51-9F7A-7088D64E009D> /opt/homebrew/*/libzip.5.5.dylib
+       0x1055dc000 -        0x1055f7ff3 +libnghttp3.9.6.1.dylib (0) <5E163DC9-CD7C-3B0C-8A7E-C9907672FC90> /opt/homebrew/*/libnghttp3.9.6.1.dylib
+       0x105614000 -        0x10563bfff +libgd.3.dylib (0) <78033239-4E35-3804-98D3-1C1DD35968ED> /opt/homebrew/*/libgd.3.dylib
+       0x105674000 -        0x105677ffb +libsharpyuv.0.1.2.dylib (0) <D8238240-5AB6-3B23-A4ED-96AAC8F91A64> /opt/homebrew/*/libsharpyuv.0.1.2.dylib
+       0x105690000 -        0x1057201b3 +libssl.3.dylib (0) <1B8AB7A7-AD95-3B41-85F2-FB21B66B6423> /opt/homebrew/*/libssl.3.dylib
+       0x10576c000 -        0x1057ebfff +libpcre2-8.0.dylib (0) <A818FC7C-9353-3FA4-9AD3-2164F3A350E9> /opt/homebrew/*/libpcre2-8.0.dylib
+       0x105800000 -        0x1058a7fff +libcurl.4.dylib (0) <4C127196-E78E-3764-9D25-5AFEE207370E> /opt/homebrew/*/libcurl.4.dylib
+       0x1058dc000 -        0x10591bff7 +libpq.5.dylib (0) <0094A45F-7326-3869-B45B-90F7E93D8B00> /opt/homebrew/*/libpq.5.dylib
+       0x105938000 -        0x105a3fff7 +libsqlite3.3.51.3.dylib (0) <B781BA7D-F665-36D3-A0B2-A4038539AB63> /opt/homebrew/*/libsqlite3.3.51.3.dylib
+       0x105a70000 -        0x105ab7ffb +libodbc.2.dylib (0) <81ED7A20-F8FA-3497-8655-857ADB84B644> /opt/homebrew/*/libodbc.2.dylib
+       0x105ae0000 -        0x105b37feb +libgmp.10.dylib (0) <62ADC8CE-D24A-3F00-8067-E7468EC6B815> /opt/homebrew/*/libgmp.10.dylib
+       0x105b50000 -        0x105b83fff +libsodium.26.dylib (0) <0B17E2B2-5BE6-3C68-8E31-74A71D4DB5BF> /opt/homebrew/*/libsodium.26.dylib
+       0x105ba4000 -        0x105babfff +libltdl.7.dylib (0) <18575608-F92E-392C-92EE-1A50621D0613> /opt/homebrew/*/libltdl.7.dylib
+       0x105bbc000 -        0x105bbffff +libcom_err.3.0.dylib (0) <D3CF7542-CFF3-3094-9FB5-C41E846EC595> /opt/homebrew/*/libcom_err.3.0.dylib
+       0x105bd8000 -        0x105bf3ff7 +libnghttp2.14.dylib (0) <C1181B11-94E9-33C6-829A-40E0ED9766BC> /opt/homebrew/*/libnghttp2.14.dylib
+       0x105c14000 -        0x105f5425f +libcrypto.3.dylib (0) <B5FB28DB-1AC6-383C-9DDD-585812A35CE8> /opt/homebrew/*/libcrypto.3.dylib
+       0x1060bc000 -        0x106133fff +libonig.5.dylib (0) <48797A95-2A2D-3BDD-8415-8DA571324276> /opt/homebrew/*/libonig.5.dylib
+       0x106158000 -        0x1061a7fff +libnetsnmp.45.dylib (0) <5ED5DB65-41D0-3E07-A3A6-B35609F58B7F> /opt/homebrew/*/libnetsnmp.45.dylib
+       0x1061d0000 -        0x106207ff7 +libngtcp2.16.dylib (0) <E8B2DF81-52B0-31F0-99BE-8D236D3B8E8E> /opt/homebrew/*/libngtcp2.16.dylib
+       0x106228000 -        0x106247fff +libbrotlicommon.1.2.0.dylib (0) <B9D06887-6F26-3E8D-A65B-EEE31B88412D> /opt/homebrew/*/libbrotlicommon.1.2.0.dylib
+       0x106254000 -        0x10625bfff +libkrb5support.1.1.dylib (0) <3A31C8C2-ED85-3FD9-8639-B0D27B8671ED> /opt/homebrew/*/libkrb5support.1.1.dylib
+       0x106270000 -        0x10629fffb +libssh2.1.dylib (0) <0EF72410-74E1-36E4-86CD-B052B20AFBEF> /opt/homebrew/*/libssh2.1.dylib
+       0x1062b8000 -        0x1062dbff7 +libpng16.16.dylib (0) <D4B98A12-F680-3F28-B96F-D0F797F1B973> /opt/homebrew/*/libpng16.16.dylib
+       0x1062ec000 -        0x106309a3f +liblzma.5.dylib (0) <C724575B-978E-3C90-8AF9-1C3A98CF6D15> /opt/homebrew/*/liblzma.5.dylib
+       0x106338000 -        0x10636bfff +libfontconfig.1.dylib (0) <A8821110-3829-3E14-924B-DE0E75790250> /opt/homebrew/*/libfontconfig.1.dylib
+       0x106384000 -        0x1063abfff +libavif.16.4.0.dylib (0) <C5BFC30A-7D1E-3B73-BC9F-DAE8779D6DF7> /opt/homebrew/*/libavif.16.4.0.dylib
+       0x1063cc000 -        0x106583ff3 +libicui18n.78.3.dylib (0) <07E248B5-9FA7-3F70-97C7-F1CCD8432171> /opt/homebrew/*/libicui18n.78.3.dylib
+       0x1066dc000 -        0x10681bff7 +libicuuc.78.3.dylib (0) <320764CC-0436-318C-A3C9-498EB262B67D> /opt/homebrew/*/libicuuc.78.3.dylib
+       0x1068ac000 -        0x106937fff +libzstd.1.5.7.dylib (0) <A101F9A2-32DA-3484-AC68-4D3A5F26DA31> /opt/homebrew/*/libzstd.1.5.7.dylib
+       0x106954000 -        0x1069cffff +libfreetype.6.dylib (0) <F0949722-F23A-3CE6-A194-20896A571F8F> /opt/homebrew/*/libfreetype.6.dylib
+       0x106a28000 -        0x106a47fff +libk5crypto.3.1.dylib (0) <B7E23E02-8D8F-35BA-AEE7-3BFD44223B21> /opt/homebrew/*/libk5crypto.3.1.dylib
+       0x106a68000 -        0x106ac3fef +libjpeg.8.3.2.dylib (0) <C552D2E8-9257-3D06-B90E-0F04987924A6> /opt/homebrew/*/libjpeg.8.3.2.dylib
+       0x106adc000 -        0x106b1bfff +libwebp.7.2.0.dylib (0) <1BAF7F67-3BEB-3DBB-800D-35C98A2D38EB> /opt/homebrew/*/libwebp.7.2.0.dylib
+       0x106b60000 -        0x106bc3ff7 +libtiff.6.dylib (0) <9EC3233A-6D65-3698-A86A-ABB01B6B5BFE> /opt/homebrew/*/libtiff.6.dylib
+       0x106be4000 -        0x106c17ff3 +libgssapi_krb5.2.2.dylib (0) <6512703E-8086-3962-AFC9-04AABE412327> /opt/homebrew/*/libgssapi_krb5.2.2.dylib
+       0x106ca8000 -        0x106d3fff7 +libdav1d.7.dylib (0) <2B2295C9-791A-3D3D-8926-37193D27D285> /opt/homebrew/*/libdav1d.7.dylib
+       0x106da4000 -        0x106dcbff7 +libvmaf.3.dylib (0) <7EF169D5-D3AE-3A2E-90FE-0B633C6CCF99> /opt/homebrew/*/libvmaf.3.dylib
+       0x106f60000 -        0x106fdfff7 +libkrb5.3.3.dylib (0) <AB881029-DD31-3410-AD57-6928B17F174C> /opt/homebrew/*/libkrb5.3.3.dylib
+       0x107024000 -        0x107093ffb +redis.so (0) <960B2631-DC73-36D1-B7EF-ADCA373F0916> /opt/homebrew/*/redis.so
+       0x107164000 -        0x1074a7fff +libaom.3.13.1.dylib (0) <336B413F-1301-32D9-9A28-6BF94CA4C641> /opt/homebrew/*/libaom.3.13.1.dylib
+       0x107e40000 -        0x107efbfff +opcache.so (0) <E425A5C1-0374-3F5F-83D6-98C57D6B0ACC> /opt/homebrew/*/opcache.so
+       0x109548000 -        0x10b4dbfff +libicudata.78.3.dylib (0) <574CF30F-D2A9-34C1-B0C6-9B26677F8901> /opt/homebrew/*/libicudata.78.3.dylib
+       0x185e28000 -        0x185e7ab4b  libobjc.A.dylib (951.7) <1D62B376-2303-376A-B993-9432A2004EB6> /usr/lib/libobjc.A.dylib
+       0x185e7b000 -        0x185eafd58  libdyld.dylib (1387) <70073E6E-4CDD-314F-BBDF-EC7FF6CE2DFC> /usr/lib/system/libdyld.dylib
+       0x185eb0000 -        0x185f63503  dyld (1.0.0 - 1387) <7C8B34EC-1125-313B-AD9F-4BB3380221B0> /usr/lib/dyld
+       0x185f64000 -        0x185f67228  libsystem_blocks.dylib (96) <B33F1440-9364-38E4-AF85-8A21BFF24324> /usr/lib/system/libsystem_blocks.dylib
+       0x185f68000 -        0x185fbc55f  libxpc.dylib (3102.160.5) <E26A36A6-4B8F-321C-AE17-54353F9EEE84> /usr/lib/system/libxpc.dylib
+       0x185fbd000 -        0x185fdd9ff  libsystem_trace.dylib (1861.160.4) <314A8A89-4715-32B9-ABC2-B3087149C8B7> /usr/lib/system/libsystem_trace.dylib
+       0x185fde000 -        0x18608c5f7  libcorecrypto.dylib (1922.160.10) <057A41E9-2A2E-39CD-B198-387734EED870> /usr/lib/system/libcorecrypto.dylib
+       0x18608d000 -        0x1860dd257  libsystem_malloc.dylib (812.160.5) <BE7DCE21-9656-3C9E-9B8A-A26D090CAEC3> /usr/lib/system/libsystem_malloc.dylib
+       0x1860de000 -        0x18612523f  libdispatch.dylib (1542.160.2) <80E75F3F-333F-38A8-A3DD-6279FCDB771B> /usr/lib/system/libdispatch.dylib
+       0x186126000 -        0x186128ffb  libsystem_featureflags.dylib (103) <5725BCFE-07F3-3629-9B44-551A435E2DE2> /usr/lib/system/libsystem_featureflags.dylib
+       0x186129000 -        0x1861aa1e7  libsystem_c.dylib (1752.160.4) <3498CA79-EF40-3587-AD44-75187CEE7D95> /usr/lib/system/libsystem_c.dylib
+       0x1861ab000 -        0x18623bae7  libc++.1.dylib (2100.43) <D6EADBE3-BA0C-3862-B84A-3B907CF4641C> /usr/lib/libc++.1.dylib
+       0x18623c000 -        0x18625675f  libc++abi.dylib (2100.43) <9106CD43-009C-3B85-8FC5-9CE451DC5B78> /usr/lib/libc++abi.dylib
+       0x186257000 -        0x1862942f7  libsystem_kernel.dylib (12377.161.15.700.19) <EE805B14-29F2-360D-9A2C-3221A1211833> /usr/lib/system/libsystem_kernel.dylib
+       0x186295000 -        0x1862a1b3b  libsystem_pthread.dylib (539.100.4) <A58BEABD-7AC0-35F8-BCFF-E4FFBD79E938> /usr/lib/system/libsystem_pthread.dylib
+       0x1862a2000 -        0x1862aa963  libsystem_platform.dylib (375.120.2) <3AF14164-15FE-3623-9EE3-46DE29FD5B5A> /usr/lib/system/libsystem_platform.dylib
+       0x1862ab000 -        0x1862da6eb  libsystem_info.dylib (600) <0037F576-2C50-36F0-9F36-6CB7A049D5B1> /usr/lib/system/libsystem_info.dylib
+       0x1862db000 -        0x18683991f  com.apple.CoreFoundation (6.9 - 5026.6.7.2) <CAD0CC75-4E7C-37B1-9441-30620CFAB742> /System/Library/Frameworks/CoreFoundation.framework/Versions/A/CoreFoundation
+       0x18683a000 -        0x186b54fbf  com.apple.LaunchServices (1141.1 - 1141.1) <7FF829C3-6829-3ED7-A22C-A1328EDD0B9B> /System/Library/Frameworks/CoreServices.framework/Versions/A/Frameworks/LaunchServices.framework/Versions/A/LaunchServices
+       0x186b55000 -        0x186d3d95f  com.apple.gpusw.MetalTools (1.0 - 1) <7DA73466-576B-3025-A247-954A7D5306A8> /System/Library/PrivateFrameworks/MetalTools.framework/Versions/A/MetalTools
+       0x186d3e000 -        0x1875384bf  libBLAS.dylib (1551.160.2) <6EE5A2F5-FD5B-3E70-89AD-B95619151E6A> /System/Library/Frameworks/Accelerate.framework/Versions/A/Frameworks/vecLib.framework/Versions/A/libBLAS.dylib
+       0x187539000 -        0x18764835f  com.apple.Lexicon-framework (1.0 - 195.12) <70AAFCA7-1C2B-3B78-8216-0AA90B6D28FE> /System/Library/PrivateFrameworks/Lexicon.framework/Versions/A/Lexicon
+       0x187649000 -        0x1877b838f  libSparse.dylib (184.160.6) <B6E32C5B-3FA9-3A13-AB9A-D415447257A2> /System/Library/Frameworks/Accelerate.framework/Versions/A/Frameworks/vecLib.framework/Versions/A/libSparse.dylib
+       0x1877b9000 -        0x18784c10f  com.apple.SystemConfiguration (1.21 - 1.21) <442D7EC5-D327-3BA7-AC9E-F610AB233FAB> /System/Library/Frameworks/SystemConfiguration.framework/Versions/A/SystemConfiguration
+       0x18784d000 -        0x18788157b  libCRFSuite.dylib (55) <873D36B8-2B8A-36DA-9180-E4299BB87E58> /usr/lib/libCRFSuite.dylib
+       0x187b4a000 -        0x188b307ff  com.apple.Foundation (6.9 - 5026.6.7.2) <C499A0A8-5B5F-3D7B-A6F0-9D6738BDED81> /System/Library/Frameworks/Foundation.framework/Versions/C/Foundation
+       0x188ce1000 -        0x188e01cbf  com.apple.CoreDisplay (291.4 - 291.4) <A4C3C371-4631-378D-B1FF-712FAC46B075> /System/Library/Frameworks/CoreDisplay.framework/Versions/A/CoreDisplay
+       0x188e02000 -        0x1891c4fdf  com.apple.audio.AudioToolboxCore (1.0 - 1556.709) <D302901E-C07B-3F2B-AA59-043D1B36DEC1> /System/Library/PrivateFrameworks/AudioToolboxCore.framework/Versions/A/AudioToolboxCore
+       0x1891c5000 -        0x1893eed9f  com.apple.CoreText (877.20.0.1 - 877.20.0.1) <7130A656-FB02-3B52-B8C4-1CC2270CD256> /System/Library/Frameworks/CoreText.framework/Versions/A/CoreText
+       0x1893ef000 -        0x189b84e1f  com.apple.audio.CoreAudio (5.0 - 5.0) <255B3E90-87ED-3288-89C3-14D24E8165D2> /System/Library/Frameworks/CoreAudio.framework/Versions/A/CoreAudio
+       0x189b85000 -        0x189fa421f  com.apple.security (7.0 - 61901.160.44.701.4) <3A95C09A-F7BA-3D72-8BBE-1C25E61CB507> /System/Library/Frameworks/Security.framework/Versions/A/Security
+       0x189fa5000 -        0x18a27ad53  libicucore.A.dylib (76142.5.2.1) <5D454926-981F-3A3D-8FAB-558E6A32AC3D> /usr/lib/libicucore.A.dylib
+       0x18a27b000 -        0x18a284e5f  libsystem_darwin.dylib (1752.160.4) <B808D04B-2798-36C9-96F6-35534BDFCF11> /usr/lib/system/libsystem_darwin.dylib
+       0x18a285000 -        0x18a57ccbf  com.apple.CoreServices.CarbonCore (1333 - 1333) <627D09C4-40F0-310F-AB12-AA419CA9598E> /System/Library/Frameworks/CoreServices.framework/Versions/A/Frameworks/CarbonCore.framework/Versions/A/CarbonCore
+       0x18a57d000 -        0x18a5bcf47  com.apple.CoreServicesInternal (505 - 505) <1E89146A-9C2B-3038-B14B-28AC5CEB88CA> /System/Library/PrivateFrameworks/CoreServicesInternal.framework/Versions/A/CoreServicesInternal
+       0x18a5bd000 -        0x18a5fc1bf  com.apple.CSStore (1141.1 - 1141.1) <1DCC6A9C-1FBC-3490-9D65-A4025E556FB0> /System/Library/PrivateFrameworks/CoreServicesStore.framework/Versions/A/CoreServicesStore
+       0x18a5fd000 -        0x18a6e525f  com.apple.framework.IOKit (2.0.2 - 100231.120.3) <F0BC760B-C4BC-312F-95D0-6CF9B1364BED> /System/Library/Frameworks/IOKit.framework/Versions/A/IOKit
+       0x18a6e6000 -        0x18a6f81b6  libsystem_notify.dylib (348.160.3) <922BDCF4-CD33-3EEB-BC56-9DCAE54F8F65> /usr/lib/system/libsystem_notify.dylib
+       0x18c035000 -        0x18c04b3ff  com.apple.UniformTypeIdentifiers (709 - 709) <8E9C5B77-B3E3-3DB1-AD44-7D4D9ADE4268> /System/Library/Frameworks/UniformTypeIdentifiers.framework/Versions/A/UniformTypeIdentifiers
+       0x18c528000 -        0x18c60095f  libboringssl.dylib (532.120.8) <7C3F9986-9E61-3171-B75F-F8B2EB5145B6> /usr/lib/libboringssl.dylib
+       0x18c601000 -        0x18c9b61df  com.apple.CFNetwork (1.0 - 3860.700.1) <CD5A79B8-A638-35CD-A628-0D4AC9DB7C44> /System/Library/Frameworks/CFNetwork.framework/Versions/A/CFNetwork
+       0x18c9b7000 -        0x18c9d1f7b  libsystem_networkextension.dylib (2226.161.1.700.2) <83F224A4-40C4-3106-A97B-788D1D961DCB> /usr/lib/system/libsystem_networkextension.dylib
+       0x18c9d2000 -        0x18c9d3067  libenergytrace.dylib (23) <1A584316-EEC8-3137-8BA7-AFBE50DF5883> /usr/lib/libenergytrace.dylib
+       0x18c9d4000 -        0x18ca53eff  libMobileGestalt.dylib (1484.120.3) <ED9050DF-F38B-36B7-91DB-923C788C9B64> /usr/lib/libMobileGestalt.dylib
+       0x18ca54000 -        0x18ca6bfdf  libsystem_asl.dylib (406) <FF6BE113-1093-3D23-8A55-E0A5B327CA8E> /usr/lib/system/libsystem_asl.dylib
+       0x18ca6c000 -        0x18ca8f797  com.apple.TCC (1.0 - 1) <3BC4BFE7-2666-3BA0-BEEB-550EBB717692> /System/Library/PrivateFrameworks/TCC.framework/Versions/A/TCC
+       0x18ca90000 -        0x18d0475ff  com.apple.SkyLight (1.600.0 - 922.13.4.2) <872D178C-72DF-382C-9495-283B9DE6A5BD> /System/Library/PrivateFrameworks/SkyLight.framework/Versions/A/SkyLight
+       0x18d048000 -        0x18d79d5ff  com.apple.CoreGraphics (2.0 - 1965.6.3) <433305E3-B14A-31AA-95D3-4940CC031909> /System/Library/Frameworks/CoreGraphics.framework/Versions/A/CoreGraphics
+       0x18d79e000 -        0x18d945b8b  com.apple.ColorSync (4.13.0 - 3813.5.1) <505BFEDB-09C2-37BB-968E-7CAA06F0D5D9> /System/Library/Frameworks/ColorSync.framework/Versions/A/ColorSync
+       0x18dd9a000 -        0x18e187f5f  com.apple.CoreData (120 - 1526) <2FBB5AF7-3927-38EC-BFD7-C0BB933103A6> /System/Library/Frameworks/CoreData.framework/Versions/A/CoreData
+       0x18e188000 -        0x18e1a3ddf  com.apple.ProtocolBuffer (1 - 310.26.4.23.2) <9EB0D65A-5174-3FA7-A474-35840A32C519> /System/Library/PrivateFrameworks/ProtocolBuffer.framework/Versions/A/ProtocolBuffer
+       0x18e1a4000 -        0x18e38ca2f  libsqlite3.dylib (382) <FA81FC7D-A418-36C7-80DC-F23D6D66D852> /usr/lib/libsqlite3.dylib
+       0x18e42a000 -        0x18e51b49f  com.apple.BaseBoard (732.1.1 - 732.1.1) <16B60505-4069-32A1-8D6A-D08F6306E261> /System/Library/PrivateFrameworks/BaseBoard.framework/Versions/A/BaseBoard
+       0x18e51c000 -        0x18e587d5f  com.apple.RunningBoardServices (1.0 - 1015.160.2.0.1) <9CD3619D-B517-3F88-B35F-0B6D39495E31> /System/Library/PrivateFrameworks/RunningBoardServices.framework/Versions/A/RunningBoardServices
+       0x18e588000 -        0x18e5fbc37  com.apple.AE (944 - 944) <EA4B9595-8D7F-3B5E-9072-27FA8FCDFEA0> /System/Library/Frameworks/CoreServices.framework/Versions/A/Frameworks/AE.framework/Versions/A/AE
+       0x18e5fc000 -        0x18e60dd87  libdns_services.dylib (2881.160.4.700.1) <91AEF9B2-08FC-3658-8AD6-DEC6E1FBBDC0> /usr/lib/libdns_services.dylib
+       0x18e60e000 -        0x18e616387  libsystem_symptoms.dylib (2169.160.3.701.1) <7F0D4E31-268A-3EBB-8A2C-30CCC771A5A5> /usr/lib/system/libsystem_symptoms.dylib
+       0x18e617000 -        0x18fe3429f  com.apple.Network (1.0 - 5812.160.9) <AC1376FE-23EB-3B99-AC45-655FE7FCEAFB> /System/Library/Frameworks/Network.framework/Versions/A/Network
+       0x18fe35000 -        0x18fe64ddf  com.apple.analyticsd (1.0 - 1) <D901A599-F5A4-3F37-879D-B8D2281312DE> /System/Library/PrivateFrameworks/CoreAnalytics.framework/Versions/A/CoreAnalytics
+       0x18fe65000 -        0x18fe668bb  libDiagnosticMessagesClient.dylib (113) <64AEDF19-F2F6-3E92-9396-711FD9E2D7AF> /usr/lib/libDiagnosticMessagesClient.dylib
+       0x18fe67000 -        0x18fed337f  com.apple.spotlight.metadata.utilities (1.0 - 2418.6.3.9.401) <F8B79CC5-2FD0-3D95-B469-AFCE0EB0C3DD> /System/Library/PrivateFrameworks/MetadataUtilities.framework/Versions/A/MetadataUtilities
+       0x18fed4000 -        0x18ff5fb5f  com.apple.Metadata (26.7 - 2418.6.3.9.401) <53D82345-AB59-3FC7-A91D-B90BB319CA0E> /System/Library/Frameworks/CoreServices.framework/Versions/A/Frameworks/Metadata.framework/Versions/A/Metadata
+       0x18ff60000 -        0x18ff691eb  com.apple.DiskArbitration (2.7 - 2.7) <DBEEB2D7-4F74-379B-9991-753B4B3A31C1> /System/Library/Frameworks/DiskArbitration.framework/Versions/A/DiskArbitration
+       0x18ff6a000 -        0x19038e06b  com.apple.vImage (8.1 - 632.120.2.701.1) <0A4EBA70-58A4-3206-A0C1-AB09C37B7EB7> /System/Library/Frameworks/Accelerate.framework/Versions/A/Frameworks/vImage.framework/Versions/A/vImage
+       0x19038f000 -        0x1907a4e3f  com.apple.QuartzCore (1195.17.2 - 1195.17.2) <C78848D9-B3EE-38B2-9E95-3D8506529D62> /System/Library/Frameworks/QuartzCore.framework/Versions/A/QuartzCore
+       0x1907a5000 -        0x1907f5cdf  libFontRegistry.dylib (408.20.0.2) <E697F2AF-E225-3F97-8296-3A072D5D3ABB> /System/Library/Frameworks/ApplicationServices.framework/Versions/A/Frameworks/ATS.framework/Versions/A/Resources/libFontRegistry.dylib
+       0x190abc000 -        0x190ac9aff  com.apple.OpenDirectory (26.7 - 666.100.1) <5F7E4BE7-DBAE-3F0D-B49D-E42E0562ECF8> /System/Library/Frameworks/OpenDirectory.framework/Versions/A/OpenDirectory
+       0x190aca000 -        0x190af327f  com.apple.CFOpenDirectory (26.7 - 666.100.1) <3335BD98-F9F8-36DC-954D-5FDF76E740D2> /System/Library/Frameworks/OpenDirectory.framework/Versions/A/Frameworks/CFOpenDirectory.framework/Versions/A/CFOpenDirectory
+       0x190af4000 -        0x190b0091b  com.apple.CoreServices.FSEvents (1413.160.2 - 1413.160.2) <5A74D8B7-D870-39AA-863D-8718B69C3A87> /System/Library/Frameworks/CoreServices.framework/Versions/A/Frameworks/FSEvents.framework/Versions/A/FSEvents
+       0x190b01000 -        0x190b2a0df  com.apple.coreservices.SharedFileList (225 - 225) <5118BC7D-EA1E-3AA0-9A5D-EC4CDE67EC7C> /System/Library/Frameworks/CoreServices.framework/Versions/A/Frameworks/SharedFileList.framework/Versions/A/SharedFileList
+       0x190b2b000 -        0x190b2e08f  libapp_launch_measurement.dylib (17) <8AE2A6D2-B312-36E9-8502-794BC2B1A538> /usr/lib/libapp_launch_measurement.dylib
+       0x190b2f000 -        0x190b779bf  com.apple.CoreAutoLayout (1.0 - 34) <6262E250-0A98-3E16-9062-8AD09CB13AEA> /System/Library/PrivateFrameworks/CoreAutoLayout.framework/Versions/A/CoreAutoLayout
+       0x190b78000 -        0x190c5e3c3  libxml2.2.dylib (39.10.3) <BF2CA321-CA82-3E59-B87D-F7709F4F1BF9> /usr/lib/libxml2.2.dylib
+       0x190c5f000 -        0x190cdfbbf  com.apple.CoreVideo (1.8 - 0.0) <97D8F3BE-3618-3D1C-B091-6F58BE12FAD1> /System/Library/Frameworks/CoreVideo.framework/Versions/A/CoreVideo
+       0x190ce0000 -        0x190ce2f5f  com.apple.loginsupport (3.0 - 264.4.2.100) <39085810-317C-3ABB-B56D-833012AB10C7> /System/Library/PrivateFrameworks/login.framework/Versions/A/Frameworks/loginsupport.framework/Versions/A/loginsupport
+       0x190d21000 -        0x190d4d65f  com.apple.UserManagement (1.0 - 1) <13C7D776-746D-3238-8E6C-B7366816974C> /System/Library/PrivateFrameworks/UserManagement.framework/Versions/A/UserManagement
+       0x1928b3000 -        0x1928eb373  libsystem_containermanager.dylib (725.160.3.701.2) <1207D51D-2B9C-3B08-91DA-99A9D0394312> /usr/lib/system/libsystem_containermanager.dylib
+       0x1928ec000 -        0x19290825f  com.apple.IOSurface (393.5.8 - 393.5.8) <EC415FA0-F1F9-34BA-86AC-E9E125153805> /System/Library/Frameworks/IOSurface.framework/Versions/A/IOSurface
+       0x192909000 -        0x19291305f  com.apple.IOAccelerator (487.4.4 - 487.4.4) <F7A9298B-0292-30B3-B2E6-93E5BDC50885> /System/Library/PrivateFrameworks/IOAccelerator.framework/Versions/A/IOAccelerator
+       0x192914000 -        0x192bede1f  com.apple.Metal (373.7 - 373.7) <BE8C4BB5-F767-31FA-AC2C-A3D06E0ABEF0> /System/Library/Frameworks/Metal.framework/Versions/A/Metal
+       0x192bee000 -        0x192c173ff  com.apple.audio.caulk (1.0 - 214.701.1) <17D94B6F-C622-36F7-B775-2FE1F8A749B8> /System/Library/PrivateFrameworks/caulk.framework/Versions/A/caulk
+       0x192c18000 -        0x192db977f  com.apple.CoreMedia (1.0 - 3330.13.105.2) <148DDDF5-5F2F-3A69-B0F7-7A64651648E5> /System/Library/Frameworks/CoreMedia.framework/Versions/A/CoreMedia
+       0x192dba000 -        0x19308943f  libFontParser.dylib (435.6.0.2) <90621BC3-4A16-3BF7-B384-3194F517A9B6> /System/Library/PrivateFrameworks/FontServices.framework/libFontParser.dylib
+       0x1933df000 -        0x19371ff1f  com.apple.ImageIO (3.3.0 - 2784.6.4) <BEFD16FA-4E97-333B-8399-5AE054935A86> /System/Library/Frameworks/ImageIO.framework/Versions/A/ImageIO
+       0x193720000 -        0x193c0af9f  com.apple.CoreImage (19.0.0 - 1592.120.2) <7F4B8F93-1EEC-39BB-9E26-DCE70958D1FE> /System/Library/Frameworks/CoreImage.framework/Versions/A/CoreImage
+       0x193c0b000 -        0x193cc4ddf  com.apple.MetalPerformanceShaders.MPSCore (1.0 - 1) <AB1D017D-8A2B-369A-91B2-A3FC1399C226> /System/Library/Frameworks/MetalPerformanceShaders.framework/Versions/A/Frameworks/MPSCore.framework/Versions/A/MPSCore
+       0x193cc5000 -        0x193cc95d7  libsystem_configuration.dylib (1405.160.3.701.3) <7725D903-1D37-33E7-82AF-2260661C81A8> /usr/lib/system/libsystem_configuration.dylib
+       0x193cca000 -        0x193cd099f  libsystem_sandbox.dylib (2680.160.6.700.3) <7B54AAA3-EB32-3853-8F0E-EB956EC957A1> /usr/lib/system/libsystem_sandbox.dylib
+       0x193cd1000 -        0x193cd217f  com.apple.AggregateDictionary (1.0 - 1) <39320E6E-C885-325A-8E05-46299431F631> /System/Library/PrivateFrameworks/AggregateDictionary.framework/Versions/A/AggregateDictionary
+       0x193cd3000 -        0x193cd74d3  com.apple.AppleSystemInfo (3.1.5 - 3.1.5) <FAB4C56B-86C3-3C4F-9C94-5424C8E5D7BA> /System/Library/PrivateFrameworks/AppleSystemInfo.framework/Versions/A/AppleSystemInfo
+       0x193cd8000 -        0x193cd946b  liblangid.dylib (140) <37329BE8-053E-3997-8524-36DED44A3154> /usr/lib/liblangid.dylib
+       0x193cda000 -        0x193df945f  com.apple.CoreNLP (1.0 - 313) <8802B6CC-FE07-3F24-952B-D15B69928565> /System/Library/PrivateFrameworks/CoreNLP.framework/Versions/A/CoreNLP
+       0x193dfa000 -        0x193e0091f  com.apple.LinguisticData (1.0 - 483.10) <D9E92919-75FB-3FCF-928F-D8DDA620043F> /System/Library/PrivateFrameworks/LinguisticData.framework/Versions/A/LinguisticData
+       0x193e01000 -        0x194e8941f  libBNNS.dylib (1961.160.8) <28C22990-4E65-3B92-9292-CF67F93C7F18> /System/Library/Frameworks/Accelerate.framework/Versions/A/Frameworks/vecLib.framework/Versions/A/libBNNS.dylib
+       0x194e8a000 -        0x194fc746f  libvDSP.dylib (1126.160.2) <B98FEB65-21F7-307A-95FA-B36B80C018AA> /System/Library/Frameworks/Accelerate.framework/Versions/A/Frameworks/vecLib.framework/Versions/A/libvDSP.dylib
+       0x194ffc000 -        0x195035267  com.apple.IOMobileFramebuffer (343.0.0 - 343.0.0) <811E1C0F-5325-3FB2-ABFA-855AC08F510F> /System/Library/PrivateFrameworks/IOMobileFramebuffer.framework/Versions/A/IOMobileFramebuffer
+       0x19522e000 -        0x1952456df  com.apple.MobileKeyBag (2.0 - 1.0) <E70D41AE-5777-30B7-9991-493B13DBE5DB> /System/Library/PrivateFrameworks/MobileKeyBag.framework/Versions/A/MobileKeyBag
+       0x195246000 -        0x1952540ff  com.apple.AssertionServices (1.0 - 1015.160.2.0.1) <86AC7BCD-A13F-30B6-A723-1BFAA9CD8CC2> /System/Library/PrivateFrameworks/AssertionServices.framework/Versions/A/AssertionServices
+       0x195255000 -        0x1952e7a9f  com.apple.securityfoundation (6.0 - 55293) <2AE0DB08-8817-3F9F-AA93-D41EEDC3745D> /System/Library/Frameworks/SecurityFoundation.framework/Versions/A/SecurityFoundation
+       0x1952e8000 -        0x1953192ff  com.apple.coreservices.BackgroundTaskManagement (1.0 - 104) <C2ACE084-54F8-3A3A-AFE2-7383EEA19575> /System/Library/PrivateFrameworks/BackgroundTaskManagement.framework/Versions/A/BackgroundTaskManagement
+       0x195325000 -        0x1953281fb  libquarantine.dylib (196.160.2.700.3) <45146171-F0C1-3104-AE01-6AAD841A70B5> /usr/lib/system/libquarantine.dylib
+       0x195329000 -        0x1953342bf  libCheckFix.dylib (33) <A873D376-4A28-389E-A479-159368FA8677> /usr/lib/libCheckFix.dylib
+       0x195335000 -        0x19534c7ab  libcoretls.dylib (187.100.3) <7642E799-417C-3426-BAB5-A863F45A30DF> /usr/lib/libcoretls.dylib
+       0x19534d000 -        0x19535e273  libbsm.0.dylib (90) <C63E7165-3AC7-3104-99EE-A984265C7DF2> /usr/lib/libbsm.0.dylib
+       0x19535f000 -        0x1953bdc6b  libmecab.dylib (1121.5.1) <769E7E5E-AF33-3330-AD25-CBEB2D10E86B> /usr/lib/libmecab.dylib
+       0x1953be000 -        0x1953c041b  libgermantok.dylib (31) <C45F456C-A003-3694-B594-57E6E4F5474A> /usr/lib/libgermantok.dylib
+       0x1953c1000 -        0x1953d4e3f  libLinearAlgebra.dylib (1551.160.2) <676371DF-AF18-3EB9-9D7F-E6C1195FA25F> /System/Library/Frameworks/Accelerate.framework/Versions/A/Frameworks/vecLib.framework/Versions/A/libLinearAlgebra.dylib
+       0x1953d5000 -        0x19562b17f  com.apple.MetalPerformanceShaders.MPSNeuralNetwork (1.0 - 1) <956C3954-8E65-3C72-B44C-DBFB639079C4> /System/Library/Frameworks/MetalPerformanceShaders.framework/Versions/A/Frameworks/MPSNeuralNetwork.framework/Versions/A/MPSNeuralNetwork
+       0x19562c000 -        0x19568019f  com.apple.MetalPerformanceShaders.MPSRayIntersector (1.0 - 1) <9AEEF59F-5C90-35A2-9C06-31092C739735> /System/Library/Frameworks/MetalPerformanceShaders.framework/Versions/A/Frameworks/MPSRayIntersector.framework/Versions/A/MPSRayIntersector
+       0x195814000 -        0x19584557f  com.apple.MetalPerformanceShaders.MPSMatrix (1.0 - 1) <2F65712D-A6B4-3365-9515-7F5664DD5C5C> /System/Library/Frameworks/MetalPerformanceShaders.framework/Versions/A/Frameworks/MPSMatrix.framework/Versions/A/MPSMatrix
+       0x195846000 -        0x195a15cdf  com.apple.MetalPerformanceShaders.MPSNDArray (1.0 - 1) <5F38FB4E-CC5E-31B1-8095-0B1402379980> /System/Library/Frameworks/MetalPerformanceShaders.framework/Versions/A/Frameworks/MPSNDArray.framework/Versions/A/MPSNDArray
+       0x195a16000 -        0x195aaa1df  com.apple.MetalPerformanceShaders.MPSImage (1.0 - 1) <ABF5AF91-C57E-36DF-AFD1-C8D311350958> /System/Library/Frameworks/MetalPerformanceShaders.framework/Versions/A/Frameworks/MPSImage.framework/Versions/A/MPSImage
+       0x195aab000 -        0x195ab64c3  com.apple.AppleFSCompression (174.160.2 - 1.0) <7B4C4EB9-9ECC-3FBF-A71C-E6336B9FFC1E> /System/Library/PrivateFrameworks/AppleFSCompression.framework/Versions/A/AppleFSCompression
+       0x195ab7000 -        0x195ac30a3  libbz2.1.0.dylib (49) <0824081F-39D6-33E2-94B8-C33B231C81FF> /usr/lib/libbz2.1.0.dylib
+       0x195ac4000 -        0x195acad03  libsystem_coreservices.dylib (191.5.1) <BF51842C-BC69-3725-9EB2-7A52804963F8> /usr/lib/system/libsystem_coreservices.dylib
+       0x195acb000 -        0x195afcadf  com.apple.CoreServices.OSServices (1141.1 - 1141.1) <0484D74E-0846-3813-924A-AF43A2EDDE2D> /System/Library/Frameworks/CoreServices.framework/Versions/A/Frameworks/OSServices.framework/Versions/A/OSServices
+       0x196044000 -        0x196052d97  libz.1.dylib (100.120.1) <E4DB2DC8-3F00-308A-BFB5-65F71CB7D0D1> /usr/lib/libz.1.dylib
+       0x196053000 -        0x196090a77  libsystem_m.dylib (3312.100.1) <731B5AFB-FE83-372C-A2B5-747C87068AE6> /usr/lib/system/libsystem_m.dylib
+       0x196091000 -        0x196091c9b  libcharset.1.dylib (115.120.2) <A2E8DF49-5A82-3DB3-88A1-D8E1B6516F8B> /usr/lib/libcharset.1.dylib
+       0x196092000 -        0x196095527  libmacho.dylib (1387) <95DEC6C1-4480-3303-8A52-9AFC3D8C9219> /usr/lib/system/libmacho.dylib
+       0x196096000 -        0x1960aedc3  libkxld.dylib (12377.161.15.700.19) <8523DC67-CE3E-3811-A7F8-A74E5806D187> /usr/lib/system/libkxld.dylib
+       0x1960af000 -        0x1960bc3a7  libcommonCrypto.dylib (600035) <EBA6E4D0-4DD2-33BB-BF95-48A58591AAAD> /usr/lib/system/libcommonCrypto.dylib
+       0x1960bd000 -        0x1960c6ca3  libunwind.dylib (2100.2) <81A35518-53E4-3519-B5BC-AE6A796E9DE1> /usr/lib/system/libunwind.dylib
+       0x1960c7000 -        0x1960ce349  liboah.dylib (367.9) <3DBB2990-262D-3776-8FAC-B88C0373DCF0> /usr/lib/liboah.dylib
+       0x1960cf000 -        0x1960d9c1f  libcopyfile.dylib (240.160.2.702.1) <4EE1E869-70EE-3FA8-AC26-351C6B287F38> /usr/lib/system/libcopyfile.dylib
+       0x1960da000 -        0x1960dd987  libcompiler_rt.dylib (103.3) <65D09B50-BE7D-3491-8547-6B85A3C2216D> /usr/lib/system/libcompiler_rt.dylib
+       0x1960de000 -        0x1960e278b  libsystem_collections.dylib (1752.160.4) <34CEFA68-1E15-32F2-A5B1-97C0170A77C5> /usr/lib/system/libsystem_collections.dylib
+       0x1960e3000 -        0x1960e64cf  libsystem_secinit.dylib (168.100.7) <B6B286B6-6E08-3578-8AFC-E4C55697C760> /usr/lib/system/libsystem_secinit.dylib
+       0x1960e7000 -        0x1960e9bf7  libremovefile.dylib (85.100.6) <33530415-3DB6-3556-A59A-24C22681D632> /usr/lib/system/libremovefile.dylib
+       0x1960ea000 -        0x1960eaf27  libkeymgr.dylib (31) <AD45B9EE-CE2B-3E1F-B96B-15F7F9FA3712> /usr/lib/system/libkeymgr.dylib
+       0x1960eb000 -        0x1960f3e3f  libsystem_dnssd.dylib (2881.160.4.700.1) <865BFB9D-4EDD-3866-B0D8-E5FAB1D0C61F> /usr/lib/system/libsystem_dnssd.dylib
+       0x1960f4000 -        0x1960f909b  libcache.dylib (95) <A13AF0DC-5928-38BE-97FF-E04C29EF96AF> /usr/lib/system/libcache.dylib
+       0x1960fa000 -        0x1960fbce3  libSystem.B.dylib (1356) <E9E4C9A6-16BB-392C-96AA-07797764E2A1> /usr/lib/libSystem.B.dylib
+       0x1960fc000 -        0x1960fdfcf  libfakelink.dylib (5) <ADE2A84A-0131-36E6-8CE2-BA226701BEF2> /usr/lib/libfakelink.dylib
+       0x1960fe000 -        0x1960fea33  com.apple.SoftLinking (1.0 - 71) <089D0FBB-10B7-361F-A38A-A987B003185E> /System/Library/PrivateFrameworks/SoftLinking.framework/Versions/A/SoftLinking
+       0x196134000 -        0x19613b2bb  libiconv.2.dylib (115.120.2) <20288349-686B-37CB-9D84-9566FCFFC979> /usr/lib/libiconv.2.dylib
+       0x19614f000 -        0x196246f3f  libarchive.2.dylib (167.160.4) <F1A229FF-C9E3-3103-9DA7-AB7E9F8FEF7A> /usr/lib/libarchive.2.dylib
+       0x196247000 -        0x1962ac85b  com.apple.SearchKit (1.4.2 - 1.4.2) <E0FCA8AD-A12E-3EA6-ACAC-C2CFDEBB102D> /System/Library/Frameworks/CoreServices.framework/Versions/A/Frameworks/SearchKit.framework/Versions/A/SearchKit
+       0x1962ad000 -        0x1962b518f  libThaiTokenizer.dylib (28) <1D881129-7533-3846-9F23-4DB0840FF709> /usr/lib/libThaiTokenizer.dylib
+       0x1962b6000 -        0x1962d9f37  com.apple.applesauce (1.0 - 17.7) <78071698-F976-3AD1-BB7E-176B11BE1AA5> /System/Library/PrivateFrameworks/AppleSauce.framework/Versions/A/AppleSauce
+       0x1962da000 -        0x1962f24ab  libapple_nghttp2.dylib (37.120.3) <24313FDE-140D-3460-AEBC-61E285D22976> /usr/lib/libapple_nghttp2.dylib
+       0x1962f3000 -        0x19639c38f  libSparseBLAS.dylib (184.160.6) <1E50E208-E26B-33E1-8425-0325EB493980> /System/Library/Frameworks/Accelerate.framework/Versions/A/Frameworks/vecLib.framework/Versions/A/libSparseBLAS.dylib
+       0x19639d000 -        0x19639e63f  com.apple.MetalPerformanceShaders.MetalPerformanceShaders (1.0 - 1) <B22F152B-70EA-3686-BC9E-F4B4A23ECDC5> /System/Library/Frameworks/MetalPerformanceShaders.framework/Versions/A/MetalPerformanceShaders
+       0x19639f000 -        0x1963a4ff7  libpam.2.dylib (35) <4DD45409-F205-3FBF-832F-22928AE3597A> /usr/lib/libpam.2.dylib
+       0x1963a5000 -        0x196479d97  libcompression.dylib (193.120.2) <0EC52D41-3B72-3EC1-9522-A99CB4E88D63> /usr/lib/libcompression.dylib
+       0x19647a000 -        0x19647e267  libQuadrature.dylib (8) <F9902EDE-5AED-3BCF-BAAD-5CD302E20A6B> /System/Library/Frameworks/Accelerate.framework/Versions/A/Frameworks/vecLib.framework/Versions/A/libQuadrature.dylib
+       0x19647f000 -        0x19764f94f  libLAPACK.dylib (1551.160.2) <A74A12EE-0D49-30AA-B403-35497BC18889> /System/Library/Frameworks/Accelerate.framework/Versions/A/Frameworks/vecLib.framework/Versions/A/libLAPACK.dylib
+       0x197650000 -        0x1976a64ff  com.apple.DictionaryServices (1.2 - 382.0.1) <D548B4D8-EB44-3E08-9874-D97CC53251F6> /System/Library/Frameworks/CoreServices.framework/Versions/A/Frameworks/DictionaryServices.framework/Versions/A/DictionaryServices
+       0x1976a7000 -        0x1976c54f7  liblzma.5.dylib (21) <A9563C70-3C72-3504-AAD0-E73E927159C3> /usr/lib/liblzma.5.dylib
+       0x1976c6000 -        0x1976c785f  libcoretls_cfhelpers.dylib (187.100.3) <8288A14F-19BD-3CE1-B758-0AC8C0DBC494> /usr/lib/libcoretls_cfhelpers.dylib
+       0x1976c8000 -        0x19773b8a3  com.apple.APFS (2811.160.7 - 2811.160.7) <D89CA96A-09C7-3592-8A6E-9D130340F085> /System/Library/PrivateFrameworks/APFS.framework/Versions/A/APFS
+       0x19773c000 -        0x19774a82b  libxar.1.dylib (503.160.5.700.1) <87B48212-EA55-3985-9ADE-B2FED87CC358> /usr/lib/libxar.1.dylib
+       0x19774b000 -        0x19774e79b  libutil.dylib (73) <E3316786-3660-3F3E-A002-6AEBD7A77E20> /usr/lib/libutil.dylib
+       0x19774f000 -        0x197779cbf  libxslt.1.dylib (21.13.2) <23EE1357-FB66-3926-AA35-FE75C28FBD14> /usr/lib/libxslt.1.dylib
+       0x197782000 -        0x1977fb587  libvMisc.dylib (1126.160.2) <9AA556D7-C597-3315-A119-BCC3C345FB26> /System/Library/Frameworks/Accelerate.framework/Versions/A/Frameworks/vecLib.framework/Versions/A/libvMisc.dylib
+       0x1977fc000 -        0x19788b5df  libate.dylib (3.0.12) <0683FB66-0AFE-3920-A894-65F657D949F3> /usr/lib/libate.dylib
+       0x197895000 -        0x1978a81bf  com.apple.CrashReporterSupport (10.13 - 15140) <D8D91D12-DA64-3C6A-9CEF-B80BED29370E> /System/Library/PrivateFrameworks/CrashReporterSupport.framework/Versions/A/CrashReporterSupport
+       0x1979ec000 -        0x197a2cf9f  com.apple.pluginkit.framework (1.0 - 1) <4A67E28C-FAB3-3251-92A6-AB1E2B37F2E9> /System/Library/PrivateFrameworks/PlugInKit.framework/Versions/A/PlugInKit
+       0x197aa3000 -        0x197aeb9ff  com.apple.AppleVAFramework (6.2.10 - 6.2.10) <B268BFF8-59AF-3C97-81D1-E20A04A6BCC3> /System/Library/PrivateFrameworks/AppleVA.framework/Versions/A/AppleVA
+       0x197aec000 -        0x197b06ccf  libexpat.1.dylib (47) <0D5AE600-87F2-33EA-BD47-481AB0A13960> /usr/lib/libexpat.1.dylib
+       0x197b07000 -        0x197b10bfb  libheimdal-asn1.dylib (710.160.4.701.2) <739BDB31-1F19-3A9C-935A-3A162E40C455> /usr/lib/libheimdal-asn1.dylib
+       0x197c31000 -        0x197cf2edf  com.apple.MediaExperience (1.0 - 1) <306FF096-098E-3D44-A8D6-3EFA868BDEBA> /System/Library/PrivateFrameworks/MediaExperience.framework/Versions/A/MediaExperience
+       0x197d20000 -        0x197d2f7ff  com.apple.GraphVisualizer (1.0 - 307) <61AD2AE3-BAF5-37FF-A4DD-ED221184E591> /System/Library/PrivateFrameworks/GraphVisualizer.framework/Versions/A/GraphVisualizer
+       0x197d30000 -        0x197d6f51f  com.apple.OTSVG (1.0 - 877.20.0.1) <DCBC1DC8-7728-32D8-BED1-D94AAE388F58> /System/Library/PrivateFrameworks/OTSVG.framework/Versions/A/OTSVG
+       0x197d70000 -        0x197d7cc7f  com.apple.xpc.AppServerSupport (1.0 - 3102.160.5) <997B0ACC-FBF2-3B74-8F0D-BD4FCE114895> /System/Library/PrivateFrameworks/AppServerSupport.framework/Versions/A/AppServerSupport
+       0x197d7d000 -        0x197d83abf  libspindump.dylib (419.11) <EA01F4F5-5B53-3199-821A-2C40EAEA51A9> /usr/lib/libspindump.dylib
+       0x197d84000 -        0x197e44ebf  com.apple.Heimdal (4.0 - 2.0) <9E1A9783-490E-3187-90B8-3749D6602399> /System/Library/PrivateFrameworks/Heimdal.framework/Versions/A/Heimdal
+       0x198113000 -        0x1981576ef  com.apple.AppleJPEG (1.0 - 1) <861A310F-68FB-393B-898B-BAADAEE2366D> /System/Library/PrivateFrameworks/AppleJPEG.framework/Versions/A/AppleJPEG
+       0x198158000 -        0x19831892f  libJP2.dylib (2784.6.6) <D6771749-026F-303A-B7AF-8453B1930124> /System/Library/Frameworks/ImageIO.framework/Versions/A/Resources/libJP2.dylib
+       0x198319000 -        0x19831ae1f  com.apple.WatchdogClient.framework (1.0 - 333) <7959ABCD-AB3E-3826-9478-481D57808E5A> /System/Library/PrivateFrameworks/WatchdogClient.framework/Versions/A/WatchdogClient
+       0x19831b000 -        0x198360d7f  com.apple.MultitouchSupport.framework (9461.1 - 9461.1) <3CB6DEE3-1A16-3AC9-8092-7403573A7F33> /System/Library/PrivateFrameworks/MultitouchSupport.framework/Versions/A/MultitouchSupport
+       0x198361000 -        0x1988b737f  com.apple.VideoToolbox (1.0 - 3330.13.105.2) <BC0EC514-ED6C-3069-8F1F-71A3CC7E3506> /System/Library/Frameworks/VideoToolbox.framework/Versions/A/VideoToolbox
+       0x1988b8000 -        0x1988dd20f  libAudioToolboxUtility.dylib (1556.709) <86D68303-7001-34EC-828E-0DA60B3D00A1> /usr/lib/libAudioToolboxUtility.dylib
+       0x1988de000 -        0x19890801f  libPng.dylib (2784.6.6) <8D855916-D266-3546-AC25-13F40BDE4916> /System/Library/Frameworks/ImageIO.framework/Versions/A/Resources/libPng.dylib
+       0x198909000 -        0x198969b63  libTIFF.dylib (2784.6.6) <E93D2259-A6F8-3FEB-819A-4EFEBF4AD71D> /System/Library/Frameworks/ImageIO.framework/Versions/A/Resources/libTIFF.dylib
+       0x19896a000 -        0x198989257  com.apple.IOPresentment (67 - 67) <99734842-0D43-382B-B159-9BE7FAB2D49A> /System/Library/PrivateFrameworks/IOPresentment.framework/Versions/A/IOPresentment
+       0x19898a000 -        0x19898e7d3  com.apple.GPUWrangler (8.1.12 - 8.1.12) <E536D4EA-4A69-36C8-AD24-E31AD947ED34> /System/Library/PrivateFrameworks/GPUWrangler.framework/Versions/A/GPUWrangler
+       0x19898f000 -        0x198991913  libRadiance.dylib (2784.6.6) <DF198A7A-E7B5-3D02-81A1-2242FED93374> /System/Library/Frameworks/ImageIO.framework/Versions/A/Resources/libRadiance.dylib
+       0x198992000 -        0x1989972f3  com.apple.DSExternalDisplay (3.1 - 380) <7FC32AD8-2200-38F6-A205-817BFC479E9C> /System/Library/PrivateFrameworks/DSExternalDisplay.framework/Versions/A/DSExternalDisplay
+       0x198998000 -        0x1989c2baf  libJPEG.dylib (2784.6.6) <A41EB50C-F1E5-3462-B685-5A3B166F0DAF> /System/Library/Frameworks/ImageIO.framework/Versions/A/Resources/libJPEG.dylib
+       0x1989f1000 -        0x1989f69fb  libGIF.dylib (2784.6.6) <0A2ACF07-8A0B-3A24-8908-CEE660E2240B> /System/Library/Frameworks/ImageIO.framework/Versions/A/Resources/libGIF.dylib
+       0x1989f7000 -        0x198a0719f  com.apple.CMCaptureCore (1.0 - 665.140.6) <328E21CB-CF9C-333B-9C5B-54C784B9A301> /System/Library/PrivateFrameworks/CMCaptureCore.framework/Versions/A/CMCaptureCore
+       0x199980000 -        0x1999ee86f  libusrtcp.dylib (5812.160.9) <F09B4A99-0E34-3C89-A238-17DF2AA3DB0C> /usr/lib/libusrtcp.dylib
+       0x1999ef000 -        0x199f917ff  libswiftCore.dylib (6.3.2 - 6.3.2.1.11) <0BA3E214-4DF4-3FA7-8F74-04A52E089710> /usr/lib/swift/libswiftCore.dylib
+       0x19a045000 -        0x19a09a31f  libSessionUtility.dylib (398.701) <FDD6D3AA-4381-361A-98A1-DBFFEB263647> /System/Library/PrivateFrameworks/AudioSession.framework/libSessionUtility.dylib
+       0x19a09b000 -        0x19a27041f  com.apple.audio.toolbox.AudioToolbox (1.14 - 1.14) <003D0274-7E1F-3C4D-9F4E-0E7E8048253C> /System/Library/Frameworks/AudioToolbox.framework/Versions/A/AudioToolbox
+       0x19a271000 -        0x19a2f1b7f  com.apple.audio.AudioSession (1.0 - 398.701) <CA23DB9F-A36E-3F89-B5E1-58D87D7F5513> /System/Library/PrivateFrameworks/AudioSession.framework/Versions/A/AudioSession
+       0x19a2f2000 -        0x19a30b39f  libAudioStatistics.dylib (262.601) <5C016DB5-65A6-30D6-9ADB-73F306FF1D8C> /usr/lib/libAudioStatistics.dylib
+       0x19a388000 -        0x19a3a419b  libresolv.9.dylib (96) <002A6291-6D59-320A-8F15-133FDC398A21> /usr/lib/libresolv.9.dylib
+       0x19a3a5000 -        0x19a3b77e7  libsasl2.2.dylib (215) <C9C33EA8-88A8-3706-AF1A-3E3812ED7D0B> /usr/lib/libsasl2.2.dylib
+       0x19a5a0000 -        0x19a680337  libSMC.dylib (38) <919A3107-895B-39E3-A5B6-3B0A7B665E08> /usr/lib/libSMC.dylib
+       0x19a6e0000 -        0x19a6ed257  com.apple.NetAuth (6.2 - 6.2) <D04A8DDE-644C-3B4F-805E-AB87B200A8C1> /System/Library/PrivateFrameworks/NetAuth.framework/Versions/A/NetAuth
+       0x19a6fc000 -        0x19a709b1f  com.apple.perfdata (1.0 - 130) <F9BA8F11-725E-3193-8286-7E511BD9483D> /System/Library/PrivateFrameworks/perfdata.framework/Versions/A/perfdata
+       0x19a70a000 -        0x19a717c9f  libperfcheck.dylib (46) <EBC004E1-7C36-3FB5-B297-75B27297B2BA> /usr/lib/libperfcheck.dylib
+       0x19a718000 -        0x19a729187  com.apple.Kerberos (3.0 - 1) <61045540-CEE5-3987-AE84-241941A23E70> /System/Library/Frameworks/Kerberos.framework/Versions/A/Kerberos
+       0x19a72a000 -        0x19a77bae7  com.apple.GSS (4.0 - 2.0) <8D181B55-758C-3CDB-835B-4F620B9D5BA8> /System/Library/Frameworks/GSS.framework/Versions/A/GSS
+       0x19a77c000 -        0x19a78cd77  com.apple.CommonAuth (4.0 - 2.0) <BF2E9C5E-CBB3-3228-8402-1BF55FD9765E> /System/Library/PrivateFrameworks/CommonAuth.framework/Versions/A/CommonAuth
+       0x19a78d000 -        0x19a87105f  com.apple.MobileAssets (1.0 - 1837.160.15) <9F0B80E6-21F3-3B15-A9E6-07C9DC7F92E8> /System/Library/PrivateFrameworks/MobileAsset.framework/Versions/A/MobileAsset
+       0x19a904000 -        0x19a913160  com.apple.CorePhoneNumbers (1.0 - 1) <B9AF3994-811E-3D50-B2A8-F2BACF6B1205> /System/Library/PrivateFrameworks/CorePhoneNumbers.framework/Versions/A/CorePhoneNumbers
+       0x19aa60000 -        0x19aa72227  libffi.dylib (40) <EF074762-9375-3E1D-9F6F-9272F59D5394> /usr/lib/libffi.dylib
+       0x19c4f0000 -        0x19c5e3a36  com.apple.combine (1.0 - 3023) <DA7FE337-36D0-3509-BEF3-FA4FEF6A62D0> /System/Library/Frameworks/Combine.framework/Versions/A/Combine
+       0x19e859000 -        0x19e85986f  com.apple.Accelerate.vecLib (3.11 - vecLib 3.11) <8F00D025-76AB-3AFC-80D9-31684A1D574C> /System/Library/Frameworks/Accelerate.framework/Versions/A/Frameworks/vecLib.framework/Versions/A/vecLib
+       0x19e87e000 -        0x19e87e98f  com.apple.CoreServices (1226 - 1226) <5E0424D1-98D4-38E2-8AF2-9507D3B08DD9> /System/Library/Frameworks/CoreServices.framework/Versions/A/CoreServices
+       0x19eafd000 -        0x19eafd417  com.apple.Accelerate (1.11 - Accelerate 1.11) <12890E6D-2282-3986-AF30-816846E0F85B> /System/Library/Frameworks/Accelerate.framework/Versions/A/Accelerate
+       0x19fa04000 -        0x19fa135df  com.apple.SymptomDiagnosticReporter (1.0 - 411.160.2) <981B22F6-55EC-368E-BBA0-017C639D8174> /System/Library/PrivateFrameworks/SymptomDiagnosticReporter.framework/Versions/A/SymptomDiagnosticReporter
+       0x19fa14000 -        0x19fa4225f  com.apple.PowerLog (1.0 - 1) <6B78F2B3-DC0A-392E-A83E-2E9BE9CEC006> /System/Library/PrivateFrameworks/PowerLog.framework/Versions/A/PowerLog
+       0x19fa50000 -        0x19fb016df  com.apple.DiscRecording (9.0.3 - 9030.4.5) <2A7D1D66-87DF-3183-930C-50158E0B9DC7> /System/Library/Frameworks/DiscRecording.framework/Versions/A/DiscRecording
+       0x19fb02000 -        0x19fb33137  com.apple.MediaKit (16 - 938) <B3A15621-8607-3F44-A416-3DA23BEBD903> /System/Library/PrivateFrameworks/MediaKit.framework/Versions/A/MediaKit
+       0x1a05f5000 -        0x1a060b950  libswiftDispatch.dylib (1542.160.2) <9B0D7D51-31D3-3DB2-89CE-6F0C8E104E20> /usr/lib/swift/libswiftDispatch.dylib
+       0x1a0956000 -        0x1a09e2c3f  com.apple.BoardServices (1.0 - 732.1.1) <5955D381-FC7E-392A-8858-FEA7FC0E9AF5> /System/Library/PrivateFrameworks/BoardServices.framework/Versions/A/BoardServices
+       0x1a0a23000 -        0x1a0a3053f  com.apple.GraphicsServices (1.0 - 1.0) <5C9B67AE-A63C-365C-8B8A-BD8A88112D6C> /System/Library/PrivateFrameworks/GraphicsServices.framework/Versions/A/GraphicsServices
+       0x1a0c33000 -        0x1a0c40a97  libexslt.0.dylib (21.13.2) <4DBADB58-4152-3964-AAA7-983DA4759D04> /usr/lib/libexslt.0.dylib
+       0x1a0d4d000 -        0x1a0d6ee9f  com.apple.DebugSymbols (216 - 217) <4BF7AD91-C408-381A-92F3-1B5866048FB6> /System/Library/PrivateFrameworks/DebugSymbols.framework/Versions/A/DebugSymbols
+       0x1a0d6f000 -        0x1a0ecc8df  com.apple.CoreSymbolication (16.0 - 64575.56.1) <055941FD-39B8-37EA-B6CE-75E7E4357F57> /System/Library/PrivateFrameworks/CoreSymbolication.framework/Versions/A/CoreSymbolication
+       0x1a0ecd000 -        0x1a0ed709f  com.apple.CoreTime (334.0.16.3 - 334.0.16.3) <9238EED9-7424-3EBC-BECF-E0F046C4CED2> /System/Library/PrivateFrameworks/CoreTime.framework/Versions/A/CoreTime
+       0x1a2827000 -        0x1a28997ff  com.apple.BackBoardServices (1.0 - 1.0) <18A604B3-AA79-39B4-AFF8-04C081C70AF9> /System/Library/PrivateFrameworks/BackBoardServices.framework/Versions/A/BackBoardServices
+       0x1a289a000 -        0x1a28d54ef  com.apple.LDAPFramework (2.4.28 - 194.5) <1E7E7271-E012-386B-AFE7-9BE89CCB84B1> /System/Library/Frameworks/LDAP.framework/Versions/A/LDAP
+       0x1a28d6000 -        0x1a28d77b7  com.apple.TrustEvaluationAgent (2.0 - 38) <BA45BC5B-411C-3A7C-8877-385ED817C54E> /System/Library/PrivateFrameworks/TrustEvaluationAgent.framework/Versions/A/TrustEvaluationAgent
+       0x1a2a05000 -        0x1a2abe61f  com.apple.DiskImagesFramework (683.160.3.701.2 - 683.160.3.701.2) <E556628A-4B9B-3936-B3F5-9BA383ACD748> /System/Library/PrivateFrameworks/DiskImages.framework/Versions/A/DiskImages
+       0x1a2aff000 -        0x1a2b1559f  com.apple.RemoteServiceDiscovery (1.0 - 219.160.4) <DF5E83C3-3E3E-39D2-93DA-6789CFE09833> /System/Library/PrivateFrameworks/RemoteServiceDiscovery.framework/Versions/A/RemoteServiceDiscovery
+       0x1a2b16000 -        0x1a2b2bc3f  com.apple.xpc.RemoteXPC (1.0 - 3102.160.5) <4D2CF21E-8017-30E7-9C3A-C5069AE01F6F> /System/Library/PrivateFrameworks/RemoteXPC.framework/Versions/A/RemoteXPC
+       0x1a2bc0000 -        0x1a2c40f4b  libcurl.4.dylib (168) <830908CA-181D-310C-BABD-F69A3403FC69> /usr/lib/libcurl.4.dylib
+       0x1a2c47000 -        0x1a2c8a25f  com.apple.AppSupport (1.0.0 - 29) <40E2D644-CC61-303D-957B-B2AA6D2B6907> /System/Library/PrivateFrameworks/AppSupport.framework/Versions/A/AppSupport
+       0x1a2f5b000 -        0x1a2f5df3f  com.apple.InternationalTextSearch (1.0 - 1) <0361FEB2-4BCA-343F-8E7F-E6437DE2BA55> /System/Library/PrivateFrameworks/InternationalTextSearch.framework/Versions/A/InternationalTextSearch
+       0x1a352e000 -        0x1a352e3f7  libHeimdalProxy.dylib (88) <CA1B9BC6-607E-30F0-954F-DA020D8778EC> /System/Library/Frameworks/Kerberos.framework/Versions/A/Libraries/libHeimdalProxy.dylib
+       0x1a3559000 -        0x1a3577b9f  com.apple.StreamingZip (1.0 - 1) <B4BBBCA7-D9E9-3D8F-B9D7-A0EA4A1347E3> /System/Library/PrivateFrameworks/StreamingZip.framework/Versions/A/StreamingZip
+       0x1a35d1000 -        0x1a35d46bf  libswiftObjectiveC.dylib (951.7) <6EB049B3-1C73-3081-922E-ACC82DDC13DC> /usr/lib/swift/libswiftObjectiveC.dylib
+       0x1a35d5000 -        0x1a35f26ff  libswiftos.dylib (1082) <DCEFDB82-75C6-3C53-B737-5D0EFBDA57CC> /usr/lib/swift/libswiftos.dylib
+       0x1a453c000 -        0x1a45ca85f  com.apple.proactive.support.ProactiveSupport (1.0 - 418.1) <A59F1416-C4B2-3C08-A888-C30256A546F7> /System/Library/PrivateFrameworks/ProactiveSupport.framework/Versions/A/ProactiveSupport
+       0x1a46c7000 -        0x1a46eb29f  com.apple.ASEProcessing (1.55.0 - 1.55.0) <1184392F-FA4B-3DF0-8D7B-6B5B3ED6FE16> /System/Library/PrivateFrameworks/ASEProcessing.framework/Versions/A/ASEProcessing
+       0x1a594b000 -        0x1a5a19c1f  com.apple.audio.midi.CoreMIDI (2.0 - 88) <B9E70AF5-FFB9-3503-8668-4E83C1A54981> /System/Library/Frameworks/CoreMIDI.framework/Versions/A/CoreMIDI
+       0x1a665c000 -        0x1a666075f  com.apple.IOSurfaceAccelerator (1.0.0 - 1.0.0) <F6365D59-68C1-3D2C-AEA2-DDC149194CCF> /System/Library/PrivateFrameworks/IOSurfaceAccelerator.framework/Versions/A/IOSurfaceAccelerator
+       0x1ab92c000 -        0x1ab93f9ff  com.apple.HID (1.0 - 1) <F47D14B1-A17E-341B-9C27-C026B095D723> /System/Library/PrivateFrameworks/HID.framework/Versions/A/HID
+       0x1b0523000 -        0x1b053229f  com.apple.NetFS (6.0 - 4.0) <D017525F-35EE-33E2-BA22-190DA49901DE> /System/Library/Frameworks/NetFS.framework/Versions/A/NetFS
+       0x1b0a7f000 -        0x1b0a81707  libswiftDarwin.dylib (377.160.5) <D4F393FF-1E27-3CE7-A1BD-953E3F26F4AA> /usr/lib/swift/libswiftDarwin.dylib
+       0x1b2ba2000 -        0x1b2c8b4df  libquic.dylib (5812.160.9) <DC1C6608-D464-3491-8A95-9C0990338A42> /usr/lib/libquic.dylib
+       0x1b2c97000 -        0x1b2cbfedf  com.apple.private.SystemPolicy (1.0 - 1) <78D2C254-6948-3ED5-AAE1-BDB5D209F100> /System/Library/PrivateFrameworks/SystemPolicy.framework/Versions/A/SystemPolicy
+       0x1b3b7c000 -        0x1b3c0abff  com.apple.LoggingSupport (1.0 - 1861.160.4) <576C80FD-BEFD-3E63-9AE5-2E7896ECFB9C> /System/Library/PrivateFrameworks/LoggingSupport.framework/Versions/A/LoggingSupport
+       0x1b3c0b000 -        0x1b3c17acb  com.apple.MallocStackLogging (1.0 - 65000) <2D0A731C-D66A-3866-B1CA-98B7FAF295DE> /System/Library/PrivateFrameworks/MallocStackLogging.framework/Versions/A/MallocStackLogging
+       0x1b3c3d000 -        0x1b3c97d9f  libmis.dylib (463.160.2) <2CD960E7-452C-3C36-838E-DADAA5B6C626> /usr/lib/libmis.dylib
+       0x1b3c98000 -        0x1b3c9bc5f  com.apple.gpusw.GPURawCounter (34 - 34) <55AA8F48-E61D-3062-95AC-BC3B20DD4433> /System/Library/PrivateFrameworks/GPURawCounter.framework/Versions/A/GPURawCounter
+       0x1b3c9c000 -        0x1b3cbb87f  libswiftCoreAudio.dylib (411.701) <9D00A952-F20A-3576-A504-43F4ACAEDD36> /usr/lib/swift/libswiftCoreAudio.dylib
+       0x1b3cbc000 -        0x1b3cc2327  libswiftCoreFoundation.dylib (2411) <F5FC1302-25A3-322E-BF63-308930E8C57B> /usr/lib/swift/libswiftCoreFoundation.dylib
+       0x1b3ccf000 -        0x1b3d1b843  libswiftXPC.dylib (128.120.2) <95CE0CC5-C069-3BAE-A3EC-7AA8186BEEF4> /usr/lib/swift/libswiftXPC.dylib
+       0x1b3d1d000 -        0x1b3d1d8a3  libswiftIOKit.dylib (1) <23C3D636-B793-3CFE-A510-BA94FCA4A05C> /usr/lib/swift/libswiftIOKit.dylib
+       0x1b5d4f000 -        0x1b5d882c7  libbootpolicy.dylib (289.160.2) <783A0EE4-A12A-3EAC-B775-BC3D7562B9D9> /usr/lib/libbootpolicy.dylib
+       0x1b7817000 -        0x1b782e88b  libswiftsimd.dylib (23) <B841C29B-340E-3DFA-8946-585C218C6A0C> /usr/lib/swift/libswiftsimd.dylib
+       0x1b8f01000 -        0x1b8f3d2af  libncurses.5.4.dylib (79) <FA09099A-F6BE-3E5D-976D-5D7FF7EB153C> /usr/lib/libncurses.5.4.dylib
+       0x1b8f3e000 -        0x1b8f4737f  com.apple.IOAccelMemoryInfo (1.0 - 1) <9B8660AC-5EDE-3EED-894E-CECACF7130AB> /System/Library/PrivateFrameworks/IOAccelMemoryInfo.framework/Versions/A/IOAccelMemoryInfo
+       0x1ba60e000 -        0x1ba6170be  libswiftCoreMIDI.dylib (6) <02FA41D4-BAE5-3254-B696-A93A679BFBAA> /usr/lib/swift/libswiftCoreMIDI.dylib
+       0x1badff000 -        0x1bae05bbf  com.apple.MSUDataAccessor (1.0 - 1) <B67F1F22-22F4-30C7-84E5-A1E279CE84FD> /System/Library/PrivateFrameworks/MSUDataAccessor.framework/Versions/A/MSUDataAccessor
+       0x1bb228000 -        0x1bb28addf  com.apple.SoftwareUpdateCoreSupport (1.0 - 1) <26309F6C-7649-35DC-9224-EC0A621C2FE8> /System/Library/PrivateFrameworks/SoftwareUpdateCoreSupport.framework/Versions/A/SoftwareUpdateCoreSupport
+       0x1bed55000 -        0x1bedac25f  com.apple.biome.BiomeFoundation (1.0 - 209.22) <F80EA57A-03C2-3A0D-8393-77AA76514CDB> /System/Library/PrivateFrameworks/BiomeFoundation.framework/Versions/A/BiomeFoundation
+       0x1c1c93000 -        0x1c1ca0a1f  libswiftMetal.dylib (373.7) <31BE5521-F202-34F3-A2F5-82AAE1A5E006> /usr/lib/swift/libswiftMetal.dylib
+       0x1c1ca1000 -        0x1c1ca7e05  libswiftCompression.dylib (11) <A0101920-47DA-3EB3-A44D-098F2068C37F> /usr/lib/swift/libswiftCompression.dylib
+       0x1c2bdb000 -        0x1c2c85d7f  libFDR.dylib (1499.160.2) <165E0967-B467-3542-B41F-D05E2D35D477> /usr/lib/libFDR.dylib
+       0x1c2d07000 -        0x1c32d233f  com.apple.biome.BiomeStreams (1.0 - 209.22) <57D209D5-E6C5-3A5E-84EE-59819541AE13> /System/Library/PrivateFrameworks/BiomeStreams.framework/Versions/A/BiomeStreams
+       0x1c37a6000 -        0x1c37ba8ff  com.apple.SoftwareUpdateCoreConnect (1.0 - 1) <E0B8577A-B9F8-3D60-85F2-8B43AB87EB33> /System/Library/PrivateFrameworks/SoftwareUpdateCoreConnect.framework/Versions/A/SoftwareUpdateCoreConnect
+       0x1c5bfe000 -        0x1c5c68c1f  com.apple.osanalytics.OSAnalytics (1.0 - 1) <3E8297C5-888A-36F5-9EB4-6CCED7856402> /System/Library/PrivateFrameworks/OSAnalytics.framework/Versions/A/OSAnalytics
+       0x1c70ba000 -        0x1c70bbf9f  libswiftQuartzCore.dylib (5) <7CCBEB85-167F-34DB-B007-B5476F190B63> /usr/lib/swift/libswiftQuartzCore.dylib
+       0x1c74ad000 -        0x1c74b28e7  com.apple.kperf (1.0 - 1) <9E9347FA-842B-395E-ABE1-FB76635235CB> /System/Library/PrivateFrameworks/kperf.framework/Versions/A/kperf
+       0x1c75c4000 -        0x1c75c963f  com.apple.MobileSystemServices (1.0 - 1) <33D7F953-EC70-3D6C-A82F-780FC8DF3C30> /System/Library/PrivateFrameworks/MobileSystemServices.framework/Versions/A/MobileSystemServices
+       0x1c8bb6000 -        0x1c8bd829f  libamsupport.dylib (434.160.4) <B129CCB3-CC5A-3C81-8538-E5834D106B53> /usr/lib/libamsupport.dylib
+       0x1c8fb4000 -        0x1c90140ff  com.apple.biome.BiomePubSub (1.0 - 209.22) <1CF0A38C-0E3B-3C6A-A398-8A22CB539C8E> /System/Library/PrivateFrameworks/BiomePubSub.framework/Versions/A/BiomePubSub
+       0x1c9015000 -        0x1c905819f  com.apple.biome.BiomeStorage (1.0 - 209.22) <C404FAEC-421E-36D7-B342-D38863AB8D19> /System/Library/PrivateFrameworks/BiomeStorage.framework/Versions/A/BiomeStorage
+       0x1cbb52000 -        0x1cbb6113f  libswiftUniformTypeIdentifiers.dylib (877.5.2) <C56D7B1D-FB84-3087-90A4-295768410946> /usr/lib/swift/libswiftUniformTypeIdentifiers.dylib
+       0x1cbb62000 -        0x1cbc27a9b  libswiftAccelerate.dylib (77.100.2) <014F4B48-5D67-370F-96AB-32E30745B619> /usr/lib/swift/libswiftAccelerate.dylib
+       0x1cbd80000 -        0x1cbd9111f  libpartition2_dynamic.dylib (3476.160.2) <66AF2013-AD83-3C69-85DE-E4FB7F273632> /usr/lib/libpartition2_dynamic.dylib
+       0x1cc2ef000 -        0x1cc2f9fdf  com.apple.AFKUser (1.0 - 1) <ADFB48F6-5AB5-3705-A623-15DC8A0E1B1D> /System/Library/PrivateFrameworks/AFKUser.framework/Versions/A/AFKUser
+       0x1cfcf3000 -        0x1cfd5475f  libswiftCoreMedia.dylib (3330.13.105.2) <4710B99E-37C4-3F7B-BAB0-5ACA6F1231EC> /usr/lib/swift/libswiftCoreMedia.dylib
+       0x1d14a6000 -        0x1d14a7bbf  libswiftOSLog.dylib (10) <9E6680B9-DED4-3EED-BE0D-B17B87A774AF> /usr/lib/swift/libswiftOSLog.dylib
+       0x1d55bd000 -        0x1d56c9d5f  com.apple.Symbolication (16.0 - 64575.70.1) <175CA4C6-5C28-32F0-85C2-610E07C26A4E> /System/Library/PrivateFrameworks/Symbolication.framework/Versions/A/Symbolication
+       0x1d9c51000 -        0x1d9c613df  com.apple.OSLog (1.0 - 1861.160.4) <E91CE975-CDCF-3A38-9C10-46515A1F2A71> /System/Library/Frameworks/OSLog.framework/Versions/A/OSLog
+       0x1d9f65000 -        0x1da07675f  com.apple.InternalSwiftProtobuf (1.0 - 1.26.0) <28367C89-09D9-3FD3-9785-400B18D1A3BE> /System/Library/PrivateFrameworks/InternalSwiftProtobuf.framework/Versions/A/InternalSwiftProtobuf
+       0x1da13c000 -        0x1da1470bf  com.apple.HIDDisplay (1.0 - 1) <60963898-F697-3278-AF1C-96A268940A27> /System/Library/PrivateFrameworks/HIDDisplay.framework/Versions/A/HIDDisplay
+       0x1e0029000 -        0x1e0046d9f  libedit.3.dylib (65) <14B48684-3D8B-3FD7-9578-9508758D2A69> /usr/lib/libedit.3.dylib
+       0x1e2171000 -        0x1e2171af3  com.apple.FeatureFlags (1.0 - 103) <63DC9704-D3F6-3505-84AA-4744662C6A85> /System/Library/PrivateFrameworks/FeatureFlags.framework/Versions/A/FeatureFlags
+       0x1eb8c5000 -        0x1eb8c75bf  com.apple.ConfigProfileHelper (18.0 - 1800) <FBD3DC5C-6252-314A-9C12-4F77C50DD94A> /System/Library/PrivateFrameworks/ConfigProfileHelper.framework/Versions/A/ConfigProfileHelper
+       0x22bfd3000 -        0x22bfda2c3  libCoreFSCache.dylib (352.2) <929856F1-62F0-33E3-86A7-1A3AF6447D12> /System/Library/Frameworks/OpenGL.framework/Versions/A/Libraries/libCoreFSCache.dylib
+       0x22bfdb000 -        0x22bfe0947  libCoreVMClient.dylib (352.2) <1DD0DC53-3FF3-3314-8C23-A0704314A858> /System/Library/Frameworks/OpenGL.framework/Versions/A/Libraries/libCoreVMClient.dylib
+       0x22bfe1000 -        0x22bff12b7  com.apple.opengl (23.1.1 - 23.1.1) <5D9D43F5-4CC1-3220-A859-43A0AFEB8CB0> /System/Library/Frameworks/OpenGL.framework/Versions/A/OpenGL
+       0x22bff2000 -        0x22bff47bf  libCVMSPluginSupport.dylib (23.1.1) <40E3483A-43C5-3B7B-B448-00FAC56DEE64> /System/Library/Frameworks/OpenGL.framework/Versions/A/Libraries/libCVMSPluginSupport.dylib
+       0x22bff5000 -        0x22bffd4ff  libGFXShared.dylib (23.1.1) <EB999372-0BBB-36B0-AAEA-26302DF59BC6> /System/Library/Frameworks/OpenGL.framework/Versions/A/Libraries/libGFXShared.dylib
+       0x22bffe000 -        0x22c03154b  libGLImage.dylib (23.1.1) <C38ADA91-6CA2-37F0-AAEB-959BAD1AC0F0> /System/Library/Frameworks/OpenGL.framework/Versions/A/Libraries/libGLImage.dylib
+       0x22c032000 -        0x22c06b5bf  libGLU.dylib (23.1.1) <750D7734-2C62-3B49-A772-509157DBEC4D> /System/Library/Frameworks/OpenGL.framework/Versions/A/Libraries/libGLU.dylib
+       0x22c1c2000 -        0x22c1cbbc7  libGL.dylib (23.1.1) <51F309E2-D4E3-348A-8597-B203831AB0AE> /System/Library/Frameworks/OpenGL.framework/Versions/A/Libraries/libGL.dylib
+       0x22e05e000 -        0x22e1d1f1f  com.apple.ExtensionFoundation (97 - 97) <DE3F25CB-2FE4-3E29-B6D0-84DCDF66F76D> /System/Library/Frameworks/ExtensionFoundation.framework/Versions/A/ExtensionFoundation
+       0x22f445000 -        0x22f487a1f  com.apple.LightweightCodeRequirements (1.0 - 1) <BEDD0E23-C326-37F4-8387-D8E4621EBCD3> /System/Library/Frameworks/LightweightCodeRequirements.framework/Versions/A/LightweightCodeRequirements
+       0x2302ab000 -        0x2302c91ff  com.apple.MPSBenchmarkLoop (1.0 - 1) <B6F74347-6E57-3805-B9E1-4470C8FA9E38> /System/Library/Frameworks/MetalPerformanceShaders.framework/Versions/A/Frameworks/MPSBenchmarkLoop.framework/Versions/A/MPSBenchmarkLoop
+       0x2302ca000 -        0x2302dde7f  com.apple.MPSFunctions (1.0 - 1) <ECFF295E-9911-36C0-968B-5319D8577A7A> /System/Library/Frameworks/MetalPerformanceShaders.framework/Versions/A/Frameworks/MPSFunctions.framework/Versions/A/MPSFunctions
+       0x2302de000 -        0x2302e353f  com.apple.MPSHost (1.0 - 1) <DE2582E7-16C0-3564-8CC2-702B305BD2F0> /System/Library/Frameworks/MetalPerformanceShaders.framework/Versions/A/Frameworks/MPSHost.framework/Versions/A/MPSHost
+       0x23358e000 -        0x2336fa4bf  com.apple.SwiftData (1.0 - 135) <5E340782-7DE7-3D4E-B196-CF7D623BA5B8> /System/Library/Frameworks/SwiftData.framework/Versions/A/SwiftData
+       0x23a252000 -        0x23a266abf  com.apple.AppleDeviceQuerySupport (1.0 - 408.120.3) <2E9B10D2-DAA3-3A7B-A50B-4183F68D7C93> /System/Library/PrivateFrameworks/AppleDeviceQuerySupport.framework/Versions/A/AppleDeviceQuerySupport
+       0x23a9e4000 -        0x23aa5fb46  com.apple.AppleKeyStore (1.0 - 1.0) <3E07B338-9122-3C01-BF27-B77EA58A3BC2> /System/Library/PrivateFrameworks/AppleKeyStore.framework/Versions/A/AppleKeyStore
+       0x23b38c000 -        0x23b3a49df  com.apple.private.AppleMobileFileIntegrity-fmk (1.0 - 1) <34996EFC-118C-3BC5-8CBC-BAFF4EA005EE> /System/Library/PrivateFrameworks/AppleMobileFileIntegrity.framework/Versions/A/AppleMobileFileIntegrity
+       0x23b89e000 -        0x23b8b0799  com.apple.AtomicsInternal (1.1.0 - 5026.6.1) <43048DE0-2CF1-364C-A087-42C78020BF98> /System/Library/PrivateFrameworks/AtomicsInternal.framework/Versions/A/AtomicsInternal
+       0x23b96d000 -        0x23b98fdff  com.apple.imgaudio.AudioAnalytics (1.0 - 1) <86ED47C7-2B54-3F2D-B89B-CF50C8864C36> /System/Library/PrivateFrameworks/AudioAnalytics.framework/Versions/A/AudioAnalytics
+       0x23bfd3000 -        0x23c01b85f  com.apple.BackBoardHIDEventFoundation (1.0 - 1) <50904B52-E93E-3684-B195-4ADFC7578837> /System/Library/PrivateFrameworks/BackBoardHIDEventFoundation.framework/Versions/A/BackBoardHIDEventFoundation
+       0x23c0b4000 -        0x23c0cd77f  com.apple.biome.BiomeDSL (1.0 - 209.22) <58091704-8332-30A8-BE10-F148F0E2B5AC> /System/Library/PrivateFrameworks/BiomeDSL.framework/Versions/A/BiomeDSL
+       0x23c0ce000 -        0x23c988f7f  com.apple.BiomeLibrary (274.60) <F8EBE4EA-1BFE-36AE-A6DC-D229E2834356> /System/Library/PrivateFrameworks/BiomeLibrary.framework/Versions/A/BiomeLibrary
+       0x23c989000 -        0x23c98eb5f  com.apple.biome.BiomeSync (1.0 - 209.22) <9DB42D7C-E2E1-3DCF-9078-D541B3803CDA> /System/Library/PrivateFrameworks/BiomeSync.framework/Versions/A/BiomeSync
+       0x23dfbf000 -        0x23e0578bf  com.apple.biome.CascadeSets (1.0 - 209.22) <AB4D3ED8-3ED8-3070-BB56-7A279E02B895> /System/Library/PrivateFrameworks/CascadeSets.framework/Versions/A/CascadeSets
+       0x23f412000 -        0x23f5504ee  com.apple.CollectionsInternal (1.2.0 - 5026.6.1) <0DFA2D20-8D7F-3883-BF21-6B9954E74D8D> /System/Library/PrivateFrameworks/CollectionsInternal.framework/Versions/A/CollectionsInternal
+       0x246b24000 -        0x246b3749f  com.apple.DeviceRecovery (1.0 - 1) <2D9EE4EA-C35F-35AB-BCD7-1F11BA67F399> /System/Library/PrivateFrameworks/DeviceRecovery.framework/Versions/A/DeviceRecovery
+       0x248dc9000 -        0x248dcc2ff  com.apple.FontServices (1.0 - 1) <4FF88376-5BD6-30A2-BC7A-3980A6B75747> /System/Library/PrivateFrameworks/FontServices.framework/Versions/A/FontServices
+       0x248dcd000 -        0x248ebce2f  libXTFontStaticRegistryData.dylib (335.4.0.6) <2CD23373-684A-338C-B3E2-E5CFE9E22665> /System/Library/PrivateFrameworks/FontServices.framework/libXTFontStaticRegistryData.dylib
+       0x248ebe000 -        0x248ecac9f  com.apple.FramePacing (1.0 - 1) <2CFA85BC-22EE-3D6A-9FD5-E10B4F5F4558> /System/Library/PrivateFrameworks/FramePacing.framework/Versions/A/FramePacing
+       0x249fec000 -        0x249ff1f07  libGPUCompilerUtils.dylib (32023.886.1) <EF6C5EC7-58CB-337E-86DF-8FBED1A6852F> /System/Library/PrivateFrameworks/GPUCompiler.framework/Versions/32023/Libraries/libGPUCompilerUtils.dylib
+       0x24e45f000 -        0x24e49e797  libllvm-flatbuffers.dylib (32023.886.1) <14F06681-8D11-323D-8A16-6BA8A70B3F93> /System/Library/PrivateFrameworks/GPUCompiler.framework/Versions/32023/Libraries/libllvm-flatbuffers.dylib
+       0x255de2000 -        0x255eeb2bf  com.apple.InstalledContentLibrary (1.0 - 1.0) <A6F121A8-E55A-34EC-8C01-D50506EC63C9> /System/Library/PrivateFrameworks/InstalledContentLibrary.framework/Versions/A/InstalledContentLibrary
+       0x25880f000 -        0x258fddd3f  com.apple.IntelligencePlatformLibrary (274.60) <E57B6924-E645-3CC6-9943-63D3CEEFFE34> /System/Library/PrivateFrameworks/IntelligencePlatformLibrary.framework/Versions/A/IntelligencePlatformLibrary
+       0x25a8bf000 -        0x25af55923  com.apple.MIL (3520.4 - 3520.4.1) <8C94FE5D-D074-3369-88BC-E1380C5EA88A> /System/Library/PrivateFrameworks/MIL.framework/Versions/A/MIL
+       0x25fb20000 -        0x25fb81abf  com.apple.MessageSecurity (1.0 - 195.160.36) <0DAE2428-9918-329A-9C2C-FAC35974C991> /System/Library/PrivateFrameworks/MessageSecurity.framework/Versions/A/MessageSecurity
+       0x264b92000 -        0x264bbc1bf  com.apple.OSEligibility (319.160.17) <E5A19223-55EF-3ACE-86D6-5E4C7453226A> /System/Library/PrivateFrameworks/OSEligibility.framework/Versions/A/OSEligibility
+       0x26581f000 -        0x26593785f  com.apple.ParsingInternal (0.0.1 - 5026.6.1) <145B46E8-5DDD-39F4-A2C2-19254BB3E64B> /System/Library/PrivateFrameworks/ParsingInternal.framework/Versions/A/ParsingInternal
+       0x268cd0000 -        0x268cf1e1f  com.apple.accessibility.PhotosensitivityProcessing (1.0 - 1) <D28391E4-3ACF-3733-8F07-DD4CCAB5DE4C> /System/Library/PrivateFrameworks/PhotosensitivityProcessing.framework/Versions/A/PhotosensitivityProcessing
+       0x2690e5000 -        0x269121a3c  com.apple.PoirotSQLite (1.0 - 1) <67EC3686-F23C-3C0B-AE66-34FCAAD521CB> /System/Library/PrivateFrameworks/PoirotSQLite.framework/Versions/A/PoirotSQLite
+       0x269122000 -        0x26918f25f  com.apple.PoirotSchematizer (1.0 - 1) <2039208B-D706-3CF4-A87F-F27BE89C45F9> /System/Library/PrivateFrameworks/PoirotSchematizer.framework/Versions/A/PoirotSchematizer
+       0x269190000 -        0x2691c5bff  com.apple.PoirotUDFs (1.0 - 1) <D5194566-C55C-3D6B-9B6D-6044DD141DE1> /System/Library/PrivateFrameworks/PoirotUDFs.framework/Versions/A/PoirotUDFs
+       0x26a35e000 -        0x26a499ddf  com.apple.ProDisplayLibrary (10.6.1 - 10.6.1) <02C16EC1-0F6A-35DE-AA44-1F97D3B2FCC9> /System/Library/PrivateFrameworks/ProDisplayLibrary.framework/Versions/A/ProDisplayLibrary
+       0x26b454000 -        0x26b45c4df  com.apple.ReflectionInternal (1.0.0 - 5026.6.1) <87E77AE8-41F7-399B-81C5-23115A20E2AB> /System/Library/PrivateFrameworks/ReflectionInternal.framework/Versions/A/ReflectionInternal
+       0x26c3a8000 -        0x26c3bb9d7  com.apple.RuntimeInternal (1.0.0 - 5026.6.1) <1662B591-8508-3CF8-B700-AA4EABE970BA> /System/Library/PrivateFrameworks/RuntimeInternal.framework/Versions/A/RuntimeInternal
+       0x26c613000 -        0x26c680abf  com.apple.SILManager (53.19 - 53.19) <690B1920-75BD-3AD3-A31E-35F7472A8106> /System/Library/PrivateFrameworks/SILManager.framework/Versions/A/SILManager
+       0x277b31000 -        0x277b5d4a1  com.apple.security.SwiftASN1Internal (1.0 - 1) <D382032D-FCEA-3886-B497-3952D5EA0429> /System/Library/PrivateFrameworks/SwiftASN1Internal.framework/Versions/A/SwiftASN1Internal
+       0x27af91000 -        0x27afcd1df  com.apple.tightbeam (1.0 - 483.100.88) <14E9D0E3-68A5-37FF-A85B-9A0D38AF51CC> /System/Library/PrivateFrameworks/Tightbeam.framework/Versions/A/Tightbeam
+       0x27f709000 -        0x27f70a2cf  com.apple.VideoToolboxParavirtualizationSupport (64.5 - 64.5) <D65B393D-3DBB-38FF-93FE-BB7A63C7154D> /System/Library/PrivateFrameworks/VideoToolboxParavirtualizationSupport.framework/Versions/A/VideoToolboxParavirtualizationSupport
+       0x28997f000 -        0x289a1971f  libAppleArchive.dylib (450.160.2) <2410388E-C641-3070-8EE6-FB34EBFBFD37> /usr/lib/libAppleArchive.dylib
+       0x289ad4000 -        0x289ade45f  libCoreEntitlements.dylib (80.100.6) <6209C014-7DDE-3FA3-9118-954393060FDC> /usr/lib/libCoreEntitlements.dylib
+       0x289dca000 -        0x289dd187f  libReverseProxyDevice.dylib (104.120.2) <F64B30E4-5B5D-3D46-8171-D350D1F582E5> /usr/lib/libReverseProxyDevice.dylib
+       0x289dd2000 -        0x289dd9349  libRosetta.dylib (367.9) <3DBB2990-262D-3776-8FAC-B88C0373DCF0> /usr/lib/libRosetta.dylib
+       0x289e42000 -        0x289e4b3ff  libTLE.dylib (80.100.6) <E8A7564E-61D7-3E10-ADBE-8EB212A6BB9F> /usr/lib/libTLE.dylib
+       0x28a658000 -        0x28a769b17  libcrypto.46.dylib (109.100.2) <57403D8D-6F93-3CE5-88F2-E98B983F19E7> /usr/lib/libcrypto.46.dylib
+       0x28a8a4000 -        0x28a8c0762  libhvf.dylib (11) <D52E9347-78AA-326D-8B94-69B6A84733A3> /usr/lib/libhvf.dylib
+       0x28b1db000 -        0x28b213527  libssl.48.dylib (109.100.2) <18915C60-BE00-33A3-BCB3-4EAC9B68F104> /usr/lib/libssl.48.dylib
+       0x28b24e000 -        0x28b27c2ef  libswiftPrespecialized.dylib (0) <8495429E-1689-3CA7-B27C-6865F464ADFE> /usr/lib/libswiftPrespecialized.dylib
+       0x28b518000 -        0x28b52a043  libswiftDistributed.dylib (6.3.2 - 6.3.2.1.11) <F1DAEF01-95D0-3E53-8FDF-02F749198F87> /usr/lib/swift/libswiftDistributed.dylib
+       0x28b541000 -        0x28b550ebc  libswiftObservation.dylib (6.3.2 - 6.3.2.1.11) <DBDCD1B5-F826-31C8-8F28-6F39DD9C29E0> /usr/lib/swift/libswiftObservation.dylib
+       0x28b67d000 -        0x28b6908ef  libswiftSynchronization.dylib (6.3.2 - 6.3.2.1.11) <D3DF2CF5-427D-3563-91F7-51E4D8B750CF> /usr/lib/swift/libswiftSynchronization.dylib
+       0x28b691000 -        0x28b6a9e60  libswiftSystem.dylib (75) <49EB73B0-CC94-368C-BC8E-34D9B7244AE1> /usr/lib/swift/libswiftSystem.dylib
+       0x28b6ab000 -        0x28b6c179f  libswiftVideoToolbox.dylib (3330.13.105.2) <34DB5466-5B9A-3658-A66D-2F8718A1A633> /usr/lib/swift/libswiftVideoToolbox.dylib
+       0x28b6c3000 -        0x28b6c3669  libswift_Builtin_float.dylib (6.3.2.1.11) <D7804F06-BEB6-3DBC-B252-3C992736DB73> /usr/lib/swift/libswift_Builtin_float.dylib
+       0x28b6c4000 -        0x28b74f095  libswift_Concurrency.dylib (6.3.2 - 6.3.2.1.11) <D85F6BE0-0376-36C5-BED0-755B239E6548> /usr/lib/swift/libswift_Concurrency.dylib
+       0x28b750000 -        0x28b752f83  libswift_DarwinFoundation1.dylib (377.160.5) <9010E60D-F1FA-37DB-BB92-731AAE930186> /usr/lib/swift/libswift_DarwinFoundation1.dylib
+       0x28b753000 -        0x28b753eeb  libswift_DarwinFoundation2.dylib (377.160.5) <67E63B4C-4D7B-3A10-9109-BBD029447851> /usr/lib/swift/libswift_DarwinFoundation2.dylib
+       0x28b754000 -        0x28b7547a7  libswift_DarwinFoundation3.dylib (377.160.5) <5127E34D-DBF0-399A-95C2-700FF5C62A02> /usr/lib/swift/libswift_DarwinFoundation3.dylib
+       0x28b755000 -        0x28b7f349f  libswift_RegexParser.dylib (6.3.2 - 6.3.2.1.11) <56CEF951-89ED-30EC-BE85-BDFF4FB293EA> /usr/lib/swift/libswift_RegexParser.dylib
+       0x28b7f4000 -        0x28b8800cd  libswift_StringProcessing.dylib (6.3.2 - 6.3.2.1.11) <AF0302A8-B3E0-3D3D-AD1E-212C70A3F3DC> /usr/lib/swift/libswift_StringProcessing.dylib
+       0x28b9e5000 -        0x28b9e8a4b  libsystem_darwindirectory.dylib (122) <6246210A-5279-391D-8F58-E62A87CAB309> /usr/lib/system/libsystem_darwindirectory.dylib
+       0x28b9e9000 -        0x28b9f339b  libsystem_eligibility.dylib (319.160.17) <85C0486B-60BE-3E10-ABBF-DD74341B7376> /usr/lib/system/libsystem_eligibility.dylib
+       0x28b9f4000 -        0x28b9fb88b  libsystem_sanitizers.dylib (26.1) <A8C4F7FC-3443-35F7-B306-068D06237ED0> /usr/lib/system/libsystem_sanitizers.dylib
+       0x28b9fc000 -        0x28b9fcbbf  libsystem_trial.dylib (474.2.18.2.1) <83FF8DEB-1153-35BA-99C3-2AEF9B7559CD> /usr/lib/system/libsystem_trial.dylib

@@ -1,0 +1,2620 @@
+{
+  "label": "http-headroom-smoke-integer",
+  "started_utc": "2026-10-03T07:45:51Z",
+  "status": "passed",
+  "configuration": {
+    "label": "http-headroom-smoke-integer",
+    "protocol": "http",
+    "targets": "php-select,crab-jit,bun,php-revolt-jit,elysia,crab-transport-jit,php-select-jit,crab,crab-codec-jit",
+    "bun": "/var/folders/tg/pyt0jkx51cd1_8n1q01dvpjh0000gn/T/crab-elysia-bun-1.4.2-64v2459i/bun-darwin-aarch64/bun",
+    "concurrency": "2",
+    "threads": 2,
+    "payloads": "64,1024",
+    "duration": 1,
+    "trials": 1,
+    "warmup": 1
+  },
+  "environment": {
+    "platform": "macOS-26.7.1-arm64-arm-64bit-Mach-O",
+    "machine": "arm64",
+    "cpu_count": 8,
+    "python": "3.14.3",
+    "php": {
+      "command": [
+        "php",
+        "-v"
+      ],
+      "exit_code": 0,
+      "stdout": "PHP 8.4.19 (cli) (built: Mar 10 2026 15:51:04) (NTS)\nCopyright (c) The PHP Group\nBuilt by Homebrew\nZend Engine v4.4.19, Copyright (c) Zend Technologies\n    with Zend OPcache v8.4.19, Copyright (c), by Zend Technologies",
+      "stderr": ""
+    },
+    "php_ini": {
+      "command": [
+        "php",
+        "--ini"
+      ],
+      "exit_code": 0,
+      "stdout": "Configuration File (php.ini) Path: /opt/homebrew/etc/php/8.4\nLoaded Configuration File:         /opt/homebrew/etc/php/8.4/php.ini\nScan for additional .ini files in: /opt/homebrew/etc/php/8.4/conf.d\nAdditional .ini files parsed:      /opt/homebrew/etc/php/8.4/conf.d/20-xdebug.ini,\n/opt/homebrew/etc/php/8.4/conf.d/error_log.ini,\n/opt/homebrew/etc/php/8.4/conf.d/ext-opcache.ini,\n/opt/homebrew/etc/php/8.4/conf.d/max-execution.ini,\n/opt/homebrew/etc/php/8.4/conf.d/php-memory-limits.ini,\n/opt/homebrew/etc/php/8.4/conf.d/zlib.ini",
+      "stderr": ""
+    },
+    "bun": {
+      "command": [
+        "/var/folders/tg/pyt0jkx51cd1_8n1q01dvpjh0000gn/T/crab-elysia-bun-1.4.2-64v2459i/bun-darwin-aarch64/bun",
+        "--version"
+      ],
+      "exit_code": 0,
+      "stdout": "1.4.2",
+      "stderr": ""
+    },
+    "node": {
+      "command": [
+        "node",
+        "--version"
+      ],
+      "exit_code": 0,
+      "stdout": "v25.1.0",
+      "stderr": ""
+    },
+    "wrk": {
+      "command": [
+        "wrk",
+        "--version"
+      ],
+      "exit_code": 1,
+      "stdout": "wrk 4.2.0 [kqueue] Copyright (C) 2012 Will Glozer\nUsage: wrk <options> <url>                            \n  Options:                                            \n    -c, --connections <N>  Connections to keep open   \n    -d, --duration    <T>  Duration of test           \n    -t, --threads     <N>  Number of threads to use   \n                                                      \n    -s, --script      <S>  Load Lua script file       \n    -H, --header      <H>  Add header to request      \n        --latency          Print latency statistics   \n        --timeout     <T>  Socket/request timeout     \n    -v, --version          Print version details      \n                                                      \n  Numeric arguments may include a SI unit (1k, 1M, 1G)\n  Time arguments may include a time unit (2s, 2m, 2h)",
+      "stderr": ""
+    },
+    "revolt": "v1.0.9",
+    "php_configuration": {
+      "php-select": {
+        "command": [
+          "php",
+          "-d",
+          "opcache.enable_cli=1",
+          "-d",
+          "opcache.jit=off",
+          "-d",
+          "opcache.jit_buffer_size=0",
+          "-r",
+          "echo json_encode([\"opcache.enable_cli\"=>ini_get(\"opcache.enable_cli\"),\"opcache.jit\"=>ini_get(\"opcache.jit\"),\"opcache.jit_buffer_size\"=>ini_get(\"opcache.jit_buffer_size\"),\"memory_limit\"=>ini_get(\"memory_limit\"),\"extensions\"=>get_loaded_extensions(),\"jit_status\"=>function_exists(\"opcache_get_status\")?(opcache_get_status(false)[\"jit\"]??null):null]);"
+        ],
+        "exit_code": 0,
+        "stdout": "{\"opcache.enable_cli\":\"1\",\"opcache.jit\":\"\",\"opcache.jit_buffer_size\":\"0\",\"memory_limit\":\"1024M\",\"extensions\":[\"Core\",\"date\",\"libxml\",\"openssl\",\"pcre\",\"sqlite3\",\"zlib\",\"bcmath\",\"bz2\",\"calendar\",\"ctype\",\"curl\",\"dba\",\"dom\",\"json\",\"FFI\",\"fileinfo\",\"filter\",\"ftp\",\"gd\",\"gettext\",\"gmp\",\"hash\",\"iconv\",\"intl\",\"SPL\",\"ldap\",\"mbstring\",\"session\",\"standard\",\"mysqlnd\",\"mysqli\",\"odbc\",\"pcntl\",\"PDO\",\"pdo_dblib\",\"pdo_mysql\",\"PDO_ODBC\",\"pdo_pgsql\",\"pdo_sqlite\",\"pgsql\",\"Phar\",\"posix\",\"random\",\"readline\",\"Reflection\",\"exif\",\"shmop\",\"SimpleXML\",\"snmp\",\"soap\",\"sockets\",\"sodium\",\"sysvmsg\",\"sysvsem\",\"sysvshm\",\"tidy\",\"tokenizer\",\"xml\",\"xmlreader\",\"xmlwriter\",\"xsl\",\"zip\",\"redis\",\"Zend OPcache\"],\"jit_status\":{\"enabled\":false,\"on\":false,\"kind\":0,\"opt_level\":0,\"opt_flags\":0,\"buffer_size\":0,\"buffer_free\":0}}",
+        "stderr": ""
+      },
+      "crab-jit": {
+        "command": [
+          "php",
+          "-d",
+          "opcache.enable_cli=1",
+          "-d",
+          "opcache.jit=tracing",
+          "-d",
+          "opcache.jit_buffer_size=128M",
+          "-r",
+          "echo json_encode([\"opcache.enable_cli\"=>ini_get(\"opcache.enable_cli\"),\"opcache.jit\"=>ini_get(\"opcache.jit\"),\"opcache.jit_buffer_size\"=>ini_get(\"opcache.jit_buffer_size\"),\"memory_limit\"=>ini_get(\"memory_limit\"),\"extensions\"=>get_loaded_extensions(),\"jit_status\"=>function_exists(\"opcache_get_status\")?(opcache_get_status(false)[\"jit\"]??null):null]);"
+        ],
+        "exit_code": 0,
+        "stdout": "{\"opcache.enable_cli\":\"1\",\"opcache.jit\":\"tracing\",\"opcache.jit_buffer_size\":\"128M\",\"memory_limit\":\"1024M\",\"extensions\":[\"Core\",\"date\",\"libxml\",\"openssl\",\"pcre\",\"sqlite3\",\"zlib\",\"bcmath\",\"bz2\",\"calendar\",\"ctype\",\"curl\",\"dba\",\"dom\",\"json\",\"FFI\",\"fileinfo\",\"filter\",\"ftp\",\"gd\",\"gettext\",\"gmp\",\"hash\",\"iconv\",\"intl\",\"SPL\",\"ldap\",\"mbstring\",\"session\",\"standard\",\"mysqlnd\",\"mysqli\",\"odbc\",\"pcntl\",\"PDO\",\"pdo_dblib\",\"pdo_mysql\",\"PDO_ODBC\",\"pdo_pgsql\",\"pdo_sqlite\",\"pgsql\",\"Phar\",\"posix\",\"random\",\"readline\",\"Reflection\",\"exif\",\"shmop\",\"SimpleXML\",\"snmp\",\"soap\",\"sockets\",\"sodium\",\"sysvmsg\",\"sysvsem\",\"sysvshm\",\"tidy\",\"tokenizer\",\"xml\",\"xmlreader\",\"xmlwriter\",\"xsl\",\"zip\",\"redis\",\"Zend OPcache\"],\"jit_status\":{\"enabled\":true,\"on\":true,\"kind\":5,\"opt_level\":4,\"opt_flags\":6,\"buffer_size\":134217712,\"buffer_free\":134213832}}",
+        "stderr": ""
+      },
+      "php-revolt-jit": {
+        "command": [
+          "php",
+          "-d",
+          "opcache.enable_cli=1",
+          "-d",
+          "opcache.jit=tracing",
+          "-d",
+          "opcache.jit_buffer_size=128M",
+          "-r",
+          "echo json_encode([\"opcache.enable_cli\"=>ini_get(\"opcache.enable_cli\"),\"opcache.jit\"=>ini_get(\"opcache.jit\"),\"opcache.jit_buffer_size\"=>ini_get(\"opcache.jit_buffer_size\"),\"memory_limit\"=>ini_get(\"memory_limit\"),\"extensions\"=>get_loaded_extensions(),\"jit_status\"=>function_exists(\"opcache_get_status\")?(opcache_get_status(false)[\"jit\"]??null):null]);"
+        ],
+        "exit_code": 0,
+        "stdout": "{\"opcache.enable_cli\":\"1\",\"opcache.jit\":\"tracing\",\"opcache.jit_buffer_size\":\"128M\",\"memory_limit\":\"1024M\",\"extensions\":[\"Core\",\"date\",\"libxml\",\"openssl\",\"pcre\",\"sqlite3\",\"zlib\",\"bcmath\",\"bz2\",\"calendar\",\"ctype\",\"curl\",\"dba\",\"dom\",\"json\",\"FFI\",\"fileinfo\",\"filter\",\"ftp\",\"gd\",\"gettext\",\"gmp\",\"hash\",\"iconv\",\"intl\",\"SPL\",\"ldap\",\"mbstring\",\"session\",\"standard\",\"mysqlnd\",\"mysqli\",\"odbc\",\"pcntl\",\"PDO\",\"pdo_dblib\",\"pdo_mysql\",\"PDO_ODBC\",\"pdo_pgsql\",\"pdo_sqlite\",\"pgsql\",\"Phar\",\"posix\",\"random\",\"readline\",\"Reflection\",\"exif\",\"shmop\",\"SimpleXML\",\"snmp\",\"soap\",\"sockets\",\"sodium\",\"sysvmsg\",\"sysvsem\",\"sysvshm\",\"tidy\",\"tokenizer\",\"xml\",\"xmlreader\",\"xmlwriter\",\"xsl\",\"zip\",\"redis\",\"Zend OPcache\"],\"jit_status\":{\"enabled\":true,\"on\":true,\"kind\":5,\"opt_level\":4,\"opt_flags\":6,\"buffer_size\":134217712,\"buffer_free\":134213832}}",
+        "stderr": ""
+      },
+      "crab-transport-jit": {
+        "command": [
+          "php",
+          "-d",
+          "opcache.enable_cli=1",
+          "-d",
+          "opcache.jit=tracing",
+          "-d",
+          "opcache.jit_buffer_size=128M",
+          "-r",
+          "echo json_encode([\"opcache.enable_cli\"=>ini_get(\"opcache.enable_cli\"),\"opcache.jit\"=>ini_get(\"opcache.jit\"),\"opcache.jit_buffer_size\"=>ini_get(\"opcache.jit_buffer_size\"),\"memory_limit\"=>ini_get(\"memory_limit\"),\"extensions\"=>get_loaded_extensions(),\"jit_status\"=>function_exists(\"opcache_get_status\")?(opcache_get_status(false)[\"jit\"]??null):null]);"
+        ],
+        "exit_code": 0,
+        "stdout": "{\"opcache.enable_cli\":\"1\",\"opcache.jit\":\"tracing\",\"opcache.jit_buffer_size\":\"128M\",\"memory_limit\":\"1024M\",\"extensions\":[\"Core\",\"date\",\"libxml\",\"openssl\",\"pcre\",\"sqlite3\",\"zlib\",\"bcmath\",\"bz2\",\"calendar\",\"ctype\",\"curl\",\"dba\",\"dom\",\"json\",\"FFI\",\"fileinfo\",\"filter\",\"ftp\",\"gd\",\"gettext\",\"gmp\",\"hash\",\"iconv\",\"intl\",\"SPL\",\"ldap\",\"mbstring\",\"session\",\"standard\",\"mysqlnd\",\"mysqli\",\"odbc\",\"pcntl\",\"PDO\",\"pdo_dblib\",\"pdo_mysql\",\"PDO_ODBC\",\"pdo_pgsql\",\"pdo_sqlite\",\"pgsql\",\"Phar\",\"posix\",\"random\",\"readline\",\"Reflection\",\"exif\",\"shmop\",\"SimpleXML\",\"snmp\",\"soap\",\"sockets\",\"sodium\",\"sysvmsg\",\"sysvsem\",\"sysvshm\",\"tidy\",\"tokenizer\",\"xml\",\"xmlreader\",\"xmlwriter\",\"xsl\",\"zip\",\"redis\",\"Zend OPcache\"],\"jit_status\":{\"enabled\":true,\"on\":true,\"kind\":5,\"opt_level\":4,\"opt_flags\":6,\"buffer_size\":134217712,\"buffer_free\":134213832}}",
+        "stderr": ""
+      },
+      "php-select-jit": {
+        "command": [
+          "php",
+          "-d",
+          "opcache.enable_cli=1",
+          "-d",
+          "opcache.jit=tracing",
+          "-d",
+          "opcache.jit_buffer_size=128M",
+          "-r",
+          "echo json_encode([\"opcache.enable_cli\"=>ini_get(\"opcache.enable_cli\"),\"opcache.jit\"=>ini_get(\"opcache.jit\"),\"opcache.jit_buffer_size\"=>ini_get(\"opcache.jit_buffer_size\"),\"memory_limit\"=>ini_get(\"memory_limit\"),\"extensions\"=>get_loaded_extensions(),\"jit_status\"=>function_exists(\"opcache_get_status\")?(opcache_get_status(false)[\"jit\"]??null):null]);"
+        ],
+        "exit_code": 0,
+        "stdout": "{\"opcache.enable_cli\":\"1\",\"opcache.jit\":\"tracing\",\"opcache.jit_buffer_size\":\"128M\",\"memory_limit\":\"1024M\",\"extensions\":[\"Core\",\"date\",\"libxml\",\"openssl\",\"pcre\",\"sqlite3\",\"zlib\",\"bcmath\",\"bz2\",\"calendar\",\"ctype\",\"curl\",\"dba\",\"dom\",\"json\",\"FFI\",\"fileinfo\",\"filter\",\"ftp\",\"gd\",\"gettext\",\"gmp\",\"hash\",\"iconv\",\"intl\",\"SPL\",\"ldap\",\"mbstring\",\"session\",\"standard\",\"mysqlnd\",\"mysqli\",\"odbc\",\"pcntl\",\"PDO\",\"pdo_dblib\",\"pdo_mysql\",\"PDO_ODBC\",\"pdo_pgsql\",\"pdo_sqlite\",\"pgsql\",\"Phar\",\"posix\",\"random\",\"readline\",\"Reflection\",\"exif\",\"shmop\",\"SimpleXML\",\"snmp\",\"soap\",\"sockets\",\"sodium\",\"sysvmsg\",\"sysvsem\",\"sysvshm\",\"tidy\",\"tokenizer\",\"xml\",\"xmlreader\",\"xmlwriter\",\"xsl\",\"zip\",\"redis\",\"Zend OPcache\"],\"jit_status\":{\"enabled\":true,\"on\":true,\"kind\":5,\"opt_level\":4,\"opt_flags\":6,\"buffer_size\":134217712,\"buffer_free\":134213832}}",
+        "stderr": ""
+      },
+      "crab": {
+        "command": [
+          "php",
+          "-d",
+          "opcache.enable_cli=1",
+          "-d",
+          "opcache.jit=off",
+          "-d",
+          "opcache.jit_buffer_size=0",
+          "-r",
+          "echo json_encode([\"opcache.enable_cli\"=>ini_get(\"opcache.enable_cli\"),\"opcache.jit\"=>ini_get(\"opcache.jit\"),\"opcache.jit_buffer_size\"=>ini_get(\"opcache.jit_buffer_size\"),\"memory_limit\"=>ini_get(\"memory_limit\"),\"extensions\"=>get_loaded_extensions(),\"jit_status\"=>function_exists(\"opcache_get_status\")?(opcache_get_status(false)[\"jit\"]??null):null]);"
+        ],
+        "exit_code": 0,
+        "stdout": "{\"opcache.enable_cli\":\"1\",\"opcache.jit\":\"\",\"opcache.jit_buffer_size\":\"0\",\"memory_limit\":\"1024M\",\"extensions\":[\"Core\",\"date\",\"libxml\",\"openssl\",\"pcre\",\"sqlite3\",\"zlib\",\"bcmath\",\"bz2\",\"calendar\",\"ctype\",\"curl\",\"dba\",\"dom\",\"json\",\"FFI\",\"fileinfo\",\"filter\",\"ftp\",\"gd\",\"gettext\",\"gmp\",\"hash\",\"iconv\",\"intl\",\"SPL\",\"ldap\",\"mbstring\",\"session\",\"standard\",\"mysqlnd\",\"mysqli\",\"odbc\",\"pcntl\",\"PDO\",\"pdo_dblib\",\"pdo_mysql\",\"PDO_ODBC\",\"pdo_pgsql\",\"pdo_sqlite\",\"pgsql\",\"Phar\",\"posix\",\"random\",\"readline\",\"Reflection\",\"exif\",\"shmop\",\"SimpleXML\",\"snmp\",\"soap\",\"sockets\",\"sodium\",\"sysvmsg\",\"sysvsem\",\"sysvshm\",\"tidy\",\"tokenizer\",\"xml\",\"xmlreader\",\"xmlwriter\",\"xsl\",\"zip\",\"redis\",\"Zend OPcache\"],\"jit_status\":{\"enabled\":false,\"on\":false,\"kind\":0,\"opt_level\":0,\"opt_flags\":0,\"buffer_size\":0,\"buffer_free\":0}}",
+        "stderr": ""
+      },
+      "crab-codec-jit": {
+        "command": [
+          "php",
+          "-d",
+          "opcache.enable_cli=1",
+          "-d",
+          "opcache.jit=tracing",
+          "-d",
+          "opcache.jit_buffer_size=128M",
+          "-r",
+          "echo json_encode([\"opcache.enable_cli\"=>ini_get(\"opcache.enable_cli\"),\"opcache.jit\"=>ini_get(\"opcache.jit\"),\"opcache.jit_buffer_size\"=>ini_get(\"opcache.jit_buffer_size\"),\"memory_limit\"=>ini_get(\"memory_limit\"),\"extensions\"=>get_loaded_extensions(),\"jit_status\"=>function_exists(\"opcache_get_status\")?(opcache_get_status(false)[\"jit\"]??null):null]);"
+        ],
+        "exit_code": 0,
+        "stdout": "{\"opcache.enable_cli\":\"1\",\"opcache.jit\":\"tracing\",\"opcache.jit_buffer_size\":\"128M\",\"memory_limit\":\"1024M\",\"extensions\":[\"Core\",\"date\",\"libxml\",\"openssl\",\"pcre\",\"sqlite3\",\"zlib\",\"bcmath\",\"bz2\",\"calendar\",\"ctype\",\"curl\",\"dba\",\"dom\",\"json\",\"FFI\",\"fileinfo\",\"filter\",\"ftp\",\"gd\",\"gettext\",\"gmp\",\"hash\",\"iconv\",\"intl\",\"SPL\",\"ldap\",\"mbstring\",\"session\",\"standard\",\"mysqlnd\",\"mysqli\",\"odbc\",\"pcntl\",\"PDO\",\"pdo_dblib\",\"pdo_mysql\",\"PDO_ODBC\",\"pdo_pgsql\",\"pdo_sqlite\",\"pgsql\",\"Phar\",\"posix\",\"random\",\"readline\",\"Reflection\",\"exif\",\"shmop\",\"SimpleXML\",\"snmp\",\"soap\",\"sockets\",\"sodium\",\"sysvmsg\",\"sysvsem\",\"sysvshm\",\"tidy\",\"tokenizer\",\"xml\",\"xmlreader\",\"xmlwriter\",\"xsl\",\"zip\",\"redis\",\"Zend OPcache\"],\"jit_status\":{\"enabled\":true,\"on\":true,\"kind\":5,\"opt_level\":4,\"opt_flags\":6,\"buffer_size\":134217712,\"buffer_free\":134213832}}",
+        "stderr": ""
+      }
+    },
+    "cpu": {
+      "command": [
+        "sysctl",
+        "-n",
+        "machdep.cpu.brand_string"
+      ],
+      "exit_code": 0,
+      "stdout": "Apple M1 Pro",
+      "stderr": ""
+    },
+    "bun_executable": {
+      "path": "/private/var/folders/tg/pyt0jkx51cd1_8n1q01dvpjh0000gn/T/crab-elysia-bun-1.4.2-64v2459i/bun-darwin-aarch64/bun",
+      "sha256": "35d20dd0263e5c950194434b925454fdfa9ba6e4467da960410fa05b08a7a5b5"
+    },
+    "elysia_version": "1.4.30"
+  },
+  "source_sha256": {
+    "benchmarks/baselines/bun.ts": "22c72a4fe8af25a34c8d801de4e504c7718576f1b367cab7a68b0211dd05655f",
+    "benchmarks/baselines/php.php": "94e1c6b02cf0171d857cbb8a82de6dd4e5b578e557abfe2c0ff301810038839b",
+    "benchmarks/baselines/verify.py": "b2e0a10ee1d33ac2069ba70f0e5444958ab39d2bfb0f7f5216267a8d2ff0baa8",
+    "benchmarks/compare.py": "2c5b5e181bcb5cc5241823fbab6c1b3031e0e5e3abc30089299c504d988517b0",
+    "benchmarks/elysia/bun.lock": "f6f62efc8a645c8cf2c465d0d3be337c0e7edd8b31778c918c8a2393d787c987",
+    "benchmarks/elysia/package.json": "0398a8051e1cb8581ad4cfc7de0c118bec6defdf4e678edc12d5f9122921f0d3",
+    "benchmarks/elysia/server.ts": "4a2e96009030a8265c525bff2c62e20b4c8b08c146d7388d2fbd93c888c0250a",
+    "benchmarks/http.py": "cae4378c91f399d3f055501703423cb1b87009d4c8b9aeb71aa33218a67dc09d",
+    "benchmarks/server.php": "32b4e9479ff3d07e0427bf0a55905f5adb76b63ac1c27cbcb4e0a150aa38bd97",
+    "benchmarks/websocket.mjs": "789c5bc4ccb7f380c0b7043aa4528b1dee34ac6868bd079dfe4f6f7ff4bfc784",
+    "composer.json": "7a83cc7e0987c93edc0dd51ac6544fa5042802a54dbad1773a4911d6da6babc9",
+    "composer.lock": "b2adc0615cae93a8555073ef26d3032938903ea673219cf95a342129744618d5",
+    "src/Async/Async.php": "462d129b2ba3c8f6b4de12111ed4046965041799e6b6edcf208446f1963a410a",
+    "src/Async/Cancellation.php": "2770894fc76251c322b2f1428c82e8d3089972751621ef20181367a29d6cf8a8",
+    "src/Async/CancelledException.php": "8204c5462beef2fe1ac613d07a9aa4d85a4ea894956cc67bc6b839607413a44b",
+    "src/Async/ConnectionStream.php": "34b6ebaa0a25b909c1466573d151281e6ee69acc922cc5640c86bf4c1e3c7c2d",
+    "src/Async/Task.php": "d27f91818bd71a41ad81186fb5bb2332bfcc090d6a11819c7d2bdfe0f0ab2ddf",
+    "src/Http/Body.php": "dd8d973adb64cf2f17c9f377bcbe29e0cda2e6301ff0d23f7d8c8d42404213c7",
+    "src/Http/HttpException.php": "937fe56951a46f213f339ca207bb22a8706c34cf93186ed6e2b04936fa568ddc",
+    "src/Http/HttpSession.php": "e727501f681fea4bddbd104879385009e549ad11a2d0b6de72f5922fc129db77",
+    "src/Http/Parser.php": "bafd681b149027a7fcaca3b6d36ed1d5aacb542bdb47c573c42b029abc296a1e",
+    "src/Http/Request.php": "7f07912cfc8680e249f51ca2742e2803bfc9c7fb401ed38ea9417f744a72777a",
+    "src/Http/Response.php": "eb32648b0c5536463ddf92ec6b7af5bf09170f975ce68645d273493f5c97ec69",
+    "src/Http/ResponseEncoder.php": "3e36f0f86470adec3724cf0f6880f462ee34c17522595cc6defaaf6167031900",
+    "src/Http/Upgrade.php": "b41c4a9cdc5b19b07287ec5fb39351a2355e88705e287878a2d4423efebf2dd8",
+    "src/Network/Connection.php": "8a9f2cae5b0ee425a1e76d3c04022f22398a2317c8403efc0c37c10a7d33d56c",
+    "src/Network/Connector.php": "879ccd3754442b1d29b7ae0e22e3bb52df88bb24d5cd179d26737d781f1554bf",
+    "src/Network/Listener.php": "4a2788d5b487999b659e6500ca3e722ca12dc896a9fc546ee7e17049d6b0494a",
+    "src/Network/UdpEndpoint.php": "357d6032f10b5a07f0a9455903955a13db51d18a04c5db9d6b13d3770de3ed72",
+    "src/Network/WriteResult.php": "0ba70bbf7825fff54a10b5cab9c397127bb76ec6cedcccd13207175daef4e4db",
+    "src/Process/Supervisor.php": "f2a3c48b2923303360cb32e53b1233dde986190062d1426419b502c0ed8f7202",
+    "src/Process/Worker.php": "2bb90b5620241fad580d38cd417a3f1be249bb6da84be5d67a9071ebbc8d69e1",
+    "src/Runtime.php": "a62808c1dc26ce2b3fada80b0d8c85119d9a60517e827c747a6adfdae15bd62c",
+    "src/Server/HttpServer.php": "03b6f676e4bb1071b02b1f896672a021723b324c43065e9cf7bd486a814cd140",
+    "src/Server/TcpServer.php": "e057200b16a002b991c5da12f6bec519f4d6174ddc5862b92d3f3d4de02b65af",
+    "src/Server/UdpServer.php": "a372e5daa02c28c42563923678891f66a9443851c3c627c3d4a8aca4289a36eb",
+    "src/Server/WebSocketServer.php": "ec9308f21cb6bc9449c1c777d1c19861b11eae7ef983938f93a46356bdd810f6",
+    "src/WebSocket/Config.php": "78c909152e9f443e1f339f92da9091d03469f81919601b77aea104eea712d250",
+    "src/WebSocket/MessageType.php": "7175e1c67355c289ced159167d5b8e3f5971922a3c05664763c6b0f33e548706",
+    "src/WebSocket/WebSocketSession.php": "d26b1184f2bfa065fd6805dffc2e7ecc9bbb94612ecb8bcbf0779a6e98743b6f",
+    "src/WorkerGroup.php": "9237db8cebb47105910968f4cc7b1859f7989a211f3df8fd658294a9c6882814"
+  },
+  "http_body_bytes": 16,
+  "notes": [
+    "One serving process per target, fresh server per trial; Crab uses StreamSelectDriver.",
+    "Target order rotates through evenly spaced starting positions; every server receives its own identical warmup before measurement.",
+    "Loopback closed-loop workloads share host CPUs; client limits and thermal drift affect results.",
+    "HTTP uses up to 2 wrk threads, capped by concurrency; WebSocket uses one Node process and one in-flight echo per connection.",
+    "ps CPU percentages are OS estimates; aggregate RSS can double-count shared pages.",
+    "Cumulative serving-process ps CPU deltas are separate from sampled percentages; resolution depends on the OS.",
+    "PHP baseline fixtures isolate HTTP/networking layers and implement a limited GET workload; they are not full HTTP servers.",
+    "WebSocket ps samples include warmup/handshake/drain; its client CPU/latency metrics cover measurement.",
+    "HTTP body is checked at readiness; wrk checks socket/status errors, not each response body.",
+    "Processes are owned groups; cleanup sends SIGTERM only, and unsuccessful cleanup fails the run."
+  ],
+  "trials": [
+    {
+      "protocol": "http",
+      "concurrency": 2,
+      "payload_bytes": null,
+      "trial": 1,
+      "target": "php-select",
+      "target_order": [
+        "php-select",
+        "crab-jit",
+        "bun",
+        "php-revolt-jit",
+        "elysia",
+        "crab-transport-jit",
+        "php-select-jit",
+        "crab",
+        "crab-codec-jit"
+      ],
+      "started_utc": "2026-10-03T07:45:52Z",
+      "server_command": [
+        "php",
+        "-d",
+        "opcache.enable_cli=1",
+        "-d",
+        "opcache.jit=off",
+        "-d",
+        "opcache.jit_buffer_size=0",
+        "/Users/daudau/Code/crabphp/engine/benchmarks/baselines/php.php",
+        "--backend=select",
+        "--protocol=http",
+        "--port=55683"
+      ],
+      "port": 55683,
+      "errors": [],
+      "status": "passed",
+      "server_pid": 16350,
+      "readiness": "Verified HTTP/1.1 200 and exact Hello from Crab newline body.",
+      "http_response": {
+        "raw_headers": "HTTP/1.1 200 OK\r\ncontent-type: text/plain; charset=utf-8\r\ncontent-length: 16\r\nconnection: close\r\ndate: Sat, 03 Oct 2026 07:45:52 GMT",
+        "body": "Hello from Crab\n",
+        "body_bytes": 16
+      },
+      "http_validation": {
+        "status": "passed",
+        "checks": [
+          "exact body, headers, and Connection: close",
+          "three sequential requests on one persistent connection",
+          "fragmented request line, header name, and CRLF terminator",
+          "eight ordered pipelined responses without lost or extra bytes"
+        ],
+        "successful_requests": 13,
+        "response": {
+          "raw_headers": "HTTP/1.1 200 OK\r\ncontent-type: text/plain; charset=utf-8\r\ncontent-length: 16\r\nconnection: close\r\ndate: Sat, 03 Oct 2026 07:45:52 GMT",
+          "body": "Hello from Crab\n",
+          "body_bytes": 16
+        }
+      },
+      "warmup": {
+        "command": [
+          "wrk",
+          "-t",
+          "2",
+          "-c",
+          "2",
+          "-d",
+          "1s",
+          "--timeout",
+          "2s",
+          "--latency",
+          "-s",
+          "/var/folders/tg/pyt0jkx51cd1_8n1q01dvpjh0000gn/T/crab-compare-09jnd8zc/latency.lua",
+          "http://127.0.0.1:55683/"
+        ],
+        "timeout_seconds": 16,
+        "timed_out": false,
+        "samples": [
+          {
+            "server_cpu_percent": 28.2,
+            "server_rss_bytes": 32849920,
+            "load_cpu_percent": 0.0,
+            "load_rss_bytes": 1753088
+          },
+          {
+            "server_cpu_percent": 36.6,
+            "server_rss_bytes": 32849920,
+            "load_cpu_percent": 28.7,
+            "load_rss_bytes": 2605056
+          },
+          {
+            "server_cpu_percent": 41.5,
+            "server_rss_bytes": 32849920,
+            "load_cpu_percent": 38.6,
+            "load_rss_bytes": 2621440
+          },
+          {
+            "server_cpu_percent": 48.5,
+            "server_rss_bytes": 32849920,
+            "load_cpu_percent": 50.4,
+            "load_rss_bytes": 2654208
+          },
+          {
+            "server_cpu_percent": 49.2,
+            "server_rss_bytes": 32849920,
+            "load_cpu_percent": 53.8,
+            "load_rss_bytes": 2654208
+          }
+        ],
+        "errors": [],
+        "server_cpu_before": {
+          "command": [
+            "ps",
+            "-p",
+            "16350",
+            "-o",
+            "time="
+          ],
+          "exit_code": 0,
+          "stdout": "0:00.10",
+          "stderr": "",
+          "cpu_seconds": 0.1
+        },
+        "pid": 16352,
+        "exit_code": 0,
+        "raw_output": "Running 1s test @ http://127.0.0.1:55683/\n  2 threads and 2 connections\n  Thread Stats   Avg      Stdev     Max   +/- Stdev\n    Latency    42.33us   16.16us 476.00us   74.88%\n    Req/Sec    23.10k     1.65k   27.06k    81.82%\n  Latency Distribution\n     50%   42.00us\n     75%   50.00us\n     90%   59.00us\n     99%   91.00us\n  50556 requests in 1.10s, 7.57MB read\nRequests/sec:  45960.17\nTransfer/sec:      6.88MB\nCRAB_METRICS {\"requests\":50556,\"duration_us\":1099996,\"p50_ms\":0.042000,\"p95_ms\":0.066000,\"p99_ms\":0.091000,\"connect_errors\":0,\"read_errors\":0,\"write_errors\":0,\"status_errors\":0,\"timeouts\":0}\n",
+        "elapsed_wall_seconds": 1.1152062501059845,
+        "server_cpu_after": {
+          "command": [
+            "ps",
+            "-p",
+            "16350",
+            "-o",
+            "time="
+          ],
+          "exit_code": 0,
+          "stdout": "0:00.64",
+          "stderr": "",
+          "cpu_seconds": 0.64
+        },
+        "server_cpu_seconds": 0.54,
+        "server_cpu_percent_of_elapsed": 48.421536370396126,
+        "server_cpu_scope": "Serving process only; cumulative ps time delta over load launch, execution and cleanup.",
+        "metrics": {
+          "requests": 50556,
+          "duration_us": 1099996,
+          "p50_ms": 0.042,
+          "p95_ms": 0.066,
+          "p99_ms": 0.091,
+          "connect_errors": 0,
+          "read_errors": 0,
+          "write_errors": 0,
+          "status_errors": 0,
+          "timeouts": 0,
+          "requests_per_second": 45960.167127880464
+        },
+        "peak_server_rss_bytes": 32849920,
+        "status": "passed"
+      },
+      "measurement": {
+        "command": [
+          "wrk",
+          "-t",
+          "2",
+          "-c",
+          "2",
+          "-d",
+          "1s",
+          "--timeout",
+          "2s",
+          "--latency",
+          "-s",
+          "/var/folders/tg/pyt0jkx51cd1_8n1q01dvpjh0000gn/T/crab-compare-09jnd8zc/latency.lua",
+          "http://127.0.0.1:55683/"
+        ],
+        "timeout_seconds": 16,
+        "timed_out": false,
+        "samples": [
+          {
+            "server_cpu_percent": 49.4,
+            "server_rss_bytes": 32849920,
+            "load_cpu_percent": 0.0,
+            "load_rss_bytes": 1622016
+          },
+          {
+            "server_cpu_percent": 47.6,
+            "server_rss_bytes": 32849920,
+            "load_cpu_percent": 30.7,
+            "load_rss_bytes": 2621440
+          },
+          {
+            "server_cpu_percent": 48.3,
+            "server_rss_bytes": 32849920,
+            "load_cpu_percent": 40.0,
+            "load_rss_bytes": 2621440
+          },
+          {
+            "server_cpu_percent": 49.1,
+            "server_rss_bytes": 32849920,
+            "load_cpu_percent": 49.1,
+            "load_rss_bytes": 2621440
+          },
+          {
+            "server_cpu_percent": 49.2,
+            "server_rss_bytes": 32849920,
+            "load_cpu_percent": 52.7,
+            "load_rss_bytes": 2621440
+          }
+        ],
+        "errors": [],
+        "server_cpu_before": {
+          "command": [
+            "ps",
+            "-p",
+            "16350",
+            "-o",
+            "time="
+          ],
+          "exit_code": 0,
+          "stdout": "0:00.64",
+          "stderr": "",
+          "cpu_seconds": 0.64
+        },
+        "pid": 16372,
+        "exit_code": 0,
+        "raw_output": "Running 1s test @ http://127.0.0.1:55683/\n  2 threads and 2 connections\n  Thread Stats   Avg      Stdev     Max   +/- Stdev\n    Latency    41.70us   13.43us 177.00us   69.69%\n    Req/Sec    23.26k     1.11k   26.67k    86.36%\n  Latency Distribution\n     50%   41.00us\n     75%   50.00us\n     90%   58.00us\n     99%   78.00us\n  50872 requests in 1.10s, 7.62MB read\nRequests/sec:  46276.47\nTransfer/sec:      6.93MB\nCRAB_METRICS {\"requests\":50872,\"duration_us\":1099306,\"p50_ms\":0.041000,\"p95_ms\":0.064000,\"p99_ms\":0.078000,\"connect_errors\":0,\"read_errors\":0,\"write_errors\":0,\"status_errors\":0,\"timeouts\":0}\n",
+        "elapsed_wall_seconds": 1.105459333048202,
+        "server_cpu_after": {
+          "command": [
+            "ps",
+            "-p",
+            "16350",
+            "-o",
+            "time="
+          ],
+          "exit_code": 0,
+          "stdout": "0:01.20",
+          "stderr": "",
+          "cpu_seconds": 1.2
+        },
+        "server_cpu_seconds": 0.5599999999999999,
+        "server_cpu_percent_of_elapsed": 50.65767534440653,
+        "server_cpu_scope": "Serving process only; cumulative ps time delta over load launch, execution and cleanup.",
+        "metrics": {
+          "requests": 50872,
+          "duration_us": 1099306,
+          "p50_ms": 0.041,
+          "p95_ms": 0.064,
+          "p99_ms": 0.078,
+          "connect_errors": 0,
+          "read_errors": 0,
+          "write_errors": 0,
+          "status_errors": 0,
+          "timeouts": 0,
+          "requests_per_second": 46276.46897224249
+        },
+        "peak_server_rss_bytes": 32849920,
+        "status": "passed"
+      },
+      "server_exit_code": 0,
+      "server_log": ""
+    },
+    {
+      "protocol": "http",
+      "concurrency": 2,
+      "payload_bytes": null,
+      "trial": 1,
+      "target": "crab-jit",
+      "target_order": [
+        "php-select",
+        "crab-jit",
+        "bun",
+        "php-revolt-jit",
+        "elysia",
+        "crab-transport-jit",
+        "php-select-jit",
+        "crab",
+        "crab-codec-jit"
+      ],
+      "started_utc": "2026-10-03T07:45:54Z",
+      "server_command": [
+        "php",
+        "-d",
+        "opcache.enable_cli=1",
+        "-d",
+        "opcache.jit=tracing",
+        "-d",
+        "opcache.jit_buffer_size=128M",
+        "/Users/daudau/Code/crabphp/engine/benchmarks/server.php",
+        "--host=127.0.0.1",
+        "--workers=1",
+        "--protocol=http",
+        "--port=55703"
+      ],
+      "port": 55703,
+      "errors": [],
+      "status": "passed",
+      "server_pid": 16382,
+      "readiness": "Verified HTTP/1.1 200 and exact Hello from Crab newline body.",
+      "http_response": {
+        "raw_headers": "HTTP/1.1 200 OK\r\ncontent-type: text/plain; charset=utf-8\r\ncontent-length: 16\r\nconnection: close\r\ndate: Sat, 03 Oct 2026 07:45:54 GMT",
+        "body": "Hello from Crab\n",
+        "body_bytes": 16
+      },
+      "http_validation": {
+        "status": "passed",
+        "checks": [
+          "exact body, headers, and Connection: close",
+          "three sequential requests on one persistent connection",
+          "fragmented request line, header name, and CRLF terminator",
+          "eight ordered pipelined responses without lost or extra bytes"
+        ],
+        "successful_requests": 13,
+        "response": {
+          "raw_headers": "HTTP/1.1 200 OK\r\ncontent-type: text/plain; charset=utf-8\r\ncontent-length: 16\r\nconnection: close\r\ndate: Sat, 03 Oct 2026 07:45:54 GMT",
+          "body": "Hello from Crab\n",
+          "body_bytes": 16
+        }
+      },
+      "warmup": {
+        "command": [
+          "wrk",
+          "-t",
+          "2",
+          "-c",
+          "2",
+          "-d",
+          "1s",
+          "--timeout",
+          "2s",
+          "--latency",
+          "-s",
+          "/var/folders/tg/pyt0jkx51cd1_8n1q01dvpjh0000gn/T/crab-compare-09jnd8zc/latency.lua",
+          "http://127.0.0.1:55703/"
+        ],
+        "timeout_seconds": 16,
+        "timed_out": false,
+        "samples": [
+          {
+            "server_cpu_percent": 29.2,
+            "server_rss_bytes": 34930688,
+            "load_cpu_percent": 0.0,
+            "load_rss_bytes": 1769472
+          },
+          {
+            "server_cpu_percent": 49.6,
+            "server_rss_bytes": 35405824,
+            "load_cpu_percent": 20.9,
+            "load_rss_bytes": 2605056
+          },
+          {
+            "server_cpu_percent": 57.5,
+            "server_rss_bytes": 35405824,
+            "load_cpu_percent": 28.6,
+            "load_rss_bytes": 2605056
+          },
+          {
+            "server_cpu_percent": 65.2,
+            "server_rss_bytes": 35405824,
+            "load_cpu_percent": 36.4,
+            "load_rss_bytes": 2605056
+          },
+          {
+            "server_cpu_percent": 68.4,
+            "server_rss_bytes": 35405824,
+            "load_cpu_percent": 39.6,
+            "load_rss_bytes": 2605056
+          }
+        ],
+        "errors": [],
+        "server_cpu_before": {
+          "command": [
+            "ps",
+            "-p",
+            "16382",
+            "-o",
+            "time="
+          ],
+          "exit_code": 0,
+          "stdout": "0:00.10",
+          "stderr": "",
+          "cpu_seconds": 0.1
+        },
+        "pid": 16388,
+        "exit_code": 0,
+        "raw_output": "Running 1s test @ http://127.0.0.1:55703/\n  2 threads and 2 connections\n  Thread Stats   Avg      Stdev     Max   +/- Stdev\n    Latency    61.48us   46.48us   1.26ms   98.08%\n    Req/Sec    16.79k   771.33    17.66k    86.36%\n  Latency Distribution\n     50%   56.00us\n     75%   66.00us\n     90%   77.00us\n     99%  171.00us\n  36717 requests in 1.10s, 5.50MB read\nRequests/sec:  33379.24\nTransfer/sec:      5.00MB\nCRAB_METRICS {\"requests\":36717,\"duration_us\":1099995,\"p50_ms\":0.056000,\"p95_ms\":0.086000,\"p99_ms\":0.171000,\"connect_errors\":0,\"read_errors\":0,\"write_errors\":0,\"status_errors\":0,\"timeouts\":0}\n",
+        "elapsed_wall_seconds": 1.1107478749472648,
+        "server_cpu_after": {
+          "command": [
+            "ps",
+            "-p",
+            "16382",
+            "-o",
+            "time="
+          ],
+          "exit_code": 0,
+          "stdout": "0:00.89",
+          "stderr": "",
+          "cpu_seconds": 0.89
+        },
+        "server_cpu_seconds": 0.79,
+        "server_cpu_percent_of_elapsed": 71.12325108319537,
+        "server_cpu_scope": "Serving process only; cumulative ps time delta over load launch, execution and cleanup.",
+        "metrics": {
+          "requests": 36717,
+          "duration_us": 1099995,
+          "p50_ms": 0.056,
+          "p95_ms": 0.086,
+          "p99_ms": 0.171,
+          "connect_errors": 0,
+          "read_errors": 0,
+          "write_errors": 0,
+          "status_errors": 0,
+          "timeouts": 0,
+          "requests_per_second": 33379.24263292106
+        },
+        "peak_server_rss_bytes": 35405824,
+        "status": "passed"
+      },
+      "measurement": {
+        "command": [
+          "wrk",
+          "-t",
+          "2",
+          "-c",
+          "2",
+          "-d",
+          "1s",
+          "--timeout",
+          "2s",
+          "--latency",
+          "-s",
+          "/var/folders/tg/pyt0jkx51cd1_8n1q01dvpjh0000gn/T/crab-compare-09jnd8zc/latency.lua",
+          "http://127.0.0.1:55703/"
+        ],
+        "timeout_seconds": 16,
+        "timed_out": false,
+        "samples": [
+          {
+            "server_cpu_percent": 69.7,
+            "server_rss_bytes": 35405824,
+            "load_cpu_percent": 0.0,
+            "load_rss_bytes": 2277376
+          },
+          {
+            "server_cpu_percent": 70.6,
+            "server_rss_bytes": 35405824,
+            "load_cpu_percent": 22.1,
+            "load_rss_bytes": 2605056
+          },
+          {
+            "server_cpu_percent": 70.5,
+            "server_rss_bytes": 35405824,
+            "load_cpu_percent": 29.3,
+            "load_rss_bytes": 2605056
+          },
+          {
+            "server_cpu_percent": 70.5,
+            "server_rss_bytes": 35405824,
+            "load_cpu_percent": 36.8,
+            "load_rss_bytes": 2605056
+          },
+          {
+            "server_cpu_percent": 70.9,
+            "server_rss_bytes": 35405824,
+            "load_cpu_percent": 39.9,
+            "load_rss_bytes": 2605056
+          }
+        ],
+        "errors": [],
+        "server_cpu_before": {
+          "command": [
+            "ps",
+            "-p",
+            "16382",
+            "-o",
+            "time="
+          ],
+          "exit_code": 0,
+          "stdout": "0:00.89",
+          "stderr": "",
+          "cpu_seconds": 0.89
+        },
+        "pid": 16397,
+        "exit_code": 0,
+        "raw_output": "Running 1s test @ http://127.0.0.1:55703/\n  2 threads and 2 connections\n  Thread Stats   Avg      Stdev     Max   +/- Stdev\n    Latency    56.30us   14.69us 269.00us   71.26%\n    Req/Sec    17.37k     0.88k   19.94k    90.91%\n  Latency Distribution\n     50%   54.00us\n     75%   65.00us\n     90%   75.00us\n     99%   99.00us\n  38013 requests in 1.10s, 5.69MB read\nRequests/sec:  34563.46\nTransfer/sec:      5.18MB\nCRAB_METRICS {\"requests\":38013,\"duration_us\":1099803,\"p50_ms\":0.054000,\"p95_ms\":0.082000,\"p99_ms\":0.099000,\"connect_errors\":0,\"read_errors\":0,\"write_errors\":0,\"status_errors\":0,\"timeouts\":0}\n",
+        "elapsed_wall_seconds": 1.1184708749642596,
+        "server_cpu_after": {
+          "command": [
+            "ps",
+            "-p",
+            "16382",
+            "-o",
+            "time="
+          ],
+          "exit_code": 0,
+          "stdout": "0:01.68",
+          "stderr": "",
+          "cpu_seconds": 1.68
+        },
+        "server_cpu_seconds": 0.7899999999999999,
+        "server_cpu_percent_of_elapsed": 70.63214766546729,
+        "server_cpu_scope": "Serving process only; cumulative ps time delta over load launch, execution and cleanup.",
+        "metrics": {
+          "requests": 38013,
+          "duration_us": 1099803,
+          "p50_ms": 0.054,
+          "p95_ms": 0.082,
+          "p99_ms": 0.099,
+          "connect_errors": 0,
+          "read_errors": 0,
+          "write_errors": 0,
+          "status_errors": 0,
+          "timeouts": 0,
+          "requests_per_second": 34563.462729234234
+        },
+        "peak_server_rss_bytes": 35405824,
+        "status": "passed"
+      },
+      "server_exit_code": 0,
+      "server_log": ""
+    },
+    {
+      "protocol": "http",
+      "concurrency": 2,
+      "payload_bytes": null,
+      "trial": 1,
+      "target": "bun",
+      "target_order": [
+        "php-select",
+        "crab-jit",
+        "bun",
+        "php-revolt-jit",
+        "elysia",
+        "crab-transport-jit",
+        "php-select-jit",
+        "crab",
+        "crab-codec-jit"
+      ],
+      "started_utc": "2026-10-03T07:45:57Z",
+      "server_command": [
+        "/var/folders/tg/pyt0jkx51cd1_8n1q01dvpjh0000gn/T/crab-elysia-bun-1.4.2-64v2459i/bun-darwin-aarch64/bun",
+        "/Users/daudau/Code/crabphp/engine/benchmarks/baselines/bun.ts",
+        "--protocol=http",
+        "--port=55721"
+      ],
+      "port": 55721,
+      "errors": [],
+      "status": "passed",
+      "server_pid": 16411,
+      "readiness": "Verified HTTP/1.1 200 and exact Hello from Crab newline body.",
+      "http_response": {
+        "raw_headers": "HTTP/1.1 200 OK\r\nContent-Type: text/plain; charset=utf-8\r\nDate: Sat, 03 Oct 2026 07:45:57 GMT\r\nContent-Length: 16",
+        "body": "Hello from Crab\n",
+        "body_bytes": 16
+      },
+      "http_validation": {
+        "status": "passed",
+        "checks": [
+          "exact body, headers, and Connection: close",
+          "three sequential requests on one persistent connection",
+          "fragmented request line, header name, and CRLF terminator",
+          "eight ordered pipelined responses without lost or extra bytes"
+        ],
+        "successful_requests": 13,
+        "response": {
+          "raw_headers": "HTTP/1.1 200 OK\r\nContent-Type: text/plain; charset=utf-8\r\nDate: Sat, 03 Oct 2026 07:45:57 GMT\r\nContent-Length: 16",
+          "body": "Hello from Crab\n",
+          "body_bytes": 16
+        }
+      },
+      "warmup": {
+        "command": [
+          "wrk",
+          "-t",
+          "2",
+          "-c",
+          "2",
+          "-d",
+          "1s",
+          "--timeout",
+          "2s",
+          "--latency",
+          "-s",
+          "/var/folders/tg/pyt0jkx51cd1_8n1q01dvpjh0000gn/T/crab-compare-09jnd8zc/latency.lua",
+          "http://127.0.0.1:55721/"
+        ],
+        "timeout_seconds": 16,
+        "timed_out": false,
+        "samples": [
+          {
+            "server_cpu_percent": 0.0,
+            "server_rss_bytes": 13598720,
+            "load_cpu_percent": 0.0,
+            "load_rss_bytes": 1736704
+          },
+          {
+            "server_cpu_percent": 27.9,
+            "server_rss_bytes": 31473664,
+            "load_cpu_percent": 24.3,
+            "load_rss_bytes": 2605056
+          },
+          {
+            "server_cpu_percent": 52.1,
+            "server_rss_bytes": 32227328,
+            "load_cpu_percent": 45.5,
+            "load_rss_bytes": 2621440
+          },
+          {
+            "server_cpu_percent": 59.6,
+            "server_rss_bytes": 34275328,
+            "load_cpu_percent": 53.5,
+            "load_rss_bytes": 2637824
+          },
+          {
+            "server_cpu_percent": 62.9,
+            "server_rss_bytes": 34734080,
+            "load_cpu_percent": 56.6,
+            "load_rss_bytes": 2637824
+          }
+        ],
+        "errors": [],
+        "server_cpu_before": {
+          "command": [
+            "ps",
+            "-p",
+            "16411",
+            "-o",
+            "time="
+          ],
+          "exit_code": 0,
+          "stdout": "0:00.01",
+          "stderr": "",
+          "cpu_seconds": 0.01
+        },
+        "pid": 16414,
+        "exit_code": 0,
+        "raw_output": "Running 1s test @ http://127.0.0.1:55721/\n  2 threads and 2 connections\n  Thread Stats   Avg      Stdev     Max   +/- Stdev\n    Latency    46.87us   18.75us 570.00us   85.10%\n    Req/Sec    20.91k   604.38    22.56k    90.91%\n  Latency Distribution\n     50%   45.00us\n     75%   53.00us\n     90%   62.00us\n     99%   92.00us\n  45761 requests in 1.10s, 5.80MB read\nRequests/sec:  41611.65\nTransfer/sec:      5.28MB\nCRAB_METRICS {\"requests\":45761,\"duration_us\":1099716,\"p50_ms\":0.045000,\"p95_ms\":0.070000,\"p99_ms\":0.092000,\"connect_errors\":0,\"read_errors\":0,\"write_errors\":0,\"status_errors\":0,\"timeouts\":0}\n",
+        "elapsed_wall_seconds": 1.1268390000332147,
+        "server_cpu_after": {
+          "command": [
+            "ps",
+            "-p",
+            "16411",
+            "-o",
+            "time="
+          ],
+          "exit_code": 0,
+          "stdout": "0:00.74",
+          "stderr": "",
+          "cpu_seconds": 0.74
+        },
+        "server_cpu_seconds": 0.73,
+        "server_cpu_percent_of_elapsed": 64.78299029217861,
+        "server_cpu_scope": "Serving process only; cumulative ps time delta over load launch, execution and cleanup.",
+        "metrics": {
+          "requests": 45761,
+          "duration_us": 1099716,
+          "p50_ms": 0.045,
+          "p95_ms": 0.07,
+          "p99_ms": 0.092,
+          "connect_errors": 0,
+          "read_errors": 0,
+          "write_errors": 0,
+          "status_errors": 0,
+          "timeouts": 0,
+          "requests_per_second": 41611.65246299954
+        },
+        "peak_server_rss_bytes": 34734080,
+        "status": "passed"
+      },
+      "measurement": {
+        "command": [
+          "wrk",
+          "-t",
+          "2",
+          "-c",
+          "2",
+          "-d",
+          "1s",
+          "--timeout",
+          "2s",
+          "--latency",
+          "-s",
+          "/var/folders/tg/pyt0jkx51cd1_8n1q01dvpjh0000gn/T/crab-compare-09jnd8zc/latency.lua",
+          "http://127.0.0.1:55721/"
+        ],
+        "timeout_seconds": 16,
+        "timed_out": false,
+        "samples": [
+          {
+            "server_cpu_percent": 63.8,
+            "server_rss_bytes": 35389440,
+            "load_cpu_percent": 0.0,
+            "load_rss_bytes": 1802240
+          },
+          {
+            "server_cpu_percent": 60.1,
+            "server_rss_bytes": 35536896,
+            "load_cpu_percent": 23.5,
+            "load_rss_bytes": 2588672
+          },
+          {
+            "server_cpu_percent": 63.4,
+            "server_rss_bytes": 35536896,
+            "load_cpu_percent": 44.5,
+            "load_rss_bytes": 2605056
+          },
+          {
+            "server_cpu_percent": 66.6,
+            "server_rss_bytes": 35536896,
+            "load_cpu_percent": 52.8,
+            "load_rss_bytes": 2605056
+          },
+          {
+            "server_cpu_percent": 70.7,
+            "server_rss_bytes": 35553280,
+            "load_cpu_percent": 56.5,
+            "load_rss_bytes": 2637824
+          }
+        ],
+        "errors": [],
+        "server_cpu_before": {
+          "command": [
+            "ps",
+            "-p",
+            "16411",
+            "-o",
+            "time="
+          ],
+          "exit_code": 0,
+          "stdout": "0:00.74",
+          "stderr": "",
+          "cpu_seconds": 0.74
+        },
+        "pid": 16427,
+        "exit_code": 0,
+        "raw_output": "Running 1s test @ http://127.0.0.1:55721/\n  2 threads and 2 connections\n  Thread Stats   Avg      Stdev     Max   +/- Stdev\n    Latency    46.33us   17.81us 478.00us   81.23%\n    Req/Sec    21.15k     1.20k   24.67k    90.91%\n  Latency Distribution\n     50%   45.00us\n     75%   53.00us\n     90%   63.00us\n     99%   95.00us\n  46251 requests in 1.10s, 5.87MB read\nRequests/sec:  42065.60\nTransfer/sec:      5.34MB\nCRAB_METRICS {\"requests\":46251,\"duration_us\":1099497,\"p50_ms\":0.045000,\"p95_ms\":0.072000,\"p99_ms\":0.095000,\"connect_errors\":0,\"read_errors\":0,\"write_errors\":0,\"status_errors\":0,\"timeouts\":0}\n",
+        "elapsed_wall_seconds": 1.1253657080233097,
+        "server_cpu_after": {
+          "command": [
+            "ps",
+            "-p",
+            "16411",
+            "-o",
+            "time="
+          ],
+          "exit_code": 0,
+          "stdout": "0:01.49",
+          "stderr": "",
+          "cpu_seconds": 1.49
+        },
+        "server_cpu_seconds": 0.75,
+        "server_cpu_percent_of_elapsed": 66.64500212267578,
+        "server_cpu_scope": "Serving process only; cumulative ps time delta over load launch, execution and cleanup.",
+        "metrics": {
+          "requests": 46251,
+          "duration_us": 1099497,
+          "p50_ms": 0.045,
+          "p95_ms": 0.072,
+          "p99_ms": 0.095,
+          "connect_errors": 0,
+          "read_errors": 0,
+          "write_errors": 0,
+          "status_errors": 0,
+          "timeouts": 0,
+          "requests_per_second": 42065.59908758278
+        },
+        "peak_server_rss_bytes": 35553280,
+        "status": "passed"
+      },
+      "server_exit_code": 0,
+      "server_log": ""
+    },
+    {
+      "protocol": "http",
+      "concurrency": 2,
+      "payload_bytes": null,
+      "trial": 1,
+      "target": "php-revolt-jit",
+      "target_order": [
+        "php-select",
+        "crab-jit",
+        "bun",
+        "php-revolt-jit",
+        "elysia",
+        "crab-transport-jit",
+        "php-select-jit",
+        "crab",
+        "crab-codec-jit"
+      ],
+      "started_utc": "2026-10-03T07:45:59Z",
+      "server_command": [
+        "php",
+        "-d",
+        "opcache.enable_cli=1",
+        "-d",
+        "opcache.jit=tracing",
+        "-d",
+        "opcache.jit_buffer_size=128M",
+        "/Users/daudau/Code/crabphp/engine/benchmarks/baselines/php.php",
+        "--backend=revolt",
+        "--protocol=http",
+        "--port=55738"
+      ],
+      "port": 55738,
+      "errors": [],
+      "status": "passed",
+      "server_pid": 16442,
+      "readiness": "Verified HTTP/1.1 200 and exact Hello from Crab newline body.",
+      "http_response": {
+        "raw_headers": "HTTP/1.1 200 OK\r\ncontent-type: text/plain; charset=utf-8\r\ncontent-length: 16\r\nconnection: close\r\ndate: Sat, 03 Oct 2026 07:45:59 GMT",
+        "body": "Hello from Crab\n",
+        "body_bytes": 16
+      },
+      "http_validation": {
+        "status": "passed",
+        "checks": [
+          "exact body, headers, and Connection: close",
+          "three sequential requests on one persistent connection",
+          "fragmented request line, header name, and CRLF terminator",
+          "eight ordered pipelined responses without lost or extra bytes"
+        ],
+        "successful_requests": 13,
+        "response": {
+          "raw_headers": "HTTP/1.1 200 OK\r\ncontent-type: text/plain; charset=utf-8\r\ncontent-length: 16\r\nconnection: close\r\ndate: Sat, 03 Oct 2026 07:45:59 GMT",
+          "body": "Hello from Crab\n",
+          "body_bytes": 16
+        }
+      },
+      "warmup": {
+        "command": [
+          "wrk",
+          "-t",
+          "2",
+          "-c",
+          "2",
+          "-d",
+          "1s",
+          "--timeout",
+          "2s",
+          "--latency",
+          "-s",
+          "/var/folders/tg/pyt0jkx51cd1_8n1q01dvpjh0000gn/T/crab-compare-09jnd8zc/latency.lua",
+          "http://127.0.0.1:55738/"
+        ],
+        "timeout_seconds": 16,
+        "timed_out": false,
+        "samples": [
+          {
+            "server_cpu_percent": 28.8,
+            "server_rss_bytes": 34422784,
+            "load_cpu_percent": 0.0,
+            "load_rss_bytes": 1769472
+          },
+          {
+            "server_cpu_percent": 35.4,
+            "server_rss_bytes": 34553856,
+            "load_cpu_percent": 17.0,
+            "load_rss_bytes": 2621440
+          },
+          {
+            "server_cpu_percent": 48.9,
+            "server_rss_bytes": 34553856,
+            "load_cpu_percent": 42.7,
+            "load_rss_bytes": 2654208
+          },
+          {
+            "server_cpu_percent": 51.9,
+            "server_rss_bytes": 34553856,
+            "load_cpu_percent": 50.3,
+            "load_rss_bytes": 2654208
+          },
+          {
+            "server_cpu_percent": 53.2,
+            "server_rss_bytes": 34553856,
+            "load_cpu_percent": 53.3,
+            "load_rss_bytes": 2654208
+          }
+        ],
+        "errors": [],
+        "server_cpu_before": {
+          "command": [
+            "ps",
+            "-p",
+            "16442",
+            "-o",
+            "time="
+          ],
+          "exit_code": 0,
+          "stdout": "0:00.10",
+          "stderr": "",
+          "cpu_seconds": 0.1
+        },
+        "pid": 16448,
+        "exit_code": 0,
+        "raw_output": "Running 1s test @ http://127.0.0.1:55738/\n  2 threads and 2 connections\n  Thread Stats   Avg      Stdev     Max   +/- Stdev\n    Latency    41.42us   17.68us 659.00us   81.12%\n    Req/Sec    23.66k     1.61k   27.52k    77.27%\n  Latency Distribution\n     50%   41.00us\n     75%   49.00us\n     90%   58.00us\n     99%   79.00us\n  51758 requests in 1.10s, 7.75MB read\nRequests/sec:  47048.19\nTransfer/sec:      7.04MB\nCRAB_METRICS {\"requests\":51758,\"duration_us\":1100106,\"p50_ms\":0.041000,\"p95_ms\":0.064000,\"p99_ms\":0.079000,\"connect_errors\":0,\"read_errors\":0,\"write_errors\":0,\"status_errors\":0,\"timeouts\":0}\n",
+        "elapsed_wall_seconds": 1.1184596660314128,
+        "server_cpu_after": {
+          "command": [
+            "ps",
+            "-p",
+            "16442",
+            "-o",
+            "time="
+          ],
+          "exit_code": 0,
+          "stdout": "0:00.71",
+          "stderr": "",
+          "cpu_seconds": 0.71
+        },
+        "server_cpu_seconds": 0.61,
+        "server_cpu_percent_of_elapsed": 54.53929350572287,
+        "server_cpu_scope": "Serving process only; cumulative ps time delta over load launch, execution and cleanup.",
+        "metrics": {
+          "requests": 51758,
+          "duration_us": 1100106,
+          "p50_ms": 0.041,
+          "p95_ms": 0.064,
+          "p99_ms": 0.079,
+          "connect_errors": 0,
+          "read_errors": 0,
+          "write_errors": 0,
+          "status_errors": 0,
+          "timeouts": 0,
+          "requests_per_second": 47048.19353771364
+        },
+        "peak_server_rss_bytes": 34553856,
+        "status": "passed"
+      },
+      "measurement": {
+        "command": [
+          "wrk",
+          "-t",
+          "2",
+          "-c",
+          "2",
+          "-d",
+          "1s",
+          "--timeout",
+          "2s",
+          "--latency",
+          "-s",
+          "/var/folders/tg/pyt0jkx51cd1_8n1q01dvpjh0000gn/T/crab-compare-09jnd8zc/latency.lua",
+          "http://127.0.0.1:55738/"
+        ],
+        "timeout_seconds": 16,
+        "timed_out": false,
+        "samples": [
+          {
+            "server_cpu_percent": 53.5,
+            "server_rss_bytes": 34553856,
+            "load_cpu_percent": 0.0,
+            "load_rss_bytes": 1835008
+          },
+          {
+            "server_cpu_percent": 49.8,
+            "server_rss_bytes": 34553856,
+            "load_cpu_percent": 17.7,
+            "load_rss_bytes": 2588672
+          },
+          {
+            "server_cpu_percent": 52.4,
+            "server_rss_bytes": 34553856,
+            "load_cpu_percent": 41.0,
+            "load_rss_bytes": 2605056
+          },
+          {
+            "server_cpu_percent": 53.4,
+            "server_rss_bytes": 34553856,
+            "load_cpu_percent": 50.0,
+            "load_rss_bytes": 2605056
+          },
+          {
+            "server_cpu_percent": 54.1,
+            "server_rss_bytes": 34553856,
+            "load_cpu_percent": 54.0,
+            "load_rss_bytes": 2621440
+          }
+        ],
+        "errors": [],
+        "server_cpu_before": {
+          "command": [
+            "ps",
+            "-p",
+            "16442",
+            "-o",
+            "time="
+          ],
+          "exit_code": 0,
+          "stdout": "0:00.71",
+          "stderr": "",
+          "cpu_seconds": 0.71
+        },
+        "pid": 16458,
+        "exit_code": 0,
+        "raw_output": "Running 1s test @ http://127.0.0.1:55738/\n  2 threads and 2 connections\n  Thread Stats   Avg      Stdev     Max   +/- Stdev\n    Latency    41.95us   13.39us 181.00us   69.37%\n    Req/Sec    23.16k     0.85k   24.80k    63.64%\n  Latency Distribution\n     50%   42.00us\n     75%   50.00us\n     90%   58.00us\n     99%   78.00us\n  50625 requests in 1.10s, 7.58MB read\nRequests/sec:  46024.19\nTransfer/sec:      6.89MB\nCRAB_METRICS {\"requests\":50625,\"duration_us\":1099965,\"p50_ms\":0.042000,\"p95_ms\":0.064000,\"p99_ms\":0.078000,\"connect_errors\":0,\"read_errors\":0,\"write_errors\":0,\"status_errors\":0,\"timeouts\":0}\n",
+        "elapsed_wall_seconds": 1.1184308329829946,
+        "server_cpu_after": {
+          "command": [
+            "ps",
+            "-p",
+            "16442",
+            "-o",
+            "time="
+          ],
+          "exit_code": 0,
+          "stdout": "0:01.31",
+          "stderr": "",
+          "cpu_seconds": 1.31
+        },
+        "server_cpu_seconds": 0.6000000000000001,
+        "server_cpu_percent_of_elapsed": 53.64658969564754,
+        "server_cpu_scope": "Serving process only; cumulative ps time delta over load launch, execution and cleanup.",
+        "metrics": {
+          "requests": 50625,
+          "duration_us": 1099965,
+          "p50_ms": 0.042,
+          "p95_ms": 0.064,
+          "p99_ms": 0.078,
+          "connect_errors": 0,
+          "read_errors": 0,
+          "write_errors": 0,
+          "status_errors": 0,
+          "timeouts": 0,
+          "requests_per_second": 46024.191678826144
+        },
+        "peak_server_rss_bytes": 34553856,
+        "status": "passed"
+      },
+      "server_exit_code": 0,
+      "server_log": ""
+    },
+    {
+      "protocol": "http",
+      "concurrency": 2,
+      "payload_bytes": null,
+      "trial": 1,
+      "target": "elysia",
+      "target_order": [
+        "php-select",
+        "crab-jit",
+        "bun",
+        "php-revolt-jit",
+        "elysia",
+        "crab-transport-jit",
+        "php-select-jit",
+        "crab",
+        "crab-codec-jit"
+      ],
+      "started_utc": "2026-10-03T07:46:01Z",
+      "server_command": [
+        "/var/folders/tg/pyt0jkx51cd1_8n1q01dvpjh0000gn/T/crab-elysia-bun-1.4.2-64v2459i/bun-darwin-aarch64/bun",
+        "/Users/daudau/Code/crabphp/engine/benchmarks/elysia/server.ts",
+        "--protocol=http",
+        "--port=55756"
+      ],
+      "port": 55756,
+      "errors": [],
+      "status": "passed",
+      "server_pid": 16468,
+      "readiness": "Verified HTTP/1.1 200 and exact Hello from Crab newline body.",
+      "http_response": {
+        "raw_headers": "HTTP/1.1 200 OK\r\nContent-Type: text/plain; charset=utf-8\r\nDate: Sat, 03 Oct 2026 07:46:01 GMT\r\nContent-Length: 16",
+        "body": "Hello from Crab\n",
+        "body_bytes": 16
+      },
+      "http_validation": {
+        "status": "passed",
+        "checks": [
+          "exact body, headers, and Connection: close",
+          "three sequential requests on one persistent connection",
+          "fragmented request line, header name, and CRLF terminator",
+          "eight ordered pipelined responses without lost or extra bytes"
+        ],
+        "successful_requests": 13,
+        "response": {
+          "raw_headers": "HTTP/1.1 200 OK\r\nContent-Type: text/plain; charset=utf-8\r\nDate: Sat, 03 Oct 2026 07:46:01 GMT\r\nContent-Length: 16",
+          "body": "Hello from Crab\n",
+          "body_bytes": 16
+        }
+      },
+      "warmup": {
+        "command": [
+          "wrk",
+          "-t",
+          "2",
+          "-c",
+          "2",
+          "-d",
+          "1s",
+          "--timeout",
+          "2s",
+          "--latency",
+          "-s",
+          "/var/folders/tg/pyt0jkx51cd1_8n1q01dvpjh0000gn/T/crab-compare-09jnd8zc/latency.lua",
+          "http://127.0.0.1:55756/"
+        ],
+        "timeout_seconds": 16,
+        "timed_out": false,
+        "samples": [
+          {
+            "server_cpu_percent": 0.0,
+            "server_rss_bytes": 33718272,
+            "load_cpu_percent": 0.0,
+            "load_rss_bytes": 2195456
+          },
+          {
+            "server_cpu_percent": 39.6,
+            "server_rss_bytes": 47267840,
+            "load_cpu_percent": 23.9,
+            "load_rss_bytes": 2605056
+          },
+          {
+            "server_cpu_percent": 57.1,
+            "server_rss_bytes": 48627712,
+            "load_cpu_percent": 44.9,
+            "load_rss_bytes": 2605056
+          },
+          {
+            "server_cpu_percent": 62.0,
+            "server_rss_bytes": 48922624,
+            "load_cpu_percent": 52.6,
+            "load_rss_bytes": 2605056
+          },
+          {
+            "server_cpu_percent": 64.8,
+            "server_rss_bytes": 48939008,
+            "load_cpu_percent": 55.6,
+            "load_rss_bytes": 2605056
+          }
+        ],
+        "errors": [],
+        "server_cpu_before": {
+          "command": [
+            "ps",
+            "-p",
+            "16468",
+            "-o",
+            "time="
+          ],
+          "exit_code": 0,
+          "stdout": "0:00.06",
+          "stderr": "",
+          "cpu_seconds": 0.06
+        },
+        "pid": 16470,
+        "exit_code": 0,
+        "raw_output": "Running 1s test @ http://127.0.0.1:55756/\n  2 threads and 2 connections\n  Thread Stats   Avg      Stdev     Max   +/- Stdev\n    Latency    47.21us   22.63us   0.92ms   90.96%\n    Req/Sec    20.86k     0.90k   23.63k    81.82%\n  Latency Distribution\n     50%   46.00us\n     75%   54.00us\n     90%   62.00us\n     99%   92.00us\n  45664 requests in 1.10s, 5.79MB read\nRequests/sec:  41541.73\nTransfer/sec:      5.27MB\nCRAB_METRICS {\"requests\":45664,\"duration_us\":1099232,\"p50_ms\":0.046000,\"p95_ms\":0.070000,\"p99_ms\":0.092000,\"connect_errors\":0,\"read_errors\":0,\"write_errors\":0,\"status_errors\":0,\"timeouts\":0}\n",
+        "elapsed_wall_seconds": 1.1243799589574337,
+        "server_cpu_after": {
+          "command": [
+            "ps",
+            "-p",
+            "16468",
+            "-o",
+            "time="
+          ],
+          "exit_code": 0,
+          "stdout": "0:00.81",
+          "stderr": "",
+          "cpu_seconds": 0.81
+        },
+        "server_cpu_seconds": 0.75,
+        "server_cpu_percent_of_elapsed": 66.70343010163819,
+        "server_cpu_scope": "Serving process only; cumulative ps time delta over load launch, execution and cleanup.",
+        "metrics": {
+          "requests": 45664,
+          "duration_us": 1099232,
+          "p50_ms": 0.046,
+          "p95_ms": 0.07,
+          "p99_ms": 0.092,
+          "connect_errors": 0,
+          "read_errors": 0,
+          "write_errors": 0,
+          "status_errors": 0,
+          "timeouts": 0,
+          "requests_per_second": 41541.73095397514
+        },
+        "peak_server_rss_bytes": 48939008,
+        "status": "passed"
+      },
+      "measurement": {
+        "command": [
+          "wrk",
+          "-t",
+          "2",
+          "-c",
+          "2",
+          "-d",
+          "1s",
+          "--timeout",
+          "2s",
+          "--latency",
+          "-s",
+          "/var/folders/tg/pyt0jkx51cd1_8n1q01dvpjh0000gn/T/crab-compare-09jnd8zc/latency.lua",
+          "http://127.0.0.1:55756/"
+        ],
+        "timeout_seconds": 16,
+        "timed_out": false,
+        "samples": [
+          {
+            "server_cpu_percent": 65.3,
+            "server_rss_bytes": 49053696,
+            "load_cpu_percent": 0.0,
+            "load_rss_bytes": 2179072
+          },
+          {
+            "server_cpu_percent": 61.7,
+            "server_rss_bytes": 49627136,
+            "load_cpu_percent": 22.2,
+            "load_rss_bytes": 2605056
+          },
+          {
+            "server_cpu_percent": 65.5,
+            "server_rss_bytes": 49692672,
+            "load_cpu_percent": 44.3,
+            "load_rss_bytes": 2621440
+          },
+          {
+            "server_cpu_percent": 65.9,
+            "server_rss_bytes": 49692672,
+            "load_cpu_percent": 52.6,
+            "load_rss_bytes": 2621440
+          },
+          {
+            "server_cpu_percent": 65.7,
+            "server_rss_bytes": 49692672,
+            "load_cpu_percent": 55.6,
+            "load_rss_bytes": 2621440
+          }
+        ],
+        "errors": [],
+        "server_cpu_before": {
+          "command": [
+            "ps",
+            "-p",
+            "16468",
+            "-o",
+            "time="
+          ],
+          "exit_code": 0,
+          "stdout": "0:00.81",
+          "stderr": "",
+          "cpu_seconds": 0.81
+        },
+        "pid": 16494,
+        "exit_code": 0,
+        "raw_output": "Running 1s test @ http://127.0.0.1:55756/\n  2 threads and 2 connections\n  Thread Stats   Avg      Stdev     Max   +/- Stdev\n    Latency    47.86us   21.66us 811.00us   89.58%\n    Req/Sec    20.54k   479.40    21.98k    77.27%\n  Latency Distribution\n     50%   46.00us\n     75%   54.00us\n     90%   63.00us\n     99%   92.00us\n  45009 requests in 1.10s, 5.71MB read\nRequests/sec:  40916.12\nTransfer/sec:      5.19MB\nCRAB_METRICS {\"requests\":45009,\"duration_us\":1100031,\"p50_ms\":0.046000,\"p95_ms\":0.071000,\"p99_ms\":0.092000,\"connect_errors\":0,\"read_errors\":0,\"write_errors\":0,\"status_errors\":0,\"timeouts\":0}\n",
+        "elapsed_wall_seconds": 1.1307874999474734,
+        "server_cpu_after": {
+          "command": [
+            "ps",
+            "-p",
+            "16468",
+            "-o",
+            "time="
+          ],
+          "exit_code": 0,
+          "stdout": "0:01.55",
+          "stderr": "",
+          "cpu_seconds": 1.55
+        },
+        "server_cpu_seconds": 0.74,
+        "server_cpu_percent_of_elapsed": 65.44111957678821,
+        "server_cpu_scope": "Serving process only; cumulative ps time delta over load launch, execution and cleanup.",
+        "metrics": {
+          "requests": 45009,
+          "duration_us": 1100031,
+          "p50_ms": 0.046,
+          "p95_ms": 0.071,
+          "p99_ms": 0.092,
+          "connect_errors": 0,
+          "read_errors": 0,
+          "write_errors": 0,
+          "status_errors": 0,
+          "timeouts": 0,
+          "requests_per_second": 40916.11963662842
+        },
+        "peak_server_rss_bytes": 49692672,
+        "status": "passed"
+      },
+      "server_exit_code": 0,
+      "server_log": ""
+    },
+    {
+      "protocol": "http",
+      "concurrency": 2,
+      "payload_bytes": null,
+      "trial": 1,
+      "target": "crab-transport-jit",
+      "target_order": [
+        "php-select",
+        "crab-jit",
+        "bun",
+        "php-revolt-jit",
+        "elysia",
+        "crab-transport-jit",
+        "php-select-jit",
+        "crab",
+        "crab-codec-jit"
+      ],
+      "started_utc": "2026-10-03T07:46:04Z",
+      "server_command": [
+        "php",
+        "-d",
+        "opcache.enable_cli=1",
+        "-d",
+        "opcache.jit=tracing",
+        "-d",
+        "opcache.jit_buffer_size=128M",
+        "/Users/daudau/Code/crabphp/engine/benchmarks/baselines/php.php",
+        "--backend=transport",
+        "--protocol=http",
+        "--port=55773"
+      ],
+      "port": 55773,
+      "errors": [],
+      "status": "passed",
+      "server_pid": 16503,
+      "readiness": "Verified HTTP/1.1 200 and exact Hello from Crab newline body.",
+      "http_response": {
+        "raw_headers": "HTTP/1.1 200 OK\r\ncontent-type: text/plain; charset=utf-8\r\ncontent-length: 16\r\nconnection: close\r\ndate: Sat, 03 Oct 2026 07:46:04 GMT",
+        "body": "Hello from Crab\n",
+        "body_bytes": 16
+      },
+      "http_validation": {
+        "status": "passed",
+        "checks": [
+          "exact body, headers, and Connection: close",
+          "three sequential requests on one persistent connection",
+          "fragmented request line, header name, and CRLF terminator",
+          "eight ordered pipelined responses without lost or extra bytes"
+        ],
+        "successful_requests": 13,
+        "response": {
+          "raw_headers": "HTTP/1.1 200 OK\r\ncontent-type: text/plain; charset=utf-8\r\ncontent-length: 16\r\nconnection: close\r\ndate: Sat, 03 Oct 2026 07:46:04 GMT",
+          "body": "Hello from Crab\n",
+          "body_bytes": 16
+        }
+      },
+      "warmup": {
+        "command": [
+          "wrk",
+          "-t",
+          "2",
+          "-c",
+          "2",
+          "-d",
+          "1s",
+          "--timeout",
+          "2s",
+          "--latency",
+          "-s",
+          "/var/folders/tg/pyt0jkx51cd1_8n1q01dvpjh0000gn/T/crab-compare-09jnd8zc/latency.lua",
+          "http://127.0.0.1:55773/"
+        ],
+        "timeout_seconds": 16,
+        "timed_out": false,
+        "samples": [
+          {
+            "server_cpu_percent": 29.2,
+            "server_rss_bytes": 34226176,
+            "load_cpu_percent": 0.0,
+            "load_rss_bytes": 1736704
+          },
+          {
+            "server_cpu_percent": 36.8,
+            "server_rss_bytes": 34635776,
+            "load_cpu_percent": 17.0,
+            "load_rss_bytes": 2621440
+          },
+          {
+            "server_cpu_percent": 48.3,
+            "server_rss_bytes": 34635776,
+            "load_cpu_percent": 40.2,
+            "load_rss_bytes": 2637824
+          },
+          {
+            "server_cpu_percent": 52.6,
+            "server_rss_bytes": 34635776,
+            "load_cpu_percent": 49.3,
+            "load_rss_bytes": 2637824
+          },
+          {
+            "server_cpu_percent": 57.3,
+            "server_rss_bytes": 34635776,
+            "load_cpu_percent": 55.4,
+            "load_rss_bytes": 2654208
+          }
+        ],
+        "errors": [],
+        "server_cpu_before": {
+          "command": [
+            "ps",
+            "-p",
+            "16503",
+            "-o",
+            "time="
+          ],
+          "exit_code": 0,
+          "stdout": "0:00.10",
+          "stderr": "",
+          "cpu_seconds": 0.1
+        },
+        "pid": 16509,
+        "exit_code": 0,
+        "raw_output": "Running 1s test @ http://127.0.0.1:55773/\n  2 threads and 2 connections\n  Thread Stats   Avg      Stdev     Max   +/- Stdev\n    Latency    43.47us   22.52us 720.00us   89.15%\n    Req/Sec    22.77k     1.84k   28.01k    81.82%\n  Latency Distribution\n     50%   42.00us\n     75%   51.00us\n     90%   60.00us\n     99%   92.00us\n  49828 requests in 1.10s, 7.46MB read\nRequests/sec:  45324.43\nTransfer/sec:      6.79MB\nCRAB_METRICS {\"requests\":49828,\"duration_us\":1099363,\"p50_ms\":0.042000,\"p95_ms\":0.067000,\"p99_ms\":0.092000,\"connect_errors\":0,\"read_errors\":0,\"write_errors\":0,\"status_errors\":0,\"timeouts\":0}\n",
+        "elapsed_wall_seconds": 1.1201230420265347,
+        "server_cpu_after": {
+          "command": [
+            "ps",
+            "-p",
+            "16503",
+            "-o",
+            "time="
+          ],
+          "exit_code": 0,
+          "stdout": "0:00.73",
+          "stderr": "",
+          "cpu_seconds": 0.73
+        },
+        "server_cpu_seconds": 0.63,
+        "server_cpu_percent_of_elapsed": 56.24382111274128,
+        "server_cpu_scope": "Serving process only; cumulative ps time delta over load launch, execution and cleanup.",
+        "metrics": {
+          "requests": 49828,
+          "duration_us": 1099363,
+          "p50_ms": 0.042,
+          "p95_ms": 0.067,
+          "p99_ms": 0.092,
+          "connect_errors": 0,
+          "read_errors": 0,
+          "write_errors": 0,
+          "status_errors": 0,
+          "timeouts": 0,
+          "requests_per_second": 45324.4287828497
+        },
+        "peak_server_rss_bytes": 34635776,
+        "status": "passed"
+      },
+      "measurement": {
+        "command": [
+          "wrk",
+          "-t",
+          "2",
+          "-c",
+          "2",
+          "-d",
+          "1s",
+          "--timeout",
+          "2s",
+          "--latency",
+          "-s",
+          "/var/folders/tg/pyt0jkx51cd1_8n1q01dvpjh0000gn/T/crab-compare-09jnd8zc/latency.lua",
+          "http://127.0.0.1:55773/"
+        ],
+        "timeout_seconds": 16,
+        "timed_out": false,
+        "samples": [
+          {
+            "server_cpu_percent": 56.1,
+            "server_rss_bytes": 34635776,
+            "load_cpu_percent": 0.0,
+            "load_rss_bytes": 1720320
+          },
+          {
+            "server_cpu_percent": 52.1,
+            "server_rss_bytes": 34635776,
+            "load_cpu_percent": 18.1,
+            "load_rss_bytes": 2588672
+          },
+          {
+            "server_cpu_percent": 54.2,
+            "server_rss_bytes": 34635776,
+            "load_cpu_percent": 40.3,
+            "load_rss_bytes": 2605056
+          },
+          {
+            "server_cpu_percent": 54.9,
+            "server_rss_bytes": 34635776,
+            "load_cpu_percent": 49.4,
+            "load_rss_bytes": 2605056
+          },
+          {
+            "server_cpu_percent": 55.5,
+            "server_rss_bytes": 34635776,
+            "load_cpu_percent": 53.2,
+            "load_rss_bytes": 2605056
+          }
+        ],
+        "errors": [],
+        "server_cpu_before": {
+          "command": [
+            "ps",
+            "-p",
+            "16503",
+            "-o",
+            "time="
+          ],
+          "exit_code": 0,
+          "stdout": "0:00.73",
+          "stderr": "",
+          "cpu_seconds": 0.73
+        },
+        "pid": 16526,
+        "exit_code": 0,
+        "raw_output": "Running 1s test @ http://127.0.0.1:55773/\n  2 threads and 2 connections\n  Thread Stats   Avg      Stdev     Max   +/- Stdev\n    Latency    42.97us   13.59us 332.00us   71.01%\n    Req/Sec    22.65k   339.50    23.10k    68.18%\n  Latency Distribution\n     50%   43.00us\n     75%   51.00us\n     90%   59.00us\n     99%   78.00us\n  49486 requests in 1.10s, 7.41MB read\nRequests/sec:  45006.05\nTransfer/sec:      6.74MB\nCRAB_METRICS {\"requests\":49486,\"duration_us\":1099541,\"p50_ms\":0.043000,\"p95_ms\":0.064000,\"p99_ms\":0.078000,\"connect_errors\":0,\"read_errors\":0,\"write_errors\":0,\"status_errors\":0,\"timeouts\":0}\n",
+        "elapsed_wall_seconds": 1.1116656250087544,
+        "server_cpu_after": {
+          "command": [
+            "ps",
+            "-p",
+            "16503",
+            "-o",
+            "time="
+          ],
+          "exit_code": 0,
+          "stdout": "0:01.34",
+          "stderr": "",
+          "cpu_seconds": 1.34
+        },
+        "server_cpu_seconds": 0.6100000000000001,
+        "server_cpu_percent_of_elapsed": 54.87261513507682,
+        "server_cpu_scope": "Serving process only; cumulative ps time delta over load launch, execution and cleanup.",
+        "metrics": {
+          "requests": 49486,
+          "duration_us": 1099541,
+          "p50_ms": 0.043,
+          "p95_ms": 0.064,
+          "p99_ms": 0.078,
+          "connect_errors": 0,
+          "read_errors": 0,
+          "write_errors": 0,
+          "status_errors": 0,
+          "timeouts": 0,
+          "requests_per_second": 45006.052525553845
+        },
+        "peak_server_rss_bytes": 34635776,
+        "status": "passed"
+      },
+      "server_exit_code": 0,
+      "server_log": ""
+    },
+    {
+      "protocol": "http",
+      "concurrency": 2,
+      "payload_bytes": null,
+      "trial": 1,
+      "target": "php-select-jit",
+      "target_order": [
+        "php-select",
+        "crab-jit",
+        "bun",
+        "php-revolt-jit",
+        "elysia",
+        "crab-transport-jit",
+        "php-select-jit",
+        "crab",
+        "crab-codec-jit"
+      ],
+      "started_utc": "2026-10-03T07:46:06Z",
+      "server_command": [
+        "php",
+        "-d",
+        "opcache.enable_cli=1",
+        "-d",
+        "opcache.jit=tracing",
+        "-d",
+        "opcache.jit_buffer_size=128M",
+        "/Users/daudau/Code/crabphp/engine/benchmarks/baselines/php.php",
+        "--backend=select",
+        "--protocol=http",
+        "--port=55790"
+      ],
+      "port": 55790,
+      "errors": [],
+      "status": "passed",
+      "server_pid": 16535,
+      "readiness": "Verified HTTP/1.1 200 and exact Hello from Crab newline body.",
+      "http_response": {
+        "raw_headers": "HTTP/1.1 200 OK\r\ncontent-type: text/plain; charset=utf-8\r\ncontent-length: 16\r\nconnection: close\r\ndate: Sat, 03 Oct 2026 07:46:06 GMT",
+        "body": "Hello from Crab\n",
+        "body_bytes": 16
+      },
+      "http_validation": {
+        "status": "passed",
+        "checks": [
+          "exact body, headers, and Connection: close",
+          "three sequential requests on one persistent connection",
+          "fragmented request line, header name, and CRLF terminator",
+          "eight ordered pipelined responses without lost or extra bytes"
+        ],
+        "successful_requests": 13,
+        "response": {
+          "raw_headers": "HTTP/1.1 200 OK\r\ncontent-type: text/plain; charset=utf-8\r\ncontent-length: 16\r\nconnection: close\r\ndate: Sat, 03 Oct 2026 07:46:06 GMT",
+          "body": "Hello from Crab\n",
+          "body_bytes": 16
+        }
+      },
+      "warmup": {
+        "command": [
+          "wrk",
+          "-t",
+          "2",
+          "-c",
+          "2",
+          "-d",
+          "1s",
+          "--timeout",
+          "2s",
+          "--latency",
+          "-s",
+          "/var/folders/tg/pyt0jkx51cd1_8n1q01dvpjh0000gn/T/crab-compare-09jnd8zc/latency.lua",
+          "http://127.0.0.1:55790/"
+        ],
+        "timeout_seconds": 16,
+        "timed_out": false,
+        "samples": [
+          {
+            "server_cpu_percent": 27.4,
+            "server_rss_bytes": 33734656,
+            "load_cpu_percent": 0.0,
+            "load_rss_bytes": 2080768
+          },
+          {
+            "server_cpu_percent": 32.8,
+            "server_rss_bytes": 34062336,
+            "load_cpu_percent": 18.4,
+            "load_rss_bytes": 2621440
+          },
+          {
+            "server_cpu_percent": 42.2,
+            "server_rss_bytes": 34062336,
+            "load_cpu_percent": 42.2,
+            "load_rss_bytes": 2621440
+          },
+          {
+            "server_cpu_percent": 45.7,
+            "server_rss_bytes": 34062336,
+            "load_cpu_percent": 51.4,
+            "load_rss_bytes": 2621440
+          },
+          {
+            "server_cpu_percent": 47.4,
+            "server_rss_bytes": 34062336,
+            "load_cpu_percent": 54.7,
+            "load_rss_bytes": 2621440
+          }
+        ],
+        "errors": [],
+        "server_cpu_before": {
+          "command": [
+            "ps",
+            "-p",
+            "16535",
+            "-o",
+            "time="
+          ],
+          "exit_code": 0,
+          "stdout": "0:00.09",
+          "stderr": "",
+          "cpu_seconds": 0.09
+        },
+        "pid": 16541,
+        "exit_code": 0,
+        "raw_output": "Running 1s test @ http://127.0.0.1:55790/\n  2 threads and 2 connections\n  Thread Stats   Avg      Stdev     Max   +/- Stdev\n    Latency    39.63us   16.60us 591.00us   81.09%\n    Req/Sec    24.69k   781.70    26.07k    59.09%\n  Latency Distribution\n     50%   39.00us\n     75%   47.00us\n     90%   54.00us\n     99%   75.00us\n  53969 requests in 1.10s, 8.08MB read\nRequests/sec:  49071.29\nTransfer/sec:      7.35MB\nCRAB_METRICS {\"requests\":53969,\"duration_us\":1099808,\"p50_ms\":0.039000,\"p95_ms\":0.060000,\"p99_ms\":0.075000,\"connect_errors\":0,\"read_errors\":0,\"write_errors\":0,\"status_errors\":0,\"timeouts\":0}\n",
+        "elapsed_wall_seconds": 1.1177679999964312,
+        "server_cpu_after": {
+          "command": [
+            "ps",
+            "-p",
+            "16535",
+            "-o",
+            "time="
+          ],
+          "exit_code": 0,
+          "stdout": "0:00.63",
+          "stderr": "",
+          "cpu_seconds": 0.63
+        },
+        "server_cpu_seconds": 0.54,
+        "server_cpu_percent_of_elapsed": 48.31056176252354,
+        "server_cpu_scope": "Serving process only; cumulative ps time delta over load launch, execution and cleanup.",
+        "metrics": {
+          "requests": 53969,
+          "duration_us": 1099808,
+          "p50_ms": 0.039,
+          "p95_ms": 0.06,
+          "p99_ms": 0.075,
+          "connect_errors": 0,
+          "read_errors": 0,
+          "write_errors": 0,
+          "status_errors": 0,
+          "timeouts": 0,
+          "requests_per_second": 49071.29244377201
+        },
+        "peak_server_rss_bytes": 34062336,
+        "status": "passed"
+      },
+      "measurement": {
+        "command": [
+          "wrk",
+          "-t",
+          "2",
+          "-c",
+          "2",
+          "-d",
+          "1s",
+          "--timeout",
+          "2s",
+          "--latency",
+          "-s",
+          "/var/folders/tg/pyt0jkx51cd1_8n1q01dvpjh0000gn/T/crab-compare-09jnd8zc/latency.lua",
+          "http://127.0.0.1:55790/"
+        ],
+        "timeout_seconds": 16,
+        "timed_out": false,
+        "samples": [
+          {
+            "server_cpu_percent": 47.2,
+            "server_rss_bytes": 34062336,
+            "load_cpu_percent": 0.0,
+            "load_rss_bytes": 1818624
+          },
+          {
+            "server_cpu_percent": 44.8,
+            "server_rss_bytes": 34062336,
+            "load_cpu_percent": 19.4,
+            "load_rss_bytes": 2621440
+          },
+          {
+            "server_cpu_percent": 49.2,
+            "server_rss_bytes": 34062336,
+            "load_cpu_percent": 45.4,
+            "load_rss_bytes": 2637824
+          },
+          {
+            "server_cpu_percent": 49.5,
+            "server_rss_bytes": 34062336,
+            "load_cpu_percent": 53.3,
+            "load_rss_bytes": 2654208
+          },
+          {
+            "server_cpu_percent": 48.6,
+            "server_rss_bytes": 34062336,
+            "load_cpu_percent": 55.3,
+            "load_rss_bytes": 2654208
+          }
+        ],
+        "errors": [],
+        "server_cpu_before": {
+          "command": [
+            "ps",
+            "-p",
+            "16535",
+            "-o",
+            "time="
+          ],
+          "exit_code": 0,
+          "stdout": "0:00.63",
+          "stderr": "",
+          "cpu_seconds": 0.63
+        },
+        "pid": 16553,
+        "exit_code": 0,
+        "raw_output": "Running 1s test @ http://127.0.0.1:55790/\n  2 threads and 2 connections\n  Thread Stats   Avg      Stdev     Max   +/- Stdev\n    Latency    38.46us   12.87us 212.00us   68.90%\n    Req/Sec    25.21k     1.71k   30.19k    86.36%\n  Latency Distribution\n     50%   38.00us\n     75%   47.00us\n     90%   54.00us\n     99%   72.00us\n  55109 requests in 1.10s, 8.25MB read\nRequests/sec:  50101.73\nTransfer/sec:      7.50MB\nCRAB_METRICS {\"requests\":55109,\"duration_us\":1099942,\"p50_ms\":0.038000,\"p95_ms\":0.060000,\"p99_ms\":0.072000,\"connect_errors\":0,\"read_errors\":0,\"write_errors\":0,\"status_errors\":0,\"timeouts\":0}\n",
+        "elapsed_wall_seconds": 1.1142007079906762,
+        "server_cpu_after": {
+          "command": [
+            "ps",
+            "-p",
+            "16535",
+            "-o",
+            "time="
+          ],
+          "exit_code": 0,
+          "stdout": "0:01.17",
+          "stderr": "",
+          "cpu_seconds": 1.17
+        },
+        "server_cpu_seconds": 0.5399999999999999,
+        "server_cpu_percent_of_elapsed": 48.46523576293749,
+        "server_cpu_scope": "Serving process only; cumulative ps time delta over load launch, execution and cleanup.",
+        "metrics": {
+          "requests": 55109,
+          "duration_us": 1099942,
+          "p50_ms": 0.038,
+          "p95_ms": 0.06,
+          "p99_ms": 0.072,
+          "connect_errors": 0,
+          "read_errors": 0,
+          "write_errors": 0,
+          "status_errors": 0,
+          "timeouts": 0,
+          "requests_per_second": 50101.73263681176
+        },
+        "peak_server_rss_bytes": 34062336,
+        "status": "passed"
+      },
+      "server_exit_code": 0,
+      "server_log": ""
+    },
+    {
+      "protocol": "http",
+      "concurrency": 2,
+      "payload_bytes": null,
+      "trial": 1,
+      "target": "crab",
+      "target_order": [
+        "php-select",
+        "crab-jit",
+        "bun",
+        "php-revolt-jit",
+        "elysia",
+        "crab-transport-jit",
+        "php-select-jit",
+        "crab",
+        "crab-codec-jit"
+      ],
+      "started_utc": "2026-10-03T07:46:09Z",
+      "server_command": [
+        "php",
+        "-d",
+        "opcache.enable_cli=1",
+        "-d",
+        "opcache.jit=off",
+        "-d",
+        "opcache.jit_buffer_size=0",
+        "/Users/daudau/Code/crabphp/engine/benchmarks/server.php",
+        "--host=127.0.0.1",
+        "--workers=1",
+        "--protocol=http",
+        "--port=55807"
+      ],
+      "port": 55807,
+      "errors": [],
+      "status": "passed",
+      "server_pid": 16567,
+      "readiness": "Verified HTTP/1.1 200 and exact Hello from Crab newline body.",
+      "http_response": {
+        "raw_headers": "HTTP/1.1 200 OK\r\ncontent-type: text/plain; charset=utf-8\r\ncontent-length: 16\r\nconnection: close\r\ndate: Sat, 03 Oct 2026 07:46:09 GMT",
+        "body": "Hello from Crab\n",
+        "body_bytes": 16
+      },
+      "http_validation": {
+        "status": "passed",
+        "checks": [
+          "exact body, headers, and Connection: close",
+          "three sequential requests on one persistent connection",
+          "fragmented request line, header name, and CRLF terminator",
+          "eight ordered pipelined responses without lost or extra bytes"
+        ],
+        "successful_requests": 13,
+        "response": {
+          "raw_headers": "HTTP/1.1 200 OK\r\ncontent-type: text/plain; charset=utf-8\r\ncontent-length: 16\r\nconnection: close\r\ndate: Sat, 03 Oct 2026 07:46:09 GMT",
+          "body": "Hello from Crab\n",
+          "body_bytes": 16
+        }
+      },
+      "warmup": {
+        "command": [
+          "wrk",
+          "-t",
+          "2",
+          "-c",
+          "2",
+          "-d",
+          "1s",
+          "--timeout",
+          "2s",
+          "--latency",
+          "-s",
+          "/var/folders/tg/pyt0jkx51cd1_8n1q01dvpjh0000gn/T/crab-compare-09jnd8zc/latency.lua",
+          "http://127.0.0.1:55807/"
+        ],
+        "timeout_seconds": 16,
+        "timed_out": false,
+        "samples": [
+          {
+            "server_cpu_percent": 29.3,
+            "server_rss_bytes": 33669120,
+            "load_cpu_percent": 0.0,
+            "load_rss_bytes": 2277376
+          },
+          {
+            "server_cpu_percent": 42.1,
+            "server_rss_bytes": 33669120,
+            "load_cpu_percent": 13.0,
+            "load_rss_bytes": 2605056
+          },
+          {
+            "server_cpu_percent": 64.1,
+            "server_rss_bytes": 33669120,
+            "load_cpu_percent": 29.3,
+            "load_rss_bytes": 2605056
+          },
+          {
+            "server_cpu_percent": 72.9,
+            "server_rss_bytes": 33669120,
+            "load_cpu_percent": 35.7,
+            "load_rss_bytes": 2605056
+          },
+          {
+            "server_cpu_percent": 76.4,
+            "server_rss_bytes": 33669120,
+            "load_cpu_percent": 38.3,
+            "load_rss_bytes": 2605056
+          }
+        ],
+        "errors": [],
+        "server_cpu_before": {
+          "command": [
+            "ps",
+            "-p",
+            "16567",
+            "-o",
+            "time="
+          ],
+          "exit_code": 0,
+          "stdout": "0:00.10",
+          "stderr": "",
+          "cpu_seconds": 0.1
+        },
+        "pid": 16573,
+        "exit_code": 0,
+        "raw_output": "Running 1s test @ http://127.0.0.1:55807/\n  2 threads and 2 connections\n  Thread Stats   Avg      Stdev     Max   +/- Stdev\n    Latency    57.93us   13.35us 162.00us   72.40%\n    Req/Sec    16.90k   244.80    17.44k    63.64%\n  Latency Distribution\n     50%   56.00us\n     75%   66.00us\n     90%   76.00us\n     99%   97.00us\n  36946 requests in 1.10s, 5.53MB read\nRequests/sec:  33592.04\nTransfer/sec:      5.03MB\nCRAB_METRICS {\"requests\":36946,\"duration_us\":1099844,\"p50_ms\":0.056000,\"p95_ms\":0.082000,\"p99_ms\":0.097000,\"connect_errors\":0,\"read_errors\":0,\"write_errors\":0,\"status_errors\":0,\"timeouts\":0}\n",
+        "elapsed_wall_seconds": 1.1071077500237152,
+        "server_cpu_after": {
+          "command": [
+            "ps",
+            "-p",
+            "16567",
+            "-o",
+            "time="
+          ],
+          "exit_code": 0,
+          "stdout": "0:00.96",
+          "stderr": "",
+          "cpu_seconds": 0.96
+        },
+        "server_cpu_seconds": 0.86,
+        "server_cpu_percent_of_elapsed": 77.67988255719266,
+        "server_cpu_scope": "Serving process only; cumulative ps time delta over load launch, execution and cleanup.",
+        "metrics": {
+          "requests": 36946,
+          "duration_us": 1099844,
+          "p50_ms": 0.056,
+          "p95_ms": 0.082,
+          "p99_ms": 0.097,
+          "connect_errors": 0,
+          "read_errors": 0,
+          "write_errors": 0,
+          "status_errors": 0,
+          "timeouts": 0,
+          "requests_per_second": 33592.03668883951
+        },
+        "peak_server_rss_bytes": 33669120,
+        "status": "passed"
+      },
+      "measurement": {
+        "command": [
+          "wrk",
+          "-t",
+          "2",
+          "-c",
+          "2",
+          "-d",
+          "1s",
+          "--timeout",
+          "2s",
+          "--latency",
+          "-s",
+          "/var/folders/tg/pyt0jkx51cd1_8n1q01dvpjh0000gn/T/crab-compare-09jnd8zc/latency.lua",
+          "http://127.0.0.1:55807/"
+        ],
+        "timeout_seconds": 16,
+        "timed_out": false,
+        "samples": [
+          {
+            "server_cpu_percent": 77.5,
+            "server_rss_bytes": 33669120,
+            "load_cpu_percent": 0.0,
+            "load_rss_bytes": 1769472
+          },
+          {
+            "server_cpu_percent": 74.7,
+            "server_rss_bytes": 33669120,
+            "load_cpu_percent": 14.4,
+            "load_rss_bytes": 2621440
+          },
+          {
+            "server_cpu_percent": 76.8,
+            "server_rss_bytes": 33669120,
+            "load_cpu_percent": 29.6,
+            "load_rss_bytes": 2621440
+          },
+          {
+            "server_cpu_percent": 77.7,
+            "server_rss_bytes": 33669120,
+            "load_cpu_percent": 35.7,
+            "load_rss_bytes": 2621440
+          },
+          {
+            "server_cpu_percent": 78.1,
+            "server_rss_bytes": 33669120,
+            "load_cpu_percent": 38.1,
+            "load_rss_bytes": 2621440
+          }
+        ],
+        "errors": [],
+        "server_cpu_before": {
+          "command": [
+            "ps",
+            "-p",
+            "16567",
+            "-o",
+            "time="
+          ],
+          "exit_code": 0,
+          "stdout": "0:00.96",
+          "stderr": "",
+          "cpu_seconds": 0.96
+        },
+        "pid": 16582,
+        "exit_code": 0,
+        "raw_output": "Running 1s test @ http://127.0.0.1:55807/\n  2 threads and 2 connections\n  Thread Stats   Avg      Stdev     Max   +/- Stdev\n    Latency    58.54us   14.54us 266.00us   75.60%\n    Req/Sec    16.74k   521.62    17.81k    81.82%\n  Latency Distribution\n     50%   56.00us\n     75%   66.00us\n     90%   77.00us\n     99%  103.00us\n  36592 requests in 1.10s, 5.48MB read\nRequests/sec:  33286.49\nTransfer/sec:      4.98MB\nCRAB_METRICS {\"requests\":36592,\"duration_us\":1099305,\"p50_ms\":0.056000,\"p95_ms\":0.085000,\"p99_ms\":0.103000,\"connect_errors\":0,\"read_errors\":0,\"write_errors\":0,\"status_errors\":0,\"timeouts\":0}\n",
+        "elapsed_wall_seconds": 1.1171667909948155,
+        "server_cpu_after": {
+          "command": [
+            "ps",
+            "-p",
+            "16567",
+            "-o",
+            "time="
+          ],
+          "exit_code": 0,
+          "stdout": "0:01.83",
+          "stderr": "",
+          "cpu_seconds": 1.83
+        },
+        "server_cpu_seconds": 0.8700000000000001,
+        "server_cpu_percent_of_elapsed": 77.87556943267906,
+        "server_cpu_scope": "Serving process only; cumulative ps time delta over load launch, execution and cleanup.",
+        "metrics": {
+          "requests": 36592,
+          "duration_us": 1099305,
+          "p50_ms": 0.056,
+          "p95_ms": 0.085,
+          "p99_ms": 0.103,
+          "connect_errors": 0,
+          "read_errors": 0,
+          "write_errors": 0,
+          "status_errors": 0,
+          "timeouts": 0,
+          "requests_per_second": 33286.485552235274
+        },
+        "peak_server_rss_bytes": 33669120,
+        "status": "passed"
+      },
+      "server_exit_code": 0,
+      "server_log": ""
+    },
+    {
+      "protocol": "http",
+      "concurrency": 2,
+      "payload_bytes": null,
+      "trial": 1,
+      "target": "crab-codec-jit",
+      "target_order": [
+        "php-select",
+        "crab-jit",
+        "bun",
+        "php-revolt-jit",
+        "elysia",
+        "crab-transport-jit",
+        "php-select-jit",
+        "crab",
+        "crab-codec-jit"
+      ],
+      "started_utc": "2026-10-03T07:46:11Z",
+      "server_command": [
+        "php",
+        "-d",
+        "opcache.enable_cli=1",
+        "-d",
+        "opcache.jit=tracing",
+        "-d",
+        "opcache.jit_buffer_size=128M",
+        "/Users/daudau/Code/crabphp/engine/benchmarks/baselines/php.php",
+        "--backend=codec",
+        "--protocol=http",
+        "--port=55827"
+      ],
+      "port": 55827,
+      "errors": [],
+      "status": "passed",
+      "server_pid": 16596,
+      "readiness": "Verified HTTP/1.1 200 and exact Hello from Crab newline body.",
+      "http_response": {
+        "raw_headers": "HTTP/1.1 200 OK\r\ncontent-type: text/plain; charset=utf-8\r\ncontent-length: 16\r\nconnection: close\r\ndate: Sat, 03 Oct 2026 07:46:11 GMT",
+        "body": "Hello from Crab\n",
+        "body_bytes": 16
+      },
+      "http_validation": {
+        "status": "passed",
+        "checks": [
+          "exact body, headers, and Connection: close",
+          "three sequential requests on one persistent connection",
+          "fragmented request line, header name, and CRLF terminator",
+          "eight ordered pipelined responses without lost or extra bytes"
+        ],
+        "successful_requests": 13,
+        "response": {
+          "raw_headers": "HTTP/1.1 200 OK\r\ncontent-type: text/plain; charset=utf-8\r\ncontent-length: 16\r\nconnection: close\r\ndate: Sat, 03 Oct 2026 07:46:11 GMT",
+          "body": "Hello from Crab\n",
+          "body_bytes": 16
+        }
+      },
+      "warmup": {
+        "command": [
+          "wrk",
+          "-t",
+          "2",
+          "-c",
+          "2",
+          "-d",
+          "1s",
+          "--timeout",
+          "2s",
+          "--latency",
+          "-s",
+          "/var/folders/tg/pyt0jkx51cd1_8n1q01dvpjh0000gn/T/crab-compare-09jnd8zc/latency.lua",
+          "http://127.0.0.1:55827/"
+        ],
+        "timeout_seconds": 16,
+        "timed_out": false,
+        "samples": [
+          {
+            "server_cpu_percent": 29.7,
+            "server_rss_bytes": 34897920,
+            "load_cpu_percent": 0.0,
+            "load_rss_bytes": 1769472
+          },
+          {
+            "server_cpu_percent": 48.9,
+            "server_rss_bytes": 35110912,
+            "load_cpu_percent": 25.7,
+            "load_rss_bytes": 2621440
+          },
+          {
+            "server_cpu_percent": 54.6,
+            "server_rss_bytes": 35110912,
+            "load_cpu_percent": 33.6,
+            "load_rss_bytes": 2621440
+          },
+          {
+            "server_cpu_percent": 61.1,
+            "server_rss_bytes": 35110912,
+            "load_cpu_percent": 41.5,
+            "load_rss_bytes": 2621440
+          },
+          {
+            "server_cpu_percent": 63.2,
+            "server_rss_bytes": 35110912,
+            "load_cpu_percent": 44.6,
+            "load_rss_bytes": 2621440
+          }
+        ],
+        "errors": [],
+        "server_cpu_before": {
+          "command": [
+            "ps",
+            "-p",
+            "16596",
+            "-o",
+            "time="
+          ],
+          "exit_code": 0,
+          "stdout": "0:00.10",
+          "stderr": "",
+          "cpu_seconds": 0.1
+        },
+        "pid": 16603,
+        "exit_code": 0,
+        "raw_output": "Running 1s test @ http://127.0.0.1:55827/\n  2 threads and 2 connections\n  Thread Stats   Avg      Stdev     Max   +/- Stdev\n    Latency    53.98us   51.78us   1.66ms   98.64%\n    Req/Sec    19.23k     1.16k   20.26k    90.91%\n  Latency Distribution\n     50%   49.00us\n     75%   59.00us\n     90%   69.00us\n     99%  133.00us\n  42059 requests in 1.10s, 6.30MB read\nRequests/sec:  38256.25\nTransfer/sec:      5.73MB\nCRAB_METRICS {\"requests\":42059,\"duration_us\":1099402,\"p50_ms\":0.049000,\"p95_ms\":0.076000,\"p99_ms\":0.133000,\"connect_errors\":0,\"read_errors\":0,\"write_errors\":0,\"status_errors\":0,\"timeouts\":0}\n",
+        "elapsed_wall_seconds": 1.1157842499669641,
+        "server_cpu_after": {
+          "command": [
+            "ps",
+            "-p",
+            "16596",
+            "-o",
+            "time="
+          ],
+          "exit_code": 0,
+          "stdout": "0:00.82",
+          "stderr": "",
+          "cpu_seconds": 0.82
+        },
+        "server_cpu_seconds": 0.72,
+        "server_cpu_percent_of_elapsed": 64.52860398605893,
+        "server_cpu_scope": "Serving process only; cumulative ps time delta over load launch, execution and cleanup.",
+        "metrics": {
+          "requests": 42059,
+          "duration_us": 1099402,
+          "p50_ms": 0.049,
+          "p95_ms": 0.076,
+          "p99_ms": 0.133,
+          "connect_errors": 0,
+          "read_errors": 0,
+          "write_errors": 0,
+          "status_errors": 0,
+          "timeouts": 0,
+          "requests_per_second": 38256.252035197314
+        },
+        "peak_server_rss_bytes": 35110912,
+        "status": "passed"
+      },
+      "measurement": {
+        "command": [
+          "wrk",
+          "-t",
+          "2",
+          "-c",
+          "2",
+          "-d",
+          "1s",
+          "--timeout",
+          "2s",
+          "--latency",
+          "-s",
+          "/var/folders/tg/pyt0jkx51cd1_8n1q01dvpjh0000gn/T/crab-compare-09jnd8zc/latency.lua",
+          "http://127.0.0.1:55827/"
+        ],
+        "timeout_seconds": 16,
+        "timed_out": false,
+        "samples": [
+          {
+            "server_cpu_percent": 64.1,
+            "server_rss_bytes": 35110912,
+            "load_cpu_percent": 0.0,
+            "load_rss_bytes": 2244608
+          },
+          {
+            "server_cpu_percent": 59.6,
+            "server_rss_bytes": 35110912,
+            "load_cpu_percent": 15.3,
+            "load_rss_bytes": 2605056
+          },
+          {
+            "server_cpu_percent": 62.5,
+            "server_rss_bytes": 35110912,
+            "load_cpu_percent": 34.2,
+            "load_rss_bytes": 2605056
+          },
+          {
+            "server_cpu_percent": 63.7,
+            "server_rss_bytes": 35110912,
+            "load_cpu_percent": 41.6,
+            "load_rss_bytes": 2605056
+          },
+          {
+            "server_cpu_percent": 64.1,
+            "server_rss_bytes": 35110912,
+            "load_cpu_percent": 44.6,
+            "load_rss_bytes": 2605056
+          }
+        ],
+        "errors": [],
+        "server_cpu_before": {
+          "command": [
+            "ps",
+            "-p",
+            "16596",
+            "-o",
+            "time="
+          ],
+          "exit_code": 0,
+          "stdout": "0:00.82",
+          "stderr": "",
+          "cpu_seconds": 0.82
+        },
+        "pid": 16613,
+        "exit_code": 0,
+        "raw_output": "Running 1s test @ http://127.0.0.1:55827/\n  2 threads and 2 connections\n  Thread Stats   Avg      Stdev     Max   +/- Stdev\n    Latency    51.40us   14.78us 229.00us   73.66%\n    Req/Sec    18.98k   236.19    19.57k    54.55%\n  Latency Distribution\n     50%   50.00us\n     75%   60.00us\n     90%   70.00us\n     99%   96.00us\n  41559 requests in 1.10s, 6.22MB read\nRequests/sec:  37796.44\nTransfer/sec:      5.66MB\nCRAB_METRICS {\"requests\":41559,\"duration_us\":1099548,\"p50_ms\":0.050000,\"p95_ms\":0.076000,\"p99_ms\":0.096000,\"connect_errors\":0,\"read_errors\":0,\"write_errors\":0,\"status_errors\":0,\"timeouts\":0}\n",
+        "elapsed_wall_seconds": 1.12061524996534,
+        "server_cpu_after": {
+          "command": [
+            "ps",
+            "-p",
+            "16596",
+            "-o",
+            "time="
+          ],
+          "exit_code": 0,
+          "stdout": "0:01.53",
+          "stderr": "",
+          "cpu_seconds": 1.53
+        },
+        "server_cpu_seconds": 0.7100000000000001,
+        "server_cpu_percent_of_elapsed": 63.358052643131536,
+        "server_cpu_scope": "Serving process only; cumulative ps time delta over load launch, execution and cleanup.",
+        "metrics": {
+          "requests": 41559,
+          "duration_us": 1099548,
+          "p50_ms": 0.05,
+          "p95_ms": 0.076,
+          "p99_ms": 0.096,
+          "connect_errors": 0,
+          "read_errors": 0,
+          "write_errors": 0,
+          "status_errors": 0,
+          "timeouts": 0,
+          "requests_per_second": 37796.43999170568
+        },
+        "peak_server_rss_bytes": 35110912,
+        "status": "passed"
+      },
+      "server_exit_code": 0,
+      "server_log": ""
+    }
+  ],
+  "source_sha256_after": {
+    "benchmarks/baselines/bun.ts": "22c72a4fe8af25a34c8d801de4e504c7718576f1b367cab7a68b0211dd05655f",
+    "benchmarks/baselines/php.php": "94e1c6b02cf0171d857cbb8a82de6dd4e5b578e557abfe2c0ff301810038839b",
+    "benchmarks/baselines/verify.py": "b2e0a10ee1d33ac2069ba70f0e5444958ab39d2bfb0f7f5216267a8d2ff0baa8",
+    "benchmarks/compare.py": "2c5b5e181bcb5cc5241823fbab6c1b3031e0e5e3abc30089299c504d988517b0",
+    "benchmarks/elysia/bun.lock": "f6f62efc8a645c8cf2c465d0d3be337c0e7edd8b31778c918c8a2393d787c987",
+    "benchmarks/elysia/package.json": "0398a8051e1cb8581ad4cfc7de0c118bec6defdf4e678edc12d5f9122921f0d3",
+    "benchmarks/elysia/server.ts": "4a2e96009030a8265c525bff2c62e20b4c8b08c146d7388d2fbd93c888c0250a",
+    "benchmarks/http.py": "cae4378c91f399d3f055501703423cb1b87009d4c8b9aeb71aa33218a67dc09d",
+    "benchmarks/server.php": "32b4e9479ff3d07e0427bf0a55905f5adb76b63ac1c27cbcb4e0a150aa38bd97",
+    "benchmarks/websocket.mjs": "789c5bc4ccb7f380c0b7043aa4528b1dee34ac6868bd079dfe4f6f7ff4bfc784",
+    "composer.json": "7a83cc7e0987c93edc0dd51ac6544fa5042802a54dbad1773a4911d6da6babc9",
+    "composer.lock": "b2adc0615cae93a8555073ef26d3032938903ea673219cf95a342129744618d5",
+    "src/Async/Async.php": "462d129b2ba3c8f6b4de12111ed4046965041799e6b6edcf208446f1963a410a",
+    "src/Async/Cancellation.php": "2770894fc76251c322b2f1428c82e8d3089972751621ef20181367a29d6cf8a8",
+    "src/Async/CancelledException.php": "8204c5462beef2fe1ac613d07a9aa4d85a4ea894956cc67bc6b839607413a44b",
+    "src/Async/ConnectionStream.php": "34b6ebaa0a25b909c1466573d151281e6ee69acc922cc5640c86bf4c1e3c7c2d",
+    "src/Async/Task.php": "d27f91818bd71a41ad81186fb5bb2332bfcc090d6a11819c7d2bdfe0f0ab2ddf",
+    "src/Http/Body.php": "dd8d973adb64cf2f17c9f377bcbe29e0cda2e6301ff0d23f7d8c8d42404213c7",
+    "src/Http/HttpException.php": "937fe56951a46f213f339ca207bb22a8706c34cf93186ed6e2b04936fa568ddc",
+    "src/Http/HttpSession.php": "e727501f681fea4bddbd104879385009e549ad11a2d0b6de72f5922fc129db77",
+    "src/Http/Parser.php": "bafd681b149027a7fcaca3b6d36ed1d5aacb542bdb47c573c42b029abc296a1e",
+    "src/Http/Request.php": "7f07912cfc8680e249f51ca2742e2803bfc9c7fb401ed38ea9417f744a72777a",
+    "src/Http/Response.php": "eb32648b0c5536463ddf92ec6b7af5bf09170f975ce68645d273493f5c97ec69",
+    "src/Http/ResponseEncoder.php": "3e36f0f86470adec3724cf0f6880f462ee34c17522595cc6defaaf6167031900",
+    "src/Http/Upgrade.php": "b41c4a9cdc5b19b07287ec5fb39351a2355e88705e287878a2d4423efebf2dd8",
+    "src/Network/Connection.php": "8a9f2cae5b0ee425a1e76d3c04022f22398a2317c8403efc0c37c10a7d33d56c",
+    "src/Network/Connector.php": "879ccd3754442b1d29b7ae0e22e3bb52df88bb24d5cd179d26737d781f1554bf",
+    "src/Network/Listener.php": "4a2788d5b487999b659e6500ca3e722ca12dc896a9fc546ee7e17049d6b0494a",
+    "src/Network/UdpEndpoint.php": "357d6032f10b5a07f0a9455903955a13db51d18a04c5db9d6b13d3770de3ed72",
+    "src/Network/WriteResult.php": "0ba70bbf7825fff54a10b5cab9c397127bb76ec6cedcccd13207175daef4e4db",
+    "src/Process/Supervisor.php": "f2a3c48b2923303360cb32e53b1233dde986190062d1426419b502c0ed8f7202",
+    "src/Process/Worker.php": "2bb90b5620241fad580d38cd417a3f1be249bb6da84be5d67a9071ebbc8d69e1",
+    "src/Runtime.php": "a62808c1dc26ce2b3fada80b0d8c85119d9a60517e827c747a6adfdae15bd62c",
+    "src/Server/HttpServer.php": "03b6f676e4bb1071b02b1f896672a021723b324c43065e9cf7bd486a814cd140",
+    "src/Server/TcpServer.php": "e057200b16a002b991c5da12f6bec519f4d6174ddc5862b92d3f3d4de02b65af",
+    "src/Server/UdpServer.php": "a372e5daa02c28c42563923678891f66a9443851c3c627c3d4a8aca4289a36eb",
+    "src/Server/WebSocketServer.php": "ec9308f21cb6bc9449c1c777d1c19861b11eae7ef983938f93a46356bdd810f6",
+    "src/WebSocket/Config.php": "78c909152e9f443e1f339f92da9091d03469f81919601b77aea104eea712d250",
+    "src/WebSocket/MessageType.php": "7175e1c67355c289ced159167d5b8e3f5971922a3c05664763c6b0f33e548706",
+    "src/WebSocket/WebSocketSession.php": "d26b1184f2bfa065fd6805dffc2e7ecc9bbb94612ecb8bcbf0779a6e98743b6f",
+    "src/WorkerGroup.php": "9237db8cebb47105910968f4cc7b1859f7989a211f3df8fd658294a9c6882814"
+  },
+  "source_hash_changes": [],
+  "finished_utc": "2026-10-03T07:46:13Z"
+}

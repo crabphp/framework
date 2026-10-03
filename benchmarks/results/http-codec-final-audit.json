@@ -1,0 +1,31 @@
+{
+  "datasets": [
+    {
+      "file": "compare-http-codec-final.json",
+      "trials": 30,
+      "status": "passed",
+      "current_and_baseline_hashes_verified": true,
+      "logs_expected_only": true,
+      "errors": 0
+    },
+    {
+      "file": "compare-http-codec-final-fresh.json",
+      "trials": 12,
+      "status": "passed",
+      "current_and_baseline_hashes_verified": true,
+      "logs_expected_only": true,
+      "errors": 0
+    },
+    {
+      "file": "compare-http-codec-final-ws.json",
+      "trials": 12,
+      "status": "passed",
+      "current_and_baseline_hashes_verified": true,
+      "logs_expected_only": true,
+      "errors": 0
+    }
+  ],
+  "total_trials": 54,
+  "measured_http_requests": 14926746,
+  "measured_ws_messages": 5671589
+}
