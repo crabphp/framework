@@ -100,6 +100,62 @@ final class HttpFastPathTest extends TestCase
         }
     }
 
+    #[DataProvider('lazyFieldProvider')]
+    public function testSingleFieldLookupsMatchTheCompleteMap(string $wire, string $body = ''): void
+    {
+        $names = ['host', 'Host', 'connection', 'expect', 'content-length', 'transfer-encoding', 'x-a', 'X-A', 'x',
+            'hostile', 'connection-x', 'user-agent', 'empty', 'missing', '', 'x-a: 1', 'host:', "x-a\r\n", 'x.a', 'x-b'];
+        $lookups = [];
+        foreach ([false, true] as $mapFirst) {
+            $parser = new Parser();
+            $parser->append($wire . $body);
+            $request = $parser->next();
+            self::assertNotNull($request);
+            $map = $mapFirst ? $request->headers : null;
+            $seen = [];
+            foreach ($names as $name) {
+                $seen[$name] = [$request->header($name), $request->hasToken($name, 'close')];
+            }
+            $seen['keep-alive'] = $request->keepAlive();
+            $lookups[] = [$seen, $request->headers];
+            self::assertSame($map ?? $request->headers, $request->headers);
+        }
+        self::assertSame($lookups[0], $lookups[1], 'Lookups before and after building the map disagree.');
+        foreach ($lookups[0][1] as $name => $values) {
+            self::assertSame(implode(', ', $values), $lookups[0][0][$name][0] ?? implode(', ', $values));
+        }
+    }
+
+    public static function lazyFieldProvider(): iterable
+    {
+        yield 'usual request' => ["GET / HTTP/1.1\r\nHost: a\r\nUser-Agent: UA/1.0 \r\nX-A: 1\r\nx-a:  2\t\r\nEmpty:\r\n\r\n"];
+        yield 'names that extend framing names' => ["GET / HTTP/1.1\r\nHostile: h\r\nConnection-X: c\r\nHOST: a\r\nX: close\r\n\r\n"];
+        yield 'connection list' => ["GET / HTTP/1.1\r\nHost: a\r\nConnection: keep-alive , Close \r\nX-B: host: b\r\n\r\n"];
+        yield 'repeated connection' => ["GET / HTTP/1.1\r\nHost: a\r\nConnection: keep-alive\r\nX-A: 1\r\nconnection: close\r\n\r\n"];
+        yield 'absolute-form' => ["GET http://other.example/p HTTP/1.1\r\nX-A: 1\r\nHost: a\r\n\r\n"];
+        yield 'absolute-form on HTTP/1.0' => ["GET http://other.example/p HTTP/1.0\r\nX-A: 1\r\n\r\n"];
+        yield 'no fields' => ["GET / HTTP/1.0\r\n\r\n"];
+        yield 'fixed body' => ["POST / HTTP/1.1\r\nHost: a\r\nContent-Length: 2\r\nX-A: 1\r\n\r\n", 'ok'];
+        yield 'chunked body' => ["POST / HTTP/1.1\r\nX-A: 1\r\nHost: a\r\nTransfer-Encoding: chunked\r\n\r\n", "2\r\nok\r\n0\r\n\r\n"];
+        yield 'expectation' => ["GET / HTTP/1.1\r\nHost: a\r\nExpect: 100-continue\r\nX-A: close\r\n\r\n"];
+    }
+
+    public function testHeaderMapCannotBeReplacedAndIsBuiltOnce(): void
+    {
+        $parser = new Parser();
+        $parser->append("GET / HTTP/1.1\r\nHost: a\r\nX-A: 1\r\n\r\n");
+        $request = $parser->next();
+        $first = $request->headers;
+        self::assertSame(['host' => ['a'], 'x-a' => ['1']], $first);
+        try {
+            $request->headers = [];
+            self::fail('Request fields were replaced.');
+        } catch (\Error) {
+        }
+        self::assertSame($first, $request->headers);
+        self::assertSame($first, (new Request('GET', '/', '1.1', $first, new Body()))->headers);
+    }
+
     #[DataProvider('keepAliveProvider')]
     public function testKeepAliveDecisionsMatchTokenSemantics(string $version, array $headers, bool $expected): void
     {

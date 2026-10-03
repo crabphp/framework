@@ -14,6 +14,16 @@ final class Parser
     private const TOKEN = "[!#$%&'*+.^_`|~0-9A-Za-z-]+";
     private const REQUEST_LINE = '/^(' . self::TOKEN . ') ([^\x00-\x20\x7F]+) HTTP\/([0-9]+\.[0-9]+)\r\n/';
     private const FIELDS = '/\G(?:(' . self::TOKEN . '):[ \t]*+([\x09\x20-\x7E\x80-\xFF]*)\r\n|\r\n\z)/';
+    private const VALID_FIELDS = '/\G(?:' . self::TOKEN . ':[\x09\x20-\x7E\x80-\xFF]*+\r\n)*+\r\n\z/';
+    private const FRAMING_FIELDS = '/\r\n(host|connection|expect|content-length|transfer-encoding):[ \t]*+([^\r]*)/i';
+    /**
+     * Fields the parser extracts from every head; the rest stay in the head
+     * until a handler reads them.
+     *
+     * @internal
+     */
+    public const FRAMING_NAMES = ['host' => true, 'connection' => true, 'expect' => true,
+        'content-length' => true, 'transfer-encoding' => true];
     private const HOST = '/^(?:\[[0-9a-fA-F:.]+\]|[A-Za-z0-9._~%!$&\x27()*+;=-]+)(?::[0-9]{1,5})?$/D';
     /**
      * Validated field lines, bounded and reset when full. A line always
@@ -22,6 +32,13 @@ final class Parser
      * @var array<string, array{string, string}>
      */
     private static array $fields = [];
+    /**
+     * Whole-head patterns by field-count limit.
+     *
+     * @var array<int, string>
+     */
+    private static array $headPatterns = [];
+    private string $headPattern;
     private string $buffer = '';
     private ?string $validHost = null;
     private string $state = 'headers';
@@ -30,6 +47,8 @@ final class Parser
     private string $target = '';
     private string $version = '';
     private array $headers = [];
+    private string $head = '';
+    private int $fieldsAt = 0;
     private array $trailers = [];
     private ?Body $body = null;
     private int $remaining = 0;
@@ -44,6 +63,26 @@ final class Parser
         if ($maxHeaderBytes < 1 || $maxBodyBytes < 0 || $maxHeaderCount < 1) {
             throw new \InvalidArgumentException('Invalid HTTP parser limits.');
         }
+        $this->headPattern = self::$headPatterns[$maxHeaderCount] ??= self::headPattern($maxHeaderCount);
+    }
+
+    /**
+     * One anchored pattern for the usual request: a buffer holding exactly one
+     * bodyless head. It validates the request line and every field and captures
+     * Host, Connection and Expect. Anything else, including a repeated captured
+     * field or any body framing, fails the match and takes the general path,
+     * which also decides the status of a malformed head.
+     */
+    private static function headPattern(int $maxHeaderCount): string
+    {
+        $value = '[ \t]*+([\x09\x20-\x7E\x80-\xFF]*+)\r\n';
+        return '/^(' . self::TOKEN . ') ([^\x00-\x20\x7F]+) HTTP\/(1\.[01])\r\n(?:'
+            . '(?i:host):(?(4)(*COMMIT)(*FAIL))' . $value
+            . '|(?i:connection):(?(5)(*COMMIT)(*FAIL))' . $value
+            . '|(?i:expect):(?(6)(*COMMIT)(*FAIL))' . $value
+            . '|(?i:content-length|transfer-encoding):(*COMMIT)(*FAIL)'
+            . '|' . self::TOKEN . ':[\x09\x20-\x7E\x80-\xFF]*+\r\n'
+            . '){0,' . $maxHeaderCount . '}+\K\r\n\z/';
     }
 
     public function append(string $bytes): void
@@ -81,6 +120,27 @@ final class Parser
         while (true) {
             if ($this->state === 'headers') {
                 $buffer = $this->buffer;
+                // Tried once per head, so a trickled head is not rescanned.
+                if ($this->headerScan === 0 && strlen($buffer) <= $this->maxHeaderBytes
+                    && preg_match($this->headPattern, $buffer, $match, PREG_UNMATCHED_AS_NULL) === 1) {
+                    $this->buffer = '';
+                    $framing = [];
+                    // Values rarely end in whitespace; the scan consumed any leading.
+                    if (($value = $match[4]) !== null) {
+                        $framing['host'] = [$value !== '' && ($value[-1] === ' ' || $value[-1] === "\t")
+                            ? rtrim($value, " \t") : $value];
+                    }
+                    if (($value = $match[5] ?? null) !== null) {
+                        $framing['connection'] = [$value !== '' && ($value[-1] === ' ' || $value[-1] === "\t")
+                            ? rtrim($value, " \t") : $value];
+                    }
+                    if (isset($match[6])) {
+                        $framing['expect'] = [rtrim($match[6], " \t")];
+                    }
+                    // Method, space, target, " HTTP/1.x" and CRLF.
+                    return $this->finishHead($match[1], $match[2], $match[3], $buffer,
+                        strlen($match[1]) + strlen($match[2]) + 12, $framing);
+                }
                 $end = strpos($buffer, "\r\n\r\n", $this->headerScan);
                 if ($end === false) {
                     if (strlen($buffer) > $this->maxHeaderBytes) {
@@ -187,8 +247,31 @@ final class Parser
         if ($version !== '1.1' && $version !== '1.0') {
             throw new HttpException(505, 'Unsupported HTTP version.');
         }
-        $headers = $this->parseFields($head, strlen($line[0]));
-        if ($version === '1.1' && !isset($headers['host'])) {
+        $fieldsAt = strlen($line[0]);
+        return $this->finishHead($method, $target, $version, $head, $fieldsAt, $this->scanFields($head, $fieldsAt));
+    }
+
+    /**
+     * Applies the rules that follow field validation: Host, target form,
+     * expectations and body framing.
+     *
+     * @param array<string, list<string>> $headers The extracted framing fields.
+     */
+    private function finishHead(string $method, string $target, string $version, string $head, int $fieldsAt, array $headers): ?Request
+    {
+        if (isset($headers['host'])) {
+            $host = $headers['host'];
+            if (isset($host[1])) {
+                throw new HttpException(400, 'HTTP/1.1 requires exactly one Host field.');
+            }
+            // Persistent clients repeat their Host; validate each value once.
+            if ($host[0] !== $this->validHost) {
+                if (!preg_match(self::HOST, $host[0])) {
+                    throw new HttpException(400, 'Invalid Host field.');
+                }
+                $this->validHost = $host[0];
+            }
+        } elseif ($version === '1.1') {
             throw new HttpException(400, 'HTTP/1.1 requires exactly one Host field.');
         }
         if ($method === 'CONNECT') {
@@ -203,13 +286,15 @@ final class Parser
                 && ($version !== '1.1' || strtolower(implode(',', $headers['expect'])) !== '100-continue')) {
                 throw new HttpException(417, 'Unsupported expectation.');
             }
-            return new Request($method, $target, $version, $headers, new Body(), [], new Cancellation());
+            return Request::received($method, $target, $version, $head, $fieldsAt, $headers, new Body(), []);
         }
 
         $this->method = $method;
         $this->target = $target;
         $this->version = $version;
         $this->headers = $headers;
+        $this->head = $head;
+        $this->fieldsAt = $fieldsAt;
         $this->body = new Body();
         $this->trailers = [];
         $this->trailerBytes = 0;
@@ -252,23 +337,44 @@ final class Parser
     }
 
     /**
-     * Validates and splits the field block that starts at $offset and ends
-     * with the blank line, including the Host rules that need no request line.
+     * Validates the field block that starts at $offset and ends with the
+     * blank line, and extracts only the fields that decide framing and
+     * connection handling.
      *
      * @return array<string, list<string>>
      */
-    private function parseFields(string $head, int $offset): array
+    private function scanFields(string $head, int $offset): array
     {
-        // One anchored scan validates and splits every field; the final match
-        // is the blank line, so an earlier malformed field cannot be skipped.
-        $count = (int) preg_match_all(self::FIELDS, $head, $fields, PREG_PATTERN_ORDER, $offset) - 1;
-        if ($count > $this->maxHeaderCount || ($count < 0 || $fields[1][$count] !== '')
-            && substr_count($head, "\r\n") - 2 > $this->maxHeaderCount) {
+        // Every CRLF in a head ends the request line, a field or the block.
+        if (substr_count($head, "\r\n") - 2 > $this->maxHeaderCount) {
             throw new HttpException(431, 'Too many header fields.');
         }
-        if ($count < 0 || $fields[1][$count] !== '') {
+        // One anchored scan without captures validates every field up to the
+        // blank line, so no malformed field can be skipped.
+        if (preg_match(self::VALID_FIELDS, $head, offset: $offset) !== 1) {
             throw new HttpException(400, 'Malformed header field.');
         }
+        $framing = [];
+        // The request line's CRLF anchors the first field name.
+        $count = (int) preg_match_all(self::FRAMING_FIELDS, $head, $fields, PREG_PATTERN_ORDER, $offset - 2);
+        for ($index = 0; $index < $count; ++$index) {
+            $framing[strtolower($fields[1][$index])][] = rtrim($fields[2][$index], " \t");
+        }
+        return $framing;
+    }
+
+    /**
+     * Splits a validated head into its complete field map. $framing carries
+     * the parser's own values, which win where a target replaced Host.
+     *
+     * @internal
+     *
+     * @param array<string, list<string>> $framing
+     * @return array<string, list<string>>
+     */
+    public static function split(string $head, int $offset, array $framing): array
+    {
+        $count = (int) preg_match_all(self::FIELDS, $head, $fields, PREG_PATTERN_ORDER, $offset) - 1;
         $headers = [];
         $names = $fields[1];
         $values = $fields[2];
@@ -280,20 +386,32 @@ final class Parser
             }
             $headers[strtolower($names[$index])][] = $value;
         }
-        if (isset($headers['host'])) {
-            $host = $headers['host'];
-            if (isset($host[1])) {
-                throw new HttpException(400, 'HTTP/1.1 requires exactly one Host field.');
-            }
-            // Persistent clients repeat their Host; validate each value once.
-            if ($host[0] !== $this->validHost) {
-                if (!preg_match(self::HOST, $host[0])) {
-                    throw new HttpException(400, 'Invalid Host field.');
-                }
-                $this->validHost = $host[0];
-            }
+        if (isset($framing['host'])) {
+            $headers['host'] = $framing['host'];
         }
         return $headers;
+    }
+
+    /**
+     * Values of one lowercase field name in a validated head, or null.
+     *
+     * @internal
+     *
+     * @return list<string>|null
+     */
+    public static function find(string $head, int $offset, string $name): ?array
+    {
+        // A colon can never be part of a field name; without this guard the
+        // pattern could read a name and the start of its value as one name.
+        if (str_contains($name, ':')
+            || !preg_match_all('/\r\n' . preg_quote($name, '/') . ':[ \t]*+([^\r]*)/i', $head, $fields, PREG_PATTERN_ORDER, $offset - 2)) {
+            return null;
+        }
+        $values = [];
+        foreach ($fields[1] as $value) {
+            $values[] = rtrim($value, " \t");
+        }
+        return $values;
     }
 
     /**
@@ -387,9 +505,10 @@ final class Parser
     private function complete(): Request
     {
         $this->body->rewind();
-        $request = new Request($this->method, $this->target, $this->version, $this->headers, $this->body,
-            $this->trailers, new Cancellation());
+        $request = Request::received($this->method, $this->target, $this->version, $this->head, $this->fieldsAt,
+            $this->headers, $this->body, $this->trailers);
         $this->body = null;
+        $this->head = '';
         $this->headers = $this->trailers = [];
         $this->state = 'headers';
         $this->headerScan = 0;
