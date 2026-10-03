@@ -131,6 +131,24 @@ TLS, async DNS, HTTP/2, HTTP/3, generic framed-protocol helpers, a cross-process
 
 This replaces the experimental `Crab::run()/Server::listen()` API. The sibling application scaffold is a separate future layer.
 
+## Manual checks
+
+Two checks are run by hand, never as part of `composer test`.
+
+**Linux.** Builds a Linux image from the working tree with Docker and runs the suite inside it, once as shipped and once with tracing JIT in random order:
+
+~~~sh
+composer test:linux
+~~~
+
+**Soak.** Cycles mixed traffic against one HTTP and one WebSocket server for as long as asked: persistent requests, one connection per request, request bodies, streamed megabyte responses, WebSocket echoes and misbehaving clients. After each cycle it samples resting memory and open descriptors, and it fails if a server exits, answers with a wrong status, keeps descriptors open or keeps growing. It needs `wrk` and Node.js. Minutes prove little; run it for hours:
+
+~~~sh
+composer soak -- --label=overnight --minutes=480
+~~~
+
+The report is written to `benchmarks/results/soak-<label>.json`.
+
 ## Verify and measure
 
 ~~~sh

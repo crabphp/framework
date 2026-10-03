@@ -1,0 +1,1095 @@
+{
+  "label": "first-10-minutes",
+  "started_utc": "2026-10-03T19:38:48Z",
+  "configuration": {
+    "label": "first-10-minutes",
+    "minutes": 10.0,
+    "jit": "tracing",
+    "connections": 64
+  },
+  "platform": "macOS-26.7.1-arm64-arm-64bit",
+  "php": "PHP 8.4.19 (cli) (built: Mar 10 2026 15:51:04) (NTS)",
+  "status": "passed",
+  "problems": [],
+  "cycles": [
+    {
+      "elapsed_minutes": 0.0,
+      "loads": [
+        {
+          "path": "/",
+          "requests": 782853,
+          "non_2xx": 0,
+          "socket_errors": ""
+        },
+        {
+          "path": "/",
+          "requests": 97422,
+          "non_2xx": 0,
+          "socket_errors": ""
+        },
+        {
+          "path": "/upload",
+          "requests": 302147,
+          "non_2xx": 0,
+          "socket_errors": ""
+        },
+        {
+          "path": "/stream",
+          "requests": 4210,
+          "non_2xx": 0,
+          "socket_errors": ""
+        }
+      ],
+      "websocket": {
+        "messages": 262401,
+        "errors": 0,
+        "first_error": null
+      },
+      "broken": {
+        "clients": 200,
+        "answered": 77
+      },
+      "samples": {
+        "http": {
+          "rss_bytes": 37634048,
+          "descriptors": 9
+        },
+        "ws": {
+          "rss_bytes": 36061184,
+          "descriptors": 9
+        }
+      }
+    },
+    {
+      "elapsed_minutes": 0.49,
+      "loads": [
+        {
+          "path": "/",
+          "requests": 820597,
+          "non_2xx": 0,
+          "socket_errors": ""
+        },
+        {
+          "path": "/",
+          "requests": 97622,
+          "non_2xx": 0,
+          "socket_errors": ""
+        },
+        {
+          "path": "/upload",
+          "requests": 282536,
+          "non_2xx": 0,
+          "socket_errors": ""
+        },
+        {
+          "path": "/stream",
+          "requests": 3608,
+          "non_2xx": 0,
+          "socket_errors": ""
+        }
+      ],
+      "websocket": {
+        "messages": 287096,
+        "errors": 0,
+        "first_error": null
+      },
+      "broken": {
+        "clients": 200,
+        "answered": 77
+      },
+      "samples": {
+        "http": {
+          "rss_bytes": 31408128,
+          "descriptors": 9
+        },
+        "ws": {
+          "rss_bytes": 28147712,
+          "descriptors": 9
+        }
+      }
+    },
+    {
+      "elapsed_minutes": 0.99,
+      "loads": [
+        {
+          "path": "/",
+          "requests": 783245,
+          "non_2xx": 0,
+          "socket_errors": ""
+        },
+        {
+          "path": "/",
+          "requests": 99309,
+          "non_2xx": 0,
+          "socket_errors": ""
+        },
+        {
+          "path": "/upload",
+          "requests": 297804,
+          "non_2xx": 0,
+          "socket_errors": ""
+        },
+        {
+          "path": "/stream",
+          "requests": 4130,
+          "non_2xx": 0,
+          "socket_errors": ""
+        }
+      ],
+      "websocket": {
+        "messages": 280441,
+        "errors": 0,
+        "first_error": null
+      },
+      "broken": {
+        "clients": 200,
+        "answered": 77
+      },
+      "samples": {
+        "http": {
+          "rss_bytes": 31440896,
+          "descriptors": 9
+        },
+        "ws": {
+          "rss_bytes": 28360704,
+          "descriptors": 9
+        }
+      }
+    },
+    {
+      "elapsed_minutes": 1.48,
+      "loads": [
+        {
+          "path": "/",
+          "requests": 761274,
+          "non_2xx": 0,
+          "socket_errors": ""
+        },
+        {
+          "path": "/",
+          "requests": 94169,
+          "non_2xx": 0,
+          "socket_errors": ""
+        },
+        {
+          "path": "/upload",
+          "requests": 298382,
+          "non_2xx": 0,
+          "socket_errors": ""
+        },
+        {
+          "path": "/stream",
+          "requests": 3851,
+          "non_2xx": 0,
+          "socket_errors": ""
+        }
+      ],
+      "websocket": {
+        "messages": 280109,
+        "errors": 0,
+        "first_error": null
+      },
+      "broken": {
+        "clients": 200,
+        "answered": 77
+      },
+      "samples": {
+        "http": {
+          "rss_bytes": 31440896,
+          "descriptors": 9
+        },
+        "ws": {
+          "rss_bytes": 28409856,
+          "descriptors": 9
+        }
+      }
+    },
+    {
+      "elapsed_minutes": 1.97,
+      "loads": [
+        {
+          "path": "/",
+          "requests": 822902,
+          "non_2xx": 0,
+          "socket_errors": ""
+        },
+        {
+          "path": "/",
+          "requests": 96644,
+          "non_2xx": 0,
+          "socket_errors": ""
+        },
+        {
+          "path": "/upload",
+          "requests": 297442,
+          "non_2xx": 0,
+          "socket_errors": ""
+        },
+        {
+          "path": "/stream",
+          "requests": 4160,
+          "non_2xx": 0,
+          "socket_errors": ""
+        }
+      ],
+      "websocket": {
+        "messages": 279704,
+        "errors": 0,
+        "first_error": null
+      },
+      "broken": {
+        "clients": 200,
+        "answered": 77
+      },
+      "samples": {
+        "http": {
+          "rss_bytes": 31440896,
+          "descriptors": 9
+        },
+        "ws": {
+          "rss_bytes": 28426240,
+          "descriptors": 9
+        }
+      }
+    },
+    {
+      "elapsed_minutes": 2.46,
+      "loads": [
+        {
+          "path": "/",
+          "requests": 807987,
+          "non_2xx": 0,
+          "socket_errors": ""
+        },
+        {
+          "path": "/",
+          "requests": 96432,
+          "non_2xx": 0,
+          "socket_errors": ""
+        },
+        {
+          "path": "/upload",
+          "requests": 302720,
+          "non_2xx": 0,
+          "socket_errors": ""
+        },
+        {
+          "path": "/stream",
+          "requests": 4074,
+          "non_2xx": 0,
+          "socket_errors": ""
+        }
+      ],
+      "websocket": {
+        "messages": 279024,
+        "errors": 0,
+        "first_error": null
+      },
+      "broken": {
+        "clients": 200,
+        "answered": 77
+      },
+      "samples": {
+        "http": {
+          "rss_bytes": 31473664,
+          "descriptors": 9
+        },
+        "ws": {
+          "rss_bytes": 28442624,
+          "descriptors": 9
+        }
+      }
+    },
+    {
+      "elapsed_minutes": 2.96,
+      "loads": [
+        {
+          "path": "/",
+          "requests": 723521,
+          "non_2xx": 0,
+          "socket_errors": ""
+        },
+        {
+          "path": "/",
+          "requests": 85965,
+          "non_2xx": 0,
+          "socket_errors": ""
+        },
+        {
+          "path": "/upload",
+          "requests": 297831,
+          "non_2xx": 0,
+          "socket_errors": ""
+        },
+        {
+          "path": "/stream",
+          "requests": 3552,
+          "non_2xx": 0,
+          "socket_errors": ""
+        }
+      ],
+      "websocket": {
+        "messages": 276950,
+        "errors": 0,
+        "first_error": null
+      },
+      "broken": {
+        "clients": 200,
+        "answered": 77
+      },
+      "samples": {
+        "http": {
+          "rss_bytes": 31473664,
+          "descriptors": 9
+        },
+        "ws": {
+          "rss_bytes": 28426240,
+          "descriptors": 9
+        }
+      }
+    },
+    {
+      "elapsed_minutes": 3.45,
+      "loads": [
+        {
+          "path": "/",
+          "requests": 747893,
+          "non_2xx": 0,
+          "socket_errors": ""
+        },
+        {
+          "path": "/",
+          "requests": 93470,
+          "non_2xx": 0,
+          "socket_errors": ""
+        },
+        {
+          "path": "/upload",
+          "requests": 288525,
+          "non_2xx": 0,
+          "socket_errors": ""
+        },
+        {
+          "path": "/stream",
+          "requests": 3726,
+          "non_2xx": 0,
+          "socket_errors": ""
+        }
+      ],
+      "websocket": {
+        "messages": 268920,
+        "errors": 0,
+        "first_error": null
+      },
+      "broken": {
+        "clients": 200,
+        "answered": 77
+      },
+      "samples": {
+        "http": {
+          "rss_bytes": 31473664,
+          "descriptors": 9
+        },
+        "ws": {
+          "rss_bytes": 28442624,
+          "descriptors": 9
+        }
+      }
+    },
+    {
+      "elapsed_minutes": 3.94,
+      "loads": [
+        {
+          "path": "/",
+          "requests": 747724,
+          "non_2xx": 0,
+          "socket_errors": ""
+        },
+        {
+          "path": "/",
+          "requests": 98516,
+          "non_2xx": 0,
+          "socket_errors": ""
+        },
+        {
+          "path": "/upload",
+          "requests": 304538,
+          "non_2xx": 0,
+          "socket_errors": ""
+        },
+        {
+          "path": "/stream",
+          "requests": 4222,
+          "non_2xx": 0,
+          "socket_errors": ""
+        }
+      ],
+      "websocket": {
+        "messages": 280363,
+        "errors": 0,
+        "first_error": null
+      },
+      "broken": {
+        "clients": 200,
+        "answered": 77
+      },
+      "samples": {
+        "http": {
+          "rss_bytes": 31473664,
+          "descriptors": 9
+        },
+        "ws": {
+          "rss_bytes": 28426240,
+          "descriptors": 9
+        }
+      }
+    },
+    {
+      "elapsed_minutes": 4.43,
+      "loads": [
+        {
+          "path": "/",
+          "requests": 802308,
+          "non_2xx": 0,
+          "socket_errors": ""
+        },
+        {
+          "path": "/",
+          "requests": 98864,
+          "non_2xx": 0,
+          "socket_errors": ""
+        },
+        {
+          "path": "/upload",
+          "requests": 303146,
+          "non_2xx": 0,
+          "socket_errors": ""
+        },
+        {
+          "path": "/stream",
+          "requests": 3904,
+          "non_2xx": 0,
+          "socket_errors": ""
+        }
+      ],
+      "websocket": {
+        "messages": 279346,
+        "errors": 0,
+        "first_error": null
+      },
+      "broken": {
+        "clients": 200,
+        "answered": 77
+      },
+      "samples": {
+        "http": {
+          "rss_bytes": 31473664,
+          "descriptors": 9
+        },
+        "ws": {
+          "rss_bytes": 28426240,
+          "descriptors": 9
+        }
+      }
+    },
+    {
+      "elapsed_minutes": 4.92,
+      "loads": [
+        {
+          "path": "/",
+          "requests": 764488,
+          "non_2xx": 0,
+          "socket_errors": ""
+        },
+        {
+          "path": "/",
+          "requests": 93672,
+          "non_2xx": 0,
+          "socket_errors": ""
+        },
+        {
+          "path": "/upload",
+          "requests": 293719,
+          "non_2xx": 0,
+          "socket_errors": ""
+        },
+        {
+          "path": "/stream",
+          "requests": 3861,
+          "non_2xx": 0,
+          "socket_errors": ""
+        }
+      ],
+      "websocket": {
+        "messages": 275684,
+        "errors": 0,
+        "first_error": null
+      },
+      "broken": {
+        "clients": 200,
+        "answered": 77
+      },
+      "samples": {
+        "http": {
+          "rss_bytes": 31473664,
+          "descriptors": 9
+        },
+        "ws": {
+          "rss_bytes": 28426240,
+          "descriptors": 9
+        }
+      }
+    },
+    {
+      "elapsed_minutes": 5.42,
+      "loads": [
+        {
+          "path": "/",
+          "requests": 786715,
+          "non_2xx": 0,
+          "socket_errors": ""
+        },
+        {
+          "path": "/",
+          "requests": 94999,
+          "non_2xx": 0,
+          "socket_errors": ""
+        },
+        {
+          "path": "/upload",
+          "requests": 296621,
+          "non_2xx": 0,
+          "socket_errors": ""
+        },
+        {
+          "path": "/stream",
+          "requests": 4192,
+          "non_2xx": 0,
+          "socket_errors": ""
+        }
+      ],
+      "websocket": {
+        "messages": 287295,
+        "errors": 0,
+        "first_error": null
+      },
+      "broken": {
+        "clients": 200,
+        "answered": 77
+      },
+      "samples": {
+        "http": {
+          "rss_bytes": 31473664,
+          "descriptors": 9
+        },
+        "ws": {
+          "rss_bytes": 28426240,
+          "descriptors": 9
+        }
+      }
+    },
+    {
+      "elapsed_minutes": 5.91,
+      "loads": [
+        {
+          "path": "/",
+          "requests": 762422,
+          "non_2xx": 0,
+          "socket_errors": ""
+        },
+        {
+          "path": "/",
+          "requests": 96602,
+          "non_2xx": 0,
+          "socket_errors": ""
+        },
+        {
+          "path": "/upload",
+          "requests": 304724,
+          "non_2xx": 0,
+          "socket_errors": ""
+        },
+        {
+          "path": "/stream",
+          "requests": 4224,
+          "non_2xx": 0,
+          "socket_errors": ""
+        }
+      ],
+      "websocket": {
+        "messages": 269694,
+        "errors": 0,
+        "first_error": null
+      },
+      "broken": {
+        "clients": 200,
+        "answered": 77
+      },
+      "samples": {
+        "http": {
+          "rss_bytes": 31473664,
+          "descriptors": 9
+        },
+        "ws": {
+          "rss_bytes": 28426240,
+          "descriptors": 9
+        }
+      }
+    },
+    {
+      "elapsed_minutes": 6.4,
+      "loads": [
+        {
+          "path": "/",
+          "requests": 783978,
+          "non_2xx": 0,
+          "socket_errors": ""
+        },
+        {
+          "path": "/",
+          "requests": 98832,
+          "non_2xx": 0,
+          "socket_errors": ""
+        },
+        {
+          "path": "/upload",
+          "requests": 281945,
+          "non_2xx": 0,
+          "socket_errors": ""
+        },
+        {
+          "path": "/stream",
+          "requests": 3758,
+          "non_2xx": 0,
+          "socket_errors": ""
+        }
+      ],
+      "websocket": {
+        "messages": 289424,
+        "errors": 0,
+        "first_error": null
+      },
+      "broken": {
+        "clients": 200,
+        "answered": 77
+      },
+      "samples": {
+        "http": {
+          "rss_bytes": 31473664,
+          "descriptors": 9
+        },
+        "ws": {
+          "rss_bytes": 28426240,
+          "descriptors": 9
+        }
+      }
+    },
+    {
+      "elapsed_minutes": 6.9,
+      "loads": [
+        {
+          "path": "/",
+          "requests": 736504,
+          "non_2xx": 0,
+          "socket_errors": ""
+        },
+        {
+          "path": "/",
+          "requests": 88890,
+          "non_2xx": 0,
+          "socket_errors": ""
+        },
+        {
+          "path": "/upload",
+          "requests": 287433,
+          "non_2xx": 0,
+          "socket_errors": ""
+        },
+        {
+          "path": "/stream",
+          "requests": 3935,
+          "non_2xx": 0,
+          "socket_errors": ""
+        }
+      ],
+      "websocket": {
+        "messages": 277862,
+        "errors": 0,
+        "first_error": null
+      },
+      "broken": {
+        "clients": 200,
+        "answered": 77
+      },
+      "samples": {
+        "http": {
+          "rss_bytes": 31473664,
+          "descriptors": 9
+        },
+        "ws": {
+          "rss_bytes": 28426240,
+          "descriptors": 9
+        }
+      }
+    },
+    {
+      "elapsed_minutes": 7.39,
+      "loads": [
+        {
+          "path": "/",
+          "requests": 771250,
+          "non_2xx": 0,
+          "socket_errors": ""
+        },
+        {
+          "path": "/",
+          "requests": 99368,
+          "non_2xx": 0,
+          "socket_errors": ""
+        },
+        {
+          "path": "/upload",
+          "requests": 302162,
+          "non_2xx": 0,
+          "socket_errors": ""
+        },
+        {
+          "path": "/stream",
+          "requests": 4030,
+          "non_2xx": 0,
+          "socket_errors": ""
+        }
+      ],
+      "websocket": {
+        "messages": 282473,
+        "errors": 0,
+        "first_error": null
+      },
+      "broken": {
+        "clients": 200,
+        "answered": 77
+      },
+      "samples": {
+        "http": {
+          "rss_bytes": 23560192,
+          "descriptors": 9
+        },
+        "ws": {
+          "rss_bytes": 22085632,
+          "descriptors": 9
+        }
+      }
+    },
+    {
+      "elapsed_minutes": 7.88,
+      "loads": [
+        {
+          "path": "/",
+          "requests": 776289,
+          "non_2xx": 0,
+          "socket_errors": ""
+        },
+        {
+          "path": "/",
+          "requests": 86624,
+          "non_2xx": 0,
+          "socket_errors": ""
+        },
+        {
+          "path": "/upload",
+          "requests": 283824,
+          "non_2xx": 0,
+          "socket_errors": ""
+        },
+        {
+          "path": "/stream",
+          "requests": 3772,
+          "non_2xx": 0,
+          "socket_errors": ""
+        }
+      ],
+      "websocket": {
+        "messages": 283760,
+        "errors": 0,
+        "first_error": null
+      },
+      "broken": {
+        "clients": 200,
+        "answered": 77
+      },
+      "samples": {
+        "http": {
+          "rss_bytes": 24412160,
+          "descriptors": 9
+        },
+        "ws": {
+          "rss_bytes": 22495232,
+          "descriptors": 9
+        }
+      }
+    },
+    {
+      "elapsed_minutes": 8.37,
+      "loads": [
+        {
+          "path": "/",
+          "requests": 754516,
+          "non_2xx": 0,
+          "socket_errors": ""
+        },
+        {
+          "path": "/",
+          "requests": 99416,
+          "non_2xx": 0,
+          "socket_errors": ""
+        },
+        {
+          "path": "/upload",
+          "requests": 307575,
+          "non_2xx": 0,
+          "socket_errors": ""
+        },
+        {
+          "path": "/stream",
+          "requests": 4340,
+          "non_2xx": 0,
+          "socket_errors": ""
+        }
+      ],
+      "websocket": {
+        "messages": 291099,
+        "errors": 0,
+        "first_error": null
+      },
+      "broken": {
+        "clients": 200,
+        "answered": 77
+      },
+      "samples": {
+        "http": {
+          "rss_bytes": 25509888,
+          "descriptors": 9
+        },
+        "ws": {
+          "rss_bytes": 22511616,
+          "descriptors": 9
+        }
+      }
+    },
+    {
+      "elapsed_minutes": 8.86,
+      "loads": [
+        {
+          "path": "/",
+          "requests": 812457,
+          "non_2xx": 0,
+          "socket_errors": ""
+        },
+        {
+          "path": "/",
+          "requests": 97149,
+          "non_2xx": 0,
+          "socket_errors": ""
+        },
+        {
+          "path": "/upload",
+          "requests": 290959,
+          "non_2xx": 0,
+          "socket_errors": ""
+        },
+        {
+          "path": "/stream",
+          "requests": 3916,
+          "non_2xx": 0,
+          "socket_errors": ""
+        }
+      ],
+      "websocket": {
+        "messages": 284474,
+        "errors": 0,
+        "first_error": null
+      },
+      "broken": {
+        "clients": 200,
+        "answered": 77
+      },
+      "samples": {
+        "http": {
+          "rss_bytes": 25509888,
+          "descriptors": 9
+        },
+        "ws": {
+          "rss_bytes": 22691840,
+          "descriptors": 9
+        }
+      }
+    },
+    {
+      "elapsed_minutes": 9.36,
+      "loads": [
+        {
+          "path": "/",
+          "requests": 703641,
+          "non_2xx": 0,
+          "socket_errors": ""
+        },
+        {
+          "path": "/",
+          "requests": 94930,
+          "non_2xx": 0,
+          "socket_errors": ""
+        },
+        {
+          "path": "/upload",
+          "requests": 296108,
+          "non_2xx": 0,
+          "socket_errors": ""
+        },
+        {
+          "path": "/stream",
+          "requests": 3882,
+          "non_2xx": 0,
+          "socket_errors": ""
+        }
+      ],
+      "websocket": {
+        "messages": 284111,
+        "errors": 0,
+        "first_error": null
+      },
+      "broken": {
+        "clients": 200,
+        "answered": 77
+      },
+      "samples": {
+        "http": {
+          "rss_bytes": 24723456,
+          "descriptors": 9
+        },
+        "ws": {
+          "rss_bytes": 22691840,
+          "descriptors": 9
+        }
+      }
+    },
+    {
+      "elapsed_minutes": 9.85,
+      "loads": [
+        {
+          "path": "/",
+          "requests": 736830,
+          "non_2xx": 0,
+          "socket_errors": ""
+        },
+        {
+          "path": "/",
+          "requests": 98557,
+          "non_2xx": 0,
+          "socket_errors": ""
+        },
+        {
+          "path": "/upload",
+          "requests": 300650,
+          "non_2xx": 0,
+          "socket_errors": ""
+        },
+        {
+          "path": "/stream",
+          "requests": 3808,
+          "non_2xx": 0,
+          "socket_errors": ""
+        }
+      ],
+      "websocket": {
+        "messages": 265477,
+        "errors": 0,
+        "first_error": null
+      },
+      "broken": {
+        "clients": 200,
+        "answered": 77
+      },
+      "samples": {
+        "http": {
+          "rss_bytes": 24772608,
+          "descriptors": 9
+        },
+        "ws": {
+          "rss_bytes": 22691840,
+          "descriptors": 9
+        }
+      }
+    }
+  ],
+  "baseline": {
+    "http": {
+      "rss_bytes": 35717120,
+      "descriptors": 9
+    },
+    "ws": {
+      "rss_bytes": 34406400,
+      "descriptors": 9
+    }
+  },
+  "summary": {
+    "http": {
+      "cycles": 21,
+      "descriptors_baseline": 9,
+      "descriptors_final": 9,
+      "descriptors_peak_at_rest": 9,
+      "rss_baseline_mib": 34.1,
+      "rss_first_third_mib": 30.0,
+      "rss_last_third_mib": 23.6,
+      "rss_peak_mib": 35.9
+    },
+    "ws": {
+      "cycles": 21,
+      "descriptors_baseline": 9,
+      "descriptors_final": 9,
+      "descriptors_peak_at_rest": 9,
+      "rss_baseline_mib": 32.8,
+      "rss_first_third_mib": 27.1,
+      "rss_last_third_mib": 21.6,
+      "rss_peak_mib": 34.4
+    }
+  },
+  "servers": {
+    "http": {
+      "command": [
+        "php",
+        "-d",
+        "opcache.enable_cli=1",
+        "-d",
+        "opcache.jit=tracing",
+        "-d",
+        "opcache.jit_buffer_size=128M",
+        "/Users/daudau/Code/crabphp/engine/benchmarks/server.php",
+        "--protocol=http",
+        "--port=60251",
+        "--workers=1",
+        "--http-response=fresh"
+      ],
+      "exit_code": 0,
+      "log": ""
+    },
+    "ws": {
+      "command": [
+        "php",
+        "-d",
+        "opcache.enable_cli=1",
+        "-d",
+        "opcache.jit=tracing",
+        "-d",
+        "opcache.jit_buffer_size=128M",
+        "/Users/daudau/Code/crabphp/engine/benchmarks/server.php",
+        "--protocol=ws",
+        "--port=60257",
+        "--workers=1",
+        "--http-response=fresh"
+      ],
+      "exit_code": 0,
+      "log": ""
+    }
+  },
+  "finished_utc": "2026-10-03T19:49:13Z"
+}

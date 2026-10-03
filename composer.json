@@ -13,7 +13,9 @@
     },
     "bin": ["bin/crab"],
     "scripts": {
-        "test": "@php vendor/bin/phpunit"
+        "test": "@php vendor/bin/phpunit",
+        "test:linux": "tests/linux/run.sh",
+        "soak": "python3 benchmarks/soak.py"
     },
     "autoload": {
         "psr-4": {
