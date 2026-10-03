@@ -14,6 +14,7 @@ import re
 import shutil
 import signal
 import socket
+import struct
 import subprocess
 import tempfile
 import time
@@ -32,7 +33,9 @@ BASELINE_BACKENDS = {"php-select": "select", "php-select-jit": "select",
                      "php-revolt-jit": "revolt", "crab-transport-jit": "transport",
                      "crab-codec-jit": "codec"}
 BEFORE_TARGETS = {"crab-before", "crab-before-jit"}
-CRAB_TARGETS = {"crab", "crab-jit"} | BEFORE_TARGETS
+# Current source on an optional native Revolt driver; each needs its PECL extension installed.
+DRIVER_TARGETS = {"crab-ev-jit": "ev", "crab-event-jit": "event", "crab-uv-jit": "uv"}
+CRAB_TARGETS = {"crab", "crab-jit"} | BEFORE_TARGETS | DRIVER_TARGETS.keys()
 PHP_TARGETS = CRAB_TARGETS | BASELINE_BACKENDS.keys()
 HTTP_ONLY_TARGETS = set(BASELINE_BACKENDS) | {"bun"}
 TARGETS = PHP_TARGETS | {"elysia", "bun"}
@@ -67,9 +70,13 @@ def request_lua(mode):
 
 
 def php_command(target):
-    return ["php", "-d", "opcache.enable_cli=1", "-d",
-            "opcache.jit=tracing" if target.endswith("-jit") else "opcache.jit=off", "-d",
-            "opcache.jit_buffer_size=128M" if target.endswith("-jit") else "opcache.jit_buffer_size=0"]
+    command = ["php", "-d", "opcache.enable_cli=1", "-d",
+               "opcache.jit=tracing" if target.endswith("-jit") else "opcache.jit=off", "-d",
+               "opcache.jit_buffer_size=128M" if target.endswith("-jit") else "opcache.jit_buffer_size=0"]
+    if target in DRIVER_TARGETS:
+        # Loaded for this process only; the extension need not be enabled in php.ini.
+        command += ["-d", f"extension={DRIVER_TARGETS[target]}"]
+    return command
 
 
 def capture(command):
@@ -251,10 +258,16 @@ def run_trial(record, args, lua):
         command = php_command(target) + [str(DIRECTORY / "server.php"), "--host=127.0.0.1", "--workers=1", "--metadata"]
         if target in BEFORE_TARGETS:
             command += [f"--source={args.baseline_source}"]
+        if target in DRIVER_TARGETS:
+            command += [f"--driver={DRIVER_TARGETS[target]}"]
+        if args.idle_connections and target not in BEFORE_TARGETS:
+            # Room for the idle connections, which must also outlive the header deadline.
+            command += [f"--max-connections={args.idle_connections + record['concurrency'] + 64}", "--header-timeout=300"]
         if protocol == "http":
             command += [f"--http-response={args.http_response}"]
     command += [f"--protocol={protocol}", f"--port={port}"]
     record.update(server_command=command, port=port, errors=[], status="running")
+    idle = []
     with tempfile.TemporaryFile(mode="w+") as output:
         server = None
         try:
@@ -266,6 +279,12 @@ def run_trial(record, args, lua):
                 record["readiness"] = "Verified HTTP/1.1 200 and exact Hello from Crab newline body."
                 record["http_response"] = http_response(port)
                 record["http_validation"] = VALIDATION.verify_http(port)
+                if args.idle_connections:
+                    # Open, silent connections the server must watch throughout warmup and measurement.
+                    for _ in range(args.idle_connections):
+                        idle.append(socket.create_connection(("127.0.0.1", port), timeout=5))
+                    time.sleep(0.5)
+                    record["idle_connections"] = {"opened": len(idle)}
                 if args.warmup > 0:
                     record["warmup"] = load(server, wrk_command(port, record["concurrency"], args.warmup, lua, args.threads),
                                             args.warmup + 15, protocol)
@@ -283,9 +302,26 @@ def run_trial(record, args, lua):
             record["measurement"] = load(server, command, timeout, protocol)
             if record["measurement"]["status"] != "passed":
                 record["errors"].append("Measured load failed; see measurement diagnostics.")
+            if idle:
+                closed = 0
+                for connection in idle:
+                    connection.setblocking(False)
+                    try:
+                        closed += connection.recv(1) == b""
+                    except BlockingIOError:
+                        pass
+                    except OSError:
+                        closed += 1
+                record["idle_connections"]["closed_by_server"] = closed
+                if closed:
+                    record["errors"].append(f"The server closed {closed} idle connections during the trial.")
         except (Exception, KeyboardInterrupt) as error:
             record["errors"].append(f"{type(error).__name__}: {error}")
         finally:
+            for connection in idle:
+                # Reset instead of a graceful close, so thousands of local ports are free for the next trial.
+                connection.setsockopt(socket.SOL_SOCKET, socket.SO_LINGER, struct.pack("ii", 1, 0))
+                connection.close()
             if server is not None:
                 cleanup_error = stop_process(server)
                 if cleanup_error:
@@ -310,6 +346,10 @@ def run_trial(record, args, lua):
                             raise ValueError(f"Engine class {name} loaded outside the selected source.")
                     if metadata["http_response"] != (args.http_response if protocol == "http" else None):
                         raise ValueError("Server response mode differs from the selected workload.")
+                    expected_driver = {"ev": "EvDriver", "event": "EventDriver", "uv": "UvDriver"}.get(
+                        DRIVER_TARGETS.get(target), "StreamSelectDriver")
+                    if target not in BEFORE_TARGETS and not metadata.get("driver", "").endswith(expected_driver):
+                        raise ValueError("Server event-loop driver differs from the selected target.")
                 except (ValueError, KeyError, StopIteration, TypeError) as error:
                     record["errors"].append(f"Invalid engine source metadata: {type(error).__name__}: {error}")
     record["status"] = "failed" if record["errors"] else "passed"
@@ -350,6 +390,8 @@ def main():
     parser.add_argument("--http-request", choices=("fixed", "varied", "browser", "browser-unique"), default="fixed",
                         help="fixed: one identical request; varied: rotating query strings; browser: rotating query strings with "
                              "browser-sized headers; browser-unique: as browser, with one field value that differs on every request.")
+    parser.add_argument("--idle-connections", type=int, default=0,
+                        help="HTTP only: open this many silent connections before the load and hold them through it.")
     parser.add_argument("--bun", default="bun", help="Bun executable name or absolute path.")
     parser.add_argument("--concurrency", default="32,128")
     parser.add_argument("--threads", type=int, default=2, help="Maximum wrk threads; capped by concurrency.")
@@ -370,6 +412,8 @@ def main():
         parser.error("Targets must be unique names from " + ", ".join(sorted(TARGETS)) + ".")
     if set(targets) & HTTP_ONLY_TARGETS and args.protocol != "http":
         parser.error("PHP baseline and native Bun targets require --protocol=http.")
+    if args.idle_connections < 0 or (args.idle_connections and (args.protocol != "http" or set(targets) & (BASELINE_BACKENDS.keys() | BEFORE_TARGETS))):
+        parser.error("Idle connections need --protocol=http and current Crab, Elysia or Bun targets.")
     if set(targets) & BEFORE_TARGETS and args.baseline_source is None:
         parser.error("crab-before targets require --baseline-source=/absolute/snapshot/src.")
     if args.baseline_source is not None:
@@ -388,7 +432,7 @@ def main():
                 "status": "running", "configuration": vars(args), "environment": environment(targets, args.bun),
                 "source_sha256": source_hashes(), "baseline_source_sha256": baseline_source_hashes(args.baseline_source),
                 "http_body_bytes": len(b"Hello from Crab\n"),
-                "notes": ["One serving process per target, fresh server per trial; Crab uses StreamSelectDriver.",
+                "notes": ["One serving process per target, fresh server per trial; Crab uses StreamSelectDriver unless the target names ev, event or uv.",
                           "Target order rotates through evenly spaced starting positions; every server receives its own identical warmup before measurement.",
                           "Loopback closed-loop workloads share host CPUs; client limits and thermal drift affect results.",
                           f"HTTP uses up to {args.threads} wrk threads, capped by concurrency; WebSocket uses one Node process and one in-flight echo per connection.",
@@ -399,6 +443,7 @@ def main():
                           "HTTP body is checked at readiness; wrk checks socket/status errors, not each response body.",
                           f"Crab HTTP response mode: {args.http_response}; Bun/Elysia handlers and WebSocket echo behavior are unchanged.",
                           f"HTTP request mode: {args.http_request}; varied and browser modes rotate 997 query strings on the same route, browser modes add {len(BROWSER_HEADERS)} request fields, browser-unique also changes one field value per request.",
+                          f"Idle connections held open beside the load: {args.idle_connections}; Crab then runs with a raised connection limit and a 300-second header deadline.",
                           "crab-before targets load the provided source snapshot with the same benchmark fixture and installed dependencies.",
                           "Processes are owned groups; cleanup sends SIGTERM only, and unsuccessful cleanup fails the run."],
                 "trials": []}
