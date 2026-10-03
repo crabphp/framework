@@ -11,6 +11,9 @@ final class ResponseEncoder
 {
     private static ?int $dateSecond = null;
     private static string $date = '';
+    private static string $tailDate = '';
+    private static string $keepAliveTail = '';
+    private static string $closeTail = '';
     public readonly bool $close;
     private string $head;
     private bool $chunked = false;
@@ -86,31 +89,49 @@ final class ResponseEncoder
     /**
      * Encodes a small fixed-length response in one pass, producing the same
      * bytes as the general encoder, or returns null when that encoder is
-     * required. $close carries a forced close in and the final decision out.
+     * required. A string is the body of Response::text(). $close carries a
+     * forced close in and the final decision out.
      *
      * @internal
+     *
+     * @param Response|string $response Checked by the caller; a declared union costs a slow check per call.
      */
-    public static function small(Response $response, Request $request, bool &$close): ?string
+    public static function small(mixed $response, Request $request, bool &$close): ?string
     {
-        $body = $response->body;
-        $status = $response->status;
-        if (!is_string($body) || $status < 200 || $status === 204 || $status === 205 || $status === 304
-            || $request->method === 'HEAD') {
+        if ($request->method === 'HEAD') {
             return null;
         }
-        $block = $response->headerBlock();
+        if (is_string($response)) {
+            $body = $response;
+            $status = 200;
+            $block = Response::TEXT_BLOCK;
+        } else {
+            $body = $response->body;
+            $status = $response->status;
+            if (!is_string($body) || $status < 200 || $status === 204 || $status === 205 || $status === 304) {
+                return null;
+            }
+            $block = $response->headerBlock();
+        }
         $length = strlen($body);
         // Leaves room for the status line and generated fields within 8 KiB.
         if ($block === null || strlen($block) + $length > 7936) {
             return null;
         }
         $close = $close || !$request->keepAlive();
+        $date = self::$dateSecond === time() ? self::$date : self::date();
+        // Everything after Content-Length changes once per second at most.
+        if ($date !== self::$tailDate) {
+            self::$tailDate = $date;
+            self::$keepAliveTail = "\r\nconnection: keep-alive\r\ndate: {$date}\r\n\r\n";
+            self::$closeTail = "\r\nconnection: close\r\ndate: {$date}\r\n\r\n";
+        }
+        $tail = $close ? self::$closeTail : self::$keepAliveTail;
         $version = $request->version;
-        $reason = Response::reason($status);
-        $connection = $close ? 'close' : 'keep-alive';
-        $date = self::date();
-        return 'HTTP/' . $version . ' ' . $status . ' ' . $reason . "\r\n" . $block
-            . 'content-length: ' . $length . "\r\nconnection: " . $connection . "\r\ndate: " . $date . "\r\n\r\n" . $body;
+        $line = $status === 200 && $version === '1.1'
+            ? "HTTP/1.1 200 OK\r\n"
+            : "HTTP/{$version} {$status} " . Response::reason($status) . "\r\n";
+        return "{$line}{$block}content-length: {$length}{$tail}{$body}";
     }
 
     /**

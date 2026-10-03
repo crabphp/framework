@@ -292,6 +292,145 @@ final class HttpFastPathTest extends TestCase
         yield 'json' => [Response::json(['ok' => true], 201), $get, false];
     }
 
+    #[DataProvider('stringResultProvider')]
+    public function testStringResultsEncodeExactlyLikeTextResponses(string $body, Request $request, bool $forceClose): void
+    {
+        $close = $forceClose;
+        $direct = ResponseEncoder::small($body, $request, $close);
+        $expectedClose = $forceClose;
+        $expected = ResponseEncoder::small(Response::text($body), $request, $expectedClose);
+        self::assertSame($expected === null, $direct === null);
+        self::assertSame($expectedClose, $close);
+        if ($direct !== null) {
+            self::assertSame(self::withoutDate($expected), self::withoutDate($direct));
+            $general = implode('', iterator_to_array((new ResponseEncoder(Response::text($body), $request, $forceClose))->bytes(), false));
+            self::assertSame(self::withoutDate($general), self::withoutDate($direct));
+        }
+    }
+
+    public static function stringResultProvider(): iterable
+    {
+        yield 'text' => ["Hello\n", self::request(), false];
+        yield 'empty' => ['', self::request(), false];
+        yield 'forced close' => ['bye', self::request(), true];
+        yield 'HTTP/1.0' => ['old', self::request(version: '1.0', headers: []), false];
+        yield 'HEAD uses the general encoder' => ['hidden', self::request(method: 'HEAD'), false];
+        yield 'sizeable body uses the general encoder' => [str_repeat('x', 7937), self::request(), false];
+    }
+
+    public function testHandlersMayReturnStringsOnPersistentConnections(): void
+    {
+        $output = $this->converse(
+            ["GET /a HTTP/1.1\r\nHost: x\r\n\r\n", "HEAD /b HTTP/1.1\r\nHost: x\r\n\r\n", "GET /c HTTP/1.0\r\n\r\n"],
+            static fn (Request $request): string => 'path ' . $request->path(),
+        );
+        self::assertSame(3, substr_count($output, " 200 OK\r\n"));
+        self::assertSame(3, substr_count($output, "content-type: text/plain; charset=utf-8\r\n"));
+        self::assertStringContainsString("content-length: 7\r\nconnection: keep-alive\r\ndate: ", $output);
+        self::assertStringContainsString("\r\n\r\npath /aHTTP/1.1 200 OK\r\n", $output);
+        self::assertStringNotContainsString('path /b', $output, 'HEAD sent a body.');
+        self::assertStringEndsWith("HTTP/1.0 200 OK\r\ncontent-type: text/plain; charset=utf-8\r\ncontent-length: 7\r\n"
+            . "connection: close\r\ndate: " . self::dateOf($output) . "\r\n\r\npath /c", $output);
+    }
+
+    public function testFactoryResponsesKeepTheirValidatedFields(): void
+    {
+        self::assertSame(['content-type' => ['text/plain; charset=utf-8']], Response::text('x')->normalizedHeaders());
+        self::assertSame(['content-type' => ['application/json']], Response::json(['a' => 1])->normalizedHeaders());
+        self::assertSame("content-type: text/plain; charset=utf-8\r\n", Response::text('x')->headerBlock());
+        self::assertSame("content-type: application/json\r\n", Response::json(1)->headerBlock());
+        // Caller fields still pass through validation and may replace the default.
+        self::assertSame("content-type: text/html\r\nx-a: 1\r\n",
+            Response::text('x', 200, ['Content-Type' => 'text/html', 'X-A' => '1'])->headerBlock());
+        self::assertSame(['Content-Type' => 'text/plain; charset=utf-8', 'X-A' => '1'], Response::text('x', 200, ['X-A' => '1'])->headers);
+        self::assertSame("content-type: application/json\r\nx-a: 1\r\n", Response::json(1, 200, ['X-A' => '1'])->headerBlock());
+        $this->expectException(\InvalidArgumentException::class);
+        Response::text('x', 200, ['X-Bad' => "a\nb"])->headerBlock();
+    }
+
+    #[DataProvider('cachedSecondProvider')]
+    public function testSmallEncoderRefreshesItsDateWithTheClock(int $offset): void
+    {
+        $stale = time() + $offset;
+        $staleDate = gmdate('D, d M Y H:i:s', $stale) . ' GMT';
+        (new ReflectionProperty(ResponseEncoder::class, 'dateSecond'))->setValue(null, $stale);
+        (new ReflectionProperty(ResponseEncoder::class, 'date'))->setValue(null, $staleDate);
+        $before = time();
+        $close = false;
+        $keepAlive = ResponseEncoder::small('ok', self::request(), $close);
+        $close = true;
+        $closing = ResponseEncoder::small('ok', self::request(), $close);
+        $after = time();
+        $valid = [gmdate('D, d M Y H:i:s', $before) . ' GMT', gmdate('D, d M Y H:i:s', $after) . ' GMT'];
+        self::assertContains(self::dateOf($keepAlive), $valid);
+        self::assertContains(self::dateOf($closing), $valid);
+        self::assertStringNotContainsString($staleDate, $keepAlive . $closing);
+        self::assertStringContainsString("\r\nconnection: keep-alive\r\n", $keepAlive);
+        self::assertStringContainsString("\r\nconnection: close\r\n", $closing);
+    }
+
+    public static function cachedSecondProvider(): iterable
+    {
+        yield 'forward rollover' => [-60];
+        yield 'backward correction' => [60];
+    }
+
+    public function testEmptyBodyTrailersAndCancellationAppearOnDemand(): void
+    {
+        $parser = new Parser();
+        $parser->append("GET / HTTP/1.1\r\nHost: x\r\n\r\n");
+        $request = $parser->next();
+        self::assertSame([], $request->trailers);
+        self::assertSame(0, $request->body->size());
+        self::assertSame('', $request->body->contents());
+        self::assertSame($request->body, $request->body, 'The empty body changed identity.');
+        $token = $request->cancellation;
+        self::assertSame($token, $request->cancellation);
+        self::assertFalse($token->isCancelled());
+        $request->complete();
+        self::assertTrue($token->isCancelled(), 'An observed token missed completion.');
+
+        $parser->append("GET / HTTP/1.1\r\nHost: x\r\n\r\n");
+        $late = $parser->next();
+        $late->complete();
+        self::assertTrue($late->cancellation->isCancelled(), 'A token first read after completion was live.');
+
+        $supplied = new \Crab\Engine\Async\Cancellation();
+        $body = new Body();
+        $built = new Request('POST', '/', '1.1', ['host' => ['x']], $body, ['x-t' => ['1']], $supplied);
+        self::assertSame([$body, ['x-t' => ['1']], $supplied], [$built->body, $built->trailers, $built->cancellation]);
+        foreach (['body', 'trailers', 'cancellation', 'method'] as $property) {
+            try {
+                $built->{$property} = null;
+                self::fail("Request::\${$property} was replaced.");
+            } catch (\Error) {
+            }
+        }
+    }
+
+    public function testSuspendedHandlerInAReadTurnReceivesNoFurtherInputUntilItAnswers(): void
+    {
+        $order = [];
+        $output = $this->converse(
+            ["GET /slow HTTP/1.1\r\nHost: x\r\n\r\nGET /next HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n"],
+            static function (Request $request) use (&$order): string {
+                $order[] = 'start ' . $request->target;
+                if ($request->target === '/slow') {
+                    $suspension = EventLoop::getSuspension();
+                    EventLoop::delay(0.02, static fn () => $suspension->resume());
+                    $suspension->suspend();
+                }
+                $order[] = 'end ' . $request->target;
+                return $request->target;
+            },
+            // The second request arrives while the first handler is suspended.
+            splitAt: 37,
+        );
+        self::assertSame(['start /slow', 'end /slow', 'start /next', 'end /next'], $order);
+        self::assertStringContainsString("\r\n\r\n/slowHTTP/1.1 200 OK\r\n", $output);
+        self::assertStringEndsWith("\r\n\r\n/next", $output);
+    }
+
     #[DataProvider('generalOnlyProvider')]
     public function testSmallEncoderDefersEverythingElseToTheGeneralEncoder(Response $response, Request $request): void
     {
@@ -508,6 +647,56 @@ final class HttpFastPathTest extends TestCase
         $loop->cancel($watchdog);
         $loop->cancel($poll);
         self::assertSame(['start', 'held'], $received);
+    }
+
+    /**
+     * Sends each message after the previous response arrived, then returns
+     * everything the server wrote until it closed or the last answer arrived.
+     *
+     * @param list<string> $messages
+     */
+    private function converse(array $messages, callable $handler, ?int $splitAt = null): string
+    {
+        $loop = $this->newLoop();
+        [$server, $client] = $this->pair();
+        $connection = $this->connection($loop, $server);
+        (new HttpServer($handler))->attach($connection);
+        $output = '';
+        $next = 0;
+        $expected = 0;
+        $send = static function () use ($loop, $client, $messages, &$next, &$expected, $splitAt): void {
+            $message = $messages[$next++];
+            $expected += substr_count($message, "\r\n\r\n");
+            if ($splitAt === null) {
+                fwrite($client, $message);
+                return;
+            }
+            fwrite($client, substr($message, 0, $splitAt));
+            $loop->delay(0.005, static function () use ($client, $message, $splitAt): void {
+                fwrite($client, substr($message, $splitAt));
+            });
+        };
+        $watchdog = $loop->delay(2, static function () use ($connection): void {
+            $connection->close();
+            throw new RuntimeException('Conversation timed out.');
+        });
+        $loop->onReadable($client, static function (string $id) use ($loop, $client, $connection, $messages, &$output, &$next, &$expected, $send, $watchdog): void {
+            $output .= fread($client, 65536);
+            $answered = preg_match_all('/HTTP\/1\.[01] \d{3} /', $output);
+            if (feof($client) || ($answered === $expected && $next === count($messages))) {
+                $loop->cancel($id);
+                $loop->cancel($watchdog);
+                $connection->close();
+                return;
+            }
+            if ($answered === $expected) {
+                $send();
+            }
+        });
+        $send();
+        $loop->run();
+        self::assertSame([], $loop->getIdentifiers(), 'Conversation leaked loop registrations.');
+        return $output;
     }
 
     /**

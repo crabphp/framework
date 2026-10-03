@@ -6,6 +6,16 @@ namespace Crab\Engine\Http;
 
 final readonly class Response
 {
+    private const TEXT_HEADERS = ['Content-Type' => 'text/plain; charset=utf-8'];
+    /**
+     * Encoded fields of text(); a string returned by a handler uses them too.
+     *
+     * @internal
+     */
+    public const TEXT_BLOCK = "content-type: text/plain; charset=utf-8\r\n";
+    private const JSON_HEADERS = ['Content-Type' => 'application/json'];
+    private const JSON_BLOCK = "content-type: application/json\r\n";
+
     private bool $headersNormalized;
     private array $normalizedHeaders;
     private string $headerBlock;
@@ -81,6 +91,13 @@ final readonly class Response
         if (isset($this->headerBlock)) {
             return $this->headerBlock;
         }
+        // The factories' own fields are known to be valid and already encoded.
+        if ($this->headers === self::TEXT_HEADERS) {
+            return self::TEXT_BLOCK;
+        }
+        if ($this->headers === self::JSON_HEADERS) {
+            return self::JSON_BLOCK;
+        }
         $headers = $this->normalizedHeaders();
         if (isset($headers['content-length']) || isset($headers['transfer-encoding'])
             || isset($headers['connection']) || isset($headers['date']) || isset($headers['upgrade'])) {
@@ -100,12 +117,13 @@ final readonly class Response
 
     public static function text(string $body, int $status = 200, array $headers = []): self
     {
-        return new self($status, ['Content-Type' => 'text/plain; charset=utf-8', ...$headers], $body);
+        return new self($status, $headers === [] ? self::TEXT_HEADERS : [...self::TEXT_HEADERS, ...$headers], $body);
     }
 
     public static function json(mixed $value, int $status = 200, array $headers = []): self
     {
-        return new self($status, ['Content-Type' => 'application/json', ...$headers], json_encode($value, JSON_THROW_ON_ERROR));
+        return new self($status, $headers === [] ? self::JSON_HEADERS : [...self::JSON_HEADERS, ...$headers],
+            json_encode($value, JSON_THROW_ON_ERROR));
     }
 
     public static function reason(int $status): string

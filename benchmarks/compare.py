@@ -344,8 +344,9 @@ def main():
     parser.add_argument("--protocol", choices=("http", "ws", "all"), default="all")
     parser.add_argument("--targets", default="crab,elysia")
     parser.add_argument("--baseline-source", help="Snapshot src directory required by crab-before and crab-before-jit.")
-    parser.add_argument("--http-response", choices=("reuse", "fresh"), default="reuse",
-                        help="Crab HTTP response object lifetime; other handlers remain unchanged.")
+    parser.add_argument("--http-response", choices=("reuse", "fresh", "string"), default="reuse",
+                        help="Crab handler result: one reused Response, a new Response per request, or a bare string "
+                             "per request as the Elysia fixture returns; other handlers remain unchanged.")
     parser.add_argument("--http-request", choices=("fixed", "varied", "browser", "browser-unique"), default="fixed",
                         help="fixed: one identical request; varied: rotating query strings; browser: rotating query strings with "
                              "browser-sized headers; browser-unique: as browser, with one field value that differs on every request.")

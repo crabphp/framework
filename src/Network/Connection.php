@@ -146,17 +146,19 @@ final class Connection
     }
 
     /**
-     * Allocation-free beginActivity() for protocol owners. Every call must be
-     * paired with exactly one leaveActivity(), normally in a finally block.
+     * Allocation-free beginActivity() for protocol owners. Returns false, and
+     * opens no scope, on a closed connection. Every true result must be paired
+     * with exactly one leaveActivity(), normally in a finally block.
      *
      * @internal
      */
-    public function enterActivity(): void
+    public function enterActivity(): bool
     {
         if ($this->closed) {
-            throw new LogicException('Cannot begin service work on a closed connection.');
+            return false;
         }
         ++$this->activities;
+        return true;
     }
 
     /**
@@ -164,8 +166,9 @@ final class Connection
      */
     public function leaveActivity(): void
     {
-        --$this->activities;
-        $this->settleIfReady();
+        if (--$this->activities === 0 && $this->closeNotified) {
+            $this->settleIfReady();
+        }
     }
 
     /**
@@ -407,8 +410,8 @@ final class Connection
         $this->reading = true;
         try {
             $remaining = self::IO_BUDGET;
+            $readSize = self::READ_CHUNK_SIZE;
             do {
-                $readSize = min(self::READ_CHUNK_SIZE, $remaining);
                 $bytes = @fread($this->stream, $readSize);
                 if ($bytes === false) {
                     $this->close();
@@ -421,16 +424,27 @@ final class Connection
                     return;
                 }
                 $received = strlen($bytes);
-                $remaining -= $received;
-                $this->invoke($this->dataHandler, $bytes);
+                try {
+                    ($this->dataHandler)($this, $bytes);
+                } catch (Throwable $error) {
+                    $this->report($error);
+                }
                 if ($received < $readSize) {
                     // Readiness will report further bytes or EOF on a later turn.
                     return;
                 }
+                $remaining -= $received;
+                if ($remaining < $readSize) {
+                    $readSize = $remaining;
+                }
             } while (!$this->closed && !$this->readPaused && $remaining > 0);
         } finally {
             $this->reading = false;
-            $this->updateReadWatcher();
+            // An untouched, still-watched connection has nothing to reconcile.
+            if (!$this->readWatching || $this->readPaused || $this->closed || $this->readEnded
+                || $this->dataHandler === null) {
+                $this->updateReadWatcher();
+            }
         }
     }
 
@@ -537,26 +551,31 @@ final class Connection
         }
     }
 
-    private function invoke(Closure $handler, ?string $bytes = null): void
+    private function invoke(Closure $handler): void
     {
         try {
-            if ($bytes === null) {
-                $handler($this);
-            } else {
-                $handler($this, $bytes);
-            }
+            $handler($this);
         } catch (Throwable $error) {
-            $reporter = $this->errorHandler;
-            $this->close();
-            try {
-                if ($reporter !== null) {
-                    $reporter($error, $this);
-                    return;
-                }
-            } catch (Throwable $reportingError) {
-                error_log('[Crab] Error handler failed: '.$reportingError->getMessage());
-            }
-            error_log('[Crab] Connection callback failed: '.$error->getMessage());
+            $this->report($error);
         }
+    }
+
+    /**
+     * Closes the connection after a failed application callback and reports
+     * the failure.
+     */
+    private function report(Throwable $error): void
+    {
+        $reporter = $this->errorHandler;
+        $this->close();
+        try {
+            if ($reporter !== null) {
+                $reporter($error, $this);
+                return;
+            }
+        } catch (Throwable $reportingError) {
+            error_log('[Crab] Error handler failed: '.$reportingError->getMessage());
+        }
+        error_log('[Crab] Connection callback failed: '.$error->getMessage());
     }
 }

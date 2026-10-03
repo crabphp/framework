@@ -22,8 +22,8 @@ $workers = filter_var($options['workers'] ?? 1, FILTER_VALIDATE_INT);
 $responseMode = $options['http-response'] ?? 'reuse';
 $source = realpath($options['source'] ?? dirname(__DIR__) . '/src');
 if (!in_array($protocol, ['http', 'ws', 'websocket'], true) || $port < 1 || $port > 65535 || $workers < 1
-    || !in_array($responseMode, ['reuse', 'fresh'], true) || $source === false || !is_file($source . '/Runtime.php')) {
-    fwrite(STDERR, "Usage: php server.php --protocol=http|ws --host=127.0.0.1 --port=8080 --workers=1 [--source=/snapshot/src] [--http-response=reuse|fresh] [--metadata]\n");
+    || !in_array($responseMode, ['reuse', 'fresh', 'string'], true) || $source === false || !is_file($source . '/Runtime.php')) {
+    fwrite(STDERR, "Usage: php server.php --protocol=http|ws --host=127.0.0.1 --port=8080 --workers=1 [--source=/snapshot/src] [--http-response=reuse|fresh|string] [--metadata]\n");
     exit(2);
 }
 if (isset($options['source'])) {
@@ -53,14 +53,18 @@ $runtime = new Runtime(static fn() => new StreamSelectDriver());
 if ($protocol === 'http') {
     $hello = Response::text("Hello from Crab\n");
     $health = Response::text("ok\n");
-    $server = new HttpServer(static function (Request $request) use ($hello, $health, $responseMode): Response {
+    $server = new HttpServer(static function (Request $request) use ($hello, $health, $responseMode): Response|string {
         return match ($request->path()) {
             '/health' => $health,
             '/stream' => new Response(200, ['Content-Type' => 'application/octet-stream'], (static function (): Generator {
                 $chunk = str_repeat('x', 16384);
                 for ($i = 0; $i < 64; ++$i) { yield $chunk; }
             })()),
-            default => $responseMode === 'fresh' ? Response::text("Hello from Crab\n") : $hello,
+            default => match ($responseMode) {
+                'fresh' => Response::text("Hello from Crab\n"),
+                'string' => "Hello from Crab\n",
+                default => $hello,
+            },
         };
     }, maxRequests: 1000000);
 } else {

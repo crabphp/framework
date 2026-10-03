@@ -1,0 +1,997 @@
+diff --color -ruN a/src/Http/HttpSession.php b/src/Http/HttpSession.php
+--- a/src/Http/HttpSession.php	2026-10-04 01:32:57
++++ b/src/Http/HttpSession.php	2026-10-04 01:32:57
+@@ -38,6 +38,7 @@
+     private bool $closeAfterResponse = false;
+     private ?Upgrade $upgrade = null;
+     private ?Request $activeRequest = null;
++    private int $inlineLimit;
+ 
+     public function __construct(
+         private readonly Connection $connection,
+@@ -51,6 +52,7 @@
+         private readonly float $responseTimeout = 30,
+     ) {
+         $this->parser = new Parser($maxHeaderBytes, $maxBodyBytes);
++        $this->inlineLimit = min(8192, $connection->maxWriteSize());
+         $weak = \WeakReference::create($this);
+         $connection->onClose(static function () use ($weak): void { $weak->get()?->retire(); });
+         $connection->onDrain(static function () use ($weak): void { $weak->get()?->pump(); });
+@@ -71,26 +73,9 @@
+                 $this->connection->end();
+             }
+         });
+-        $connection->onData(function (Connection $connection, string $bytes): void {
+-            if ($this->retired) {
+-                return;
+-            }
+-            try {
+-                $this->parser->append($bytes);
+-            } catch (HttpException $error) {
+-                $this->fail($error->status);
+-                return;
+-            }
+-            if ($this->busy || $this->scheduled !== null) {
+-                if ($this->deadlinePhase === 'idle') {
+-                    $this->armDeadline('headers');
+-                }
+-                return;
+-            }
+-            // The first request of a read turn runs without a scheduler round
+-            // trip; pipelined successors keep their own deferred turns.
+-            $this->process();
+-        });
++        // The first request of a read turn runs without a scheduler round
++        // trip; pipelined successors keep their own deferred turns.
++        $connection->onData($this->process(...));
+         $this->armDeadline('headers');
+     }
+ 
+@@ -105,14 +90,34 @@
+         });
+     }
+ 
+-    private function process(): void
++    /**
++     * Runs at most one request. Bytes arrive only from the connection's read
++     * turn; a deferred turn passes none and works from the parser's buffer.
++     */
++    private function process(mixed $source = null, string $bytes = ''): void
+     {
+-        if ($this->retired || $this->busy || $this->connection->isClosed()) {
++        if ($this->retired) {
+             return;
+         }
+-        $this->connection->enterActivity();
++        if ($this->busy || $this->scheduled !== null) {
++            if ($bytes !== '') {
++                try {
++                    $this->parser->append($bytes);
++                } catch (HttpException $error) {
++                    $this->fail($error->status);
++                    return;
++                }
++                if ($this->deadlinePhase === 'idle') {
++                    $this->armDeadline('headers');
++                }
++            }
++            return;
++        }
++        if (!$this->connection->enterActivity()) {
++            return;
++        }
+         try {
+-            $request = $this->parser->next();
++            $request = $this->parser->receive($bytes);
+             if ($request === null) {
+                 if ($this->peerEof) {
+                     if ($this->parser->phase() !== 'idle') {
+@@ -136,27 +141,40 @@
+             }
+             $this->busy = true;
+             $this->activeRequest = $request;
+-            $this->connection->pauseRead();
+-            $this->armDeadline('response');
++            // A read turn admits no further input until it ends, even while its
++            // handler is suspended; any other turn must pause the transport.
++            if ($bytes === '') {
++                $this->connection->pauseRead();
++            }
++            $this->deadlinePhase = 'response';
++            $this->deadlineAt = hrtime(true) / 1_000_000_000 + $this->responseTimeout;
++            if ($this->deadline === null || $this->deadlineScheduledAt > $this->deadlineAt) {
++                $this->scheduleDeadline($this->responseTimeout);
++            }
+             ++$this->requests;
+             $response = ($this->handler)($request);
+             if ($this->retired || $this->connection->isClosed()) {
+                 return;
+             }
+-            if (is_string($response)) {
+-                $response = Response::text($response);
+-            }
+-            if (!$response instanceof Response && !$response instanceof Upgrade) {
+-                throw new \UnexpectedValueException('HTTP handlers must return Response, Upgrade, or string.');
+-            }
+-            $upgrade = $response instanceof Upgrade ? $response : null;
+-            if ($upgrade !== null && ($this->draining || $request->version !== '1.1'
+-                || !$request->hasToken('connection', 'upgrade') || $request->header('upgrade') === null)) {
+-                throw new \UnexpectedValueException('Upgrade requires an active connection and upgrade request.');
+-            }
+             $close = $this->draining || $this->requests >= $this->maxRequests
+                 || ($this->peerEof && $this->parser->phase() === 'idle');
+-            $message = $upgrade === null ? ResponseEncoder::small($response, $request, $close) : null;
++            $upgrade = null;
++            if ($response instanceof Response || is_string($response)) {
++                // A string is encoded directly; only an unusual one needs its Response.
++                $message = ResponseEncoder::small($response, $request, $close);
++                if ($message === null && is_string($response)) {
++                    $response = Response::text($response);
++                }
++            } elseif ($response instanceof Upgrade) {
++                if ($this->draining || $request->version !== '1.1'
++                    || !$request->hasToken('connection', 'upgrade') || $request->header('upgrade') === null) {
++                    throw new \UnexpectedValueException('Upgrade requires an active connection and upgrade request.');
++                }
++                $upgrade = $response;
++                $message = null;
++            } else {
++                throw new \UnexpectedValueException('HTTP handlers must return Response, Upgrade, or string.');
++            }
+             if ($message === null) {
+                 $encoder = new ResponseEncoder($upgrade?->response ?? $response, $request, $close, $upgrade !== null);
+                 $close = $encoder->close;
+@@ -166,20 +184,31 @@
+                 }
+             }
+             if ($message !== null && $upgrade === null && !$close && $this->pending === ''
+-                && strlen($message) <= 8192 && strlen($message) <= $this->connection->maxWriteSize()) {
++                && strlen($message) <= $this->inlineLimit) {
+                 // A complete persistent response needs no output state when
+                 // the transport accepts it at once.
+                 $result = $this->connection->tryWrite($message);
+                 if ($result === WriteResult::Accepted) {
+                     $this->busy = false;
+                     $this->activeRequest = null;
+-                    $request->cancellation->cancel();
++                    $request->complete();
++                    if ($bytes === '') {
++                        $this->connection->resumeRead();
++                    }
+                     $phase = $this->parser->phase();
+-                    $this->armDeadline($phase);
+-                    $this->connection->resumeRead();
+-                    if ($phase !== 'idle' || $this->peerEof) {
++                    if ($phase !== 'idle') {
++                        $this->armDeadline($phase);
+                         $this->schedule();
++                        return;
+                     }
++                    $this->deadlinePhase = 'idle';
++                    $this->deadlineAt = hrtime(true) / 1_000_000_000 + $this->idleTimeout;
++                    if ($this->deadline === null || $this->deadlineScheduledAt > $this->deadlineAt) {
++                        $this->scheduleDeadline($this->idleTimeout);
++                    }
++                    if ($this->peerEof) {
++                        $this->schedule();
++                    }
+                     return;
+                 }
+                 if ($result === WriteResult::Closed) {
+@@ -187,6 +216,10 @@
+                     return;
+                 }
+             }
++            if ($bytes !== '') {
++                // Output outlives this read turn, so the pause must be real.
++                $this->connection->pauseRead();
++            }
+             $this->closeAfterResponse = $close;
+             $this->upgrade = $upgrade;
+             $this->completion = self::COMPLETE_RESPONSE;
+@@ -261,10 +294,9 @@
+     private function pump(): void
+     {
+         if ($this->pumping || $this->retired || $this->completion === self::COMPLETE_NONE
+-            || $this->connection->isClosed()) {
++            || !$this->connection->enterActivity()) {
+             return;
+         }
+-        $this->connection->enterActivity();
+         $this->pumping = true;
+         try {
+             for ($budget = 0; $budget < 64; ++$budget) {
+@@ -327,7 +359,7 @@
+         $this->draining = true;
+         $this->connection->pauseRead();
+         $this->parser->takeBufferedBytes();
+-        $request = new Request('GET', '/', '1.1', [], new Body());
++        $request = new Request('GET', '/', '1.1', []);
+         $encoder = new ResponseEncoder(Response::text(Response::reason($status) . "\n", $status), $request, true);
+         $this->output = $encoder->bytes();
+         $this->pending = '';
+@@ -349,12 +381,19 @@
+             default => $this->headerTimeout,
+         };
+         $this->deadlineAt = hrtime(true) / 1_000_000_000 + $seconds;
++        // An earlier wake-up can check the current phase without allocating
++        // another timer on every successful request/response transition.
++        if ($this->deadline === null || $this->deadlineScheduledAt > $this->deadlineAt) {
++            $this->scheduleDeadline($seconds);
++        }
++    }
++
++    /**
++     * Replaces the wake-up with one at the current expiry.
++     */
++    private function scheduleDeadline(float $seconds): void
++    {
+         if ($this->deadline !== null) {
+-            // An earlier wake-up can check the current phase without allocating
+-            // another timer on every successful request/response transition.
+-            if ($this->deadlineScheduledAt <= $this->deadlineAt) {
+-                return;
+-            }
+             $this->connection->loop()->cancel($this->deadline);
+         }
+         $this->deadlineScheduledAt = $this->deadlineAt;
+@@ -404,6 +443,6 @@
+     {
+         $request = $this->activeRequest;
+         $this->activeRequest = null;
+-        $request?->cancellation->cancel();
++        $request?->complete();
+     }
+ }
+diff --color -ruN a/src/Http/Parser.php b/src/Http/Parser.php
+--- a/src/Http/Parser.php	2026-10-04 01:32:57
++++ b/src/Http/Parser.php	2026-10-04 01:32:57
+@@ -4,8 +4,6 @@
+ 
+ namespace Crab\Engine\Http;
+ 
+-use Crab\Engine\Async\Cancellation;
+-
+ /**
+  * Strict HTTP/1 message framing. next() consumes at most one complete request.
+  */
+@@ -16,14 +14,6 @@
+     private const FIELDS = '/\G(?:(' . self::TOKEN . '):[ \t]*+([\x09\x20-\x7E\x80-\xFF]*)\r\n|\r\n\z)/';
+     private const VALID_FIELDS = '/\G(?:' . self::TOKEN . ':[\x09\x20-\x7E\x80-\xFF]*+\r\n)*+\r\n\z/';
+     private const FRAMING_FIELDS = '/\r\n(host|connection|expect|content-length|transfer-encoding):[ \t]*+([^\r]*)/i';
+-    /**
+-     * Fields the parser extracts from every head; the rest stay in the head
+-     * until a handler reads them.
+-     *
+-     * @internal
+-     */
+-    public const FRAMING_NAMES = ['host' => true, 'connection' => true, 'expect' => true,
+-        'content-length' => true, 'transfer-encoding' => true];
+     private const HOST = '/^(?:\[[0-9a-fA-F:.]+\]|[A-Za-z0-9._~%!$&\x27()*+;=-]+)(?::[0-9]{1,5})?$/D';
+     /**
+      * Validated field lines, bounded and reset when full. A line always
+@@ -48,7 +38,7 @@
+     private string $version = '';
+     private array $headers = [];
+     private string $head = '';
+-    private int $fieldsAt = 0;
++    private ?array $fieldMap = null;
+     private array $trailers = [];
+     private ?Body $body = null;
+     private int $remaining = 0;
+@@ -68,21 +58,21 @@
+ 
+     /**
+      * One anchored pattern for the usual request: a buffer holding exactly one
+-     * bodyless head. It validates the request line and every field and captures
+-     * Host, Connection and Expect. Anything else, including a repeated captured
+-     * field or any body framing, fails the match and takes the general path,
+-     * which also decides the status of a malformed head.
++     * bodyless head with an origin-form target. It validates the request line
++     * and every field and captures Host and Connection. Anything else,
++     * including a repeated captured field, an expectation or any body framing,
++     * fails the match and takes the general path, which also decides the status
++     * of a malformed head.
+      */
+     private static function headPattern(int $maxHeaderCount): string
+     {
+         $value = '[ \t]*+([\x09\x20-\x7E\x80-\xFF]*+)\r\n';
+-        return '/^(' . self::TOKEN . ') ([^\x00-\x20\x7F]+) HTTP\/(1\.[01])\r\n(?:'
++        return '/^(' . self::TOKEN . ') (\/[^\x00-\x20\x7F#]*+) HTTP\/1\.([01])\r\n(?:'
+             . '(?i:host):(?(4)(*COMMIT)(*FAIL))' . $value
+             . '|(?i:connection):(?(5)(*COMMIT)(*FAIL))' . $value
+-            . '|(?i:expect):(?(6)(*COMMIT)(*FAIL))' . $value
+-            . '|(?i:content-length|transfer-encoding):(*COMMIT)(*FAIL)'
++            . '|(?i:expect|content-length|transfer-encoding):(*COMMIT)(*FAIL)'
+             . '|' . self::TOKEN . ':[\x09\x20-\x7E\x80-\xFF]*+\r\n'
+-            . '){0,' . $maxHeaderCount . '}+\K\r\n\z/';
++            . '){0,' . $maxHeaderCount . '}+\r\K\n\z/';
+     }
+ 
+     public function append(string $bytes): void
+@@ -117,30 +107,70 @@
+ 
+     public function next(): ?Request
+     {
+-        while (true) {
+-            if ($this->state === 'headers') {
+-                $buffer = $this->buffer;
+-                // Tried once per head, so a trickled head is not rescanned.
+-                if ($this->headerScan === 0 && strlen($buffer) <= $this->maxHeaderBytes
+-                    && preg_match($this->headPattern, $buffer, $match, PREG_UNMATCHED_AS_NULL) === 1) {
+-                    $this->buffer = '';
+-                    $framing = [];
+-                    // Values rarely end in whitespace; the scan consumed any leading.
+-                    if (($value = $match[4]) !== null) {
+-                        $framing['host'] = [$value !== '' && ($value[-1] === ' ' || $value[-1] === "\t")
+-                            ? rtrim($value, " \t") : $value];
++        return $this->receive('');
++    }
++
++    /**
++     * append() followed by next(), without copying a lone bodyless head into
++     * the buffer first.
++     */
++    public function receive(string $bytes): ?Request
++    {
++        // Tried once per head, so a trickled head is not rescanned.
++        if ($this->headerScan === 0 && $this->state === 'headers' && ($bytes === '' || $this->buffer === '')) {
++            $head = $bytes === '' ? $this->buffer : $bytes;
++            if ($head !== '' && strlen($head) <= $this->maxHeaderBytes
++                && preg_match($this->headPattern, $head, $match, PREG_UNMATCHED_AS_NULL) === 1) {
++                $method = $match[1];
++                $host = $match[4];
++                // Values rarely end in whitespace; the scan consumed any leading.
++                if ($host !== null && $host !== '' && ($host[-1] === ' ' || $host[-1] === "\t")) {
++                    $host = rtrim($host, " \t");
++                }
++                // A missing or unusable Host and CONNECT are left to the
++                // general path, which reports them.
++                if (($host === null ? $match[3] === '0' : $host === $this->validHost || $this->acceptHost($host))
++                    && $method !== 'CONNECT') {
++                    $connection = $match[5];
++                    if ($connection !== null && $connection !== ''
++                        && ($connection[-1] === ' ' || $connection[-1] === "\t")) {
++                        $connection = rtrim($connection, " \t");
+                     }
+-                    if (($value = $match[5] ?? null) !== null) {
+-                        $framing['connection'] = [$value !== '' && ($value[-1] === ' ' || $value[-1] === "\t")
+-                            ? rtrim($value, " \t") : $value];
++                    if ($bytes === '') {
++                        $this->buffer = '';
+                     }
+-                    if (isset($match[6])) {
+-                        $framing['expect'] = [rtrim($match[6], " \t")];
+-                    }
+-                    // Method, space, target, " HTTP/1.x" and CRLF.
+-                    return $this->finishHead($match[1], $match[2], $match[3], $buffer,
+-                        strlen($match[1]) + strlen($match[2]) + 12, $framing);
++                    return new Request($method, $match[2], $match[3] === '1' ? '1.1' : '1.0', [], null, [], null,
++                        $head, $connection);
+                 }
++            }
++        }
++        if ($bytes !== '') {
++            $this->append($bytes);
++        }
++        return $this->general();
++    }
++
++    /**
++     * Remembers a valid Host so that a persistent client's repeats cost one
++     * comparison.
++     */
++    private function acceptHost(string $host): bool
++    {
++        if (!preg_match(self::HOST, $host)) {
++            return false;
++        }
++        $this->validHost = $host;
++        return true;
++    }
++
++    /**
++     * The complete incremental parser for whatever the buffer holds.
++     */
++    private function general(): ?Request
++    {
++        while (true) {
++            if ($this->state === 'headers') {
++                $buffer = $this->buffer;
+                 $end = strpos($buffer, "\r\n\r\n", $this->headerScan);
+                 if ($end === false) {
+                     if (strlen($buffer) > $this->maxHeaderBytes) {
+@@ -248,7 +278,7 @@
+             throw new HttpException(505, 'Unsupported HTTP version.');
+         }
+         $fieldsAt = strlen($line[0]);
+-        return $this->finishHead($method, $target, $version, $head, $fieldsAt, $this->scanFields($head, $fieldsAt));
++        return $this->finishHead($method, $target, $version, $head, $this->scanFields($head, $fieldsAt));
+     }
+ 
+     /**
+@@ -257,19 +287,15 @@
+      *
+      * @param array<string, list<string>> $headers The extracted framing fields.
+      */
+-    private function finishHead(string $method, string $target, string $version, string $head, int $fieldsAt, array $headers): ?Request
++    private function finishHead(string $method, string $target, string $version, string $head, array $headers): ?Request
+     {
+         if (isset($headers['host'])) {
+             $host = $headers['host'];
+             if (isset($host[1])) {
+                 throw new HttpException(400, 'HTTP/1.1 requires exactly one Host field.');
+             }
+-            // Persistent clients repeat their Host; validate each value once.
+-            if ($host[0] !== $this->validHost) {
+-                if (!preg_match(self::HOST, $host[0])) {
+-                    throw new HttpException(400, 'Invalid Host field.');
+-                }
+-                $this->validHost = $host[0];
++            if ($host[0] !== $this->validHost && !$this->acceptHost($host[0])) {
++                throw new HttpException(400, 'Invalid Host field.');
+             }
+         } elseif ($version === '1.1') {
+             throw new HttpException(400, 'HTTP/1.1 requires exactly one Host field.');
+@@ -280,13 +306,19 @@
+         if ($target[0] !== '/' || str_contains($target, '#')) {
+             $headers = self::validateTarget($method, $target, $headers);
+         }
++        // Only an absolute-form target replaces the Host the client sent; its
++        // rare requests carry a complete map instead of a head.
++        $fields = $target[0] !== '/' && $target !== '*' ? self::split($head, $headers['host'][0]) : null;
+ 
+         if (!isset($headers['content-length']) && !isset($headers['transfer-encoding'])) {
+             if (isset($headers['expect'])
+                 && ($version !== '1.1' || strtolower(implode(',', $headers['expect'])) !== '100-continue')) {
+                 throw new HttpException(417, 'Unsupported expectation.');
+             }
+-            return Request::received($method, $target, $version, $head, $fieldsAt, $headers, new Body(), []);
++            return $fields !== null
++                ? new Request($method, $target, $version, $fields)
++                : new Request($method, $target, $version, [], null, [], null, $head,
++                    isset($headers['connection']) ? implode(', ', $headers['connection']) : null);
+         }
+ 
+         $this->method = $method;
+@@ -294,7 +326,7 @@
+         $this->version = $version;
+         $this->headers = $headers;
+         $this->head = $head;
+-        $this->fieldsAt = $fieldsAt;
++        $this->fieldMap = $fields;
+         $this->body = new Body();
+         $this->trailers = [];
+         $this->trailerBytes = 0;
+@@ -364,17 +396,17 @@
+     }
+ 
+     /**
+-     * Splits a validated head into its complete field map. $framing carries
+-     * the parser's own values, which win where a target replaced Host.
++     * Splits a validated head into its complete field map. $host is the
++     * authority of an absolute-form target, which replaces the Host field.
+      *
+      * @internal
+      *
+-     * @param array<string, list<string>> $framing
+      * @return array<string, list<string>>
+      */
+-    public static function split(string $head, int $offset, array $framing): array
++    public static function split(string $head, ?string $host = null): array
+     {
+-        $count = (int) preg_match_all(self::FIELDS, $head, $fields, PREG_PATTERN_ORDER, $offset) - 1;
++        // The fields follow the request line's CRLF.
++        $count = (int) preg_match_all(self::FIELDS, $head, $fields, PREG_PATTERN_ORDER, strpos($head, "\r\n") + 2) - 1;
+         $headers = [];
+         $names = $fields[1];
+         $values = $fields[2];
+@@ -386,8 +418,8 @@
+             }
+             $headers[strtolower($names[$index])][] = $value;
+         }
+-        if (isset($framing['host'])) {
+-            $headers['host'] = $framing['host'];
++        if ($host !== null) {
++            $headers['host'] = [$host];
+         }
+         return $headers;
+     }
+@@ -399,8 +431,10 @@
+      *
+      * @return list<string>|null
+      */
+-    public static function find(string $head, int $offset, string $name): ?array
++    public static function find(string $head, string $name): ?array
+     {
++        // The request line's CRLF anchors the first field name.
++        $offset = strpos($head, "\r\n") + 2;
+         // A colon can never be part of a field name; without this guard the
+         // pattern could read a name and the start of its value as one name.
+         if (str_contains($name, ':')
+@@ -505,8 +539,11 @@
+     private function complete(): Request
+     {
+         $this->body->rewind();
+-        $request = Request::received($this->method, $this->target, $this->version, $this->head, $this->fieldsAt,
+-            $this->headers, $this->body, $this->trailers);
++        $request = $this->fieldMap !== null
++            ? new Request($this->method, $this->target, $this->version, $this->fieldMap, $this->body, $this->trailers)
++            : new Request($this->method, $this->target, $this->version, [], $this->body, $this->trailers, null,
++                $this->head, isset($this->headers['connection']) ? implode(', ', $this->headers['connection']) : null);
++        $this->fieldMap = null;
+         $this->body = null;
+         $this->head = '';
+         $this->headers = $this->trailers = [];
+diff --color -ruN a/src/Http/Request.php b/src/Http/Request.php
+--- a/src/Http/Request.php	2026-10-04 01:32:57
++++ b/src/Http/Request.php	2026-10-04 01:32:57
+@@ -7,8 +7,9 @@
+ use Crab\Engine\Async\Cancellation;
+ 
+ /**
+- * An immutable request. A received request keeps its validated head and
+- * builds the complete field map only when a handler asks for it.
++ * A read-only request. A received request keeps its validated head and builds
++ * the complete field map, an empty body and its cancellation token only when
++ * a handler asks for them.
+  */
+ final class Request
+ {
+@@ -19,76 +20,116 @@
+      */
+     public array $headers {
+         get {
+-            if ($this->partial) {
+-                $this->fields = Parser::split($this->head, $this->fieldsAt, $this->fields);
+-                $this->partial = false;
++            if ($this->head !== '') {
++                $this->fields = Parser::split($this->head);
++                $this->head = '';
+             }
+             return $this->fields;
+         }
+     }
+ 
+     /**
+-     * The complete map, or only the parser's framing fields while partial.
++     * The complete request body; empty when the request carried none.
++     */
++    public Body $body {
++        get => $this->content ??= new Body();
++    }
++
++    /**
++     * Lowercase trailer names to value lists.
+      *
+      * @var array<string, list<string>>
+      */
+-    private array $fields;
+-    private bool $partial = false;
+-    private string $head = '';
+-    private int $fieldsAt = 0;
++    public array $trailers {
++        get => $this->trailerFields;
++    }
+ 
+     /**
++     * Cancelled when the request completes, times out, upgrades or loses its
++     * connection.
++     */
++    public Cancellation $cancellation {
++        get {
++            if ($this->token === null) {
++                $this->token = new Cancellation();
++                if ($this->completed) {
++                    $this->token->cancel();
++                }
++            }
++            return $this->token;
++        }
++    }
++
++    /**
++     * @var array<string, list<string>>
++     */
++    private array $fields = [];
++    /**
++     * @var array<string, list<string>>
++     */
++    private array $trailerFields = [];
++    private ?Body $content = null;
++    private ?Cancellation $token = null;
++    private bool $completed = false;
++
++    /**
++     * The parameters after $cancellation describe a head the parser has
++     * already validated; application code leaves them at their defaults.
++     *
+      * @param array<string, list<string>> $headers
+      * @param array<string, list<string>> $trailers
++     * @param string $head @internal Validated head; replaces $headers, which is built from it on demand.
++     * @param string|null $connection @internal Joined Connection values of $head.
+      */
+     public function __construct(
+         public readonly string $method,
+         public readonly string $target,
+         public readonly string $version,
+         array $headers,
+-        public readonly Body $body,
+-        public readonly array $trailers = [],
+-        public readonly Cancellation $cancellation = new Cancellation(),
++        ?Body $body = null,
++        array $trailers = [],
++        ?Cancellation $cancellation = null,
++        private string $head = '',
++        private ?string $connection = null,
+     ) {
+-        $this->fields = $headers;
++        // Only what a request actually carries is stored.
++        if ($headers !== []) {
++            $this->fields = $headers;
++        }
++        if ($body !== null) {
++            $this->content = $body;
++        }
++        if ($trailers !== []) {
++            $this->trailerFields = $trailers;
++        }
++        if ($cancellation !== null) {
++            $this->token = $cancellation;
++        }
+     }
+ 
+     /**
+-     * A request whose head the parser has validated. $framing holds the
+-     * fields the parser already extracted: Host, Connection, Expect,
+-     * Content-Length and Transfer-Encoding.
++     * Cancels an observed token; an unobserved one is created cancelled later.
+      *
+      * @internal
+-     *
+-     * @param array<string, list<string>> $framing
+-     * @param array<string, list<string>> $trailers
+      */
+-    public static function received(
+-        string $method,
+-        string $target,
+-        string $version,
+-        string $head,
+-        int $fieldsAt,
+-        array $framing,
+-        Body $body,
+-        array $trailers,
+-    ): self {
+-        $request = new self($method, $target, $version, $framing, $body, $trailers, new Cancellation());
+-        $request->partial = true;
+-        $request->head = $head;
+-        $request->fieldsAt = $fieldsAt;
+-        return $request;
++    public function complete(): void
++    {
++        $this->completed = true;
++        $this->token?->cancel();
+     }
+ 
+     public function header(string $name): ?string
+     {
+         $name = strtolower($name);
+-        if (!$this->partial || isset(Parser::FRAMING_NAMES[$name])) {
++        if ($this->head === '') {
+             $values = $this->fields[$name] ?? null;
+-        } else {
+-            // One field does not need the complete map.
+-            $values = Parser::find($this->head, $this->fieldsAt, $name);
++            return $values === null ? null : implode(', ', $values);
+         }
++        if ($name === 'connection') {
++            return $this->connection;
++        }
++        // One field does not need the complete map.
++        $values = Parser::find($this->head, $name);
+         return $values === null ? null : implode(', ', $values);
+     }
+ 
+@@ -104,28 +145,34 @@
+ 
+     public function keepAlive(): bool
+     {
+-        $values = $this->fields['connection'] ?? null;
+-        if ($values === null) {
++        if ($this->head !== '') {
++            $connection = $this->connection;
++        } else {
++            // Caller-supplied maps may hold references; read them every time.
++            $values = $this->fields['connection'] ?? null;
++            $connection = $values === null ? null : implode(', ', $values);
++        }
++        if ($connection === null) {
+             return $this->version === '1.1';
+         }
+-        if (isset($values[0]) && !isset($values[1])) {
+-            // The two usual spellings need no token-list scan.
+-            if ($values[0] === 'keep-alive' || $values[0] === 'Keep-Alive') {
+-                return true;
+-            }
+-            if ($values[0] === 'close') {
+-                return false;
+-            }
++        // The two usual spellings need no token-list scan.
++        if ($connection === 'keep-alive' || $connection === 'Keep-Alive') {
++            return true;
+         }
+-        return !$this->hasToken('connection', 'close')
+-            && ($this->version === '1.1' || $this->hasToken('connection', 'keep-alive'));
++        if ($connection === 'close') {
++            return false;
++        }
++        $tokens = array_map(trim(...), explode(',', strtolower($connection)));
++        return !in_array('close', $tokens, true)
++            && ($this->version === '1.1' || in_array('keep-alive', $tokens, true));
+     }
+ 
+     public function path(): string
+     {
+-        if (str_starts_with($this->target, '/')) {
+-            $query = strpos($this->target, '?');
+-            return $query === false ? $this->target : substr($this->target, 0, $query);
++        $target = $this->target;
++        if ($target[0] === '/') {
++            $query = strpos($target, '?');
++            return $query === false ? $target : substr($target, 0, $query);
+         }
+         return parse_url($this->target, PHP_URL_PATH) ?: '/';
+     }
+diff --color -ruN a/src/Http/Response.php b/src/Http/Response.php
+--- a/src/Http/Response.php	2026-10-04 01:32:57
++++ b/src/Http/Response.php	2026-10-04 01:32:57
+@@ -6,6 +6,16 @@
+ 
+ final readonly class Response
+ {
++    private const TEXT_HEADERS = ['Content-Type' => 'text/plain; charset=utf-8'];
++    /**
++     * Encoded fields of text(); a string returned by a handler uses them too.
++     *
++     * @internal
++     */
++    public const TEXT_BLOCK = "content-type: text/plain; charset=utf-8\r\n";
++    private const JSON_HEADERS = ['Content-Type' => 'application/json'];
++    private const JSON_BLOCK = "content-type: application/json\r\n";
++
+     private bool $headersNormalized;
+     private array $normalizedHeaders;
+     private string $headerBlock;
+@@ -81,6 +91,13 @@
+         if (isset($this->headerBlock)) {
+             return $this->headerBlock;
+         }
++        // The factories' own fields are known to be valid and already encoded.
++        if ($this->headers === self::TEXT_HEADERS) {
++            return self::TEXT_BLOCK;
++        }
++        if ($this->headers === self::JSON_HEADERS) {
++            return self::JSON_BLOCK;
++        }
+         $headers = $this->normalizedHeaders();
+         if (isset($headers['content-length']) || isset($headers['transfer-encoding'])
+             || isset($headers['connection']) || isset($headers['date']) || isset($headers['upgrade'])) {
+@@ -100,12 +117,13 @@
+ 
+     public static function text(string $body, int $status = 200, array $headers = []): self
+     {
+-        return new self($status, ['Content-Type' => 'text/plain; charset=utf-8', ...$headers], $body);
++        return new self($status, $headers === [] ? self::TEXT_HEADERS : [...self::TEXT_HEADERS, ...$headers], $body);
+     }
+ 
+     public static function json(mixed $value, int $status = 200, array $headers = []): self
+     {
+-        return new self($status, ['Content-Type' => 'application/json', ...$headers], json_encode($value, JSON_THROW_ON_ERROR));
++        return new self($status, $headers === [] ? self::JSON_HEADERS : [...self::JSON_HEADERS, ...$headers],
++            json_encode($value, JSON_THROW_ON_ERROR));
+     }
+ 
+     public static function reason(int $status): string
+diff --color -ruN a/src/Http/ResponseEncoder.php b/src/Http/ResponseEncoder.php
+--- a/src/Http/ResponseEncoder.php	2026-10-04 01:32:57
++++ b/src/Http/ResponseEncoder.php	2026-10-04 01:32:57
+@@ -11,6 +11,9 @@
+ {
+     private static ?int $dateSecond = null;
+     private static string $date = '';
++    private static string $tailDate = '';
++    private static string $keepAliveTail = '';
++    private static string $closeTail = '';
+     public readonly bool $close;
+     private string $head;
+     private bool $chunked = false;
+@@ -86,31 +89,49 @@
+     /**
+      * Encodes a small fixed-length response in one pass, producing the same
+      * bytes as the general encoder, or returns null when that encoder is
+-     * required. $close carries a forced close in and the final decision out.
++     * required. A string is the body of Response::text(). $close carries a
++     * forced close in and the final decision out.
+      *
+      * @internal
++     *
++     * @param Response|string $response Checked by the caller; a declared union costs a slow check per call.
+      */
+-    public static function small(Response $response, Request $request, bool &$close): ?string
++    public static function small(mixed $response, Request $request, bool &$close): ?string
+     {
+-        $body = $response->body;
+-        $status = $response->status;
+-        if (!is_string($body) || $status < 200 || $status === 204 || $status === 205 || $status === 304
+-            || $request->method === 'HEAD') {
++        if ($request->method === 'HEAD') {
+             return null;
+         }
+-        $block = $response->headerBlock();
++        if (is_string($response)) {
++            $body = $response;
++            $status = 200;
++            $block = Response::TEXT_BLOCK;
++        } else {
++            $body = $response->body;
++            $status = $response->status;
++            if (!is_string($body) || $status < 200 || $status === 204 || $status === 205 || $status === 304) {
++                return null;
++            }
++            $block = $response->headerBlock();
++        }
+         $length = strlen($body);
+         // Leaves room for the status line and generated fields within 8 KiB.
+         if ($block === null || strlen($block) + $length > 7936) {
+             return null;
+         }
+         $close = $close || !$request->keepAlive();
++        $date = self::$dateSecond === time() ? self::$date : self::date();
++        // Everything after Content-Length changes once per second at most.
++        if ($date !== self::$tailDate) {
++            self::$tailDate = $date;
++            self::$keepAliveTail = "\r\nconnection: keep-alive\r\ndate: {$date}\r\n\r\n";
++            self::$closeTail = "\r\nconnection: close\r\ndate: {$date}\r\n\r\n";
++        }
++        $tail = $close ? self::$closeTail : self::$keepAliveTail;
+         $version = $request->version;
+-        $reason = Response::reason($status);
+-        $connection = $close ? 'close' : 'keep-alive';
+-        $date = self::date();
+-        return 'HTTP/' . $version . ' ' . $status . ' ' . $reason . "\r\n" . $block
+-            . 'content-length: ' . $length . "\r\nconnection: " . $connection . "\r\ndate: " . $date . "\r\n\r\n" . $body;
++        $line = $status === 200 && $version === '1.1'
++            ? "HTTP/1.1 200 OK\r\n"
++            : "HTTP/{$version} {$status} " . Response::reason($status) . "\r\n";
++        return "{$line}{$block}content-length: {$length}{$tail}{$body}";
+     }
+ 
+     /**
+diff --color -ruN a/src/Network/Connection.php b/src/Network/Connection.php
+--- a/src/Network/Connection.php	2026-10-04 01:32:57
++++ b/src/Network/Connection.php	2026-10-04 01:32:57
+@@ -146,17 +146,19 @@
+     }
+ 
+     /**
+-     * Allocation-free beginActivity() for protocol owners. Every call must be
+-     * paired with exactly one leaveActivity(), normally in a finally block.
++     * Allocation-free beginActivity() for protocol owners. Returns false, and
++     * opens no scope, on a closed connection. Every true result must be paired
++     * with exactly one leaveActivity(), normally in a finally block.
+      *
+      * @internal
+      */
+-    public function enterActivity(): void
++    public function enterActivity(): bool
+     {
+         if ($this->closed) {
+-            throw new LogicException('Cannot begin service work on a closed connection.');
++            return false;
+         }
+         ++$this->activities;
++        return true;
+     }
+ 
+     /**
+@@ -164,8 +166,9 @@
+      */
+     public function leaveActivity(): void
+     {
+-        --$this->activities;
+-        $this->settleIfReady();
++        if (--$this->activities === 0 && $this->closeNotified) {
++            $this->settleIfReady();
++        }
+     }
+ 
+     /**
+@@ -407,8 +410,8 @@
+         $this->reading = true;
+         try {
+             $remaining = self::IO_BUDGET;
++            $readSize = self::READ_CHUNK_SIZE;
+             do {
+-                $readSize = min(self::READ_CHUNK_SIZE, $remaining);
+                 $bytes = @fread($this->stream, $readSize);
+                 if ($bytes === false) {
+                     $this->close();
+@@ -421,16 +424,27 @@
+                     return;
+                 }
+                 $received = strlen($bytes);
+-                $remaining -= $received;
+-                $this->invoke($this->dataHandler, $bytes);
++                try {
++                    ($this->dataHandler)($this, $bytes);
++                } catch (Throwable $error) {
++                    $this->report($error);
++                }
+                 if ($received < $readSize) {
+                     // Readiness will report further bytes or EOF on a later turn.
+                     return;
+                 }
++                $remaining -= $received;
++                if ($remaining < $readSize) {
++                    $readSize = $remaining;
++                }
+             } while (!$this->closed && !$this->readPaused && $remaining > 0);
+         } finally {
+             $this->reading = false;
+-            $this->updateReadWatcher();
++            // An untouched, still-watched connection has nothing to reconcile.
++            if (!$this->readWatching || $this->readPaused || $this->closed || $this->readEnded
++                || $this->dataHandler === null) {
++                $this->updateReadWatcher();
++            }
+         }
+     }
+ 
+@@ -537,26 +551,31 @@
+         }
+     }
+ 
+-    private function invoke(Closure $handler, ?string $bytes = null): void
++    private function invoke(Closure $handler): void
+     {
+         try {
+-            if ($bytes === null) {
+-                $handler($this);
+-            } else {
+-                $handler($this, $bytes);
+-            }
++            $handler($this);
+         } catch (Throwable $error) {
+-            $reporter = $this->errorHandler;
+-            $this->close();
+-            try {
+-                if ($reporter !== null) {
+-                    $reporter($error, $this);
+-                    return;
+-                }
+-            } catch (Throwable $reportingError) {
+-                error_log('[Crab] Error handler failed: '.$reportingError->getMessage());
++            $this->report($error);
++        }
++    }
++
++    /**
++     * Closes the connection after a failed application callback and reports
++     * the failure.
++     */
++    private function report(Throwable $error): void
++    {
++        $reporter = $this->errorHandler;
++        $this->close();
++        try {
++            if ($reporter !== null) {
++                $reporter($error, $this);
++                return;
+             }
+-            error_log('[Crab] Connection callback failed: '.$error->getMessage());
++        } catch (Throwable $reportingError) {
++            error_log('[Crab] Error handler failed: '.$reportingError->getMessage());
+         }
++        error_log('[Crab] Connection callback failed: '.$error->getMessage());
+     }
+ }
