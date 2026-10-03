@@ -117,7 +117,7 @@ def main():
                               "php_ini": capture(php + ["--ini"]),
                               "opcache_enable_cli": True, "opcache_jit": "off"},
               "source_sha256": {str(path.relative_to(ROOT)): hashlib.sha256(path.read_bytes()).hexdigest()
-                                for path in sorted(ROOT.joinpath("src").rglob("*.php"))},
+                                for path in sorted(ROOT.joinpath("src/Engine").rglob("*.php"))},
               "revolt": json.loads(ROOT.joinpath("composer.lock").read_text())["packages"][0]["version"],
               "configuration": vars(args) | {"output": str(args.output) if args.output else None},
               "cases": []}

@@ -1,17 +1,22 @@
 {
-    "name": "crab/engine",
-    "description": "A lightweight PHP 8.4 asynchronous networking engine",
+    "name": "crabphp/framework",
+    "description": "A minimal PHP 8.4 web framework on the Crab networking engine",
     "type": "library",
     "license": "MIT",
     "require": {
         "php": "^8.4",
         "revolt/event-loop": "^1.0"
     },
+    "replace": {
+        "crabphp/engine": "self.version"
+    },
     "suggest": {
         "ext-pcntl": "Supervised parallel workers and Unix signals",
         "ext-posix": "Supervised worker termination and lifecycle control"
     },
-    "bin": ["bin/crab"],
+    "bin": [
+        "bin/crab"
+    ],
     "scripts": {
         "test": "@php vendor/bin/phpunit",
         "test:linux": "tests/linux/run.sh",
@@ -19,12 +24,13 @@
     },
     "autoload": {
         "psr-4": {
-            "Crab\\Engine\\": "src/"
+            "Crab\\": "src/"
         }
     },
     "autoload-dev": {
         "psr-4": {
-            "Crab\\Engine\\Tests\\": "tests/"
+            "Crab\\Engine\\Tests\\": "tests/Engine/",
+            "Crab\\Tests\\": "tests/"
         }
     },
     "authors": [

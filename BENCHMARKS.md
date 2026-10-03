@@ -1,5 +1,7 @@
 # Engine benchmarks
 
+These pages were written while the engine was its own repository. Its source is now `src/Engine/` and its tests `tests/Engine/`; the harnesses use those paths. Older pages and the patches in `benchmarks/changes/` still name `src/...` and `engine/`: read `src/` as `src/Engine/`, and apply a patch to a copy of `src/Engine` with `-p2`.
+
 See [HTTP request path](benchmarks/HTTP-REQUEST-PATH.md) for the latest measurement of requests with browser-sized fields and a breakdown of where a request's time goes, [HTTP lazy request fields](benchmarks/HTTP-LAZY-FIELDS.md) for the step before it, [HTTP fast path](benchmarks/HTTP-FAST-PATH.md) for the preceding matched before/after HTTP measurements, request-shape workloads and the WebSocket regression check, [HTTP codec optimization](benchmarks/HTTP-CODEC-OPTIMIZATION.md) for the preceding codec measurements, [PHP HTTP headroom](benchmarks/HTTP-HEADROOM.md) for the earlier layer diagnostics, and [Crab versus Elysia](benchmarks/ELYSIA.md) for the earlier combined comparison. The historical snapshots below predate later docblock, request-body storage and codec changes; their hashes identify the source measured at the time.
 
 These local measurements show useful HTTP and WebSocket throughput with PHP streams and a select loop. They measure small, persistent-connection workloads on one development machine; they do not establish production capacity or performance for database-backed applications.

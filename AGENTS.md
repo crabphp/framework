@@ -1,3 +1,9 @@
+# Framework conventions
+
+- This repository is `crabphp/framework`. The networking engine lives in `src/Engine/` with its own `composer.json` and is also published alone as `crabphp/engine`; framework components are sibling namespaces under `src/`.
+- Nothing under `src/Engine/` may reference a `Crab\` namespace other than `Crab\Engine\`; `tests/EngineBoundaryTest.php` enforces this. The framework may depend on the engine, never the reverse.
+- Engine tests live in `tests/Engine/`, engine benchmarks in `benchmarks/`.
+
 # Engine conventions
 
 - Use multiline docblocks for class, function, and member declarations; allow single-line docblocks only inside method or function bodies.

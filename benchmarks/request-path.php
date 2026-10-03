@@ -25,7 +25,7 @@ use Revolt\EventLoop;
 use Revolt\EventLoop\Driver\StreamSelectDriver;
 
 $options = getopt('', ['source:', 'iterations:', 'http-response:', 'trials:']);
-$source = realpath($options['source'] ?? dirname(__DIR__) . '/src');
+$source = realpath($options['source'] ?? dirname(__DIR__) . '/src/Engine');
 $iterations = filter_var($options['iterations'] ?? 300000, FILTER_VALIDATE_INT);
 $trials = filter_var($options['trials'] ?? 5, FILTER_VALIDATE_INT);
 $mode = $options['http-response'] ?? 'fresh';

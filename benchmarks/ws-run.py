@@ -62,7 +62,7 @@ document = {
     'method': 'closed-loop, one in-flight masked binary echo per connection; validated payload; fresh connections per trial',
     'results': [],
 }
-source_files = sorted((directory.parent / 'src').rglob('*.php')) + [directory / 'server.php', directory / 'websocket.mjs']
+source_files = sorted((directory.parent / 'src' / 'Engine').rglob('*.php')) + [directory / 'server.php', directory / 'websocket.mjs']
 document['source_sha256'] = {str(path.relative_to(directory.parent)): hashlib.sha256(path.read_bytes()).hexdigest()
                              for path in source_files}
 packages = json.loads((directory.parent / 'composer.lock').read_text())['packages']

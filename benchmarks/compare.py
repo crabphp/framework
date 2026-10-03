@@ -89,7 +89,7 @@ def capture(command):
 
 
 def source_hashes():
-    paths = set(ROOT.joinpath("src").rglob("*.php"))
+    paths = set(ROOT.joinpath("src/Engine").rglob("*.php"))
     paths.update(DIRECTORY / name for name in ("compare.py", "http.py", "server.php", "websocket.mjs"))
     paths.update(ROOT / name for name in ("composer.json", "composer.lock"))
     paths.update(DIRECTORY / "elysia" / name for name in
@@ -337,7 +337,7 @@ def run_trial(record, args, lua):
                                 if line.startswith("CRAB_SERVER_METADATA "))
                     metadata = json.loads(line.removeprefix("CRAB_SERVER_METADATA "))
                     record["engine_source"] = metadata
-                    expected = Path(args.baseline_source) if target in BEFORE_TARGETS else ROOT / "src"
+                    expected = Path(args.baseline_source) if target in BEFORE_TARGETS else ROOT / "src/Engine"
                     if Path(metadata["source_root"]).resolve() != expected.resolve():
                         raise ValueError("Engine source root differs from the selected target.")
                     for name, filename in metadata["loaded_classes"].items():

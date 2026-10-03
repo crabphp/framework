@@ -259,7 +259,7 @@ def main():
                  '"opcache.jit"=>ini_get("opcache.jit"),"opcache.jit_buffer_size"=>ini_get("opcache.jit_buffer_size"),'
                  '"jit_status"=>function_exists("opcache_get_status")?(opcache_get_status(false)["jit"]??null):null]);')
         configuration = json.loads(subprocess.check_output(php + ["-r", probe], text=True, timeout=10))
-        sources = list(ROOT.joinpath("src").rglob("*.php")) + [DIRECTORY / "php.php", DIRECTORY / "bun.ts",
+        sources = list(ROOT.joinpath("src/Engine").rglob("*.php")) + [DIRECTORY / "php.php", DIRECTORY / "bun.ts",
                   DIRECTORY / "verify.py", DIRECTORY.parent / "elysia/server.ts", ROOT / "composer.lock"]
         hashes = {str(path.relative_to(ROOT)): hashlib.sha256(path.read_bytes()).hexdigest()
                   for path in sorted(sources) if path.is_file()}

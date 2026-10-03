@@ -29,7 +29,7 @@ $driver = $options['driver'] ?? 'select';
 // Raised only by workloads that hold idle connections open beside the load.
 $maxConnections = filter_var($options['max-connections'] ?? 512, FILTER_VALIDATE_INT);
 $headerTimeout = filter_var($options['header-timeout'] ?? 10, FILTER_VALIDATE_FLOAT);
-$source = realpath($options['source'] ?? dirname(__DIR__) . '/src');
+$source = realpath($options['source'] ?? dirname(__DIR__) . '/src/Engine');
 if (!in_array($protocol, ['http', 'ws', 'websocket'], true) || $port < 1 || $port > 65535 || $workers < 1
     || !in_array($responseMode, ['reuse', 'fresh', 'string'], true) || !isset($drivers[$driver])
     || $maxConnections < 1 || $headerTimeout === false || $headerTimeout <= 0

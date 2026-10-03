@@ -17,7 +17,7 @@ if (!class_exists(PhpParser\ParserFactory::class)) {
 $parser = (new PhpParser\ParserFactory())->createForNewestSupportedVersion();
 $finder = new PhpParser\NodeFinder();
 $manifest = ['source_root' => $root, 'created_utc' => gmdate('c'), 'source_sha256' => [], 'instrumented_methods' => []];
-foreach ([$root . '/src' => __DIR__ . '/src', $root . '/vendor/revolt/event-loop/src' => __DIR__ . '/revolt'] as $source => $target) {
+foreach ([$root . '/src/Engine' => __DIR__ . '/src', $root . '/vendor/revolt/event-loop/src' => __DIR__ . '/revolt'] as $source => $target) {
     $files = new RecursiveIteratorIterator(new RecursiveDirectoryIterator($source, FilesystemIterator::SKIP_DOTS));
     foreach ($files as $file) {
         if (!$file->isFile()) {

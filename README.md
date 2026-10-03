@@ -1,163 +1,23 @@
-# Crab Engine
+# Crab Framework
 
-A PHP 8.4 networking engine with TCP, UDP, HTTP/1.1, WebSocket, coroutines, timers, and supervised worker processes.
+A minimal PHP 8.4 web framework built on the Crab networking engine. It is at an early stage: the engine is implemented and measured; the framework components around it are not written yet.
 
-The default backend is pure PHP streams plus Revolt's `StreamSelectDriver`. The only Composer runtime dependency is `revolt/event-loop`. Swoole and OpenSwoole are not required. Native event backends can be supplied through the driver factory.
+## Layout
 
-## Run it
+| Path | Contents |
+| --- | --- |
+| `src/Engine/` | The networking engine: TCP, UDP, HTTP/1.1, WebSocket, coroutines, timers and supervised workers. It has its own `composer.json` and is also published as `crabphp/engine`. See its [README](src/Engine/README.md) and [architecture](src/Engine/ARCHITECTURE.md). |
+| `src/` | Framework components, each a namespace beside `Engine`. |
+| `tests/Engine/` | Engine tests. `tests/EngineBoundaryTest.php` keeps the engine free of framework dependencies. |
+| `benchmarks/` | Engine benchmarks and their recorded results; start at [BENCHMARKS.md](BENCHMARKS.md). |
+| `examples/` | Runnable engine examples. |
+
+## Develop
 
 ~~~sh
 composer install
+composer test
 php bin/crab examples/servers.php --single
 ~~~
 
-The example starts HTTP on `127.0.0.1:8080`, WebSocket on `:8081`, TCP echo on `:8082` and UDP echo on `:8083`.
-
-~~~sh
-curl http://127.0.0.1:8080/
-websocat ws://127.0.0.1:8081/
-~~~
-
-For parallel workers on Unix, enable PHP's `pcntl` and `posix` extensions and omit `--single`:
-
-~~~sh
-CRAB_WORKERS=4 php bin/crab examples/servers.php
-~~~
-
-Send SIGINT or SIGTERM to the parent for bounded graceful shutdown. SIGUSR1 starts replacement workers one at a time and waits for readiness before draining their predecessors. Classes already loaded into the parent are inherited, so deploying changed PHP classes requires restarting the parent.
-
-## Minimal HTTP server
-
-Save a configuration file that returns a `Runtime`:
-
-~~~php
-<?php
-
-use Crab\Engine\Http\Request;
-use Crab\Engine\Http\Response;
-use Crab\Engine\Runtime;
-use Crab\Engine\Server\HttpServer;
-
-$runtime = new Runtime();
-$runtime->group('web', workers: 2, maxConnections: 512)
-    ->listen('tcp://127.0.0.1:8080', new HttpServer(
-        static fn(Request $request) => Response::text("Hello\n"),
-    ));
-
-return $runtime;
-~~~
-
-Run `php bin/crab server.php`. A group can serve several listeners; two workers and three listeners still means two serving processes. Separate groups isolate workloads in different processes.
-
-HTTP provides strict request framing, keep-alive, ordered pipelining, chunked bodies, streaming responses, request cancellation, and configurable deadlines. Request bodies are incrementally parsed into a bounded temporary spool **before** the handler runs; live upload consumption is not exposed yet. See [HTTP behavior](src/Http/README.md).
-
-## WebSocket and datagrams
-
-~~~php
-use Crab\Engine\Network\UdpEndpoint;
-use Crab\Engine\Network\WriteResult;
-use Crab\Engine\Server\WebSocketServer;
-use Crab\Engine\WebSocket\MessageType;
-use Crab\Engine\WebSocket\WebSocketSession;
-
-$group = $runtime->group('messages');
-$group->listen('tcp://127.0.0.1:8081', new WebSocketServer(
-    static function (WebSocketSession $session, string $data, MessageType $type): void {
-        $result = $type === MessageType::Text
-            ? $session->sendText($data)
-            : $session->sendBinary($data);
-        if ($result === WriteResult::Backpressured) {
-            $session->close(1013, 'Slow receiver');
-        }
-    },
-));
-$group->udp('udp://127.0.0.1:8083',
-    static fn(UdpEndpoint $socket, string $packet, string $peer) => $socket->send($packet, $peer),
-);
-~~~
-
-WebSocket supports masking validation, fragmented text/binary messages, ping/pong, UTF-8 checks, close handshakes, subprotocol selection and an application admission callback. Configure bounds with `WebSocket\Config`. `sendBinaryChunk()` streams a fragmented binary message; `pauseRead()` also pauses dispatch of already-buffered messages. Protocol extensions such as per-message compression are not negotiated.
-
-UDP preserves packet boundaries and empty packets. `send()` reports local acceptance, never delivery. Queue overflow rejects the packet; counters expose application drops and send errors. Multiple workers sharing one UDP endpoint do not guarantee peer affinity.
-
-## Coroutines and timers
-
-~~~php
-use Crab\Engine\Async\Async;
-use Crab\Engine\Async\Cancellation;
-use Crab\Engine\Process\Worker;
-
-$runtime->group('jobs', maxTasks: 128)->onStart(
-    static function (Worker $worker): void {
-        $worker->spawn(static function (Cancellation $cancel) use ($worker): void {
-            while (true) {
-                Async::sleep($worker->loop, 1.0, $cancel);
-                // Perform nonblocking work here.
-            }
-        });
-    },
-);
-~~~
-
-`Worker::spawn()` tracks tasks until they exit and requests cancellation during shutdown. Tasks return results through `await()`; cancellation of an await only cancels that wait. Pass the supplied token into async operations. HTTP handlers receive `$request->cancellation` for the same purpose. `php bin/crab examples/coroutines.php --single` runs a complete task example.
-
-Use the same driver directly for timers: `$worker->loop->delay($seconds, $callback)`, `repeat()`, and `cancel($id)`. `Async\ConnectionStream` gives one coroutine reader and one writer exclusive ownership of a TCP connection, with demand-driven reads and bounded writes. It must not share ownership with a protocol parser or raw data handler.
-
-Fibers provide concurrency within a worker. Worker processes provide CPU parallelism. Blocking database clients, ordinary filesystem calls, DNS lookups, or CPU loops still block their worker; arbitrary PHP functions do not become asynchronous.
-
-## Transport contracts
-
-`Network\Connection` transports bytes and does not know HTTP or WebSocket. `tryWrite()` returns:
-
-| Result | Meaning |
-| --- | --- |
-| `WriteResult::Accepted` | All supplied bytes were accepted locally, possibly queued |
-| `WriteResult::Backpressured` | No bytes accepted; pause production and retry after `onDrain()` |
-| `WriteResult::Closed` | No more writes are accepted |
-
-An individually oversized write throws `LengthException`. `onDrain()` signals a chance to retry; it does not reserve capacity. `shutdownWrite()` flushes then sends FIN while retaining the read direction; `end()` flushes and closes; `close()` releases resources immediately. Low-level application connection, UDP, cancellation and WebSocket callbacks must not suspend. Use tracked tasks for asynchronous application work.
-
-`onClose()` runs after socket cleanup. `onSettled()` additionally waits for service activity to finish, including asynchronous `finally` cleanup. HTTP owns these activity scopes automatically. Custom protocol owners can use `beginActivity()` and call its returned release closure in `finally`; a closed connection remains in worker admission accounting until all activities release it.
-
-`Worker::connect()` establishes outbound TCP connections with cancellation, timeouts, admission accounting and exactly-once completion. It accepts numeric IPv4/IPv6 endpoints; asynchronous DNS resolution is not included.
-
-## Bounds and scope
-
-Defaults include 512 owned TCP connections/pending connects (including closed connections still running service cleanup) and 1,024 tracked tasks per worker; 1 MiB and 4,096 entries per TCP output queue; and bounded protocol input/output buffers. Configure lower limits for the application's memory budget. These bounds do not cap memory allocated independently by application code.
-
-The select backend has platform descriptor limits and scanning costs. Linux/macOS CLI are the intended targets; this change was exercised on macOS. Single-process operation does not require process extensions, but cannot forcibly interrupt blocked PHP code. Optional drivers use the existing Revolt contract through `new Runtime(driverFactory: ...)`.
-
-TLS, async DNS, HTTP/2, HTTP/3, generic framed-protocol helpers, a cross-process job pool, and the later web framework are outside this implementation. HTTP and WebSocket are protocol servers without routing, middleware containers, ORM, templates or agent-specific features.
-
-This replaces the experimental `Crab::run()/Server::listen()` API. The sibling application scaffold is a separate future layer.
-
-## Manual checks
-
-Two checks are run by hand, never as part of `composer test`.
-
-**Linux.** Builds a Linux image from the working tree with Docker and runs the suite inside it, once as shipped and once with tracing JIT in random order:
-
-~~~sh
-composer test:linux
-~~~
-
-**Soak.** Cycles mixed traffic against one HTTP and one WebSocket server for as long as asked: persistent requests, one connection per request, request bodies, streamed megabyte responses, WebSocket echoes and misbehaving clients. After each cycle it samples resting memory and open descriptors, and it fails if a server exits, answers with a wrong status, keeps descriptors open or keeps growing. It needs `wrk` and Node.js. Minutes prove little; run it for hours:
-
-~~~sh
-composer soak -- --label=overnight --minutes=480
-~~~
-
-The report is written to `benchmarks/results/soak-<label>.json`.
-
-## Verify and measure
-
-~~~sh
-composer test
-composer test -- --filter HttpTest
-python3 benchmarks/http.py --label local-http
-python3 benchmarks/ws-run.py --label local-ws
-~~~
-
-PHPUnit 13 is a development dependency, omitted by `composer install --no-dev`. Tests exercise real sockets, malformed frames, partial writes, cancellation, all four servers together, worker failure, rolling restart, and shutdown. Individual cases are discoverable and filterable through PHPUnit. Process-specific tests skip when their required extensions are unavailable; the single-process tests still run. Benchmarks preserve raw results and environment metadata and serialize load generation on this host.
-
-See [architecture](ARCHITECTURE.md) and [measurements and methodology](BENCHMARKS.md). Performance claims refer to measured workloads; this is a tested foundation, not an assertion of universal maximum throughput or completed production qualification.
+`composer test:linux` and `composer soak` are manual checks, described in the engine README.

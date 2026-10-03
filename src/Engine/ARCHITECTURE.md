@@ -97,7 +97,7 @@ Each HTTP session tracks its current monotonic expiry and reuses an earlier time
 
 Upgrade transfers the connection, unread bytes and read-interest ownership once, after the 101 response enters ordered output. HTTP retires its parser/timers before handing over. [HTTP/1.1 framing](https://www.rfc-editor.org/rfc/rfc9112.html), [HTTP semantics](https://www.rfc-editor.org/rfc/rfc9110.html)
 
-See [the HTTP contract](src/Http/README.md) for precise limits and supported semantics.
+See [the HTTP contract](Http/README.md) for precise limits and supported semantics.
 
 ### WebSocket
 
@@ -125,7 +125,7 @@ The fast path is readiness → bounded read → one protocol owner → handler �
 
 Keep optimizations only after real socket checks and matched measurements. HTTP/WebSocket harnesses preserve raw trials, latency, errors, environment and source hashes, and serialize host load. Exact change patches make initial before/after experiments inspectable.
 
-[BENCHMARKS.md](BENCHMARKS.md) records results and limits. Short closed-loop trials with client/server on the same machine do not establish production saturation, internet tail latency, or superiority over other engines.
+[BENCHMARKS.md](../../BENCHMARKS.md) records results and limits. Short closed-loop trials with client/server on the same machine do not establish production saturation, internet tail latency, or superiority over other engines.
 
 `Worker::stats()` exposes active/pending connections, tasks, queued transport bytes, PHP memory and drain state. UDP exposes packet/error/drop counters. Queries stay outside the packet path; no metrics exporter is required.
 
