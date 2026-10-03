@@ -23,6 +23,6 @@ Response framing belongs to the server. Do not set Transfer-Encoding. Strings re
 
 Peer EOF does not discard complete pipelined requests. Graceful drain stops accepting further requests, finishes the active response, then closes. A handler failure produces 500 before response headers begin; failure after output begins closes the connection. HTTP/2, HTTP/3, response compression, and routing are outside this module.
 
-Handlers may still suspend: a request that arrives complete starts inside its connection's read turn, and that connection reads no further input until the handler returns. Each connection keeps its last request line and field block (at most 4 KiB each) to skip re-parsing identical bytes; this changes no parsing result.
+Handlers may still suspend: a request that arrives complete starts inside its connection's read turn, and that connection reads no further input until the handler returns.
 
 Run `composer test -- --filter 'HttpTest|HttpFastPathTest'` from `engine/` for parser, framing, timeout, body-spool, socket lifecycle, pressure, pipeline, upgrade and fast-path equivalence checks.

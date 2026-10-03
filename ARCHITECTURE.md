@@ -83,7 +83,7 @@ Destinations are numeric IPv4/IPv6 addresses and valid ports. `send()` means loc
 
 ### HTTP/1.1
 
-Incremental parsing validates request lines, fields and framing: fixed lengths, chunked bodies, bounded extensions and trailers. Duplicate Content-Length, TE/CL ambiguity, invalid Host, obsolete folding and prohibited trailer fields are rejected. Persistent and pipelined requests execute sequentially per connection. The first request of a read turn runs inside that turn; pipelined successors each take a later scheduler turn. Each connection retains its last request line and field block, up to 4 KiB each, and reuses their parsed values when the next request repeats those bytes.
+Incremental parsing validates request lines, fields and framing: fixed lengths, chunked bodies, bounded extensions and trailers. Duplicate Content-Length, TE/CL ambiguity, invalid Host, obsolete folding and prohibited trailer fields are rejected. Persistent and pipelined requests execute sequentially per connection. The first request of a read turn runs inside that turn; pipelined successors each take a later scheduler turn. One anchored scan validates and splits all fields of a request.
 
 Bodies allocate a bounded temporary spool on the first nonempty append, spilling beyond 64 KiB; empty bodies allocate no stream. Handlers start after complete framing. This bounds upload memory, but ordinary temporary-file I/O may block the worker. `Body::chunks()` streams a completed body afterward. Live handler reads during upload are not yet exposed.
 

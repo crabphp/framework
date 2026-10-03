@@ -1,6 +1,6 @@
 diff --color -ruN a/src/Async/Cancellation.php b/src/Async/Cancellation.php
---- a/src/Async/Cancellation.php	2026-10-03 23:25:54
-+++ b/src/Async/Cancellation.php	2026-10-03 23:25:54
+--- a/src/Async/Cancellation.php	2026-10-03 23:51:15
++++ b/src/Async/Cancellation.php	2026-10-03 23:51:15
 @@ -32,6 +32,9 @@
                  ? $reason
                  : new CancelledException('Operation cancelled.', previous: $reason);
@@ -12,8 +12,8 @@ diff --color -ruN a/src/Async/Cancellation.php b/src/Async/Cancellation.php
          $this->subscribers = [];
          foreach ($subscribers as $subscriber) {
 diff --color -ruN a/src/Http/Body.php b/src/Http/Body.php
---- a/src/Http/Body.php	2026-10-03 23:25:54
-+++ b/src/Http/Body.php	2026-10-03 23:25:54
+--- a/src/Http/Body.php	2026-10-03 23:51:15
++++ b/src/Http/Body.php	2026-10-03 23:51:15
 @@ -92,11 +92,4 @@
      }
  
@@ -27,8 +27,8 @@ diff --color -ruN a/src/Http/Body.php b/src/Http/Body.php
 -    }
  }
 diff --color -ruN a/src/Http/HttpSession.php b/src/Http/HttpSession.php
---- a/src/Http/HttpSession.php	2026-10-03 23:25:54
-+++ b/src/Http/HttpSession.php	2026-10-03 23:25:54
+--- a/src/Http/HttpSession.php	2026-10-03 23:51:15
++++ b/src/Http/HttpSession.php	2026-10-03 23:51:15
 @@ -12,6 +12,11 @@
   */
  final class HttpSession
@@ -313,9 +313,9 @@ diff --color -ruN a/src/Http/HttpSession.php b/src/Http/HttpSession.php
  
      private function releaseRequest(): void
 diff --color -ruN a/src/Http/Parser.php b/src/Http/Parser.php
---- a/src/Http/Parser.php	2026-10-03 23:25:54
-+++ b/src/Http/Parser.php	2026-10-03 23:25:54
-@@ -4,13 +4,36 @@
+--- a/src/Http/Parser.php	2026-10-03 23:51:15
++++ b/src/Http/Parser.php	2026-10-03 23:51:15
+@@ -4,13 +4,26 @@
  
  namespace Crab\Engine\Http;
  
@@ -329,10 +329,6 @@ diff --color -ruN a/src/Http/Parser.php b/src/Http/Parser.php
      private const TOKEN = "[!#$%&'*+.^_`|~0-9A-Za-z-]+";
 +    private const REQUEST_LINE = '/^(' . self::TOKEN . ') ([^\x00-\x20\x7F]+) HTTP\/([0-9]+\.[0-9]+)\r\n/';
 +    private const FIELDS = '/\G(?:(' . self::TOKEN . '):[ \t]*+([\x09\x20-\x7E\x80-\xFF]*)\r\n|\r\n\z)/';
-+    /**
-+     * Largest request line or field block retained per connection for reuse.
-+     */
-+    private const MEMO_BYTES = 4096;
 +    private const HOST = '/^(?:\[[0-9a-fA-F:.]+\]|[A-Za-z0-9._~%!$&\x27()*+;=-]+)(?::[0-9]{1,5})?$/D';
 +    /**
 +     * Validated field lines, bounded and reset when full. A line always
@@ -343,16 +339,10 @@ diff --color -ruN a/src/Http/Parser.php b/src/Http/Parser.php
 +    private static array $fields = [];
      private string $buffer = '';
 +    private ?string $validHost = null;
-+    private string $memoLine = '';
-+    private string $memoMethod = '';
-+    private string $memoTarget = '';
-+    private string $memoVersion = '';
-+    private string $memoFields = '';
-+    private array $memoHeaders = [];
      private string $state = 'headers';
      private int $headerScan = 0;
      private string $method = '';
-@@ -67,23 +90,31 @@
+@@ -67,23 +80,31 @@
      {
          while (true) {
              if ($this->state === 'headers') {
@@ -393,7 +383,7 @@ diff --color -ruN a/src/Http/Parser.php b/src/Http/Parser.php
              }
  
              if ($this->state === 'fixed' || $this->state === 'chunk-data') {
-@@ -151,34 +182,68 @@
+@@ -151,34 +172,44 @@
          }
      }
  
@@ -407,46 +397,20 @@ diff --color -ruN a/src/Http/Parser.php b/src/Http/Parser.php
 -        $lines = explode("\r\n", $head);
 -        $line = array_shift($lines);
 -        if (!preg_match('/^(' . self::TOKEN . ') ([^\x00-\x20\x7F]+) HTTP\/([0-9]+\.[0-9]+)$/D', $line, $match)) {
--            throw new HttpException(400, 'Malformed request line.');
-+        // Persistent clients repeat their request line and, far more often,
-+        // their field block byte for byte. Identical bytes always parse to the
-+        // same values, so each part is validated and split once per change.
-+        $fieldsAt = strpos($head, "\r\n") + 2;
-+        if ($fieldsAt === strlen($this->memoLine) && strncmp($head, $this->memoLine, $fieldsAt) === 0) {
-+            $method = $this->memoMethod;
-+            $target = $this->memoTarget;
-+            $version = $this->memoVersion;
-+        } else {
-+            if (!preg_match(self::REQUEST_LINE, $head, $line)) {
-+                throw new HttpException(400, 'Malformed request line.');
-+            }
-+            $method = $line[1];
-+            $target = $line[2];
-+            $version = $line[3];
-+            if ($version !== '1.1' && $version !== '1.0') {
-+                throw new HttpException(505, 'Unsupported HTTP version.');
-+            }
-+            if ($fieldsAt <= self::MEMO_BYTES) {
-+                $this->memoLine = $line[0];
-+                $this->memoMethod = $method;
-+                $this->memoTarget = $target;
-+                $this->memoVersion = $version;
-+            }
++        if (!preg_match(self::REQUEST_LINE, $head, $line)) {
+             throw new HttpException(400, 'Malformed request line.');
          }
 -        [, $this->method, $this->target, $this->version] = $match;
 -        if (!in_array($this->version, ['1.0', '1.1'], true)) {
--            throw new HttpException(505, 'Unsupported HTTP version.');
-+        if (substr_compare($head, $this->memoFields, $fieldsAt) === 0) {
-+            $headers = $this->memoHeaders;
-+        } else {
-+            $headers = $this->parseFields($head, $fieldsAt);
-+            if (strlen($head) - $fieldsAt <= self::MEMO_BYTES) {
-+                $this->memoFields = substr($head, $fieldsAt);
-+                $this->memoHeaders = $headers;
-+            }
++        $method = $line[1];
++        $target = $line[2];
++        $version = $line[3];
++        if ($version !== '1.1' && $version !== '1.0') {
+             throw new HttpException(505, 'Unsupported HTTP version.');
          }
 -        if (count($lines) > $this->maxHeaderCount) {
 -            throw new HttpException(431, 'Too many header fields.');
++        $headers = $this->parseFields($head, strlen($line[0]));
 +        if ($version === '1.1' && !isset($headers['host'])) {
 +            throw new HttpException(400, 'HTTP/1.1 requires exactly one Host field.');
          }
@@ -482,7 +446,7 @@ diff --color -ruN a/src/Http/Parser.php b/src/Http/Parser.php
          $this->body = new Body();
          $this->trailers = [];
          $this->trailerBytes = 0;
-@@ -217,32 +282,79 @@
+@@ -217,32 +248,80 @@
              }
              $this->continue = $this->state !== 'complete';
          }
@@ -528,6 +492,7 @@ diff --color -ruN a/src/Http/Parser.php b/src/Http/Parser.php
 +            if (isset($host[1])) {
 +                throw new HttpException(400, 'HTTP/1.1 requires exactly one Host field.');
 +            }
++            // Persistent clients repeat their Host; validate each value once.
 +            if ($host[0] !== $this->validHost) {
 +                if (!preg_match(self::HOST, $host[0])) {
 +                    throw new HttpException(400, 'Invalid Host field.');
@@ -574,7 +539,7 @@ diff --color -ruN a/src/Http/Parser.php b/src/Http/Parser.php
      }
  
      /**
-@@ -256,6 +368,26 @@
+@@ -256,6 +335,26 @@
          return [strtolower($match[1]), trim($match[2], " \t")];
      }
  
@@ -601,7 +566,7 @@ diff --color -ruN a/src/Http/Parser.php b/src/Http/Parser.php
      private function chunkLength(string $line): int
      {
          $token = self::TOKEN;
-@@ -288,7 +420,8 @@
+@@ -288,7 +387,8 @@
      private function complete(): Request
      {
          $this->body->rewind();
@@ -611,9 +576,20 @@ diff --color -ruN a/src/Http/Parser.php b/src/Http/Parser.php
          $this->body = null;
          $this->headers = $this->trailers = [];
          $this->state = 'headers';
+diff --color -ruN a/src/Http/README.md b/src/Http/README.md
+--- a/src/Http/README.md	2026-10-03 23:51:15
++++ b/src/Http/README.md	2026-10-03 23:51:15
+@@ -23,4 +23,6 @@
+ 
+ Peer EOF does not discard complete pipelined requests. Graceful drain stops accepting further requests, finishes the active response, then closes. A handler failure produces 500 before response headers begin; failure after output begins closes the connection. HTTP/2, HTTP/3, response compression, and routing are outside this module.
+ 
+-Run `composer test -- --filter HttpTest` from `engine/` for parser, framing, timeout, body-spool, socket lifecycle, pressure, pipeline and upgrade checks.
++Handlers may still suspend: a request that arrives complete starts inside its connection's read turn, and that connection reads no further input until the handler returns. Each connection keeps its last request line and field block (at most 4 KiB each) to skip re-parsing identical bytes; this changes no parsing result.
++
++Run `composer test -- --filter 'HttpTest|HttpFastPathTest'` from `engine/` for parser, framing, timeout, body-spool, socket lifecycle, pressure, pipeline, upgrade and fast-path equivalence checks.
 diff --color -ruN a/src/Http/Request.php b/src/Http/Request.php
---- a/src/Http/Request.php	2026-10-03 23:25:54
-+++ b/src/Http/Request.php	2026-10-03 23:25:54
+--- a/src/Http/Request.php	2026-10-03 23:51:15
++++ b/src/Http/Request.php	2026-10-03 23:51:15
 @@ -43,6 +43,16 @@
          if (!isset($this->headers['connection'])) {
              return $this->version === '1.1';
@@ -642,8 +618,8 @@ diff --color -ruN a/src/Http/Request.php b/src/Http/Request.php
          return parse_url($this->target, PHP_URL_PATH) ?: '/';
      }
 diff --color -ruN a/src/Http/Response.php b/src/Http/Response.php
---- a/src/Http/Response.php	2026-10-03 23:25:54
-+++ b/src/Http/Response.php	2026-10-03 23:25:54
+--- a/src/Http/Response.php	2026-10-03 23:51:15
++++ b/src/Http/Response.php	2026-10-03 23:51:15
 @@ -8,6 +8,7 @@
  {
      private bool $headersNormalized;
@@ -701,8 +677,8 @@ diff --color -ruN a/src/Http/Response.php b/src/Http/Response.php
  
      public static function text(string $body, int $status = 200, array $headers = []): self
 diff --color -ruN a/src/Http/ResponseEncoder.php b/src/Http/ResponseEncoder.php
---- a/src/Http/ResponseEncoder.php	2026-10-03 23:25:54
-+++ b/src/Http/ResponseEncoder.php	2026-10-03 23:25:54
+--- a/src/Http/ResponseEncoder.php	2026-10-03 23:51:15
++++ b/src/Http/ResponseEncoder.php	2026-10-03 23:51:15
 @@ -69,12 +69,7 @@
              $headers['connection'] = [$this->close ? 'close' : 'keep-alive'];
          }
@@ -797,8 +773,8 @@ diff --color -ruN a/src/Http/ResponseEncoder.php b/src/Http/ResponseEncoder.php
          }
          yield $this->head;
 diff --color -ruN a/src/Network/Connection.php b/src/Network/Connection.php
---- a/src/Network/Connection.php	2026-10-03 23:25:54
-+++ b/src/Network/Connection.php	2026-10-03 23:25:54
+--- a/src/Network/Connection.php	2026-10-03 23:51:15
++++ b/src/Network/Connection.php	2026-10-03 23:51:15
 @@ -55,6 +55,7 @@
      private bool $closed = false;
      private bool $readPaused = false;

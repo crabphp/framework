@@ -1,16 +1,17 @@
-# HTTP fast path — 2026-10-03
+# HTTP fast path — 2026-10-04
 
 This work follows the [HTTP codec optimization](HTTP-CODEC-OPTIMIZATION.md). It
 removes per-request scheduling, allocation and parsing work from the common
 persistent-connection path while keeping PHP 8.4, Revolt's select driver, strict
 request validation, deadlines, cancellation, streaming and backpressure. It adds
-no dependency.
+no dependency. Every request is parsed in full; no parsed request data is
+reused between requests.
 
 With tracing JIT, one worker now serves the small-response workload at
-**105,943 requests/s, up from 75,269 (+41%)**, against 101,418 for Elysia on
-Bun in the same run. Without JIT it serves 82,193, up from 59,620. When every
-request carries a different field block, Crab reaches 73,931 and Elysia stays
-well ahead at 99,702; see [Request shapes](#request-shapes).
+**97,675 requests/s, up from 78,150 (+25%)**, against 104,591 for Elysia on
+Bun in the same run. Without JIT it serves 81,342, up from 60,877 (+34%).
+With browser-sized request fields Crab/JIT reaches 72,161, up from 51,003,
+and Elysia stays well ahead at 94,068; see [Request shapes](#request-shapes).
 
 ## Changes
 
@@ -24,9 +25,7 @@ well ahead at 99,702; see [Request shapes](#request-shapes).
   accepts at once finishes without entering the output pump.
 - **Parser.** One anchored scan validates and splits all fields, replacing one
   regular expression per field. A lone request is parsed without copying it.
-  Each connection retains its last request line and last field block (up to
-  4 KiB each); identical bytes reuse the parsed values. Host is validated once
-  per distinct value.
+  Host is validated once per distinct value on a connection.
 - **Encoder.** Small fixed-length responses without explicit framing,
   Connection, Date or Upgrade fields are encoded in one pass, producing the
   same bytes as the general encoder. Reused responses retain their encoded
@@ -36,9 +35,15 @@ well ahead at 99,702; see [Request shapes](#request-shapes).
   requests receive an explicit cancellation token instead of an evaluated
   default, and common Connection values skip the token-list scan.
 
-Rejected after interleaved trials showed no gain: reading into a smaller
-buffer that grows on demand, assembling the response by interpolation, and a
-third whole-head memo level on top of the two retained ones.
+Tried and not kept:
+
+- Reusing the parsed request line and field block when a connection repeats
+  them byte for byte. It raised the fixed-request rate to about 106,000 with
+  JIT, but identical requests are what a load generator sends, and connections
+  behind a proxy rarely repeat a field block. It was removed so that the
+  results measure parsing.
+- Reading into a smaller buffer that grows on demand, and assembling the
+  response by interpolation. Interleaved trials showed no gain.
 
 ## Final matched comparison
 
@@ -49,7 +54,7 @@ target order. Tables report medians; ranges are the lowest and highest trial.
 Environment: Apple M1 Pro (8 cores), macOS 26.7.1 arm64, PHP 8.4.19 NTS,
 Revolt 1.0.9 `StreamSelectDriver`, wrk 4.2.0, Node v24.10.0, Elysia 1.4.30 on
 Bun 1.4.2. CLI OPcache is enabled throughout; JIT is shown separately. Client
-and server share the host.
+and server share the host, which also runs desktop applications.
 
 ### Fixed request
 
@@ -57,53 +62,46 @@ The existing workload: persistent `GET /`, 16-byte body.
 
 | Server | Response | Req/s | Range | p50, ms | p99, ms | CPU µs/request | Peak RSS, MiB |
 | --- | --- | ---: | --- | ---: | ---: | ---: | ---: |
-| Before, JIT off | reused | 59,620 | 56,171–60,032 | 2.082 | 2.989 | 16.42 | 32.2 |
-| After, JIT off | reused | 82,193 | 77,866–87,377 | 1.492 | 2.916 | 11.61 | 32.5 |
-| Before, tracing JIT | reused | 75,269 | 69,387–76,094 | 1.667 | 2.028 | 13.07 | 35.0 |
-| After, tracing JIT | reused | 105,943 | 103,961–107,383 | 1.206 | 2.319 | 9.20 | 35.0 |
-| Elysia / Bun | — | 101,418 | 100,129–102,803 | 1.252 | 2.336 | 9.78 | 51.8 |
-| Before, JIT off | fresh | 56,360 | 52,770–56,374 | 2.224 | 2.917 | 17.49 | 32.4 |
-| After, JIT off | fresh | 79,395 | 79,113–79,508 | 1.584 | 2.376 | 12.24 | 32.4 |
-| Before, tracing JIT | fresh | 68,855 | 66,705–71,084 | 1.787 | 2.680 | 14.17 | 34.8 |
-| After, tracing JIT | fresh | 97,851 | 95,615–100,745 | 1.308 | 2.442 | 9.98 | 35.0 |
+| Before, JIT off | reused | 60,877 | 60,508–60,975 | 2.064 | 2.411 | 16.23 | 32.3 |
+| After, JIT off | reused | 81,342 | 81,088–82,182 | 1.560 | 1.737 | 12.03 | 32.1 |
+| Before, tracing JIT | reused | 78,150 | 76,186–78,478 | 1.619 | 1.831 | 12.67 | 35.0 |
+| After, tracing JIT | reused | 97,675 | 97,653–98,930 | 1.303 | 2.407 | 9.99 | 35.3 |
+| Elysia / Bun | — | 104,591 | 102,921–105,314 | 1.225 | 2.172 | 9.50 | 49.7 |
+| Before, JIT off | fresh | 57,587 | 57,440–58,415 | 2.183 | 2.466 | 17.12 | 32.3 |
+| After, JIT off | fresh | 76,439 | 75,115–76,686 | 1.663 | 1.827 | 12.85 | 32.2 |
+| Before, tracing JIT | fresh | 73,304 | 72,611–75,009 | 1.717 | 1.978 | 13.50 | 34.7 |
+| After, tracing JIT | fresh | 91,859 | 91,052–92,163 | 1.381 | 2.546 | 10.62 | 34.9 |
 
-Every optimized trial exceeded every baseline trial in its case. The JIT-off
-reused case had the widest spread in this run. Crab/JIT led Elysia by 4.5% at
-the median with adjacent ranges, which is a small margin on a shared host, not
-a general ranking. Crab/JIT p99 rose slightly while its median latency fell.
+Every optimized trial exceeded every baseline trial in its case. Crab/JIT
+delivers 93% of Elysia's rate here, up from 75%. Its p99 rose while its median
+latency fell.
 
 [Reused](results/compare-http-fast-path.json),
 [fresh](results/compare-http-fast-path-fresh.json).
 
 ### Request shapes
 
-The fixed request sends one field and never changes, which favors any reuse
-of parsed input. Two further workloads use 14 browser-sized request fields
-and rotate 997 query strings on the same route, with a fresh Response per
-request. `browser` repeats the field block, as one client does on a persistent
-connection. `browser-unique` also changes one field value on every request,
-so nothing parsed can be reused.
+The fixed request carries one field. The `browser-unique` workload sends 15
+browser-sized request fields, rotates 997 query strings on the same route and
+changes one field value on every request, with a fresh Response per request.
+It is the closer model of traffic that arrives through a proxy.
 
-| Workload | Server | Req/s | Range | p50, ms | p99, ms |
-| --- | --- | ---: | --- | ---: | ---: |
-| browser | Before, JIT off | 42,857 | 42,795–42,922 | 2.937 | 3.391 |
-| browser | After, JIT off | 81,663 | 81,663–82,441 | 1.590 | 2.477 |
-| browser | Before, tracing JIT | 55,464 | 55,332–55,829 | 2.259 | 2.650 |
-| browser | After, tracing JIT | 99,473 | 97,649–102,347 | 1.332 | 2.368 |
-| browser | Elysia / Bun | 97,366 | 96,242–98,846 | 1.320 | 2.269 |
-| browser-unique | Before, JIT off | 42,193 | 41,823–42,344 | 2.987 | 3.402 |
-| browser-unique | After, JIT off | 58,796 | 58,725–58,895 | 2.153 | 2.472 |
-| browser-unique | Before, tracing JIT | 54,306 | 54,129–54,775 | 2.313 | 2.683 |
-| browser-unique | After, tracing JIT | 73,931 | 73,724–74,517 | 1.726 | 2.038 |
-| browser-unique | Elysia / Bun | 99,702 | 98,921–100,334 | 1.300 | 2.232 |
+| Server | Req/s | Range | p50, ms | p99, ms | CPU µs/request |
+| --- | ---: | --- | ---: | ---: | ---: |
+| Before, JIT off | 40,785 | 39,630–41,340 | 3.060 | 4.113 | 24.01 |
+| After, JIT off | 60,881 | 57,577–61,277 | 2.084 | 2.411 | 16.03 |
+| Before, tracing JIT | 51,003 | 50,385–54,634 | 2.413 | 3.448 | 19.03 |
+| After, tracing JIT | 72,161 | 70,386–72,279 | 1.718 | 3.521 | 13.34 |
+| Elysia / Bun | 94,068 | 72,380–98,904 | 1.311 | 2.792 | 10.40 |
 
-Repeated field blocks bring the browser workload level with Elysia in this
-run; the ranges overlap. Without reuse, field parsing in PHP remains the
-largest cost: Crab/JIT improves 36% and still delivers 74% of Elysia's rate.
-Real traffic lies between these two cases.
+Every optimized trial exceeded every baseline trial. Crab/JIT improves 41% and
+delivers 77% of Elysia's median rate. The host was noisier during this case:
+one Elysia trial fell to 72,380, and an earlier attempt at the same case was
+repeated after one Crab trial was disturbed. Splitting 16 fields into the
+header map in PHP is the largest remaining cost, about 3 µs per request in an
+isolated measurement against 0.7 µs for the one-field request.
 
-[Browser](results/compare-http-fast-path-browser.json),
-[browser-unique](results/compare-http-fast-path-browser-unique.json).
+[Browser-unique](results/compare-http-fast-path-browser-unique.json).
 
 ### WebSocket regression check
 
@@ -112,27 +110,27 @@ message per connection, OPcache on and JIT off, same trial shape.
 
 | Payload | Before messages/s | After messages/s | p99 before → after, ms |
 | ---: | ---: | ---: | ---: |
-| 64 bytes | 96,126 | 98,498 | 2.684 → 2.655 |
-| 1,024 bytes | 78,663 | 82,236 | 3.262 → 3.123 |
+| 64 bytes | 92,929 | 93,120 | 2.684 → 2.803 |
+| 1,024 bytes | 79,291 | 82,647 | 3.227 → 3.090 |
 
-No regression. The 64-byte ranges overlap, and the Node client runs near one
-core, so these are not presented as gains.
+No material regression. The 64-byte ranges overlap, and the Node client runs
+near one core, so these are not presented as gains.
 [WebSocket trials](results/compare-http-fast-path-ws.json).
 
-All **69 final trials passed**: 21,852,971 measured HTTP requests and
-5,307,657 WebSocket echoes with zero reported socket, status or protocol errors
+All **54 final trials passed**: 15,779,670 measured HTTP requests and
+5,230,812 WebSocket echoes with zero reported socket, status or protocol errors
 or timeouts, clean server exits, and unchanged source hashes.
 
 ## Correctness
 
 The suite passes with **316 tests and 1,989 assertions**, normally and with
 tracing JIT in random order (seed `20261003`). `HttpFastPathTest` adds cases
-for request reuse, field limits and error codes, small-encoder equality with
+for repeated and changing requests on one parser, field limits and error codes, small-encoder equality with
 the general encoder, referenced response fields, read-interest behavior during
 a suspended turn, and responses larger than the write capacity.
 
 A differential fuzz fed 120,000 mutated and fragmented requests, including
-pipelines that change the request line and the field block independently, to
+pipelines that repeat and change the request line and field block, to
 the original and the new parser. Every case produced identical requests,
 parser phases and error statuses. That check found one defect during
 development (an empty Host accepted on a fresh parser), fixed before
@@ -145,11 +143,10 @@ Same limits as the earlier pages: one development machine, loopback, short
 closed-loop trials, client and server sharing CPUs. These are achieved local
 rates, not a PHP ceiling, production capacity or a general comparison between
 runtimes. wrk checks status and socket errors during measurement, not each
-body. Retained request lines and field blocks cost at most about 8 KiB of
-strings per connection plus their parsed arrays.
+body.
 
-A native sample of the optimized server under load attributes roughly three
-quarters of its main-thread time to `sendto`, `recvfrom` and `select`. Further
+A native sample of the server under the fixed-request load attributed roughly
+three quarters of its main-thread time to `sendto`, `recvfrom` and `select`. Further
 single-worker gains from PHP code are therefore limited; additional workers
 scale throughput (111,601 requests/s with two workers and JIT off, measured
 before this work).

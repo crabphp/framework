@@ -14,10 +14,6 @@ final class Parser
     private const TOKEN = "[!#$%&'*+.^_`|~0-9A-Za-z-]+";
     private const REQUEST_LINE = '/^(' . self::TOKEN . ') ([^\x00-\x20\x7F]+) HTTP\/([0-9]+\.[0-9]+)\r\n/';
     private const FIELDS = '/\G(?:(' . self::TOKEN . '):[ \t]*+([\x09\x20-\x7E\x80-\xFF]*)\r\n|\r\n\z)/';
-    /**
-     * Largest request line or field block retained per connection for reuse.
-     */
-    private const MEMO_BYTES = 4096;
     private const HOST = '/^(?:\[[0-9a-fA-F:.]+\]|[A-Za-z0-9._~%!$&\x27()*+;=-]+)(?::[0-9]{1,5})?$/D';
     /**
      * Validated field lines, bounded and reset when full. A line always
@@ -28,12 +24,6 @@ final class Parser
     private static array $fields = [];
     private string $buffer = '';
     private ?string $validHost = null;
-    private string $memoLine = '';
-    private string $memoMethod = '';
-    private string $memoTarget = '';
-    private string $memoVersion = '';
-    private string $memoFields = '';
-    private array $memoHeaders = [];
     private string $state = 'headers';
     private int $headerScan = 0;
     private string $method = '';
@@ -188,40 +178,16 @@ final class Parser
      */
     private function parseHead(string $head): ?Request
     {
-        // Persistent clients repeat their request line and, far more often,
-        // their field block byte for byte. Identical bytes always parse to the
-        // same values, so each part is validated and split once per change.
-        $fieldsAt = strpos($head, "\r\n") + 2;
-        if ($fieldsAt === strlen($this->memoLine) && strncmp($head, $this->memoLine, $fieldsAt) === 0) {
-            $method = $this->memoMethod;
-            $target = $this->memoTarget;
-            $version = $this->memoVersion;
-        } else {
-            if (!preg_match(self::REQUEST_LINE, $head, $line)) {
-                throw new HttpException(400, 'Malformed request line.');
-            }
-            $method = $line[1];
-            $target = $line[2];
-            $version = $line[3];
-            if ($version !== '1.1' && $version !== '1.0') {
-                throw new HttpException(505, 'Unsupported HTTP version.');
-            }
-            if ($fieldsAt <= self::MEMO_BYTES) {
-                $this->memoLine = $line[0];
-                $this->memoMethod = $method;
-                $this->memoTarget = $target;
-                $this->memoVersion = $version;
-            }
+        if (!preg_match(self::REQUEST_LINE, $head, $line)) {
+            throw new HttpException(400, 'Malformed request line.');
         }
-        if (substr_compare($head, $this->memoFields, $fieldsAt) === 0) {
-            $headers = $this->memoHeaders;
-        } else {
-            $headers = $this->parseFields($head, $fieldsAt);
-            if (strlen($head) - $fieldsAt <= self::MEMO_BYTES) {
-                $this->memoFields = substr($head, $fieldsAt);
-                $this->memoHeaders = $headers;
-            }
+        $method = $line[1];
+        $target = $line[2];
+        $version = $line[3];
+        if ($version !== '1.1' && $version !== '1.0') {
+            throw new HttpException(505, 'Unsupported HTTP version.');
         }
+        $headers = $this->parseFields($head, strlen($line[0]));
         if ($version === '1.1' && !isset($headers['host'])) {
             throw new HttpException(400, 'HTTP/1.1 requires exactly one Host field.');
         }
@@ -319,6 +285,7 @@ final class Parser
             if (isset($host[1])) {
                 throw new HttpException(400, 'HTTP/1.1 requires exactly one Host field.');
             }
+            // Persistent clients repeat their Host; validate each value once.
             if ($host[0] !== $this->validHost) {
                 if (!preg_match(self::HOST, $host[0])) {
                     throw new HttpException(400, 'Invalid Host field.');

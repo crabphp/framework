@@ -68,7 +68,7 @@ final class HttpFastPathTest extends TestCase
         self::assertSame(['/three', '1.0', []], [$last?->target, $last?->version, $last?->headers]);
     }
 
-    public function testRetainedFieldsAreNeverChangedByARequestLine(): void
+    public function testIdenticalFieldsAreNeverChangedByAnEarlierRequestLine(): void
     {
         $parser = new Parser();
         $fields = "Host: origin\r\nX-Shared: 1\r\n\r\n";
@@ -94,7 +94,7 @@ final class HttpFastPathTest extends TestCase
         try {
             $parser->append("GET /e HTTP/1.1\r\n\r\n");
             $parser->next();
-            self::fail('A retained empty field block excused a missing Host.');
+            self::fail('An earlier request without fields excused a missing Host.');
         } catch (HttpException $error) {
             self::assertSame(400, $error->status);
         }
