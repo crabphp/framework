@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Crab\Contracts;
 
+use Crab\Contracts\Container\Container;
 use Crab\Engine\Process\Worker;
 
 /**
@@ -17,12 +18,12 @@ interface WorkerProvider extends Provider
      * Runs in each worker after the engine forks and before the worker
      * accepts requests. Throwing stops the worker from starting.
      */
-    public function start(Worker $worker): void;
+    public function start(Worker $worker, Container $container): void;
 
     /**
      * Runs in each worker after it has drained, in reverse order of
      * registration, and only if every provider started. The event loop has
      * stopped, so it must not suspend.
      */
-    public function stop(Worker $worker): void;
+    public function stop(Worker $worker, Container $container): void;
 }

@@ -53,7 +53,7 @@ The parent never runs application callbacks or an application Revolt loop. It mo
 
 Admission counts accepted and pending outbound connections together, including closed connections whose service cleanup is still running. At capacity the worker disables accept watchers and resumes them when capacity returns. Tasks have a separate cap. Defaults are 512 owned connections/pending connects and 1,024 tasks per worker.
 
-A group's `onStop(Worker)` callbacks run in a worker after it has drained or reached its deadline, in reverse order of registration, and only when its start callbacks all completed; the loop has stopped by then, so they must not suspend. `onFailure(Throwable, Worker)` receives a failed task or a throwing stop callback; without one these go to PHP's error log.
+A group's `onStop(Worker)` callbacks run in a worker after it has drained or reached its deadline, in reverse order of registration, and only when its start callbacks all completed; the loop has stopped by then, so they must not suspend. `onFailure(Throwable, Worker)` receives a failed task, a throwing stop callback, and a failure that escapes a timer or watcher callback; without one the first two go to PHP's error log and the last ends the worker.
 
 SIGINT/SIGTERM stop admission and initiate drain. HTTP finishes its active response, WebSocket starts a close handshake, raw TCP flushes accepted output, and UDP finishes its bounded local send queue. Pending connects and worker tasks receive cancellation. The worker cancels its watchers when it exits.
 

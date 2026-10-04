@@ -15,7 +15,7 @@
 
 ## Components
 
-- Each component has its own folder and namespace under `src/` (`Http`, `Routing`, `Container`, `Config`, `Log`, `Console`) and its tests in the matching folder under `tests/`.
+- Each component has its own folder and namespace under `src/` (`Http`, `Routing`, `Container`, `Config`, `Log`, `Console`, `Testing`) and its tests in the matching folder under `tests/`.
 - Every component has the same shape: it works standalone, has a contract when packages touch it, ships a `<Component>Provider` when it is optional, and is kept able to be published as its own package the way the engine is.
 - A component works on its own, without `App`, the container or a provider. It may depend on `Contracts`, on PSR interfaces and on the engine, and on another component only where that is its purpose. `tests/LayerBoundaryTest.php` enforces this; a new dependency between components is added to its `ALLOWED` list deliberately, never worked around.
 - The root of `src/` is the glue that makes components an application: `App.php`, `helpers.php`, and `Commands/` for built-in commands. Code that needs `App` belongs there, not inside a component.
@@ -23,7 +23,8 @@
 
 ## Contracts
 
-- A package depends on `Crab\Contracts` and PSR interfaces only, never on a component's class. So everything a package touches has a contract in `Crab\Contracts\<Component>`, never inside the component, including where no PSR exists: `Config`, `Router`, `Console`, `Container`, `Provider`, and the console's `Command`, `Input` and `Output`.
+- A package depends on `Crab\Contracts` and PSR interfaces only, never on a component's class. So everything a package touches has a contract in `Crab\Contracts\<Component>`, never inside the component, including where no PSR exists: `Config`, `Router`, `Console`, `Container`, `MiddlewareStack`, `Provider`, `WorkerProvider`, and the console's `Command`, `Input` and `Output`.
+- Anything an application can do through `App`, a provider can do through a contract in the container. When `App` gains a way to extend the application, the contract comes with it.
 - `App` binds each contract in the container, and binds the concrete class to the same object so that asking by class cannot autowire a second one. The glue type-hints contracts too.
 - Where a PSR interface exists, the contract extends it and adds only methods Crab really needs; do not add a contract that adds nothing to its PSR interface.
 - A contract references only PSR interfaces, other contracts and engine types, never a component's class. The component's class implements the contract and shares its short name (`Crab\Http\Request` implements `Crab\Contracts\Http\Request`).
@@ -32,11 +33,12 @@
 ## Application wiring
 
 - `App` binds the core directly: configuration, container, router, HTTP factory, logger, error handler and console. Everything optional is added by a `Provider`, the same way for our packages as for anyone else's, registered explicitly with `$app->register()`.
-- A provider has `register(Container $container)`. There is no `boot()`; bindings are closures run on first use. A provider with work to do in each worker implements `WorkerProvider` as well: `start(Worker $worker)` opens what holds a socket, file or timer and `stop(Worker $worker)` releases it. Providers stop in reverse order, and `stop()` must not suspend.
-- Nothing fails silently outside a request: `App` sends a failed worker task or a failing `stop()` to the logger through the engine group's `onFailure()`. A new entry point (queue job, scheduled job) gets the same treatment.
+- A provider has `register(Container $container)`. There is no `boot()`; bindings are closures run on first use. A provider with work to do in each worker implements `WorkerProvider` as well: `start(Worker $worker, Container $container)` opens what holds a socket, file or timer and `stop(Worker $worker, Container $container)` releases it. Providers stop in reverse order, `stop()` must not suspend, and a provider keeps no state of its own.
+- A provider declares its settings and their defaults once with `Config::defaults()`; code reads them with no default argument. The container has no per-request scope: `singleton()` is one per worker, `bind()` is new on every `get()`.
+- Nothing fails silently outside a request: `App` sends a failed worker task, a failure escaping a timer and a failing `stop()` to the logger through the engine group's `onFailure()`, and the worker keeps running. A new entry point (queue job, scheduled job) gets the same treatment.
 - `App` assembles its middleware, the error handler included, in each worker as the worker starts, never in the parent and never lazily on a request, so a misconfiguration stops startup with its cause printed.
 - Objects the container keeps are shared by every request a worker serves: they hold no state of a single request, and anything holding a socket or file is made in the worker on first use, not in the parent.
-- State has three scopes. Process scope (config, routes, provider list) is read-only once the application is defined. Worker scope is the container's kept objects. Request scope travels only on the PSR-7 request and its attributes, never in a service or a static.
+- State has three scopes. Process scope (config, routes, provider list) is fixed once the application is defined. Worker scope is the container's kept objects. Request scope travels only on the PSR-7 request and its attributes, never in a service or a static.
 - A component that does I/O (database, cache, queue, HTTP client) exposes a pool in its contract, `acquire()` and `release()`, so code written against it is correct with blocking drivers now and async drivers later. Blocking drivers ship first.
 - HTTP, queue consumers and the scheduler run as separate engine worker groups. Workers hold nothing another worker needs; shared state lives in external stores behind contracts.
 

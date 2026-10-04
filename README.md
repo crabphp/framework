@@ -68,7 +68,9 @@ $app->middleware(Acme\Cors::class);                   // any PSR-15 middleware
 $app->router->get('/users/{id}', ShowUser::class);     // a PSR-15 handler made by the container
 ~~~
 
-A provider that needs something open in every worker, such as a connection or a timer, implements `Contracts\WorkerProvider` too: `start(Worker $worker)` runs in each worker after the engine forks and `stop(Worker $worker)` after it has drained. A task spawned with `$worker->spawn()` that fails is written to the log.
+A provider reaches the application through contracts in the container: `Contracts\Routing\Router` to add routes, `Contracts\Console\Console` to add commands, `Contracts\Http\MiddlewareStack` to add middleware, and `Contracts\Config\Config` to declare its settings with `defaults('cache', [...])`, which the application's own configuration overrides.
+
+A provider that needs something open in every worker, such as a connection or a timer, implements `Contracts\WorkerProvider` too: `start(Worker $worker, Container $container)` runs in each worker after the engine forks and `stop(Worker $worker, Container $container)` after it has drained. A task or timer that fails in a worker is written to the log and the worker keeps running. `Testing\WorkerHarness::run()` runs such a provider through a worker's life inside a test.
 
 `$app->container` autowires constructors by type and keeps one object of each class per worker; use `bind()` for a new one each time, `singleton()` to say how one is made and `instance()` for an existing value. Because those objects are shared by every request a worker serves, they must not hold the state of one request. Middleware given by class name is made inside each worker as it starts, so a misconfigured application fails at startup; a handler given by class name is made when its route is first requested.
 
@@ -84,6 +86,7 @@ A provider that needs something open in every worker, such as a connection or a 
 | `src/Container/` | The PSR-11 container. |
 | `src/Config/` | Configuration files and environment variables. |
 | `src/Log/` | The PSR-3 logger. |
+| `src/Testing/` | Helpers for testing components. |
 | `src/Routing/` | The router, itself a PSR-15 handler. |
 | `src/Contracts/` | Every interface another package implements or type-hints; they extend the PSR ones where Crab adds methods. |
 | `tests/` | Framework tests beside their components; engine tests in `tests/Engine/`. `tests/EngineBoundaryTest.php` keeps the engine free of framework dependencies. |

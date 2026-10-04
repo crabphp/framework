@@ -63,9 +63,32 @@ final class FileCache implements CacheInterface
 
 Request-scope data is passed as an argument or carried on the PSR-7 request. If a class needs a property that changes per request, the design is wrong; make it an argument.
 
+The container has three ways to hold an entry, and the scope decides which:
+
+| Method | Gives | Use for |
+| --- | --- | --- |
+| `singleton()` | One object per worker, made on first use | Almost everything: services, stores, clients |
+| `bind()` | A new object on every `get()` | An object that carries state for one piece of work, such as a query builder |
+| `instance()` | An object that already exists | Values made in the parent that are safe to copy into workers, such as configuration |
+
+There is no per-request container scope. A `bind()` entry is new each time it is asked for, not once per request.
+
 ## 5. Test it without the application
 
 Tests go in `tests/<Component>/` and construct the class directly. No `App`, no container, no sockets. Cover the failure paths (missing key, unwritable directory, expired entry), not only the success path. If a public conformance suite exists for the PSR, run the component against it.
+
+A provider with `start()` and `stop()` is tested with `Testing\WorkerHarness`, which runs it through a real worker's life in the test process:
+
+~~~php
+$hits = WorkerHarness::run([new CacheProvider()], static function (Worker $worker, Container $container): int {
+    $cache = $container->get(CacheInterface::class);
+    $cache->set('key', 'value');
+    Async::sleep($worker->loop, 0.01);   // the body may wait
+    return $cache->get('key') === 'value' ? 1 : 0;
+});
+~~~
+
+It registers the providers, starts them, runs the body, stops them, and throws again anything the body, a provider or a timer threw.
 
 ## 6. Write the provider
 
@@ -83,27 +106,29 @@ final class CacheProvider implements Provider
 {
     public function register(Container $container): void
     {
+        $container->get(Config::class)->defaults('cache', [
+            'directory' => sys_get_temp_dir() . '/crab-cache',
+            'ttl' => 3600,
+        ]);
         $container->singleton(CacheInterface::class, static function (Container $container): FileCache {
             $config = $container->get(Config::class);
-            return new FileCache(
-                $config->get('cache.directory', sys_get_temp_dir() . '/crab-cache'),
-                $config->get('cache.ttl', 3600),
-            );
+            return new FileCache($config->get('cache.directory'), $config->get('cache.ttl'));
         });
     }
 }
 ~~~
 
-- `register()` only binds. The closure runs later, in the worker, when the entry is first asked for.
-- Bind the **interface**. Read every setting with a default, so the component works with no configuration file.
-- Reach other parts of the application through their contracts in the container: `Contracts\Routing\Router` to add routes, `Contracts\Console\Console` to add commands.
-- If something must be open for the worker's whole life, or released when it stops, implement `Contracts\WorkerProvider` as well. `start(Worker $worker)` opens it and `stop(Worker $worker)` releases it; `stop()` must not suspend.
+- `register()` only declares and binds. The closure runs later, in the worker, when the entry is first asked for.
+- Declare every setting and its default once, with `Config::defaults()`. The component then works with no configuration file, a value the application sets wins, and `config('cache.ttl')` reads the same value everywhere.
+- Bind the **interface**, not the class.
+- Reach other parts of the application through their contracts in the container: `Contracts\Routing\Router` to add routes, `Contracts\Console\Console` to add commands, `Contracts\Http\MiddlewareStack` to add middleware around every route.
+- If something must be open for the worker's whole life, or released when it stops, implement `Contracts\WorkerProvider` as well. `start(Worker $worker, Container $container)` opens it and `stop(Worker $worker, Container $container)` releases it; `stop()` must not suspend. The provider itself stays stateless, since both receive the container.
 
 The application then opts in with one line: `$app->register(CacheProvider::class)`.
 
 ## 7. Give every entry point an error path
 
-If the component runs code outside a request (a timer, a consumer loop, a spawned task), a failure there must reach the logger. Work spawned with `$worker->spawn()` already does. Anything else catches its own failures and logs them through `Psr\Log\LoggerInterface`. Nothing fails silently.
+If the component runs code outside a request (a timer, a consumer loop, a spawned task), a failure there must reach the logger. A task spawned with `$worker->spawn()` and a timer or watcher on `$worker->loop` already do, and the worker keeps running. A loop that must survive its own failures, such as a queue consumer taking the next job, catches them itself and logs through `Psr\Log\LoggerInterface`. Nothing fails silently.
 
 ## 8. Check the boundaries
 
@@ -127,8 +152,8 @@ In the same change:
 - [ ] The contract, or the decision to use a PSR directly, is in place before the class.
 - [ ] The class works with `new`, opens nothing in its constructor and holds no request state.
 - [ ] Tests in `tests/<Component>/` pass without `App`, and cover failures.
-- [ ] An optional component has a provider that only binds, with defaults for every setting.
-- [ ] Per-worker resources are opened in `start()` and released in `stop()`.
+- [ ] An optional component has a provider that only declares defaults and binds.
+- [ ] Per-worker resources are opened in `start()` and released in `stop()`, tested with `WorkerHarness`.
 - [ ] Every entry point outside a request logs its failures.
 - [ ] `composer test` passes, including the boundary tests.
 - [ ] Request-path code is measured and the cost reported.
@@ -143,4 +168,5 @@ In the same change:
 | Type-hinting a component class from another package | The package breaks when the class changes | Type-hint the contract or PSR interface |
 | Calling `env()` outside a config file | Configuration has two sources and cannot be cached | Read `config()` |
 | Putting the interface inside the component folder | Packages must depend on the implementation to use it | Put it in `Crab\Contracts\<Component>` |
+| Passing a default at every `config()` call | The same setting has different defaults in different places | Declare it once with `Config::defaults()` |
 | Adding a `boot()` step | It reintroduces ordering between providers | Bind closures; they run after every provider has registered |

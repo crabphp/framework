@@ -40,6 +40,35 @@ final class ConfigTest extends TestCase
         self::assertSame('value', $config->all()['top']);
     }
 
+    public function testDefaultsFillWhatTheApplicationDidNotSet(): void
+    {
+        $config = new Config([
+            'cache' => ['ttl' => 60, 'redis' => ['host' => 'cache.internal'], 'tags' => ['app'], 'off' => null],
+            'scalar' => 'left alone',
+        ]);
+        $config->defaults('cache', [
+            'ttl' => 3600,
+            'directory' => '/tmp/cache',
+            'redis' => ['host' => '127.0.0.1', 'port' => 6379],
+            'tags' => ['default', 'second'],
+            'off' => 'on',
+        ]);
+        $config->defaults('queue', ['driver' => 'sync']);
+        $config->defaults('scalar', ['ignored' => true]);
+
+        self::assertSame(60, $config->get('cache.ttl'));
+        self::assertSame('/tmp/cache', $config->get('cache.directory'));
+        self::assertSame(['host' => 'cache.internal', 'port' => 6379], $config->get('cache.redis'));
+        self::assertSame(['app'], $config->get('cache.tags'));
+        self::assertNull($config->get('cache.off', 'default'));
+        self::assertSame('sync', $config->get('queue.driver'));
+        self::assertSame('left alone', $config->get('scalar'));
+        self::assertArrayHasKey('queue', $config->all());
+
+        $this->expectException(\InvalidArgumentException::class);
+        $config->defaults('cache.redis', []);
+    }
+
     public function testLoadsADirectoryOfFilesThatReadTheEnvironment(): void
     {
         file_put_contents($this->directory . '/.env', <<<'ENV'

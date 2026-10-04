@@ -52,6 +52,10 @@ final class Worker
     public function run(): void
     {
         try {
+            if ($this->group->failureCallbacks() !== []) {
+                // Otherwise an uncaught failure in a timer or watcher ends the worker.
+                $this->loop->setErrorHandler(fn(\Throwable $error) => $this->report($error, 'Callback failed'));
+            }
             $this->watchControl();
             if (extension_loaded('pcntl')) {
                 $this->loop->onSignal(SIGTERM, fn() => $this->stop());

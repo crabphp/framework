@@ -23,6 +23,7 @@ final class LayerBoundaryTest extends TestCase
      */
     private const ALLOWED = [
         'Routing' => ['Http'],
+        'Testing' => ['Container'],
     ];
 
     public function testContractsReferenceOnlyContractsAndTheEngine(): void
@@ -47,7 +48,7 @@ final class LayerBoundaryTest extends TestCase
                 $components[] = $name;
             }
         }
-        self::assertGreaterThanOrEqual(6, count($components), 'The components were not found.');
+        self::assertGreaterThanOrEqual(7, count($components), 'The components were not found.');
         $violations = [];
         foreach ($components as $component) {
             $allowed = [$component, 'Contracts', 'Engine', ...(self::ALLOWED[$component] ?? [])];

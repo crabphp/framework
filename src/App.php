@@ -12,6 +12,7 @@ use Crab\Container\Container;
 use Crab\Contracts\Config\Config as ConfigContract;
 use Crab\Contracts\Console\Console as ConsoleContract;
 use Crab\Contracts\Container\Container as ContainerContract;
+use Crab\Contracts\Http\MiddlewareStack as MiddlewareStackContract;
 use Crab\Contracts\Provider;
 use Crab\Contracts\Routing\Router as RouterContract;
 use Crab\Contracts\WorkerProvider;
@@ -21,7 +22,7 @@ use Crab\Engine\Server\HttpServer;
 use Crab\Http\EngineHandler;
 use Crab\Http\ErrorHandler;
 use Crab\Http\Factory;
-use Crab\Http\Pipeline;
+use Crab\Http\MiddlewareStack;
 use Crab\Log\Logger;
 use Crab\Routing\Router;
 use Psr\Http\Message\ResponseFactoryInterface;
@@ -48,11 +49,7 @@ final class App implements RequestHandlerInterface
 
     public readonly RouterContract $router;
     public readonly ConsoleContract $console;
-    /**
-     * @var list<MiddlewareInterface|string>
-     */
-    private array $middleware = [];
-    private ?RequestHandlerInterface $pipeline = null;
+    private readonly MiddlewareStack $stack;
     /**
      * @var list<WorkerProvider>
      */
@@ -83,6 +80,11 @@ final class App implements RequestHandlerInterface
         $this->router = new Router($container->get(ResponseFactoryInterface::class), $container);
         $container->instance(RouterContract::class, $this->router);
         $container->instance(Router::class, $this->router);
+        // The error handler is the entry bound as ErrorHandler; rebinding it to
+        // another PSR-15 middleware replaces how failures are answered.
+        $this->stack = (new MiddlewareStack($this->router, $container))->add(ErrorHandler::class);
+        $container->instance(MiddlewareStackContract::class, $this->stack);
+        $container->instance(MiddlewareStack::class, $this->stack);
         $this->console = (new Console($container))->add('serve', Serve::class)->add('routes', Routes::class);
         $container->instance(ConsoleContract::class, $this->console);
         $container->instance(Console::class, $this->console);
@@ -127,28 +129,27 @@ final class App implements RequestHandlerInterface
      */
     public function middleware(MiddlewareInterface|string ...$middleware): static
     {
-        array_push($this->middleware, ...$middleware);
-        $this->pipeline = null;
+        $this->stack->add(...$middleware);
         return $this;
     }
 
     public function handle(ServerRequestInterface $request): ResponseInterface
     {
-        return ($this->pipeline ??= $this->pipeline())->handle($request);
+        return $this->stack->handle($request);
     }
 
     /**
      * A runtime serving this application over HTTP; the `serve` command
      * runs it. Each worker assembles its middleware and starts the worker
      * providers as it starts, so a misconfigured application fails then
-     * and not on its first request. A task that fails in a worker is
-     * logged.
+     * and not on its first request. A task or timer that fails in a
+     * worker is logged.
      */
     public function runtime(string $address = 'tcp://127.0.0.1:8080', int $workers = 1): Runtime
     {
         $runtime = new Runtime();
         $runtime->group('http', $workers)
-            ->listen($address, new HttpServer(new EngineHandler($this)))
+            ->listen($address, new HttpServer(new EngineHandler($this->stack)))
             ->onStart($this->start(...))
             ->onStop($this->stop(...))
             ->onFailure($this->report(...));
@@ -158,9 +159,9 @@ final class App implements RequestHandlerInterface
     private function start(Worker $worker): void
     {
         try {
-            $this->pipeline ??= $this->pipeline();
+            $this->stack->assemble();
             foreach ($this->workerProviders as $provider) {
-                $provider->start($worker);
+                $provider->start($worker, $this->container);
             }
         } catch (\Throwable $error) {
             // The supervisor reports only that a worker failed to start.
@@ -173,7 +174,7 @@ final class App implements RequestHandlerInterface
     {
         foreach (array_reverse($this->workerProviders) as $provider) {
             try {
-                $provider->stop($worker);
+                $provider->stop($worker, $this->container);
             } catch (\Throwable $error) {
                 // One provider's failure must not keep the others open.
                 $this->report($error);
@@ -190,25 +191,5 @@ final class App implements RequestHandlerInterface
             'message' => $error->getMessage(),
             'exception' => $error,
         ]);
-    }
-
-    /**
-     * The error handler is the entry bound as ErrorHandler; rebinding it to
-     * another PSR-15 middleware replaces how failures are answered.
-     */
-    private function pipeline(): RequestHandlerInterface
-    {
-        $middleware = [];
-        foreach ([ErrorHandler::class, ...$this->middleware] as $layer) {
-            if (is_string($layer)) {
-                $name = $layer;
-                $layer = $this->container->get($name);
-                if (!$layer instanceof MiddlewareInterface) {
-                    throw new \LogicException("{$name} must implement MiddlewareInterface.");
-                }
-            }
-            $middleware[] = $layer;
-        }
-        return new Pipeline($this->router, ...$middleware);
     }
 }

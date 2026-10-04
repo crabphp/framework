@@ -75,9 +75,10 @@ final class WorkerGroup
     }
 
     /**
-     * Receives (Throwable, Worker) when a task spawned on the worker fails
-     * or a stop callback throws. Without one, such failures go to PHP's
-     * error log.
+     * Receives (Throwable, Worker) when a task spawned on the worker fails,
+     * a stop callback throws, or a timer or watcher callback lets a failure
+     * escape. Without one, the first two go to PHP's error log and the
+     * last ends the worker.
      */
     public function onFailure(callable $callback): self
     {

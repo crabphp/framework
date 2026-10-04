@@ -7,9 +7,9 @@ namespace Crab\Config;
 use Crab\Contracts\Config\Config as ConfigContract;
 
 /**
- * Read-only configuration, addressed with dotted keys such as "log.level".
+ * Configuration read from arrays or a directory of PHP files.
  */
-final readonly class Config implements ConfigContract
+final class Config implements ConfigContract
 {
     /**
      * @param array<string, mixed> $items
@@ -62,8 +62,35 @@ final readonly class Config implements ConfigContract
         return true;
     }
 
+    public function defaults(string $section, array $values): void
+    {
+        if ($section === '' || str_contains($section, '.')) {
+            throw new \InvalidArgumentException('Defaults are declared for a top-level section.');
+        }
+        $set = $this->items[$section] ?? [];
+        // A section the application set to something other than an array is left alone.
+        if (is_array($set)) {
+            $this->items[$section] = self::over($values, $set);
+        }
+    }
+
     public function all(): array
     {
         return $this->items;
+    }
+
+    /**
+     * Lays set values over defaults. Nested settings merge by name; a list
+     * is one value and replaces the default list whole.
+     */
+    private static function over(array $defaults, array $set): array
+    {
+        foreach ($set as $key => $value) {
+            $default = $defaults[$key] ?? null;
+            $defaults[$key] = is_array($value) && is_array($default) && !array_is_list($value) && !array_is_list($default)
+                ? self::over($default, $value)
+                : $value;
+        }
+        return $defaults;
     }
 }

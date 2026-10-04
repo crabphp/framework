@@ -84,6 +84,28 @@ final class RuntimeTest extends TestCase
         self::assertSame(['deliberate task failure in worker 0', 'deliberate stop failure in worker 0'], $failures);
     }
 
+    public function testAFailureEscapingATimerReachesTheFailureCallbackAndTheWorkerContinues(): void
+    {
+        $failures = [];
+        $continued = false;
+        $runtime = new Runtime(shutdownTimeout: 0.1);
+        $runtime->group()
+            ->onStart(static function (Worker $worker) use (&$continued): void {
+                $worker->loop->delay(0.002, static fn() => throw new RuntimeException('deliberate timer failure'));
+                $worker->loop->delay(0.01, static function () use ($worker, &$continued): void {
+                    $continued = true;
+                    $worker->stop();
+                });
+            })
+            ->onFailure(static function (Throwable $error) use (&$failures): void {
+                $failures[] = $error->getMessage();
+            });
+        $runtime->run(singleProcess: true);
+
+        self::assertSame(['deliberate timer failure'], $failures);
+        self::assertTrue($continued, 'A reported timer failure must not end the worker.');
+    }
+
     public function testStopCallbacksDoNotRunWhenStartupFails(): void
     {
         $stopped = false;

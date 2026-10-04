@@ -8,6 +8,7 @@ use Crab\App;
 use Crab\Config\Config;
 use Crab\Contracts\Config\Config as ConfigContract;
 use Crab\Contracts\Container\Container;
+use Crab\Contracts\Http\MiddlewareStack;
 use Crab\Contracts\Http\Request as RequestContract;
 use Crab\Contracts\Provider;
 use Crab\Contracts\Routing\Router as RouterContract;
@@ -89,12 +90,12 @@ final class RecordingProvider implements WorkerProvider
         self::$events[] = "{$this->name} register";
     }
 
-    public function start(Worker $worker): void
+    public function start(Worker $worker, Container $container): void
     {
         self::$events[] = "{$this->name} start in worker {$worker->index}";
     }
 
-    public function stop(Worker $worker): void
+    public function stop(Worker $worker, Container $container): void
     {
         self::$events[] = "{$this->name} stop";
         if ($this->failsToStop) {
@@ -185,13 +186,14 @@ final class AppTest extends TestCase
                 {
                 }
 
-                public function start(Worker $worker): void
+                public function start(Worker $worker, Container $container): void
                 {
                     $worker->spawn(static fn() => throw new \RuntimeException('job broke'));
-                    $worker->loop->delay(0.02, $worker->stop(...));
+                    $worker->loop->delay(0.005, static fn() => throw new \RuntimeException('timer broke'));
+                    $worker->loop->delay(0.02, static fn() => $worker->stop());
                 }
 
-                public function stop(Worker $worker): void
+                public function stop(Worker $worker, Container $container): void
                 {
                 }
             });
@@ -201,10 +203,30 @@ final class AppTest extends TestCase
                 'second stop', 'first stop'], RecordingProvider::$events);
             $log = file_get_contents($path);
             self::assertStringContainsString('ERROR Background work failed: job broke', $log);
+            self::assertStringContainsString('ERROR Background work failed: timer broke', $log);
             self::assertStringContainsString('ERROR Background work failed: second cannot stop', $log);
         } finally {
             @unlink($path);
         }
+    }
+
+    public function testAProviderAddsMiddlewareAndDeclaresDefaults(): void
+    {
+        $app = new App(new Config(['tags' => ['outer' => 'set by the app']]));
+        $app->router->get('/', static fn(ServerRequestInterface $request) => $request->getAttribute('trail'));
+        $app->register(new class implements Provider {
+            public function register(Container $container): void
+            {
+                $config = $container->get(ConfigContract::class);
+                $config->defaults('tags', ['outer' => 'default outer', 'inner' => 'default inner']);
+                $container->get(MiddlewareStack::class)->add(
+                    new TagMiddleware($config->get('tags.outer')),
+                    new TagMiddleware($config->get('tags.inner')),
+                );
+            }
+        });
+        self::assertSame('set by the app>default inner>', (string) $app->handle(new Request('GET', '/'))->getBody());
+        self::assertSame('default inner', config('tags.inner'));
     }
 
     public function testMiddlewareWrapsRoutesInOrder(): void

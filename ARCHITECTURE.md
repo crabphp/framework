@@ -41,7 +41,7 @@ The last row is the rule that keeps the framework replaceable piece by piece: a 
 
 ### Enforcing the layers *(today)*
 
-`tests/LayerBoundaryTest.php` fails when a contract references a component, or when a component references the glue or a component it is not listed as built on. Today the only listed pair is `Routing` on `Http`. `tests/EngineBoundaryTest.php` does the same for the engine. A rule that is only written down drifts.
+`tests/LayerBoundaryTest.php` fails when a contract references a component, or when a component references the glue or a component it is not listed as built on. Today the listed pairs are `Routing` on `Http` and `Testing` on `Container`. `tests/EngineBoundaryTest.php` does the same for the engine. A rule that is only written down drifts.
 
 ## Contracts
 
@@ -50,6 +50,7 @@ A contract exists for everything a package touches, including where no PSR exist
 | Contract | Extends | Status |
 | --- | --- | --- |
 | `Http\Request` | PSR-7 `ServerRequestInterface` | today |
+| `Http\MiddlewareStack` | none | today |
 | `Container\Container` | PSR-11 `ContainerInterface` | today |
 | `Provider`, `WorkerProvider` | none | today |
 | `Console\Command`, `Input`, `Output` | none | today |
@@ -93,7 +94,7 @@ All four phases exist today. A provider that implements `WorkerProvider` gets `s
 
 | Scope | Lifetime | Examples | Rule |
 | --- | --- | --- | --- |
-| Process | Whole run, copied into every worker at fork | Config, route table, provider list | Read-only after phase 1 |
+| Process | Whole run, copied into every worker at fork | Config, route table, provider list | Fixed after phase 1; during it, providers may add defaults beneath the application's configuration |
 | Worker | One worker's life | Container singletons, connection pools, logger | Shared by every request in that worker; must hold nothing belonging to one request |
 | Request | One request | The request, its attributes (route parameters, authenticated user, request id) | Travels as the PSR-7 request and its attributes; never stored in a service or a static |
 
@@ -138,7 +139,7 @@ Small and explicit; there are five, and no others are planned.
 | --- | --- | --- |
 | Services | `Provider::register(Container)` | today |
 | Per-worker work | `WorkerProvider::start(Worker)` / `stop(Worker)` | today |
-| Around requests | PSR-15 middleware via `$app->middleware()` | today |
+| Around requests | PSR-15 middleware via `$app->middleware()`, or the `MiddlewareStack` contract from a provider | today |
 | Commands | `Console` contract, `add()` | today |
 | Reacting to events | PSR-14 dispatcher | proposed, when the first component needs it |
 
@@ -146,7 +147,7 @@ No auto-discovery, no facades, no `boot()` phase, no global container accessor.
 
 ## Errors and observability
 
-- **One error path per entry point.** HTTP requests go through `ErrorHandler` *(today)*. Console commands report through `Console::run()` *(today)*. A task spawned on a worker that fails, and a provider that fails to stop, are written to the application's logger *(today)*. Queue jobs and scheduled jobs get the same guarantee when those components are built.
+- **One error path per entry point.** HTTP requests go through `ErrorHandler` *(today)*. Console commands report through `Console::run()` *(today)*. A task spawned on a worker that fails, a failure that escapes a timer, and a provider that fails to stop are written to the application's logger, and the worker keeps running *(today)*. Queue jobs and scheduled jobs get the same guarantee when those components are built.
 - **Fail at startup, not at first use.** Misconfiguration stops `serve` with its cause *(today for middleware and logger)*.
 - **Structured context** *(proposed)*. A request id is assigned by middleware, stored as a request attribute and added to every log record for that request.
 - **Health and metrics** *(proposed)*. A built-in health route, and `Worker::stats()` exposed through a command or route.
@@ -156,7 +157,7 @@ No auto-discovery, no facades, no `boot()` phase, no global container accessor.
 
 | Level | What | Where |
 | --- | --- | --- |
-| Component | Each component alone, no `App`, no sockets | `tests/<Component>/` |
+| Component | Each component alone, no `App`, no sockets; providers with worker hooks through `Testing\WorkerHarness` | `tests/<Component>/` |
 | Application | `$app->handle($request)` end to end, no sockets | `tests/AppTest.php` |
 | Engine | Real sockets, workers, shutdown | `tests/Engine/` |
 | Boundary | Layer rules | `tests/EngineBoundaryTest.php`, `tests/LayerBoundaryTest.php` |
