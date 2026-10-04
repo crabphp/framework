@@ -9,7 +9,7 @@
          failOnDeprecation="true"
          beStrictAboutOutputDuringTests="true">
     <testsuites>
-        <testsuite name="Engine">
+        <testsuite name="Crab">
             <directory suffix="Test.php">tests</directory>
         </testsuite>
     </testsuites>

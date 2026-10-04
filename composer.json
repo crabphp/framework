@@ -5,7 +5,13 @@
     "license": "MIT",
     "require": {
         "php": "^8.4",
-        "revolt/event-loop": "^1.0"
+        "revolt/event-loop": "^1.0",
+        "psr/http-message": "^2.0",
+        "psr/http-factory": "^1.1",
+        "psr/http-server-handler": "^1.0",
+        "psr/http-server-middleware": "^1.0",
+        "psr/container": "^2.0",
+        "psr/log": "^3.0"
     },
     "replace": {
         "crabphp/engine": "self.version"
@@ -25,7 +31,11 @@
     "autoload": {
         "psr-4": {
             "Crab\\": "src/"
-        }
+        },
+        "files": [
+            "src/Config/helpers.php",
+            "src/helpers.php"
+        ]
     },
     "autoload-dev": {
         "psr-4": {
