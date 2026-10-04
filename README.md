@@ -78,6 +78,44 @@ Inside a worker, a PHP warning or notice is thrown as an `ErrorException`, so it
 
 With `app.request_id` on, each request gets an id: the `X-Request-Id` it arrived with when that is a plain token, otherwise a new one. It is the request's `request_id` attribute, is returned in `X-Request-Id`, and is added to the log record of a failure. It is off by default because it costs about 2 µs per request, measured in process, where a routed request otherwise costs about 3.
 
+## Database
+
+~~~php
+$app->register(Crab\Database\DatabaseProvider::class);
+~~~
+
+~~~php
+// config/database.php
+return [
+    'dsn' => env('DB_DSN', 'sqlite:' . __DIR__ . '/../database.sqlite'),   // or mysql:host=127.0.0.1;dbname=app
+    'username' => env('DB_USERNAME'),
+    'password' => env('DB_PASSWORD'),
+];
+~~~
+
+Ask for `Crab\Contracts\Database\Database` in a constructor, then:
+
+~~~php
+$users = $db->select('select * from users where active = ?', [true]);      // every row
+$user  = $db->first('select * from users where id = :id', ['id' => 7]);     // one row or null
+$id    = $db->insert('insert into users (name) values (?)', ['Ada']);       // the new id
+$count = $db->execute('update users set name = ? where id = ?', ['Ada L.', $id]);   // rows affected
+
+$db->transaction(function (Connection $tx) use ($from, $to, $amount) {
+    $tx->execute('update accounts set balance = balance - ? where id = ?', [$amount, $from]);
+    $tx->execute('update accounts set balance = balance + ? where id = ?', [$amount, $to]);
+});
+~~~
+
+- **Values are always bound.** Write `?` or `:name` and pass the values; never build them into the SQL. Integers, booleans, null, strings, floats and dates are bound with their type.
+- **Transactions** commit when the callback returns and roll back when it throws. Inside the callback use the connection it is given, `$tx`, not `$db`: `$db` would run on a different connection, outside the transaction. A transaction inside a transaction is a savepoint.
+- **Connections are pooled per worker.** Each statement on `$db` borrows one and returns it; `$db->run(fn (Connection $c) => ...)` keeps one for several statements. A worker opens them on first use, at most `database.pool` of them (10, or 1 for SQLite, which allows one writer), and a caller waits up to `database.timeout` seconds (5) for a free one.
+- **A dropped connection is replaced.** When the server had already closed it, the statement runs once on a new connection. When it was lost mid-statement or inside a transaction, the failure is reported and nothing is retried, so nothing is applied twice.
+- **Failures** throw `Crab\Database\DatabaseException`, whose message and `$sql` hold the SQL but never the bound values.
+- **PDO blocks.** While a statement runs, its worker serves nothing else; run more workers for more concurrent queries.
+
+It works without the framework too: `new Database(fn () => new PDO($dsn, $user, $password))`. MySQL and SQLite are supported: the tests run on SQLite, and on MySQL when `CRAB_TEST_MYSQL_DSN` is set. PostgreSQL is not supported for now. There is no query builder, model or migration yet.
+
 ## Console
 
 `bin/crab app.php` lists the application's commands and `bin/crab app.php <command>` runs one. Two are built in:
@@ -113,6 +151,7 @@ A provider that needs something open in every worker, such as a connection or a 
 | `src/Console/` | The command runner, with its input and output. |
 | `src/Commands/` | The application's built-in commands. |
 | `src/Container/` | The PSR-11 container. |
+| `src/Database/` | Pooled PDO connections and the query layer. |
 | `src/Config/` | Configuration files and environment variables. |
 | `src/Log/` | The PSR-3 logger. |
 | `src/Testing/` | Helpers for testing components. |

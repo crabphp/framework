@@ -31,7 +31,7 @@ flowchart TD
 
 | Layer | Path | May depend on |
 | --- | --- | --- |
-| Engine *(today)* | `src/Engine/` | PHP and Revolt only; enforced by `tests/EngineBoundaryTest.php` |
+| Engine *(today)* | `src/Engine/` | PHP only, plus Revolt inside the one adapter folder `src/Engine/EventLoop/`; enforced by `tests/EngineBoundaryTest.php` |
 | Contracts *(today)* | `src/Contracts/` | PSR interfaces, other contracts, engine types |
 | Components *(today)* | `src/<Component>/` | Contracts, PSR interfaces, the engine; another component only where that is its purpose |
 | Glue *(today)* | `src/App.php`, `src/helpers.php`, `src/Commands/` | Everything above |
@@ -55,6 +55,7 @@ A contract exists for everything a package touches, including where no PSR exist
 | `Provider`, `WorkerProvider` | none | today |
 | `Console\Command`, `Input`, `Output` | none | today |
 | `Config\Config` | none | today |
+| `Database\Database`, `Database\Connection` | none | today |
 | `Routing\Router` | PSR-15 `RequestHandlerInterface` | today |
 | `Console\Console` | none | today |
 | Logger, cache, events, clock, HTTP client | used directly as PSR-3, 16, 14, 20, 18 | no Crab contract unless we add a method |
@@ -104,7 +105,7 @@ Consequences worth stating plainly:
 - A container entry is worker-scoped by default. Anything per-request is passed as an argument.
 - `env()` is called only inside config files. Everything else reads `config()`, so configuration has one source and can later be cached.
 
-## Concurrency model *(decided, not built)*
+## Concurrency model *(decided; the database follows it)*
 
 The engine runs each request in its own fiber. A handler that calls blocking PHP (PDO, `curl_exec`, `file_get_contents` on a URL) blocks its whole worker until it returns. This decision shapes the database, cache, queue and HTTP client components, so it should be made before any of them.
 
@@ -122,6 +123,8 @@ The engine runs each request in its own fiber. A handler that calls blocking PHP
 - Async drivers can then be added later, per component, behind the same contracts, without touching application code.
 
 This keeps the framework lean now and does not close the door on high-concurrency workers.
+
+Components take every async tool from the engine's own types (`EventLoop`, `Suspension`, `Pool`, `Task`), never from a third-party library, so the scheduler can be replaced without touching them. The pool itself is the engine's `Async\Pool`: bounded, first come first served, with a wait that times out or is cancelled. The database is the first component built on it, with blocking PDO behind the `Database` and `Connection` contracts.
 
 ## Scaling out
 
@@ -172,7 +175,7 @@ A PSR implementation should also pass that PSR's public conformance suite where 
 2. **Worker lifecycle hooks:** `start` and `stop` for providers; error path for background tasks. *Done.*
 3. **Finish Http:** response cookies, multipart uploads, JSON bodies, bodies for router 404 and 405, request id middleware, warnings to exceptions. *Done.* Still open: multipart is read in memory, and the request body is copied from the engine's spool.
 4. **Small PSR components:** clock (PSR-20), events (PSR-14), cache (PSR-16).
-5. **Decide the concurrency model**, then **Database** with a pool contract.
+5. **Database.** *Connection pool and the thin query layer are done, ahead of step 4, tested on SQLite and MySQL.* Next, in this order and each needing its own decisions: query builder, models with relationships, migrations.
 6. **Queue**, then **Scheduling**, each as its own worker group.
 7. **Validation, Session, Auth.**
 8. **Application skeleton** (`crabphp/crab`) and the `make:*` commands. *The skeleton exists, kept minimal; it grows a folder when a component arrives. The `make:*` commands are not built.*
