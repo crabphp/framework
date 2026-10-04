@@ -16,10 +16,10 @@ $app->router
     ->get('/', static fn() => "Hello, world!\n")
     ->get('/hello/{name}', static fn(Request $request) => Response::json(['hello' => $request->getAttribute('name')]));
 
-return $app->runtime('tcp://127.0.0.1:8080');
+return $app;
 ~~~
 
-Save it as `app.php` and run `php bin/crab app.php --single`. A route handler is a closure or any PSR-15 `RequestHandlerInterface`; a closure returns a PSR-7 response, or a string that is sent as plain text. Route parameters arrive as request attributes. `{name}` matches one path segment and `{name:expression}` matches a regular expression.
+Save it as `app.php` and run `php bin/crab app.php serve --single`. A route handler is a closure or any PSR-15 `RequestHandlerInterface`; a closure returns a PSR-7 response, or a string that is sent as plain text. Route parameters arrive as request attributes. `{name}` matches one path segment and `{name:expression}` matches a regular expression.
 
 ## Configuration, errors and logging
 
@@ -49,6 +49,17 @@ Anywhere after the application is created, `config('log.level')` reads that valu
 
 Anything thrown while handling a request is caught by `Http\ErrorHandler`, logged with its trace and answered with a 500, as JSON when the client accepts it and plain text otherwise. Throw `Http\HttpException` to answer with a chosen status and message, for example `throw new HttpException(404, 'No such user')`; below 500 it is not logged. The logger is the container's `Psr\Log\LoggerInterface` entry.
 
+## Console
+
+`bin/crab app.php` lists the application's commands and `bin/crab app.php <command>` runs one. Two are built in:
+
+| Command | Does |
+| --- | --- |
+| `serve` | Serves the application. `--address=tcp://127.0.0.1:8080` and `--workers=1` default to the `server.address` and `server.workers` configuration keys; `--single` serves in one process without `pcntl` and `posix`. |
+| `routes` | Lists the registered routes. |
+
+Add your own with `$app->console->add('mail:send', SendMail::class)`. A command is a class implementing `Contracts\Console\Command` (`description()` and `handle(Input $input, Output $output): int`), made by the container when it runs, or a closure taking the input and output. `Input` gives positional arguments and `--name=value` or `--flag` options. A provider adds commands through the container's `Console` entry.
+
 ## Services, providers and middleware
 
 ~~~php
@@ -66,11 +77,13 @@ $app->router->get('/users/{id}', ShowUser::class);     // a PSR-15 handler made 
 | `src/Engine/` | The networking engine: TCP, UDP, HTTP/1.1, WebSocket, coroutines, timers and supervised workers. It has its own `composer.json` and is also published as `crabphp/engine`. See its [README](src/Engine/README.md) and [architecture](src/Engine/ARCHITECTURE.md). |
 | `src/App.php` | The application: configuration, container, router, middleware and the engine runtime that serves them. |
 | `src/Http/` | PSR-7 request, response, stream and URI, the PSR-17 factory, the middleware pipeline, the error handler, and `EngineHandler`, which runs a PSR-15 handler on the engine's HTTP server. |
+| `src/Console/` | The command runner, with its input and output. |
+| `src/Commands/` | The application's built-in commands. |
 | `src/Container/` | The PSR-11 container. |
 | `src/Config/` | Configuration files and environment variables. |
 | `src/Log/` | The PSR-3 logger. |
 | `src/Routing/` | The router, itself a PSR-15 handler. |
-| `src/Contracts/` | Crab's own interfaces, which extend the PSR ones where Crab adds methods. |
+| `src/Contracts/` | Every interface another package implements or type-hints; they extend the PSR ones where Crab adds methods. |
 | `tests/` | Framework tests beside their components; engine tests in `tests/Engine/`. `tests/EngineBoundaryTest.php` keeps the engine free of framework dependencies. |
 | `benchmarks/` | Engine benchmarks and their recorded results; start at [BENCHMARKS.md](BENCHMARKS.md). |
 | `examples/` | Runnable engine examples. |
@@ -80,7 +93,7 @@ $app->router->get('/users/{id}', ShowUser::class);     // a PSR-15 handler made 
 ~~~sh
 composer install
 composer test
-php bin/crab examples/hello.php --single     # the framework
+php bin/crab examples/hello.php serve --single   # the framework
 php bin/crab examples/servers.php --single   # the engine alone
 ~~~
 

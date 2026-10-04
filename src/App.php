@@ -4,7 +4,10 @@ declare(strict_types=1);
 
 namespace Crab;
 
+use Crab\Commands\Routes;
+use Crab\Commands\Serve;
 use Crab\Config\Config;
+use Crab\Console\Console;
 use Crab\Container\Container;
 use Crab\Contracts\Container\Container as ContainerContract;
 use Crab\Contracts\Provider;
@@ -28,7 +31,7 @@ use Psr\Log\LoggerInterface;
 
 /**
  * An application: configuration, a container, routes, the middleware in
- * front of them and the engine runtime that serves them.
+ * front of them, console commands and the engine runtime that serves them.
  *
  * It reads three configuration keys: "app.debug" shows failure details to
  * clients, "log.path" is where the default logger writes (standard error
@@ -39,6 +42,7 @@ final class App implements RequestHandlerInterface
     private static ?self $current = null;
 
     public readonly Router $router;
+    public readonly Console $console;
     /**
      * @var list<MiddlewareInterface|string>
      */
@@ -67,6 +71,8 @@ final class App implements RequestHandlerInterface
         }
         $this->router = new Router($container->get(ResponseFactoryInterface::class), $container);
         $container->instance(Router::class, $this->router);
+        $this->console = (new Console($container))->add('serve', Serve::class)->add('routes', Routes::class);
+        $container->instance(Console::class, $this->console);
     }
 
     /**
@@ -115,8 +121,8 @@ final class App implements RequestHandlerInterface
     }
 
     /**
-     * A runtime serving this application over HTTP; `bin/crab` runs the
-     * file that returns it.
+     * A runtime serving this application over HTTP; the `serve` command
+     * runs it.
      */
     public function runtime(string $address = 'tcp://127.0.0.1:8080', int $workers = 1): Runtime
     {

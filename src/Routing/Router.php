@@ -39,6 +39,12 @@ final class Router implements RequestHandlerInterface
      * @var array<string, list<string>>
      */
     private array $combined = [];
+    /**
+     * Method, pattern and a name for the handler of every route, as added.
+     *
+     * @var list<array{string, string, string}>
+     */
+    private array $routes = [];
 
     /**
      * The container resolves handlers that are given by name.
@@ -56,6 +62,11 @@ final class Router implements RequestHandlerInterface
      */
     public function add(string $method, string $pattern, RequestHandlerInterface|\Closure|string $handler): static
     {
+        $this->routes[] = [$method, $pattern, match (true) {
+            is_string($handler) => $handler,
+            $handler instanceof \Closure => 'Closure',
+            default => $handler::class,
+        }];
         if ($handler instanceof \Closure) {
             $handler = new ClosureHandler($handler);
         } elseif (is_string($handler)) {
@@ -99,6 +110,14 @@ final class Router implements RequestHandlerInterface
     public function delete(string $pattern, RequestHandlerInterface|\Closure|string $handler): static
     {
         return $this->add('DELETE', $pattern, $handler);
+    }
+
+    /**
+     * @return list<array{string, string, string}> Method, pattern and handler name of each route.
+     */
+    public function routes(): array
+    {
+        return $this->routes;
     }
 
     public function handle(ServerRequestInterface $request): ResponseInterface

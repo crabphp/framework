@@ -14,4 +14,4 @@ $app->router
         'shout' => $request->query('shout') !== null,
     ]));
 
-return $app->runtime('tcp://127.0.0.1:8080', workers: (int) (getenv('CRAB_WORKERS') ?: 1));
+return $app;
