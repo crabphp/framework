@@ -40,26 +40,14 @@ final class Config implements ConfigContract
 
     public function get(string $key, mixed $default = null): mixed
     {
-        $value = $this->items;
-        foreach (explode('.', $key) as $segment) {
-            if (!is_array($value) || !array_key_exists($segment, $value)) {
-                return $default;
-            }
-            $value = $value[$segment];
-        }
-        return $value;
+        $value = $this->find($key, $found);
+        return $found ? $value : $default;
     }
 
     public function has(string $key): bool
     {
-        $value = $this->items;
-        foreach (explode('.', $key) as $segment) {
-            if (!is_array($value) || !array_key_exists($segment, $value)) {
-                return false;
-            }
-            $value = $value[$segment];
-        }
-        return true;
+        $this->find($key, $found);
+        return $found;
     }
 
     public function defaults(string $section, array $values): void
@@ -77,6 +65,23 @@ final class Config implements ConfigContract
     public function all(): array
     {
         return $this->items;
+    }
+
+    /**
+     * Walks a dotted key; a key that exists with a null value is found.
+     */
+    private function find(string $key, ?bool &$found): mixed
+    {
+        $value = $this->items;
+        foreach (explode('.', $key) as $segment) {
+            if (!is_array($value) || !array_key_exists($segment, $value)) {
+                $found = false;
+                return null;
+            }
+            $value = $value[$segment];
+        }
+        $found = true;
+        return $value;
     }
 
     /**

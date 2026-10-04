@@ -21,6 +21,12 @@ final readonly class ClosureHandler implements RequestHandlerInterface
     public function handle(ServerRequestInterface $request): ResponseInterface
     {
         $result = ($this->closure)($request);
-        return is_string($result) ? Response::text($result) : $result;
+        if ($result instanceof ResponseInterface) {
+            return $result;
+        }
+        if (is_string($result)) {
+            return Response::text($result);
+        }
+        throw new \LogicException('A handler closure must return a response or a string; it returned ' . get_debug_type($result) . '.');
     }
 }

@@ -54,6 +54,15 @@ final class Response extends Message implements ResponseInterface
         return self::typed('application/json', json_encode($value, JSON_THROW_ON_ERROR | $flags), $status, $headers);
     }
 
+    /**
+     * Adds a Set-Cookie header; with another PSR-7 response, use
+     * withAddedHeader('Set-Cookie', (string) $cookie).
+     */
+    public function withCookie(Cookie $cookie): static
+    {
+        return $this->withAddedHeader('Set-Cookie', (string) $cookie);
+    }
+
     public function getStatusCode(): int
     {
         return $this->status;

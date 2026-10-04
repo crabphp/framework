@@ -168,7 +168,8 @@ final class AppTest extends TestCase
 
             $app->container->instance(ErrorHandler::class, new TagMiddleware('custom'));
             $app->middleware();
-            self::assertSame(['inner', 'custom'], $app->handle(new Request('GET', '/missing'))->getHeader('X-Trail'));
+            $missing = $app->handle(new Request('GET', '/missing'));
+            self::assertSame([404, ['inner', 'custom']], [$missing->getStatusCode(), $missing->getHeader('X-Trail')]);
         } finally {
             @unlink($path);
         }
@@ -227,6 +228,94 @@ final class AppTest extends TestCase
         });
         self::assertSame('set by the app>default inner>', (string) $app->handle(new Request('GET', '/'))->getBody());
         self::assertSame('default inner', config('tags.inner'));
+    }
+
+    public function testRequestIdsWhenSwitchedOn(): void
+    {
+        $path = sys_get_temp_dir() . '/crab-app-' . bin2hex(random_bytes(6)) . '.log';
+        try {
+            $app = new App(new Config(['app' => ['request_id' => true], 'log' => ['path' => $path]]));
+            $app->router->get('/', static fn(ServerRequestInterface $request) => $request->getAttribute('request_id'))
+                ->get('/fail', static fn() => throw new \RuntimeException('broken'));
+
+            $first = $app->handle(new Request('GET', '/'));
+            $second = $app->handle(new Request('GET', '/'));
+            self::assertMatchesRegularExpression('/^[0-9a-f]{12}-1$/', $first->getHeaderLine('X-Request-Id'));
+            self::assertSame((string) $first->getBody(), $first->getHeaderLine('X-Request-Id'));
+            self::assertNotSame($first->getHeaderLine('X-Request-Id'), $second->getHeaderLine('X-Request-Id'));
+            self::assertSame('trace-42.a_b', $app->handle(new Request('GET', '/', ['X-Request-Id' => 'trace-42.a_b']))->getHeaderLine('X-Request-Id'));
+            foreach (['has space', 'semi;colon', str_repeat('a', 129)] as $unsafe) {
+                self::assertNotSame($unsafe, $app->handle(new Request('GET', '/', ['X-Request-Id' => $unsafe]))->getHeaderLine('X-Request-Id'));
+            }
+
+            $failed = $app->handle(new Request('GET', '/fail', ['X-Request-Id' => 'trace-43']));
+            self::assertSame([500, 'trace-43'], [$failed->getStatusCode(), $failed->getHeaderLine('X-Request-Id')]);
+            self::assertStringContainsString('{"request_id":"trace-43"}', file_get_contents($path));
+            self::assertSame('trace-44', $app->handle(new Request('GET', '/missing', ['X-Request-Id' => 'trace-44']))->getHeaderLine('X-Request-Id'));
+
+            $off = new App();
+            $off->router->get('/', static fn() => 'home');
+            self::assertFalse($off->handle(new Request('GET', '/'))->hasHeader('X-Request-Id'));
+        } finally {
+            @unlink($path);
+        }
+    }
+
+    public function testInAWorkerWarningsAreFailuresAndDeprecationsAreLoggedOnce(): void
+    {
+        $path = sys_get_temp_dir() . '/crab-app-' . bin2hex(random_bytes(6)) . '.log';
+        $seen = [];
+        try {
+            $app = new App(new Config(['log' => ['path' => $path]]));
+            $app->register(new class($seen) implements WorkerProvider {
+                public function __construct(private array &$seen)
+                {
+                }
+
+                public function register(Container $container): void
+                {
+                }
+
+                public function start(Worker $worker, Container $container): void
+                {
+                    $worker->spawn(function () use ($worker): void {
+                        try {
+                            $missing = [];
+                            $this->seen[] = $missing['key'];
+                        } catch (\ErrorException $error) {
+                            $this->seen[] = $error->getMessage();
+                        }
+                        $this->seen[] = @file_get_contents('/no/such/file');
+                        for ($i = 0; $i < 3; ++$i) {
+                            trigger_error('old way', E_USER_DEPRECATED);
+                        }
+                        $this->seen[] = 'continued';
+                        $worker->loop->defer(static fn() => $worker->stop());
+                    });
+                }
+
+                public function stop(Worker $worker, Container $container): void
+                {
+                }
+            });
+            $before = set_error_handler(null);
+            restore_error_handler();
+            // PHPUnit lowers the level while a test runs, which reads as "silenced".
+            $level = error_reporting(E_ALL);
+            try {
+                $app->runtime('tcp://127.0.0.1:0')->run(singleProcess: true);
+            } finally {
+                error_reporting($level);
+            }
+            $after = set_error_handler(null);
+            restore_error_handler();
+
+            self::assertSame(['Undefined array key "key"', false, 'continued'], $seen);
+            self::assertSame(1, substr_count(file_get_contents($path), 'WARNING Deprecated: old way in '));
+            self::assertSame($before, $after, 'The worker must put back the error handler it replaced.');
+        } finally {
+            @unlink($path);
+        }
     }
 
     public function testMiddlewareWrapsRoutesInOrder(): void

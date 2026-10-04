@@ -23,6 +23,7 @@ use Crab\Http\EngineHandler;
 use Crab\Http\ErrorHandler;
 use Crab\Http\Factory;
 use Crab\Http\MiddlewareStack;
+use Crab\Http\RequestId;
 use Crab\Log\Logger;
 use Crab\Routing\Router;
 use Psr\Http\Message\ResponseFactoryInterface;
@@ -30,6 +31,7 @@ use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestFactoryInterface;
 use Psr\Http\Message\ServerRequestInterface;
 use Psr\Http\Message\StreamFactoryInterface;
+use Psr\Http\Message\UploadedFileFactoryInterface;
 use Psr\Http\Message\UriFactoryInterface;
 use Psr\Http\Server\MiddlewareInterface;
 use Psr\Http\Server\RequestHandlerInterface;
@@ -39,9 +41,10 @@ use Psr\Log\LoggerInterface;
  * An application: configuration, a container, routes, the middleware in
  * front of them, console commands and the engine runtime that serves them.
  *
- * It reads three configuration keys: "app.debug" shows failure details to
- * clients, "log.path" is where the default logger writes (standard error
- * when unset) and "log.level" is the least severe level it writes.
+ * It reads four configuration keys: "app.debug" shows failure details to
+ * clients, "app.request_id" gives every request an id when true,
+ * "log.path" is where the default logger writes (standard error when
+ * unset) and "log.level" is the least severe level it writes.
  */
 final class App implements RequestHandlerInterface
 {
@@ -50,6 +53,12 @@ final class App implements RequestHandlerInterface
     public readonly RouterContract $router;
     public readonly ConsoleContract $console;
     private readonly MiddlewareStack $stack;
+    /**
+     * Places a deprecation has already been logged from, in this worker.
+     *
+     * @var array<string, true>
+     */
+    private array $deprecations = [];
     /**
      * @var list<WorkerProvider>
      */
@@ -74,15 +83,20 @@ final class App implements RequestHandlerInterface
         ));
         $container->singleton(Factory::class);
         foreach ([ResponseFactoryInterface::class, ServerRequestFactoryInterface::class,
-            StreamFactoryInterface::class, UriFactoryInterface::class] as $factory) {
+            StreamFactoryInterface::class, UploadedFileFactoryInterface::class, UriFactoryInterface::class] as $factory) {
             $container->singleton($factory, Factory::class);
         }
-        $this->router = new Router($container->get(ResponseFactoryInterface::class), $container);
+        $this->router = new Router($container);
         $container->instance(RouterContract::class, $this->router);
         $container->instance(Router::class, $this->router);
         // The error handler is the entry bound as ErrorHandler; rebinding it to
         // another PSR-15 middleware replaces how failures are answered.
-        $this->stack = (new MiddlewareStack($this->router, $container))->add(ErrorHandler::class);
+        $this->stack = new MiddlewareStack($this->router, $container);
+        if ($config->get('app.request_id', false)) {
+            // Outside the error handler, so that failures carry the id too.
+            $this->stack->add(RequestId::class);
+        }
+        $this->stack->add(ErrorHandler::class);
         $container->instance(MiddlewareStackContract::class, $this->stack);
         $container->instance(MiddlewareStack::class, $this->stack);
         $this->console = (new Console($container))->add('serve', Serve::class)->add('routes', Routes::class);
@@ -158,12 +172,15 @@ final class App implements RequestHandlerInterface
 
     private function start(Worker $worker): void
     {
+        set_error_handler($this->raise(...));
         try {
             $this->stack->assemble();
             foreach ($this->workerProviders as $provider) {
                 $provider->start($worker, $this->container);
             }
         } catch (\Throwable $error) {
+            // stop() will not run for a worker that did not start.
+            restore_error_handler();
             // The supervisor reports only that a worker failed to start.
             fwrite(STDERR, "Worker {$worker->index} cannot start: {$error->getMessage()}\n");
             throw $error;
@@ -172,6 +189,7 @@ final class App implements RequestHandlerInterface
 
     private function stop(Worker $worker): void
     {
+        restore_error_handler();
         foreach (array_reverse($this->workerProviders) as $provider) {
             try {
                 $provider->stop($worker, $this->container);
@@ -180,6 +198,29 @@ final class App implements RequestHandlerInterface
                 $this->report($error);
             }
         }
+    }
+
+    /**
+     * PHP's error handler inside a worker: a warning or notice becomes an
+     * exception, so it reaches the same error path as any other failure;
+     * a deprecation is logged once per place and execution continues.
+     */
+    private function raise(int $level, string $message, string $file, int $line): bool
+    {
+        if ((error_reporting() & $level) === 0) {
+            // Not reported, or silenced with @.
+            return false;
+        }
+        if ($level === E_DEPRECATED || $level === E_USER_DEPRECATED) {
+            if (!isset($this->deprecations[$file . ':' . $line])) {
+                $this->deprecations[$file . ':' . $line] = true;
+                $this->container->get(LoggerInterface::class)->warning('Deprecated: {message} in {file}:{line}', [
+                    'message' => $message, 'file' => $file, 'line' => $line,
+                ]);
+            }
+            return true;
+        }
+        throw new \ErrorException($message, 0, $level, $file, $line);
     }
 
     /**

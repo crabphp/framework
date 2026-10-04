@@ -10,6 +10,7 @@ use Crab\Http\Factory;
 use Crab\Http\Request;
 use Crab\Http\Response;
 use Crab\Http\Stream;
+use Crab\Http\UploadedFile;
 use Crab\Http\Uri;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
@@ -212,9 +213,10 @@ final class MessageTest extends TestCase
     public function testRequestChangesReturnNewRequests(): void
     {
         $request = new Request('GET', 'http://example.com/a');
+        $file = new UploadedFile(new Stream('x'));
         $changed = $request->withMethod('PUT')->withAttribute('id', '7')->withAttribute('none', null)
             ->withQueryParams(['q' => '1'])->withCookieParams(['c' => '2'])->withParsedBody(['p' => '3'])
-            ->withUploadedFiles(['f' => 'file'])->withRequestTarget('*');
+            ->withUploadedFiles(['f' => $file])->withRequestTarget('*');
         self::assertSame(['GET', [], [], [], null, '/a'], [$request->getMethod(), $request->getAttributes(),
             $request->getQueryParams(), $request->getCookieParams(), $request->getParsedBody(), $request->getRequestTarget()]);
         self::assertSame('PUT', $changed->getMethod());
@@ -224,7 +226,7 @@ final class MessageTest extends TestCase
         self::assertSame('default', $changed->getAttribute('missing', 'default'));
         self::assertSame(['none' => null], $changed->withoutAttribute('id')->getAttributes());
         self::assertSame($changed, $changed->withoutAttribute('missing'));
-        self::assertSame([['q' => '1'], ['c' => '2'], ['p' => '3'], ['f' => 'file'], '*'], [$changed->getQueryParams(),
+        self::assertSame([['q' => '1'], ['c' => '2'], ['p' => '3'], ['f' => $file], '*'], [$changed->getQueryParams(),
             $changed->getCookieParams(), $changed->getParsedBody(), $changed->getUploadedFiles(), $changed->getRequestTarget()]);
 
         $moved = $request->withUri(new Uri('http://other.test:81/b?x=1'));

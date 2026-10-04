@@ -149,9 +149,10 @@ No auto-discovery, no facades, no `boot()` phase, no global container accessor.
 
 - **One error path per entry point.** HTTP requests go through `ErrorHandler` *(today)*. Console commands report through `Console::run()` *(today)*. A task spawned on a worker that fails, a failure that escapes a timer, and a provider that fails to stop are written to the application's logger, and the worker keeps running *(today)*. Queue jobs and scheduled jobs get the same guarantee when those components are built.
 - **Fail at startup, not at first use.** Misconfiguration stops `serve` with its cause *(today for middleware and logger)*.
-- **Structured context** *(proposed)*. A request id is assigned by middleware, stored as a request attribute and added to every log record for that request.
+- **Request ids** *(today, opt-in)*. With `app.request_id` on, the outermost middleware assigns an id, stores it as the `request_id` attribute, returns it in `X-Request-Id` and the error handler adds it to the failure's log record. It is opt-in because it costs about 2 µs per request. The logger is shared by overlapping requests, so it cannot add the id by itself; code that logs passes it in the context.
 - **Health and metrics** *(proposed)*. A built-in health route, and `Worker::stats()` exposed through a command or route.
-- **Warnings are errors** *(proposed)*. PHP warnings and notices are converted to exceptions so they reach the same error path.
+- **Warnings are errors** *(today, in workers)*. Inside a worker, PHP warnings and notices are thrown as `ErrorException` so they reach the same error path; deprecations are logged once per place. Console commands other than `serve` run without this.
+- **One error renderer** *(today)*. `Http\ErrorResponse` builds every error response, for the error handler and for the router's 404 and 405, so they look the same and unmatched routes still pass back through middleware as ordinary responses.
 
 ## Testing
 
@@ -169,7 +170,7 @@ A PSR implementation should also pass that PSR's public conformance suite where 
 
 1. **Close the contract gaps:** `Config`, `Router`, `Console` contracts; boundary tests for the layer rules. *Done.*
 2. **Worker lifecycle hooks:** `start` and `stop` for providers; error path for background tasks. *Done.*
-3. **Finish Http:** response cookies, multipart uploads, bodies for router 404 and 405, request id middleware, warnings to exceptions.
+3. **Finish Http:** response cookies, multipart uploads, JSON bodies, bodies for router 404 and 405, request id middleware, warnings to exceptions. *Done.* Still open: multipart is read in memory, and the request body is copied from the engine's spool.
 4. **Small PSR components:** clock (PSR-20), events (PSR-14), cache (PSR-16).
 5. **Decide the concurrency model**, then **Database** with a pool contract.
 6. **Queue**, then **Scheduling**, each as its own worker group.

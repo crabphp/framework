@@ -21,6 +21,29 @@ return $app;
 
 Save it as `app.php` and run `php bin/crab app.php serve --single`. A route handler is a closure or any PSR-15 `RequestHandlerInterface`; a closure returns a PSR-7 response, or a string that is sent as plain text. Route parameters arrive as request attributes. `{name}` matches one path segment and `{name:expression}` matches a regular expression.
 
+## Requests and responses
+
+A closure handler receives `Contracts\Http\Request`, a PSR-7 server request with four additions:
+
+~~~php
+$app->router->post('/users/{id}/avatar', static function (Request $request) {
+    $id = $request->getAttribute('id');          // route parameter
+    $page = $request->query('page', 1);           // query string
+    $name = $request->input('name');              // form field or JSON key
+    $file = $request->file('avatar');             // PSR-7 UploadedFileInterface, or null
+    $file?->moveTo("/var/uploads/{$id}.png");
+
+    return Response::json(['saved' => $file !== null])
+        ->withCookie(new Cookie('last_upload', (string) time(), maxAge: 3600));
+});
+~~~
+
+- **Parsed body:** `input()` and `getParsedBody()` read urlencoded forms, `multipart/form-data` and JSON objects or arrays. A body that claims one of these and is malformed is answered with 400.
+- **Uploads:** `getUploadedFiles()` returns the PSR-7 tree; `photos[]` fields nest as in PHP. A multipart body is held in memory while it is read, bounded by the HTTP server's body limit (1 MiB by default), and a form may have at most 1,000 parts.
+- **Responses:** `Response::text()`, `html()` and `json()`, or `new Response($status, $headers, $body)`. `withCookie()` adds a `Set-Cookie`; with a response from another library use `withAddedHeader('Set-Cookie', (string) $cookie)`.
+- **Cookies:** `new Cookie($name, $value, maxAge: ..., path: ..., domain: ..., secure: ..., httpOnly: ..., sameSite: ...)` defaults to `HttpOnly` and `SameSite=Lax`; `Cookie::forget($name)` deletes one. Read them with `$request->getCookieParams()`.
+- **Unmatched routes:** 404, or 405 with an `Allow` header, with the same JSON-or-text body as any other error.
+
 ## Configuration, errors and logging
 
 ~~~php
@@ -39,15 +62,20 @@ $app = new App(Config::load(__DIR__ . '/config'));
 return ['level' => env('LOG_LEVEL', 'info')];
 ~~~
 
-Anywhere after the application is created, `config('log.level')` reads that value, and `config('log.level', 'debug')` supplies a default. `env('NAME', $default)` reads an environment variable, where the real environment wins over `.env`; the words `true`, `false` and `null` become those values. The two helpers are global functions over `Env::get()` and `$app->config->get()`. The application itself reads three keys:
+Anywhere after the application is created, `config('log.level')` reads that value, and `config('log.level', 'debug')` supplies a default. `env('NAME', $default)` reads an environment variable, where the real environment wins over `.env`; the words `true`, `false` and `null` become those values. The two helpers are global functions over `Env::get()` and `$app->config->get()`. The application itself reads four keys:
 
 | Key | Meaning | Default |
 | --- | --- | --- |
 | `app.debug` | Show failure details to clients | `false` |
+| `app.request_id` | Give every request an id | `false` |
 | `log.path` | Where the default logger writes | standard error |
 | `log.level` | The least severe level written | `debug` |
 
 Anything thrown while handling a request is caught by `Http\ErrorHandler`, logged with its trace and answered with a 500, as JSON when the client accepts it and plain text otherwise. Throw `Http\HttpException` to answer with a chosen status and message, for example `throw new HttpException(404, 'No such user')`; below 500 it is not logged. The logger is the container's `Psr\Log\LoggerInterface` entry.
+
+Inside a worker, a PHP warning or notice is thrown as an `ErrorException`, so it is logged and answered like any other failure instead of being printed and ignored. Code silenced with `@` is left alone. A deprecation is logged once per place and execution continues.
+
+With `app.request_id` on, each request gets an id: the `X-Request-Id` it arrived with when that is a plain token, otherwise a new one. It is the request's `request_id` attribute, is returned in `X-Request-Id`, and is added to the log record of a failure. It is off by default because it costs about 2 µs per request, measured in process, where a routed request otherwise costs about 3.
 
 ## Console
 

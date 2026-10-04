@@ -8,12 +8,17 @@ use Crab\Contracts\Http\Request as RequestContract;
 use Crab\Engine\Async\Cancellation;
 use Crab\Engine\Http\Request as EngineRequest;
 use Psr\Http\Message\StreamInterface;
+use Psr\Http\Message\UploadedFileInterface;
 use Psr\Http\Message\UriInterface;
 
 /**
  * A PSR-7 server request. One received by the engine reads from the engine's
- * request and builds its header map, URI, body stream, query and cookies
- * only when they are first asked for.
+ * request and builds its header map, URI, body stream, query, cookies,
+ * parsed body and uploaded files only when they are first asked for.
+ *
+ * The parsed body is read from a form (urlencoded or multipart) or a JSON
+ * object or array; a body that claims one of those and is malformed is
+ * answered with 400.
  */
 final class Request extends Message implements RequestContract
 {
@@ -35,6 +40,7 @@ final class Request extends Message implements RequestContract
     private ?array $query = null;
     private ?array $cookies = null;
     private array $files = [];
+    private bool $filesKnown = false;
     private mixed $parsed = null;
     private bool $parsedKnown = false;
     private array $attributes = [];
@@ -194,7 +200,8 @@ final class Request extends Message implements RequestContract
             } else {
                 $string = $this->uri->getQuery();
             }
-            parse_str($string, $this->query);
+            // Beyond max_input_vars PHP keeps what it has read and warns; keep that, without the warning.
+            @parse_str($string, $this->query);
         }
         return $this->query;
     }
@@ -208,23 +215,40 @@ final class Request extends Message implements RequestContract
 
     public function getUploadedFiles(): array
     {
+        if (!$this->filesKnown) {
+            if (str_starts_with(strtolower($this->getHeaderLine('content-type')), 'multipart/form-data')) {
+                $this->readMultipart();
+            }
+            $this->filesKnown = true;
+        }
         return $this->files;
     }
 
     public function withUploadedFiles(array $uploadedFiles): static
     {
+        array_walk_recursive($uploadedFiles, static function (mixed $file): void {
+            if (!$file instanceof UploadedFileInterface) {
+                throw new \InvalidArgumentException('Uploaded files must be a tree of UploadedFileInterface.');
+            }
+        });
         $new = clone $this;
         $new->files = $uploadedFiles;
+        $new->filesKnown = true;
         return $new;
     }
 
     public function getParsedBody()
     {
         if (!$this->parsedKnown) {
-            $this->parsedKnown = true;
-            if (str_starts_with(strtolower($this->getHeaderLine('content-type')), 'application/x-www-form-urlencoded')) {
-                parse_str((string) $this->getBody(), $this->parsed);
+            $type = strtolower($this->getHeaderLine('content-type'));
+            if (str_starts_with($type, 'application/x-www-form-urlencoded')) {
+                @parse_str((string) $this->getBody(), $this->parsed);
+            } elseif (str_starts_with($type, 'multipart/form-data')) {
+                $this->readMultipart();
+            } elseif (preg_match('~^application/(?:[a-z0-9.-]+\+)?json\b~', $type) === 1) {
+                $this->parsed = self::json((string) $this->getBody());
             }
+            $this->parsedKnown = true;
         }
         return $this->parsed;
     }
@@ -278,6 +302,12 @@ final class Request extends Message implements RequestContract
         return is_array($parsed) ? $parsed[$name] ?? $default : $default;
     }
 
+    public function file(string $name): ?UploadedFileInterface
+    {
+        $file = $this->getUploadedFiles()[$name] ?? null;
+        return $file instanceof UploadedFileInterface ? $file : null;
+    }
+
     public function cancellation(): Cancellation
     {
         // A request the engine did not receive is never cancelled.
@@ -290,6 +320,39 @@ final class Request extends Message implements RequestContract
             $this->headers = $this->source->headers;
             $this->loaded = true;
         }
+    }
+
+    /**
+     * Fills the parsed body and the uploaded files from one reading of a
+     * multipart body, leaving alone whichever was set explicitly.
+     */
+    private function readMultipart(): void
+    {
+        [$fields, $files] = Multipart::parse($this->getHeaderLine('content-type'), (string) $this->getBody());
+        if (!$this->filesKnown) {
+            $this->files = $files;
+            $this->filesKnown = true;
+        }
+        if (!$this->parsedKnown) {
+            $this->parsed = $fields;
+            $this->parsedKnown = true;
+        }
+    }
+
+    /**
+     * @return array<mixed>|null A JSON object or array; null for an empty body or a JSON scalar.
+     */
+    private static function json(string $body): ?array
+    {
+        if ($body === '') {
+            return null;
+        }
+        try {
+            $value = json_decode($body, true, flags: JSON_THROW_ON_ERROR);
+        } catch (\JsonException $error) {
+            throw new HttpException(400, 'The JSON body is malformed.', previous: $error);
+        }
+        return is_array($value) ? $value : null;
     }
 
     /**

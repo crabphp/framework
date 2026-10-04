@@ -58,7 +58,10 @@ final class RouterTest extends TestCase
             ->post('/users', static fn() => 'create');
 
         $missing = $router->handle(new Request('GET', '/nothing'));
-        self::assertSame([404, ''], [$missing->getStatusCode(), (string) $missing->getBody()]);
+        self::assertSame([404, "404 Not Found\n"], [$missing->getStatusCode(), (string) $missing->getBody()]);
+        $json = $router->handle(new Request('PUT', '/users/7', ['Accept' => 'application/json']));
+        self::assertSame('{"error":{"status":405,"message":"Method Not Allowed"}}', (string) $json->getBody());
+        self::assertSame('GET, DELETE, HEAD', $json->getHeaderLine('Allow'));
         self::assertSame(404, $router->handle(new Request('GET', '/users/7/'))->getStatusCode());
 
         $wrongMethod = $router->handle(new Request('PUT', '/users/7'));
@@ -127,6 +130,14 @@ final class RouterTest extends TestCase
             }
         }
         self::assertCount(4, $router->routes());
+    }
+
+    public function testAClosureThatReturnsNeitherAResponseNorAStringIsNamed(): void
+    {
+        $router = (new Router())->get('/', static fn() => ['not' => 'a response']);
+        $this->expectException(\LogicException::class);
+        $this->expectExceptionMessage('it returned array');
+        $router->handle(new Request('GET', '/'));
     }
 
     public function testAnAbsoluteTargetWithoutAPathIsTheRoot(): void

@@ -6,9 +6,8 @@ namespace Crab\Routing;
 
 use Crab\Contracts\Routing\Router as RouterContract;
 use Crab\Http\ClosureHandler;
-use Crab\Http\Factory;
+use Crab\Http\ErrorResponse;
 use Psr\Container\ContainerInterface;
-use Psr\Http\Message\ResponseFactoryInterface;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface;
 use Psr\Http\Server\RequestHandlerInterface;
@@ -17,7 +16,8 @@ use Psr\Http\Server\RequestHandlerInterface;
  * A PSR-15 handler that dispatches by method and path. Paths without
  * parameters are one hash lookup; the others share one combined expression
  * per method, built when that method is first matched. Parameters reach the
- * route's handler as request attributes.
+ * route's handler as request attributes. A path no route matches is answered
+ * with 404, or with 405 and the methods that would match.
  */
 final class Router implements RouterContract
 {
@@ -51,10 +51,8 @@ final class Router implements RouterContract
     /**
      * The container resolves handlers that are given by name.
      */
-    public function __construct(
-        private readonly ResponseFactoryInterface $responses = new Factory(),
-        private readonly ?ContainerInterface $container = null,
-    ) {
+    public function __construct(private readonly ?ContainerInterface $container = null)
+    {
     }
 
     /**
@@ -134,7 +132,7 @@ final class Router implements RouterContract
             $handler = $this->find('GET', $path, $parameters);
         }
         if ($handler === null) {
-            return $this->unmatched($path);
+            return $this->unmatched($request, $path);
         }
         foreach ($parameters as $name => $value) {
             $request = $request->withAttribute($name, $value);
@@ -166,7 +164,7 @@ final class Router implements RouterContract
     /**
      * 405 with the methods that do match the path, otherwise 404.
      */
-    private function unmatched(string $path): ResponseInterface
+    private function unmatched(ServerRequestInterface $request, string $path): ResponseInterface
     {
         $allowed = [];
         $ignored = [];
@@ -176,12 +174,12 @@ final class Router implements RouterContract
             }
         }
         if ($allowed === []) {
-            return $this->responses->createResponse(404);
+            return ErrorResponse::make($request, 404);
         }
         if (in_array('GET', $allowed, true) && !in_array('HEAD', $allowed, true)) {
             $allowed[] = 'HEAD';
         }
-        return $this->responses->createResponse(405)->withHeader('Allow', implode(', ', $allowed));
+        return ErrorResponse::make($request, 405, headers: ['Allow' => implode(', ', $allowed)]);
     }
 
     /**

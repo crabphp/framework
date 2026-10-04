@@ -6,6 +6,7 @@ namespace Crab\Contracts\Http;
 
 use Crab\Engine\Async\Cancellation;
 use Psr\Http\Message\ServerRequestInterface;
+use Psr\Http\Message\UploadedFileInterface;
 
 /**
  * A PSR-7 server request with the few additions Crab's own handlers use.
@@ -22,6 +23,12 @@ interface Request extends ServerRequestInterface
      * One field of an array parsed body, or the default when it is absent.
      */
     public function input(string $name, mixed $default = null): mixed;
+
+    /**
+     * The file uploaded under a top-level field name, or null when there
+     * is none or the name holds several files.
+     */
+    public function file(string $name): ?UploadedFileInterface;
 
     /**
      * Cancelled when the request completes, times out or loses its

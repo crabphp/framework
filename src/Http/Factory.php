@@ -10,6 +10,8 @@ use Psr\Http\Message\ServerRequestFactoryInterface;
 use Psr\Http\Message\ServerRequestInterface;
 use Psr\Http\Message\StreamFactoryInterface;
 use Psr\Http\Message\StreamInterface;
+use Psr\Http\Message\UploadedFileFactoryInterface;
+use Psr\Http\Message\UploadedFileInterface;
 use Psr\Http\Message\UriFactoryInterface;
 use Psr\Http\Message\UriInterface;
 
@@ -20,6 +22,7 @@ final class Factory implements
     ResponseFactoryInterface,
     ServerRequestFactoryInterface,
     StreamFactoryInterface,
+    UploadedFileFactoryInterface,
     UriFactoryInterface
 {
     public function createResponse(int $code = 200, string $reasonPhrase = ''): ResponseInterface
@@ -52,6 +55,16 @@ final class Factory implements
     public function createStreamFromResource($resource): StreamInterface
     {
         return new Stream($resource);
+    }
+
+    public function createUploadedFile(
+        StreamInterface $stream,
+        ?int $size = null,
+        int $error = UPLOAD_ERR_OK,
+        ?string $clientFilename = null,
+        ?string $clientMediaType = null,
+    ): UploadedFileInterface {
+        return new UploadedFile($stream, $size ?? $stream->getSize(), $error, $clientFilename, $clientMediaType);
     }
 
     public function createUri(string $uri = ''): UriInterface
