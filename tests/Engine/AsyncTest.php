@@ -13,8 +13,8 @@ use Crab\Engine\Async\Task;
 use Crab\Engine\Network\Connection;
 use Crab\Engine\Tests\Support\TestCase;
 use LogicException;
-use Revolt\EventLoop\Driver;
-use Revolt\EventLoop\Driver\StreamSelectDriver;
+use Crab\Engine\EventLoop;
+use Crab\Engine\EventLoop\RevoltEventLoop;
 use RuntimeException;
 
 final class AsyncTest extends TestCase
@@ -188,9 +188,9 @@ final class AsyncTest extends TestCase
         self::assertSame([], $loop->getIdentifiers());
     }
 
-    private function newLoop(): StreamSelectDriver
+    private function newLoop(): RevoltEventLoop
     {
-        $loop = new StreamSelectDriver();
+        $loop = RevoltEventLoop::create();
         $this->deferCleanup(static function () use ($loop): void {
             foreach ($loop->getIdentifiers() as $id) { $loop->cancel($id); }
         });
@@ -200,7 +200,7 @@ final class AsyncTest extends TestCase
     /**
      * @return array{ConnectionStream, Connection, resource}
      */
-    private function connectedStream(StreamSelectDriver $loop, int $capacity = 65_536): array
+    private function connectedStream(RevoltEventLoop $loop, int $capacity = 65_536): array
     {
         $pair = stream_socket_pair(STREAM_PF_UNIX, STREAM_SOCK_STREAM, STREAM_IPPROTO_IP);
         self::assertNotFalse($pair, 'Socket pair creation failed.');
@@ -215,21 +215,21 @@ final class AsyncTest extends TestCase
         return [new ConnectionStream($connection), $connection, $pair[1]];
     }
 
-    private function spawn(Driver $loop, callable $body): Task
+    private function spawn(EventLoop $loop, callable $body): Task
     {
         $task = Task::spawn($loop, $body);
         $this->deferCleanup($task->cancel(...));
         return $task;
     }
 
-    private function awaitTask(Driver $loop, Task $task): mixed
+    private function awaitTask(EventLoop $loop, Task $task): mixed
     {
         $deadline = $loop->delay(2, static fn () => throw new RuntimeException('Async test exceeded its deadline.'));
         try { return $task->await(); }
         finally { $loop->cancel($deadline); }
     }
 
-    private function assertTaskCancelled(Driver $loop, Task $task): void
+    private function assertTaskCancelled(EventLoop $loop, Task $task): void
     {
         $cancelled = false;
         try { $this->awaitTask($loop, $task); }
@@ -237,7 +237,7 @@ final class AsyncTest extends TestCase
         self::assertTrue($cancelled, 'Task cancellation was ignored.');
     }
 
-    private function until(Driver $loop, Closure $complete): void
+    private function until(EventLoop $loop, Closure $complete): void
     {
         $timedOut = false;
         $poll = $loop->repeat(0.001, static function () use ($complete, $loop): void {
@@ -253,6 +253,6 @@ final class AsyncTest extends TestCase
             $loop->cancel($deadline);
         }
         self::assertFalse($timedOut, 'Async test exceeded its deadline.');
-        self::assertTrue($complete(), 'Loop exited before completion.');
+        self::assertTrue($complete(), 'EventLoop exited before completion.');
     }
 }

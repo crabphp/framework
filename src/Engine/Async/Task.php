@@ -6,11 +6,11 @@ namespace Crab\Engine\Async;
 
 use Closure;
 use LogicException;
-use Revolt\EventLoop\Driver;
+use Crab\Engine\EventLoop;
 use Throwable;
 
 /**
- * A tracked task, executed by the existing Revolt scheduler.
+ * A tracked task, executed by the worker's event loop.
  */
 final class Task
 {
@@ -26,7 +26,7 @@ final class Task
     private array $observers = [];
     private int $nextObserver = 0;
 
-    private function __construct(private readonly Driver $loop)
+    private function __construct(private readonly EventLoop $loop)
     {
         $this->cancellation = new Cancellation();
     }
@@ -34,7 +34,7 @@ final class Task
     /**
      * @param callable(Cancellation): mixed $body
      */
-    public static function spawn(Driver $loop, callable $body): self
+    public static function spawn(EventLoop $loop, callable $body): self
     {
         $task = new self($loop);
         $task->deferred = $loop->defer(static function () use ($task, $body): void {

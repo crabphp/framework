@@ -34,6 +34,32 @@ final class EngineBoundaryTest extends TestCase
         self::assertSame([], $violations, 'Engine code must not depend on framework code.');
     }
 
+    public function testOnlyTheLoopAdapterKnowsRevolt(): void
+    {
+        $root = dirname(__DIR__) . '/src';
+        $violations = [];
+        $adapters = 0;
+        $files = new \RecursiveIteratorIterator(new \RecursiveDirectoryIterator($root, \FilesystemIterator::SKIP_DOTS));
+        foreach ($files as $file) {
+            if ($file->getExtension() !== 'php') {
+                continue;
+            }
+            $path = substr($file->getPathname(), strlen($root) + 1);
+            foreach (file($file->getPathname()) as $number => $line) {
+                if (!preg_match('/\bRevolt\\\\/', $line)) {
+                    continue;
+                }
+                if (str_starts_with($path, 'Engine/EventLoop/')) {
+                    ++$adapters;
+                } else {
+                    $violations[] = $path . ':' . ($number + 1);
+                }
+            }
+        }
+        self::assertGreaterThan(0, $adapters, 'The loop adapter was not found.');
+        self::assertSame([], $violations, 'Only src/Engine/EventLoop/ may name Revolt; everything else uses Crab\\Engine\\Loop.');
+    }
+
     public function testEnginePackageDeclaresOnlyItsOwnDependencies(): void
     {
         $package = json_decode(file_get_contents(dirname(__DIR__) . '/src/Engine/composer.json'), true, flags: JSON_THROW_ON_ERROR);

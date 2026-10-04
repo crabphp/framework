@@ -8,7 +8,7 @@ use Crab\Engine\Network\UdpEndpoint;
 use Crab\Engine\Tests\Support\TestCase;
 use InvalidArgumentException;
 use PHPUnit\Framework\Attributes\DataProvider;
-use Revolt\EventLoop\Driver\StreamSelectDriver;
+use Crab\Engine\EventLoop\RevoltEventLoop;
 use RuntimeException;
 
 final class UdpTest extends TestCase
@@ -88,16 +88,16 @@ final class UdpTest extends TestCase
         self::assertSame([[true, []], 'late'], $observed, 'Close callbacks were repeated, lost, or ran before cleanup.');
     }
 
-    private function newLoop(): StreamSelectDriver
+    private function newLoop(): RevoltEventLoop
     {
-        $loop = new StreamSelectDriver();
+        $loop = RevoltEventLoop::create();
         $this->deferCleanup(static function () use ($loop): void {
             foreach ($loop->getIdentifiers() as $id) { $loop->cancel($id); }
         });
         return $loop;
     }
 
-    private function endpoint(StreamSelectDriver $loop, callable $handler, int $maxDatagramSize = 65507): UdpEndpoint
+    private function endpoint(RevoltEventLoop $loop, callable $handler, int $maxDatagramSize = 65507): UdpEndpoint
     {
         $socket = UdpEndpoint::bind('udp://127.0.0.1:0');
         $this->deferCleanup(static function () use ($socket): void {

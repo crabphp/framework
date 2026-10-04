@@ -6,7 +6,7 @@ namespace Crab\Engine\Network;
 
 use Closure;
 use InvalidArgumentException;
-use Revolt\EventLoop\Driver;
+use Crab\Engine\EventLoop;
 use RuntimeException;
 use Throwable;
 
@@ -21,7 +21,7 @@ final class Listener
      * @param resource $stream Ownership transfers to this listener.
      */
     public function __construct(
-        private readonly Driver $loop,
+        private readonly EventLoop $loop,
         private mixed $stream,
         callable $onConnection,
     ) {

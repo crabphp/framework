@@ -19,7 +19,7 @@ use Generator;
 use OverflowException;
 use PHPUnit\Framework\Attributes\RequiresPhpExtension;
 use Revolt\EventLoop\CallbackType;
-use Revolt\EventLoop\Driver\StreamSelectDriver;
+use Crab\Engine\EventLoop\RevoltEventLoop;
 use RuntimeException;
 use stdClass;
 use Throwable;
@@ -233,7 +233,7 @@ final class RuntimeTest extends TestCase
             $loop->delay(0.005, static function () use ($loop, &$watcherRemoved): void {
                 $watcherRemoved = true;
                 foreach ($loop->getIdentifiers() as $id) {
-                    if ($loop->getType($id) === CallbackType::Readable) {
+                    if ($loop->driver->getType($id) === CallbackType::Readable) {
                         $watcherRemoved = false;
                     }
                 }
@@ -467,9 +467,9 @@ final class RuntimeTest extends TestCase
         return [$cleanupStarted, $cleanupDone, (hrtime(true) - $start) / 1e9, $worker->stats()['connections']];
     }
 
-    private function driver(): StreamSelectDriver
+    private function driver(): RevoltEventLoop
     {
-        $driver = new StreamSelectDriver();
+        $driver = RevoltEventLoop::create();
         $this->deferCleanup(static function () use ($driver): void {
             foreach ($driver->getIdentifiers() as $id) {
                 $driver->cancel($id);

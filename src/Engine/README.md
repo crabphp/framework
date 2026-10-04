@@ -2,7 +2,7 @@
 
 A PHP 8.4 networking engine with TCP, UDP, HTTP/1.1, WebSocket, coroutines, timers, and supervised worker processes.
 
-The default backend is pure PHP streams plus Revolt's `StreamSelectDriver`. The only Composer runtime dependency is `revolt/event-loop`. Swoole and OpenSwoole are not required. Native event backends can be supplied through the driver factory.
+The engine has its own event loop type, `Crab\Engine\EventLoop`, which everything is written against; `EventLoop::current()` is the loop of the running process. `RevoltEventLoop` extends it on `revolt/event-loop`, the only Composer runtime dependency, and is the only code that names Revolt. The default backend is pure PHP stream-select. Swoole and OpenSwoole are not required. A native backend is chosen through the loop factory: `new Runtime(loopFactory: fn () => RevoltEventLoop::create('uv'))`.
 
 ## Run it
 
@@ -101,7 +101,7 @@ $runtime->group('jobs', maxTasks: 128)->onStart(
 
 `Worker::spawn()` tracks tasks until they exit and requests cancellation during shutdown. A group's `onStop()` callbacks run in each worker after it drains, for releasing what `onStart()` opened, and `onFailure()` receives a task that failed, which otherwise goes to PHP's error log, and a failure that escapes a timer callback, which otherwise ends the worker. Tasks return results through `await()`; cancellation of an await only cancels that wait. Pass the supplied token into async operations. HTTP handlers receive `$request->cancellation` for the same purpose. `php bin/crab examples/coroutines.php --single` runs a complete task example.
 
-Use the same driver directly for timers: `$worker->loop->delay($seconds, $callback)`, `repeat()`, and `cancel($id)`. `Async\ConnectionStream` gives one coroutine reader and one writer exclusive ownership of a TCP connection, with demand-driven reads and bounded writes. It must not share ownership with a protocol parser or raw data handler.
+Use the worker's loop for timers: `$worker->loop->delay($seconds, $callback)`, `repeat()`, and `cancel($id)`. It is a `Crab\Engine\EventLoop`; `EventLoop::current()` returns the same one where no worker is at hand. `Async\Pool` is a bounded set of reusable resources such as client connections: `acquire()` makes one on demand up to the limit and otherwise waits, first come first served, until `release()`, a timeout or cancellation; `discard()` replaces a broken one and `run()` lends one for a callback. `Async\ConnectionStream` gives one coroutine reader and one writer exclusive ownership of a TCP connection, with demand-driven reads and bounded writes. It must not share ownership with a protocol parser or raw data handler.
 
 Fibers provide concurrency within a worker. Worker processes provide CPU parallelism. Blocking database clients, ordinary filesystem calls, DNS lookups, or CPU loops still block their worker; arbitrary PHP functions do not become asynchronous.
 
@@ -125,7 +125,7 @@ An individually oversized write throws `LengthException`. `onDrain()` signals a 
 
 Defaults include 512 owned TCP connections/pending connects (including closed connections still running service cleanup) and 1,024 tracked tasks per worker; 1 MiB and 4,096 entries per TCP output queue; and bounded protocol input/output buffers. Configure lower limits for the application's memory budget. These bounds do not cap memory allocated independently by application code.
 
-The select backend has platform descriptor limits and scanning costs. Linux/macOS CLI are the intended targets; this change was exercised on macOS. Single-process operation does not require process extensions, but cannot forcibly interrupt blocked PHP code. Optional drivers use the existing Revolt contract through `new Runtime(driverFactory: ...)`.
+The select backend has platform descriptor limits and scanning costs. Linux/macOS CLI are the intended targets; this change was exercised on macOS. Single-process operation does not require process extensions, but cannot forcibly interrupt blocked PHP code. Optional backends are selected through `new Runtime(loopFactory: ...)`, and a loop of your own is any class that extends `Crab\Engine\EventLoop`.
 
 TLS, async DNS, HTTP/2, HTTP/3, generic framed-protocol helpers, a cross-process job pool, and the later web framework are outside this implementation. HTTP and WebSocket are protocol servers without routing, middleware containers, ORM, templates or agent-specific features.
 

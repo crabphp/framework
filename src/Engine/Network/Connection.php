@@ -8,7 +8,7 @@ use Closure;
 use InvalidArgumentException;
 use LengthException;
 use LogicException;
-use Revolt\EventLoop\Driver;
+use Crab\Engine\EventLoop;
 use Throwable;
 
 /**
@@ -67,7 +67,7 @@ final class Connection
      * @param resource $stream Ownership transfers to this connection.
      */
     public function __construct(
-        private readonly Driver $driver,
+        private readonly EventLoop $driver,
         mixed $stream,
         public readonly string $remoteAddress = '',
         private readonly int $maxWriteBufferSize = 1_048_576,
@@ -88,7 +88,7 @@ final class Connection
         $this->stream = $stream;
     }
 
-    public function loop(): Driver
+    public function loop(): EventLoop
     {
         return $this->driver;
     }

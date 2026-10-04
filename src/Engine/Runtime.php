@@ -8,9 +8,7 @@ use Crab\Engine\Network\Listener;
 use Crab\Engine\Network\UdpEndpoint;
 use Crab\Engine\Process\Supervisor;
 use Crab\Engine\Process\Worker;
-use Revolt\EventLoop;
-use Revolt\EventLoop\Driver;
-use Revolt\EventLoop\Driver\StreamSelectDriver;
+use Crab\Engine\EventLoop\RevoltEventLoop;
 
 final class Runtime
 {
@@ -18,18 +16,23 @@ final class Runtime
      * @var array<string, WorkerGroup>
      */
     private array $groups = [];
-    private \Closure $driverFactory;
+    private \Closure $loopFactory;
     private Worker|Supervisor|null $runner = null;
     private bool $running = false;
 
-    public function __construct(?callable $driverFactory = null, public readonly float $shutdownTimeout = 5.0)
+    /**
+     * The factory makes each process's EventLoop; without one it is a
+     * stream-select loop. `fn () => RevoltEventLoop::create('uv')` chooses a
+     * native backend.
+     */
+    public function __construct(?callable $loopFactory = null, public readonly float $shutdownTimeout = 5.0)
     {
         if (!is_finite($shutdownTimeout) || $shutdownTimeout <= 0) {
             throw new \InvalidArgumentException('Shutdown timeout must be finite and positive.');
         }
-        $this->driverFactory = $driverFactory === null
-            ? static fn(): Driver => new StreamSelectDriver()
-            : $driverFactory(...);
+        $this->loopFactory = $loopFactory === null
+            ? static fn(): EventLoop => RevoltEventLoop::create()
+            : $loopFactory(...);
     }
 
     public function group(string $name = 'default', int $workers = 1, int $maxConnections = 512, int $maxTasks = 1024): WorkerGroup
@@ -66,11 +69,10 @@ final class Runtime
             }
             if ($singleProcess) {
                 $group = reset($this->groups);
-                $driver = ($this->driverFactory)();
-                EventLoop::setDriver($driver);
+                $driver = EventLoop::install(($this->loopFactory)());
                 $this->runner = new Worker($driver, $group, 0, $bindings[$group->name], $this->shutdownTimeout);
             } else {
-                $this->runner = new Supervisor($this->groups, $bindings, $this->driverFactory, $this->shutdownTimeout);
+                $this->runner = new Supervisor($this->groups, $bindings, $this->loopFactory, $this->shutdownTimeout);
             }
             $this->runner->run();
         } finally {

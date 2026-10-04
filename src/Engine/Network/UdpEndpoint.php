@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace Crab\Engine\Network;
 
-use Revolt\EventLoop\Driver;
+use Crab\Engine\EventLoop;
 
 final class UdpEndpoint
 {
@@ -22,7 +22,7 @@ final class UdpEndpoint
     private int $errors = 0;
 
     public function __construct(
-        private readonly Driver $loop,
+        private readonly EventLoop $loop,
         private mixed $socket,
         callable $handler,
         public readonly int $maxDatagramSize = 65507,

@@ -10,11 +10,11 @@ use Crab\Engine\Server\WebSocketServer;
 use Crab\Engine\WebSocket\Config;
 use Crab\Engine\WebSocket\MessageType;
 use Crab\Engine\WebSocket\WebSocketSession;
-use Revolt\EventLoop\Driver\StreamSelectDriver;
+use Crab\Engine\EventLoop\RevoltEventLoop;
 use Crab\Engine\Tests\Support\TestCase;
 use PHPUnit\Framework\Attributes\DataProvider;
 use Closure;
-use Revolt\EventLoop;
+use Crab\Engine\EventLoop;
 
 final class WebSocketTest extends TestCase
 {
@@ -440,12 +440,12 @@ final class WebSocketTest extends TestCase
     }
 
     /**
-     * @return array{StreamSelectDriver, Connection, resource}
+     * @return array{RevoltEventLoop, Connection, resource}
      */
     private function pair(int $capacity = 1048576): array
     {
-        $loop = new StreamSelectDriver();
-        EventLoop::setDriver($loop);
+        $loop = RevoltEventLoop::create();
+        EventLoop::install($loop);
         $this->deferCleanup(static function () use ($loop): void {
             foreach ($loop->getIdentifiers() as $id) { $loop->cancel($id); }
         });
@@ -460,7 +460,7 @@ final class WebSocketTest extends TestCase
         return [$loop, $connection, $pair[1]];
     }
 
-    private function until(StreamSelectDriver $loop, Closure $complete, float $timeout = 2): void
+    private function until(RevoltEventLoop $loop, Closure $complete, float $timeout = 2): void
     {
         $timedOut = false;
         $poll = $loop->repeat(0.001, $this->guardCallback(static function () use ($complete, $loop): void {

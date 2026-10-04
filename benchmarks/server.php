@@ -64,7 +64,10 @@ if (isset($options['metadata'])) {
     echo 'CRAB_SERVER_METADATA ' . json_encode(['source_root' => $source, 'loaded_classes' => $loaded,
         'http_response' => $protocol === 'http' ? $responseMode : null, 'driver' => $drivers[$driver]], JSON_THROW_ON_ERROR) . "\n";
 }
-$runtime = new Runtime(static fn() => new $drivers[$driver]());
+// A snapshot from before the engine had its own EventLoop takes the Revolt driver itself.
+$runtime = is_file($source . '/EventLoop.php')
+    ? new Runtime(static fn() => Crab\Engine\EventLoop\RevoltEventLoop::create($driver))
+    : new Runtime(static fn() => new $drivers[$driver]());
 if ($protocol === 'http') {
     $hello = Response::text("Hello from Crab\n");
     $health = Response::text("ok\n");

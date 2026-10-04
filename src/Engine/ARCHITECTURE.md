@@ -4,9 +4,11 @@ Status: implemented networking foundation on PHP 8.4, with lifecycle checks and 
 
 ## One scheduler, explicit ownership
 
-Use `revolt/event-loop` directly. `StreamSelectDriver` is the explicit default; a driver factory selects an optional backend. Revolt supplies readiness callbacks, timers and Fiber suspensions. Crab has no duplicate event-loop interface or second scheduler.
+The engine runs on its own `EventLoop`, an abstract class: timers, stream and signal watchers, and `Suspension` for waiting fibers. Everything in the engine, and everything built on it, asks for `Crab\Engine\EventLoop` and never for a third-party type. `EventLoop\RevoltEventLoop` extends it on a `revolt/event-loop` driver, and `src/Engine/EventLoop/` is the only code that names Revolt; `tests/EngineBoundaryTest.php` enforces that. Revolt supplies the scheduler today, and replacing or forking it means replacing that one adapter. There is still one scheduler: `EventLoop` adds a type, not a second loop.
 
-Create the driver **after fork**, install it with `Revolt\EventLoop::setDriver()`, and inject that same instance into networking and async operations. Native extensions are optional for scheduling; supervised Unix processes separately require `pcntl` and `posix`. [Revolt drivers](https://revolt.run/extensions), [Revolt fundamentals](https://revolt.run/fundamentals)
+The stream-select backend is the explicit default; `RevoltEventLoop::create('ev' | 'event' | 'uv')` selects a native one through the runtime's loop factory. The adapter exposes its driver for the one case that needs it, handing it to a library built on Revolt.
+
+Create the loop **after fork**, install it with `EventLoop::install()`, and inject that same instance into networking and async operations. `EventLoop::current()` is the installed loop, for code that outlives a fork and so must not keep one. Installing also makes it Revolt's global driver, so libraries built on Revolt schedule on the same loop. Native extensions are optional for scheduling; supervised Unix processes separately require `pcntl` and `posix`. [Revolt drivers](https://revolt.run/extensions), [Revolt fundamentals](https://revolt.run/fundamentals)
 
 ~~~mermaid
 flowchart TD
@@ -33,7 +35,7 @@ flowchart TD
 | `Runtime` | Validate mode, bind endpoints, launch runner, close bindings on rollback |
 | `WorkerGroup` | Frozen startup configuration, endpoint and admission limits |
 | `Supervisor` | Worker slots, readiness, backoff, control channels, hard deadlines |
-| `Worker` | One driver, connection/task registries, admission, bootstrap and drain |
+| `Worker` | One loop, connection/task registries, admission, bootstrap and drain |
 | `Listener / Connector` | Establish streams and transfer ownership once |
 | `Connection` | Byte I/O, watchers, bounded FIFO output, directional close state |
 | `UdpEndpoint` | Datagram I/O, packet/byte limits, drop/error counters |
@@ -114,6 +116,8 @@ Text/binary sends report pressure explicitly. Binary chunk sends provide message
 Revolt executes callbacks in reusable Fibers; transport adds no separate Crab Fiber per packet. `Task::spawn()` uses that scheduler. `Worker::spawn()` additionally applies admission and lifecycle ownership. Results/failures are observable and worker-owned failures are reported.
 
 `Async::sleep()` and `ConnectionStream` use Revolt suspensions. A stream has at most one waiting reader and writer, demand-driven reads and bounded read-ahead. Writes return after bytes reach the local socket. Raw/protocol consumers cannot share its reader.
+
+`Pool` bounds a set of reusable resources. A caller beyond the limit suspends in a FIFO queue; release hands the resource straight to the longest waiter, so it never becomes idle in between. A place is reserved while a resource is being made, a failed creation frees it, and a timed-out or cancelled waiter leaves no registration behind.
 
 Cancellation removes operation registrations before completion. Connect cancellation closes the pending socket. Read cancellation preserves the connection and buffered data. Cancelling a write after bytes have committed closes the connection because transmission cannot be withdrawn. Cancelling an await does not cancel its independently owned target.
 

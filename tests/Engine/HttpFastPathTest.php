@@ -15,8 +15,8 @@ use Crab\Engine\Server\HttpServer;
 use Crab\Engine\Tests\Support\TestCase;
 use PHPUnit\Framework\Attributes\DataProvider;
 use ReflectionProperty;
-use Revolt\EventLoop;
-use Revolt\EventLoop\Driver\StreamSelectDriver;
+use Crab\Engine\EventLoop;
+use Crab\Engine\EventLoop\RevoltEventLoop;
 use RuntimeException;
 
 /**
@@ -416,8 +416,8 @@ final class HttpFastPathTest extends TestCase
             static function (Request $request) use (&$order): string {
                 $order[] = 'start ' . $request->target;
                 if ($request->target === '/slow') {
-                    $suspension = EventLoop::getSuspension();
-                    EventLoop::delay(0.02, static fn () => $suspension->resume());
+                    $suspension = EventLoop::current()->getSuspension();
+                    EventLoop::current()->delay(0.02, static fn () => $suspension->resume());
                     $suspension->suspend();
                 }
                 $order[] = 'end ' . $request->target;
@@ -718,10 +718,10 @@ final class HttpFastPathTest extends TestCase
         return (string) end($matches[1]);
     }
 
-    private function newLoop(): StreamSelectDriver
+    private function newLoop(): RevoltEventLoop
     {
-        $loop = new StreamSelectDriver();
-        EventLoop::setDriver($loop);
+        $loop = RevoltEventLoop::create();
+        EventLoop::install($loop);
         $this->deferCleanup(static function () use ($loop): void {
             foreach ($loop->getIdentifiers() as $id) { $loop->cancel($id); }
         });
@@ -742,7 +742,7 @@ final class HttpFastPathTest extends TestCase
         return $pair;
     }
 
-    private function connection(StreamSelectDriver $loop, mixed $stream, int $capacity = 1048576): Connection
+    private function connection(RevoltEventLoop $loop, mixed $stream, int $capacity = 1048576): Connection
     {
         $connection = new Connection($loop, $stream, 'test-peer', $capacity);
         $this->deferCleanup($connection->close(...));

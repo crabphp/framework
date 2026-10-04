@@ -11,7 +11,7 @@ use Crab\Engine\Network\Connector;
 use Crab\Engine\Network\Listener;
 use Crab\Engine\Network\UdpEndpoint;
 use Crab\Engine\WorkerGroup;
-use Revolt\EventLoop\Driver;
+use Crab\Engine\EventLoop;
 
 final class Worker
 {
@@ -41,7 +41,7 @@ final class Worker
      * @param array{tcp:list<resource>, udp:list<resource>} $bindings
      */
     public function __construct(
-        public readonly Driver $loop,
+        public readonly EventLoop $loop,
         public readonly WorkerGroup $group,
         public readonly int $index,
         private array $bindings,

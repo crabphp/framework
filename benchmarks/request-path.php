@@ -58,8 +58,13 @@ for ($index = 1; $index <= 997; ++$index) {
         . "Cookie: session=abcdef0123456789abcdef0123456789; theme=dark; _ga=GA1.1.123456789.1700000000\r\n\r\n";
 }
 
-$driver = new StreamSelectDriver();
-EventLoop::setDriver($driver);
+// A snapshot from before the engine had its own EventLoop takes the Revolt driver itself.
+if (is_file($source . '/EventLoop.php')) {
+    $driver = Crab\Engine\EventLoop::install(Crab\Engine\EventLoop\RevoltEventLoop::create());
+} else {
+    $driver = new StreamSelectDriver();
+    EventLoop::setDriver($driver);
+}
 $pair = stream_socket_pair(STREAM_PF_UNIX, STREAM_SOCK_STREAM, 0);
 $peer = $pair[1];
 $connection = new Connection($driver, $pair[0]);

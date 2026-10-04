@@ -6,7 +6,7 @@ namespace Crab\Engine\Network;
 
 use Closure;
 use InvalidArgumentException;
-use Revolt\EventLoop\Driver;
+use Crab\Engine\EventLoop;
 use RuntimeException;
 use Throwable;
 
@@ -19,7 +19,7 @@ final class Connector
      * @return Closure(): void Cancellation completes once with an error.
      */
     public static function connect(
-        Driver $loop,
+        EventLoop $loop,
         string $address,
         callable $completion,
         float $timeout = 5.0,

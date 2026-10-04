@@ -16,8 +16,8 @@ use Crab\Engine\Network\Listener;
 use Crab\Engine\Process\Worker;
 use Crab\Engine\Server\HttpServer;
 use Crab\Engine\WorkerGroup;
-use Revolt\EventLoop;
-use Revolt\EventLoop\Driver\StreamSelectDriver;
+use Crab\Engine\EventLoop;
+use Crab\Engine\EventLoop\RevoltEventLoop;
 use Crab\Engine\Tests\Support\TestCase;
 use PHPUnit\Framework\Attributes\DataProvider;
 use Generator;
@@ -258,8 +258,8 @@ final class HttpTest extends TestCase
         $order = [];
         $output = $this->exchange("GET /one HTTP/1.1\r\nHost: x\r\n\r\nGET /two HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n", function (Request $request) use (&$order): string {
             if ($request->target === '/one') {
-                $suspension = EventLoop::getSuspension();
-                EventLoop::delay(0.005, fn() => $suspension->resume());
+                $suspension = EventLoop::current()->getSuspension();
+                EventLoop::current()->delay(0.005, fn() => $suspension->resume());
                 $suspension->suspend();
             }
             $order[] = $request->target;
@@ -334,7 +334,7 @@ final class HttpTest extends TestCase
         $cleanedUp = false;
         $output = $this->exchange("GET / HTTP/1.1\r\nHost: x\r\n\r\n", function (Request $request) use (&$cleanedUp): string {
             try {
-                Async::sleep(EventLoop::getDriver(), 10, $request->cancellation);
+                Async::sleep(EventLoop::current(), 10, $request->cancellation);
                 return 'too late';
             } finally {
                 $cleanedUp = true;
@@ -433,9 +433,9 @@ final class HttpTest extends TestCase
         $survivedHeaderDeadline = false;
         $output = $this->exchange("GET / HTTP/1.1\r\nHost: x\r\n\r\n", static function (Request $request) use (&$cleanedUp, &$survivedHeaderDeadline): string {
             try {
-                Async::sleep(EventLoop::getDriver(), 0.07, $request->cancellation);
+                Async::sleep(EventLoop::current(), 0.07, $request->cancellation);
                 $survivedHeaderDeadline = true;
-                Async::sleep(EventLoop::getDriver(), 10, $request->cancellation);
+                Async::sleep(EventLoop::current(), 10, $request->cancellation);
                 return 'too late';
             } finally {
                 $cleanedUp = true;
@@ -623,10 +623,10 @@ final class HttpTest extends TestCase
         return $output;
     }
 
-    private function newLoop(): StreamSelectDriver
+    private function newLoop(): RevoltEventLoop
     {
-        $loop = new StreamSelectDriver();
-        EventLoop::setDriver($loop);
+        $loop = RevoltEventLoop::create();
+        EventLoop::install($loop);
         $this->deferCleanup(static function () use ($loop): void {
             foreach ($loop->getIdentifiers() as $id) { $loop->cancel($id); }
         });
@@ -646,7 +646,7 @@ final class HttpTest extends TestCase
         return $pair;
     }
 
-    private function connection(StreamSelectDriver $loop, mixed $stream, int $capacity = 1048576): Connection
+    private function connection(RevoltEventLoop $loop, mixed $stream, int $capacity = 1048576): Connection
     {
         $connection = new Connection($loop, $stream, 'test-peer', $capacity);
         $this->deferCleanup($connection->close(...));

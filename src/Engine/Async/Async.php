@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace Crab\Engine\Async;
 
 use InvalidArgumentException;
-use Revolt\EventLoop\Driver;
+use Crab\Engine\EventLoop;
 use Throwable;
 
 final class Async
@@ -13,7 +13,7 @@ final class Async
     /**
      * Suspend the current task (or main) using the worker's existing driver.
      */
-    public static function sleep(Driver $loop, float $seconds, ?Cancellation $cancellation = null): void
+    public static function sleep(EventLoop $loop, float $seconds, ?Cancellation $cancellation = null): void
     {
         if (!is_finite($seconds) || $seconds < 0) {
             throw new InvalidArgumentException('Sleep duration must be finite and nonnegative.');

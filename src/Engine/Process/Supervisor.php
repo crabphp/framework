@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace Crab\Engine\Process;
 
 use Crab\Engine\WorkerGroup;
-use Revolt\EventLoop;
+use Crab\Engine\EventLoop;
 
 final class Supervisor
 {
@@ -27,7 +27,7 @@ final class Supervisor
     public function __construct(
         private readonly array $groups,
         private readonly array $bindings,
-        private readonly \Closure $driverFactory,
+        private readonly \Closure $loopFactory,
         private readonly float $shutdownTimeout,
         private readonly float $startupTimeout = 10.0,
     ) {
@@ -56,7 +56,7 @@ final class Supervisor
                 $this->spawn($slot);
             }
             // The parent never runs an application event loop. Forks, including
-            // replacements, happen outside a running Revolt driver/Fiber.
+            // replacements, happen outside a running event loop or Fiber.
             while (!$this->stopping || $this->children !== []) {
                 $this->tick();
             }
@@ -111,8 +111,7 @@ final class Supervisor
                 foreach ($bindings as $streams) { foreach ($streams as $stream) { fclose($stream); } }
             }
             try {
-                $driver = ($this->driverFactory)();
-                EventLoop::setDriver($driver);
+                $driver = EventLoop::install(($this->loopFactory)());
                 $worker = new Worker(
                     $driver, $this->groups[$definition['group']], $definition['index'],
                     $this->bindings[$definition['group']], $this->shutdownTimeout, $pair[1],

@@ -14,8 +14,8 @@ use InvalidArgumentException;
 use LengthException;
 use LogicException;
 use PHPUnit\Framework\Attributes\DataProvider;
-use Revolt\EventLoop\Driver;
-use Revolt\EventLoop\Driver\StreamSelectDriver;
+use Crab\Engine\EventLoop;
+use Crab\Engine\EventLoop\RevoltEventLoop;
 use RuntimeException;
 use Throwable;
 
@@ -287,9 +287,9 @@ final class TransportTest extends TestCase
         yield 'path' => ['tcp://127.0.0.1:80/path'];
     }
 
-    private function newLoop(): StreamSelectDriver
+    private function newLoop(): RevoltEventLoop
     {
-        $loop = new StreamSelectDriver();
+        $loop = RevoltEventLoop::create();
         $this->deferCleanup(static function () use ($loop): void {
             foreach ($loop->getIdentifiers() as $id) { $loop->cancel($id); }
         });
@@ -312,7 +312,7 @@ final class TransportTest extends TestCase
     }
 
     /**
-     * @return array{StreamSelectDriver, Connection, resource}
+     * @return array{RevoltEventLoop, Connection, resource}
      */
     private function connectedPair(int $capacity = 1_048_576, float $closeTimeout = 5.0): array
     {
@@ -325,7 +325,7 @@ final class TransportTest extends TestCase
         return [$loop, $this->ownConnection(new Connection($loop, $server, '', $capacity, $closeTimeout)), $peer];
     }
 
-    private function until(Driver $loop, Closure $complete, float $timeout = 2.0): void
+    private function until(EventLoop $loop, Closure $complete, float $timeout = 2.0): void
     {
         $timedOut = false;
         $poll = $loop->repeat(0.001, static function () use ($complete, $loop): void {
@@ -341,6 +341,6 @@ final class TransportTest extends TestCase
             $loop->cancel($deadline);
         }
         self::assertFalse($timedOut, 'Transport test exceeded its deadline.');
-        self::assertTrue($complete(), 'Loop exited before completion.');
+        self::assertTrue($complete(), 'EventLoop exited before completion.');
     }
 }
