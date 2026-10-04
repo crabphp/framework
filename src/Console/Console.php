@@ -28,7 +28,10 @@ final class Console implements ConsoleContract
      */
     private array $descriptions = [];
 
-    public function __construct(private readonly ?ContainerInterface $container = null)
+    /**
+     * The title, when given, heads the command list.
+     */
+    public function __construct(private readonly ?ContainerInterface $container = null, private readonly string $title = '')
     {
     }
 
@@ -95,6 +98,10 @@ final class Console implements ConsoleContract
                 $description = '(unavailable: ' . $error->getMessage() . ')';
             }
             $rows[] = [(string) $name, $description];
+        }
+        if ($this->title !== '') {
+            $output->line($this->title);
+            $output->line();
         }
         $output->line('Commands:');
         $output->table([...$rows, ['help <command>', 'Describe a command'], ['list', 'List the commands']], '  ');

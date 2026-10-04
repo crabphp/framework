@@ -41,8 +41,9 @@ use Psr\Log\LoggerInterface;
  * An application: configuration, a container, routes, the middleware in
  * front of them, console commands and the engine runtime that serves them.
  *
- * It reads four configuration keys: "app.debug" shows failure details to
- * clients, "app.request_id" gives every request an id when true,
+ * It reads five configuration keys: "app.name" heads the command list,
+ * "app.debug" shows failure details to clients, "app.request_id" gives
+ * every request an id when true,
  * "log.path" is where the default logger writes (standard error when
  * unset) and "log.level" is the least severe level it writes.
  */
@@ -99,7 +100,7 @@ final class App implements RequestHandlerInterface
         $this->stack->add(ErrorHandler::class);
         $container->instance(MiddlewareStackContract::class, $this->stack);
         $container->instance(MiddlewareStack::class, $this->stack);
-        $this->console = (new Console($container))->add('serve', Serve::class)->add('routes', Routes::class);
+        $this->console = (new Console($container, (string) $config->get('app.name', '')))->add('serve', Serve::class)->add('routes', Routes::class);
         $container->instance(ConsoleContract::class, $this->console);
         $container->instance(Console::class, $this->console);
     }

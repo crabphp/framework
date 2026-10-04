@@ -62,10 +62,11 @@ $app = new App(Config::load(__DIR__ . '/config'));
 return ['level' => env('LOG_LEVEL', 'info')];
 ~~~
 
-Anywhere after the application is created, `config('log.level')` reads that value, and `config('log.level', 'debug')` supplies a default. `env('NAME', $default)` reads an environment variable, where the real environment wins over `.env`; the words `true`, `false` and `null` become those values. The two helpers are global functions over `Env::get()` and `$app->config->get()`. The application itself reads four keys:
+Anywhere after the application is created, `config('log.level')` reads that value, and `config('log.level', 'debug')` supplies a default. `env('NAME', $default)` reads an environment variable, where the real environment wins over `.env`; the words `true`, `false` and `null` become those values. The two helpers are global functions over `Env::get()` and `$app->config->get()`. The application itself reads five keys:
 
 | Key | Meaning | Default |
 | --- | --- | --- |
+| `app.name` | The application's name, shown above the command list | none |
 | `app.debug` | Show failure details to clients | `false` |
 | `app.request_id` | Give every request an id | `false` |
 | `log.path` | Where the default logger writes | standard error |

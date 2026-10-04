@@ -119,6 +119,11 @@ final class ConsoleTest extends TestCase
         }
         ftruncate($this->out, 0);
         rewind($this->out);
+        self::assertSame(0, $this->exec((new Console(title: 'Shop'))->add('zeta', static fn() => 0, 'Last'), 'list'));
+        self::assertStringStartsWith("Shop\n\nCommands:\n  zeta", $this->written($this->out));
+
+        ftruncate($this->out, 0);
+        rewind($this->out);
         self::assertSame(0, $this->exec($console, 'help', 'greet'));
         self::assertSame("Greet someone\n\nArguments:\n  name\n", $this->written($this->out));
     }
