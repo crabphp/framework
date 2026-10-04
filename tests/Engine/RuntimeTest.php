@@ -126,52 +126,51 @@ final class RuntimeTest extends TestCase
         self::assertFalse($stopped);
     }
 
-    public function testAFailingFailureCallbackFallsBackToTheErrorLog(): void
+    public function testWithoutACallbackFailuresAreWrittenToStandardErrorWithTheirTrace(): void
     {
-        $log = tempnam(sys_get_temp_dir(), 'crab-failure-callback-');
-        self::assertNotFalse($log);
-        $this->deferCleanup(static function () use ($log): void { if (is_file($log)) { unlink($log); } });
-        $previousLog = ini_set('error_log', $log);
-        try {
-            $runtime = new Runtime(shutdownTimeout: 0.1);
-            $runtime->group()
-                ->onStart(static function (Worker $worker): void {
-                    $worker->spawn(static function (): void {
-                        throw new RuntimeException('deliberate task failure');
-                    });
-                    $worker->loop->delay(0.005, $worker->stop(...));
-                })
-                ->onFailure(static function (): void {
-                    throw new RuntimeException('deliberate reporting failure');
+        $code = <<<'PHP'
+            require $argv[1];
+            $runtime = new Crab\Engine\Runtime(shutdownTimeout: 0.1);
+            $group = $runtime->group()->onStart(static function (Crab\Engine\Process\Worker $worker): void {
+                $worker->spawn(static function (): void {
+                    throw new RuntimeException('deliberate task failure');
                 });
+                $worker->loop->delay(0.005, static fn () => $worker->stop());
+            });
+            if ($argv[2] === 'failing-callback') {
+                $group->onFailure(static function (): void {
+                    throw new LogicException('deliberate reporting failure');
+                });
+            }
             $runtime->run(singleProcess: true);
-            $written = file_get_contents($log);
-            self::assertStringContainsString('Failure callback failed: deliberate reporting failure', $written);
-            self::assertStringContainsString('Task failed: RuntimeException: deliberate task failure', $written);
-        } finally {
-            ini_set('error_log', $previousLog === false ? '' : $previousLog);
+            PHP;
+        foreach (['no-callback' => [], 'failing-callback' => ['[Crab] Failure handler failed: LogicException: deliberate reporting failure']] as $mode => $alsoExpected) {
+            $process = proc_open([PHP_BINARY, '-r', $code, dirname(__DIR__, 2) . '/vendor/autoload.php', $mode],
+                [1 => ['pipe', 'w'], 2 => ['pipe', 'w']], $pipes);
+            self::assertIsResource($process);
+            $output = stream_get_contents($pipes[1]);
+            $errors = stream_get_contents($pipes[2]);
+            self::assertSame(0, proc_close($process), $errors);
+            self::assertSame('', $output);
+            self::assertStringContainsString('[Crab] Task failed: RuntimeException: deliberate task failure in ', $errors);
+            self::assertStringContainsString('Stack trace:', $errors);
+            foreach ($alsoExpected as $line) {
+                self::assertStringContainsString($line, $errors);
+            }
         }
     }
 
     public function testDetachedTaskFailureIsReported(): void
     {
-        $log = tempnam(sys_get_temp_dir(), 'crab-task-error-');
-        self::assertNotFalse($log);
-        $this->deferCleanup(static function () use ($log): void { if (is_file($log)) { unlink($log); } });
-        $previousLog = ini_set('error_log', $log);
-        try {
-            $runtime = new Runtime(shutdownTimeout: 0.1);
-            $runtime->group()->onStart(static function (Worker $worker): void {
-                $worker->spawn(static function (): void {
-                    throw new RuntimeException('deliberate detached task failure');
-                });
-                $worker->loop->delay(0.005, $worker->stop(...));
+        $runtime = new Runtime(shutdownTimeout: 0.1);
+        $runtime->group()->onStart(static function (Worker $worker): void {
+            $worker->spawn(static function (): void {
+                throw new RuntimeException('deliberate detached task failure');
             });
-            $runtime->run(singleProcess: true);
-            self::assertStringContainsString('deliberate detached task failure', file_get_contents($log));
-        } finally {
-            ini_set('error_log', $previousLog === false ? '' : $previousLog);
-        }
+            $worker->loop->delay(0.005, $worker->stop(...));
+        });
+        $runtime->run(singleProcess: true);
+        self::assertSame(['Task failed: deliberate detached task failure'], $this->reports);
     }
 
     public function testActiveOutboundConnectionReservesAdmissionCapacity(): void
@@ -300,6 +299,10 @@ final class RuntimeTest extends TestCase
             self::assertTrue(posix_kill($initial[0], SIGKILL));
             $restarted = $this->ready($fixture, 1)[0];
             self::assertNotContains($restarted, $initial);
+            // The reload signal belongs to the parent; a worker that receives it carries on.
+            self::assertTrue(posix_kill($restarted, SIGUSR1));
+            usleep(150000);
+            self::assertTrue(posix_kill($restarted, 0), 'SIGUSR1 must not end a worker.');
             $parent = proc_get_status($fixture->process)['pid'];
             self::assertTrue(posix_kill($parent, SIGUSR1));
             $reloaded = $this->ready($fixture, 2);

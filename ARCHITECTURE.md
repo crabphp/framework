@@ -151,6 +151,7 @@ No auto-discovery, no facades, no `boot()` phase, no global container accessor.
 ## Errors and observability
 
 - **One error path per entry point.** HTTP requests go through `ErrorHandler` *(today)*. Console commands report through `Console::run()` *(today)*. A task spawned on a worker that fails, a failure that escapes a timer, and a provider that fails to stop are written to the application's logger, and the worker keeps running *(today)*. Queue jobs and scheduled jobs get the same guarantee when those components are built.
+- **The engine drops nothing.** Whatever it catches goes to the group's failure callbacks, and so to the application's logger, or to standard error when there are none *(today)*.
 - **Fail at startup, not at first use.** Misconfiguration stops `serve` with its cause *(today for middleware and logger)*.
 - **Request ids** *(today, opt-in)*. With `app.request_id` on, the outermost middleware assigns an id, stores it as the `request_id` attribute, returns it in `X-Request-Id` and the error handler adds it to the failure's log record. It is opt-in because it costs about 2 µs per request. The logger is shared by overlapping requests, so it cannot add the id by itself; code that logs passes it in the context.
 - **Health and metrics** *(proposed)*. A built-in health route, and `Worker::stats()` exposed through a command or route.

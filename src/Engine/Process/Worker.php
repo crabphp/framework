@@ -12,6 +12,7 @@ use Crab\Engine\Network\Listener;
 use Crab\Engine\Network\UdpEndpoint;
 use Crab\Engine\WorkerGroup;
 use Crab\Engine\EventLoop;
+use Crab\Engine\FailureReporter;
 
 final class Worker
 {
@@ -51,10 +52,14 @@ final class Worker
 
     public function run(): void
     {
+        $handlesFailures = $this->group->failureCallbacks() !== [];
+        $previousHandler = null;
         try {
-            if ($this->group->failureCallbacks() !== []) {
+            if ($handlesFailures) {
+                // Everything the engine catches in this worker goes to the group's callbacks.
+                $previousHandler = FailureReporter::handleWith($this->notify(...));
                 // Otherwise an uncaught failure in a timer or watcher ends the worker.
-                $this->loop->setErrorHandler(fn(\Throwable $error) => $this->report($error, 'Callback failed'));
+                $this->loop->setErrorHandler(static fn(\Throwable $error) => FailureReporter::report('Callback failed', $error));
             }
             $this->watchControl();
             if (extension_loaded('pcntl')) {
@@ -110,7 +115,7 @@ final class Worker
                     try {
                         $callback($this);
                     } catch (\Throwable $error) {
-                        $this->report($error, 'Stop callback failed');
+                        FailureReporter::report('Stop callback failed', $error);
                     }
                 }
             }
@@ -124,6 +129,9 @@ final class Worker
                 if (is_resource($stream)) { fclose($stream); }
             }
             if (is_resource($this->control)) { fclose($this->control); }
+            if ($handlesFailures) {
+                FailureReporter::handleWith($previousHandler);
+            }
         }
     }
 
@@ -162,7 +170,7 @@ final class Worker
             } catch (CancelledException) {
                 // Cooperative shutdown is an expected task outcome.
             } catch (\Throwable $error) {
-                $this->report($error, 'Task failed');
+                FailureReporter::report('Task failed', $error);
             }
             $this->finishDrain();
         });
@@ -254,23 +262,19 @@ final class Worker
     }
 
     /**
-     * Hands a failure to the group's failure callbacks, or to PHP's error
-     * log when there are none or one of them fails.
+     * The worker's failure handler: hands a failure to the group's
+     * callbacks. A notice without an error is left to standard error, as
+     * is anything a callback itself throws.
      */
-    private function report(\Throwable $error, string $what): void
+    private function notify(string $what, ?\Throwable $error): bool
     {
-        $callbacks = $this->group->failureCallbacks();
-        try {
-            foreach ($callbacks as $callback) {
-                $callback($error, $this);
-            }
-        } catch (\Throwable $reportingError) {
-            error_log('[Crab] Failure callback failed: '.$reportingError->getMessage());
-            $callbacks = [];
+        if ($error === null) {
+            return false;
         }
-        if ($callbacks === []) {
-            error_log('[Crab] '.$what.': '.$error);
+        foreach ($this->group->failureCallbacks() as $callback) {
+            $callback($error, $this);
         }
+        return true;
     }
 
     private function hasWork(): bool

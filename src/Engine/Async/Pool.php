@@ -8,6 +8,7 @@ use Closure;
 use InvalidArgumentException;
 use LogicException;
 use Crab\Engine\EventLoop;
+use Crab\Engine\FailureReporter;
 use Throwable;
 
 /**
@@ -216,7 +217,7 @@ final class Pool
         try {
             ($this->destroy)($resource);
         } catch (Throwable $error) {
-            error_log('[Crab] Pool resource cleanup failed: '.$error->getMessage());
+            FailureReporter::report('Pool resource cleanup failed', $error);
         }
     }
 

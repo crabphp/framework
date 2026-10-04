@@ -120,7 +120,8 @@ final class WebSocketServer
                 if ($unreadBytes !== '') {
                     $session->receive($unreadBytes);
                 }
-            } catch (\Throwable) {
+            } catch (\Throwable $error) {
+                $connection->reportFailure('WebSocket open handler failed', $error);
                 $session->close(1011, 'Handler failed');
             }
         });

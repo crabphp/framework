@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Crab\Engine\Async;
 
 use Closure;
+use Crab\Engine\FailureReporter;
 use Throwable;
 
 /**
@@ -75,7 +76,7 @@ final class Cancellation
         try {
             $subscriber($this->reason ??= new CancelledException('Operation cancelled.'));
         } catch (Throwable $error) {
-            error_log('[Crab] Cancellation callback failed: '.$error->getMessage());
+            FailureReporter::report('Cancellation callback failed', $error);
         }
     }
 }

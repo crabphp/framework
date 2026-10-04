@@ -143,12 +143,6 @@ final class CancellationTest extends TestCase
 
     public function testSubscriberFailureIsReportedAndDoesNotPreventOtherNotifications(): void
     {
-        $log = tempnam(sys_get_temp_dir(), 'crab-cancellation-log-');
-        self::assertNotFalse($log);
-        $this->deferCleanup(static function () use ($log): void { unlink($log); });
-        $previousLog = ini_set('error_log', $log);
-        self::assertNotFalse($previousLog);
-        $this->deferCleanup(static function () use ($previousLog): void { ini_set('error_log', $previousLog); });
         $token = new Cancellation();
         $seen = [];
         $token->subscribe(static function (CancelledException $reason) use (&$seen): void {
@@ -163,10 +157,7 @@ final class CancellationTest extends TestCase
         self::assertCount(2, $seen);
         self::assertSame($seen[0], $seen[1]);
         self::assertSame($seen[0], self::cancellationReason($token));
-        self::assertStringContainsString(
-            '[Crab] Cancellation callback failed: Intentional cancellation subscriber failure.',
-            file_get_contents($log),
-        );
+        self::assertSame(['Cancellation callback failed: Intentional cancellation subscriber failure.'], $this->reports);
     }
 
     private static function cancellationReason(Cancellation $token): CancelledException

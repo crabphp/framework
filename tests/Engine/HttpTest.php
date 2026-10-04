@@ -236,6 +236,25 @@ final class HttpTest extends TestCase
     {
         $output = $this->exchange("GET / HTTP/1.1\r\nHost: x\r\n\r\n", fn() => throw new RuntimeException('private failure'));
         self::assertTrue(str_starts_with($output, 'HTTP/1.1 500') && !str_contains($output, 'private failure'), 'Handler exception was not isolated.');
+        self::assertSame(['HTTP handler failed: private failure'], $this->reports, 'The failure must be reported, not only answered.');
+    }
+
+    public function testAResponseThatFailsPartWayIsReportedAndCutOff(): void
+    {
+        $output = $this->exchange("GET / HTTP/1.1\r\nHost: x\r\n\r\n", fn() => new Response(body: (function (): Generator {
+            yield 'sent';
+            throw new RuntimeException('producer failure');
+        })()));
+        self::assertTrue(str_starts_with($output, 'HTTP/1.1 200') && str_contains($output, 'sent'), 'The part produced before the failure was not sent.');
+        self::assertStringNotContainsString("0\r\n\r\n", $output, 'A response that failed must not look complete.');
+        self::assertSame(['HTTP response failed part-way: producer failure'], $this->reports);
+    }
+
+    public function testClientErrorsAreAnsweredAndNotReported(): void
+    {
+        $output = $this->exchange("GET / HTTP/1.1\r\nHost: x\r\nHost: y\r\n\r\n", fn() => 'unreachable');
+        self::assertStringStartsWith('HTTP/1.1 400', $output);
+        self::assertSame([], $this->reports, 'A malformed request is the client\'s mistake, not a failure of ours.');
     }
 
     public function testUpgradeTransfersBufferedBytesAndPreservesResponseFraming(): void
@@ -285,6 +304,7 @@ final class HttpTest extends TestCase
     {
         $output = $this->exchange("GET / HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n", fn() => new Response(200, ['X-Test' => "x\r\ny"]));
         self::assertTrue(str_starts_with($output, 'HTTP/1.1 500'), 'Invalid application header was blamed on the client.');
+        self::assertSame(['HTTP handler failed: Invalid response header.'], $this->reports);
     }
 
     public function testHeadAcceptsExplicitRepresentationLength(): void

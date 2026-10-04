@@ -230,7 +230,8 @@ final class HttpSession
             $this->pump();
         } catch (HttpException $error) {
             $this->fail($error->status);
-        } catch (\Throwable) {
+        } catch (\Throwable $error) {
+            $this->connection->reportFailure('HTTP handler failed', $error);
             $this->fail(500);
         } finally {
             $this->connection->leaveActivity();
@@ -336,7 +337,9 @@ final class HttpSession
                     $this->pump();
                 });
             }
-        } catch (\Throwable) {
+        } catch (\Throwable $error) {
+            // Headers are already sent, so the only signal left for the client is the close.
+            $this->connection->reportFailure('HTTP response failed part-way', $error);
             $this->retire();
             $this->connection->close();
         } finally {

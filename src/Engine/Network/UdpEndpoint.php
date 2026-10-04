@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Crab\Engine\Network;
 
 use Crab\Engine\EventLoop;
+use Crab\Engine\FailureReporter;
 
 final class UdpEndpoint
 {
@@ -71,7 +72,7 @@ final class UdpEndpoint
     public function onClose(callable $callback): self
     {
         if ($this->closed) {
-            try { $callback($this); } catch (\Throwable $error) { error_log((string) $error); }
+            try { $callback($this); } catch (\Throwable $error) { FailureReporter::report('UDP close callback failed', $error); }
         } else {
             $this->closeCallbacks[] = $callback(...);
         }
@@ -159,7 +160,7 @@ final class UdpEndpoint
         $callbacks = $this->closeCallbacks;
         $this->closeCallbacks = [];
         foreach ($callbacks as $callback) {
-            try { $callback($this); } catch (\Throwable $error) { error_log((string) $error); }
+            try { $callback($this); } catch (\Throwable $error) { FailureReporter::report('UDP close callback failed', $error); }
         }
     }
 
@@ -188,7 +189,7 @@ final class UdpEndpoint
                 ($this->handler)($this, $payload, $peer);
             } catch (\Throwable $error) {
                 ++$this->errors;
-                error_log((string) $error);
+                FailureReporter::report('UDP handler failed', $error);
             }
             if ($this->readWatcher !== null && !$this->loop->isEnabled($this->readWatcher)) {
                 return;

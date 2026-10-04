@@ -182,8 +182,6 @@ final class App implements RequestHandlerInterface
         } catch (\Throwable $error) {
             // stop() will not run for a worker that did not start.
             restore_error_handler();
-            // The supervisor reports only that a worker failed to start.
-            fwrite(STDERR, "Worker {$worker->index} cannot start: {$error->getMessage()}\n");
             throw $error;
         }
     }
@@ -225,11 +223,13 @@ final class App implements RequestHandlerInterface
     }
 
     /**
-     * Logs a failure that happened outside a request.
+     * Logs a failure the engine caught in a worker: a task, a timer, a
+     * provider that could not stop, or a request failure that escaped the
+     * error handler.
      */
     private function report(\Throwable $error): void
     {
-        $this->container->get(LoggerInterface::class)->error('Background work failed: {message}', [
+        $this->container->get(LoggerInterface::class)->error('Unhandled failure: {message}', [
             'message' => $error->getMessage(),
             'exception' => $error,
         ]);

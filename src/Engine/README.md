@@ -24,7 +24,7 @@ For parallel workers on Unix, enable PHP's `pcntl` and `posix` extensions and om
 CRAB_WORKERS=4 php bin/crab examples/servers.php
 ~~~
 
-Send SIGINT or SIGTERM to the parent for bounded graceful shutdown. SIGUSR1 starts replacement workers one at a time and waits for readiness before draining their predecessors. Classes already loaded into the parent are inherited, so deploying changed PHP classes requires restarting the parent.
+Send SIGINT or SIGTERM to the parent for bounded graceful shutdown. SIGUSR1, sent to the parent, starts replacement workers one at a time and waits for readiness before draining their predecessors. Classes already loaded into the parent are inherited, so deploying changed PHP classes requires restarting the parent.
 
 ## Minimal HTTP server
 
@@ -104,6 +104,16 @@ $runtime->group('jobs', maxTasks: 128)->onStart(
 Use the worker's loop for timers: `$worker->loop->delay($seconds, $callback)`, `repeat()`, and `cancel($id)`. It is a `Crab\Engine\EventLoop`; `EventLoop::current()` returns the same one where no worker is at hand. `Async\Pool` is a bounded set of reusable resources such as client connections: `acquire()` makes one on demand up to the limit and otherwise waits, first come first served, until `release()`, a timeout or cancellation; `discard()` replaces a broken one and `run()` lends one for a callback. `Async\ConnectionStream` gives one coroutine reader and one writer exclusive ownership of a TCP connection, with demand-driven reads and bounded writes. It must not share ownership with a protocol parser or raw data handler.
 
 Fibers provide concurrency within a worker. Worker processes provide CPU parallelism. Blocking database clients, ordinary filesystem calls, DNS lookups, or CPU loops still block their worker; arbitrary PHP functions do not become asynchronous.
+
+## Failures
+
+Nothing the engine catches is dropped. A handler, callback or task that throws is reported through `FailureReporter`, as is what the supervisor notices about its workers:
+
+- A group with `onFailure(fn (Throwable $error, Worker $worker) => ...)` receives every failure caught in its workers: HTTP and WebSocket handlers, streamed responses that fail part-way, connection, accept and UDP callbacks, tasks, timers and stop callbacks.
+- Without one, and for everything the parent process reports, the failure is written to standard error with its class, message and trace.
+- A malformed request is answered (400, 413, 431 and so on) and is not a failure.
+
+An HTTP handler that throws is answered with 500; one that fails after its response has started has its connection closed, so the client does not mistake a partial response for a complete one. `FailureReporter::handleWith()` replaces the destination for a whole process, which is how tests collect reports.
 
 ## Transport contracts
 

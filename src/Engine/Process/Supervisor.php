@@ -6,6 +6,7 @@ namespace Crab\Engine\Process;
 
 use Crab\Engine\WorkerGroup;
 use Crab\Engine\EventLoop;
+use Crab\Engine\FailureReporter;
 
 final class Supervisor
 {
@@ -104,7 +105,8 @@ final class Supervisor
             foreach ($this->children as $child) {
                 if (is_resource($child['stream'])) { fclose($child['stream']); }
             }
-            foreach (array_keys($this->signalHandlers) as $signal) { pcntl_signal($signal, SIG_DFL); }
+            // The reload signal is the parent's; its default action would end this worker.
+            foreach (array_keys($this->signalHandlers) as $signal) { pcntl_signal($signal, $signal === SIGUSR1 ? SIG_IGN : SIG_DFL); }
             $definition = $this->slots[$slot];
             foreach ($this->bindings as $name => $bindings) {
                 if ($name === $definition['group']) { continue; }
@@ -119,7 +121,7 @@ final class Supervisor
                 $worker->run();
                 exit(0);
             } catch (\Throwable $error) {
-                error_log('[Crab] Worker failed: '.$error);
+                FailureReporter::report('Worker failed', $error);
                 exit(1);
             }
         }
@@ -146,7 +148,7 @@ final class Supervisor
             }
             $child = $this->children[$pid];
             if (!$child['ready'] && !$child['retiring'] && $now - $child['started'] >= $this->startupTimeout) {
-                error_log("[Crab] Worker $pid exceeded its startup deadline.");
+                FailureReporter::report("Worker $pid exceeded its startup deadline");
                 $this->retire($pid, intentional: false);
             }
             if ($child['deadline'] !== null && $now >= $child['deadline']) {
@@ -230,7 +232,7 @@ final class Supervisor
         if ($child['replaces'] !== null && isset($this->children[$child['replaces']])
             && !$this->children[$child['replaces']]['retiring']) {
             $this->slots[$slot]['pid'] = $child['replaces'];
-            error_log("[Crab] Replacement $pid failed; the previous worker remains active.");
+            FailureReporter::report("Replacement $pid failed; the previous worker remains active");
             return;
         }
         $now = self::now();

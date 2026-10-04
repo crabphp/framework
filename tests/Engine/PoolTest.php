@@ -174,28 +174,24 @@ final class PoolTest extends TestCase
         $lent[0] = $pool->acquire();
         $waiter = $this->spawn($loop, static fn (): object => $pool->acquire());
         $loop->defer(static fn () => $pool->close());
-        $log = ini_set('error_log', '/dev/null');
         try {
-            try {
-                $this->awaitTask($loop, $waiter);
-                self::fail('A waiter survived close.');
-            } catch (LogicException) {
-            }
-            self::assertSame(0, $destroyed, 'Lent resources are not destroyed while lent.');
-            $pool->release($lent[0]);
-            $pool->release($lent[1]);
-            self::assertSame(2, $destroyed, 'A lent resource is destroyed when it comes back.');
-            $pool->close();
-
-            $other = new Pool($loop, static fn (): stdClass => new stdClass(), destroy: static function () use (&$destroyed): void {
-                ++$destroyed;
-            });
-            $other->release($other->acquire());
-            $other->close();
-            self::assertSame(3, $destroyed, 'Idle resources are destroyed on close.');
-        } finally {
-            ini_set('error_log', $log === false ? '' : $log);
+            $this->awaitTask($loop, $waiter);
+            self::fail('A waiter survived close.');
+        } catch (LogicException) {
         }
+        self::assertSame(0, $destroyed, 'Lent resources are not destroyed while lent.');
+        $pool->release($lent[0]);
+        $pool->release($lent[1]);
+        self::assertSame(2, $destroyed, 'A lent resource is destroyed when it comes back.');
+        $pool->close();
+
+        $other = new Pool($loop, static fn (): stdClass => new stdClass(), destroy: static function () use (&$destroyed): void {
+            ++$destroyed;
+        });
+        $other->release($other->acquire());
+        $other->close();
+        self::assertSame(3, $destroyed, 'Idle resources are destroyed on close.');
+        self::assertSame(array_fill(0, 2, 'Pool resource cleanup failed: cleanup failures are contained'), $this->reports);
         $this->expectException(LogicException::class);
         $pool->acquire();
     }

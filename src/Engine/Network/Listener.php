@@ -7,6 +7,7 @@ namespace Crab\Engine\Network;
 use Closure;
 use InvalidArgumentException;
 use Crab\Engine\EventLoop;
+use Crab\Engine\FailureReporter;
 use RuntimeException;
 use Throwable;
 
@@ -124,7 +125,7 @@ final class Listener
                 ($this->handler)($connection);
             } catch (Throwable $error) {
                 $connection->close();
-                error_log('[Crab] Accept callback failed: '.$error->getMessage());
+                FailureReporter::report('Accept callback failed', $error);
             }
         }
     }

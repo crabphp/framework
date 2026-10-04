@@ -347,7 +347,8 @@ final class WebSocketSession
         }
         try {
             ($this->onMessage)($this, $payload, $type);
-        } catch (\Throwable) {
+        } catch (\Throwable $error) {
+            $this->connection->reportFailure('WebSocket message handler failed', $error);
             $this->fail(1011, 'Handler failed');
         }
     }
@@ -496,7 +497,8 @@ final class WebSocketSession
                         }
                         try {
                             $callback($this);
-                        } catch (\Throwable) {
+                        } catch (\Throwable $error) {
+                            $this->connection->reportFailure('WebSocket drain callback failed', $error);
                             $this->fail(1011, 'Handler failed');
                         }
                     }

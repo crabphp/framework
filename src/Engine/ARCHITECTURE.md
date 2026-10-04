@@ -63,6 +63,12 @@ Worker and parent enforce the shutdown deadline, default five seconds. The paren
 
 Unexpected exits receive exponential backoff and at most five restarts per slot in sixty seconds. Readiness has a ten-second deadline. SIGUSR1 starts one replacement at a time, draining its predecessor only after readiness. A failed replacement preserves a healthy previous worker. Fresh-code deployment requires restarting the parent because loaded classes survive fork.
 
+## Failure reporting
+
+Every `catch` in the engine that swallows a failure passes it to `FailureReporter::report()`; there is no bare catch and no direct `error_log()`. A worker whose group has failure callbacks installs them as the reporter for its lifetime and restores the previous one when it ends. Otherwise the report goes to standard error with its trace, which does not depend on how `php.ini` routes PHP's own log. A protocol owner reports through `Connection::reportFailure()`, so a connection with its own error handler keeps it. Client errors are answered and never reported.
+
+Workers ignore SIGUSR1, the parent's reload signal, whose default action would end them.
+
 ## Byte transport and backpressure
 
 TCP uses nonblocking PHP streams, direct writes when the queue is empty, and a chunk FIFO with a head offset for partial writes. Writable interest exists only while output remains. Each read/write turn has a 256 KiB budget; reads are at most 64 KiB each. A short read ends the turn while preserving readiness for subsequent data or EOF. Read interest is reconciled once when a read turn ends, so a consumer that pauses and resumes within one turn costs no driver registration work; a paused or suspended turn that sees readiness disables its watcher then. Accept batches are bounded at 64.

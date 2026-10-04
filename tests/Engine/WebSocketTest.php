@@ -329,6 +329,20 @@ final class WebSocketTest extends TestCase
         fclose($peer);
     }
 
+    public function testAFailingMessageHandlerClosesWith1011AndIsReported(): void
+    {
+        [$loop, $connection, $peer] = $this->pair();
+        $session = new WebSocketSession($connection, static function (): void {
+            throw new \RuntimeException('message handler failure');
+        });
+        $session->receive(self::clientFrame(1, 'hello'));
+        $frames = self::serverFrames(self::read($peer));
+        self::assertSame([['opcode' => 8, 'fin' => true, 'payload' => pack('n', 1011) . 'Handler failed']], $frames);
+        self::assertSame(['WebSocket message handler failed: message handler failure'], $this->reports);
+        $connection->close();
+        fclose($peer);
+    }
+
     public function testCloseHandshakeEchoesStatusAndNotifiesExactlyOnce(): void
     {
         [$loop, $connection, $peer] = $this->pair();

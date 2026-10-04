@@ -9,6 +9,7 @@ use InvalidArgumentException;
 use LengthException;
 use LogicException;
 use Crab\Engine\EventLoop;
+use Crab\Engine\FailureReporter;
 use Throwable;
 
 /**
@@ -551,6 +552,27 @@ final class Connection
         }
     }
 
+    /**
+     * Reports a failure that the connection's protocol owner caught, to the
+     * connection's own error handler when it has one. It does not close
+     * the connection; the owner decides what happens to it.
+     *
+     * @internal
+     */
+    public function reportFailure(string $what, Throwable $error): void
+    {
+        $reporter = $this->errorHandler;
+        if ($reporter !== null) {
+            try {
+                $reporter($error, $this);
+                return;
+            } catch (Throwable $reportingError) {
+                FailureReporter::report('Connection error handler failed', $reportingError);
+            }
+        }
+        FailureReporter::report($what, $error);
+    }
+
     private function invoke(Closure $handler): void
     {
         try {
@@ -574,8 +596,8 @@ final class Connection
                 return;
             }
         } catch (Throwable $reportingError) {
-            error_log('[Crab] Error handler failed: '.$reportingError->getMessage());
+            FailureReporter::report('Connection error handler failed', $reportingError);
         }
-        error_log('[Crab] Connection callback failed: '.$error->getMessage());
+        FailureReporter::report('Connection callback failed', $error);
     }
 }

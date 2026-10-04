@@ -7,6 +7,7 @@ namespace Crab\Engine\Async;
 use Closure;
 use LogicException;
 use Crab\Engine\EventLoop;
+use Crab\Engine\FailureReporter;
 use Throwable;
 
 /**
@@ -165,7 +166,7 @@ final class Task
         try {
             $observer($this);
         } catch (Throwable $error) {
-            error_log('[Crab] Task completion callback failed: '.$error->getMessage());
+            FailureReporter::report('Task completion callback failed', $error);
         }
     }
 }

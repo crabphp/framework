@@ -203,9 +203,9 @@ final class AppTest extends TestCase
             self::assertSame(['first register', 'second register', 'first start in worker 0', 'second start in worker 0',
                 'second stop', 'first stop'], RecordingProvider::$events);
             $log = file_get_contents($path);
-            self::assertStringContainsString('ERROR Background work failed: job broke', $log);
-            self::assertStringContainsString('ERROR Background work failed: timer broke', $log);
-            self::assertStringContainsString('ERROR Background work failed: second cannot stop', $log);
+            self::assertStringContainsString('ERROR Unhandled failure: job broke', $log);
+            self::assertStringContainsString('ERROR Unhandled failure: timer broke', $log);
+            self::assertStringContainsString('ERROR Unhandled failure: second cannot stop', $log);
         } finally {
             @unlink($path);
         }
