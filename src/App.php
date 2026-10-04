@@ -14,6 +14,7 @@ use Crab\Contracts\Console\Console as ConsoleContract;
 use Crab\Contracts\Container\Container as ContainerContract;
 use Crab\Contracts\Provider;
 use Crab\Contracts\Routing\Router as RouterContract;
+use Crab\Contracts\WorkerProvider;
 use Crab\Engine\Process\Worker;
 use Crab\Engine\Runtime;
 use Crab\Engine\Server\HttpServer;
@@ -52,6 +53,10 @@ final class App implements RequestHandlerInterface
      */
     private array $middleware = [];
     private ?RequestHandlerInterface $pipeline = null;
+    /**
+     * @var list<WorkerProvider>
+     */
+    private array $workerProviders = [];
 
     public function __construct(
         public readonly ConfigContract $config = new Config(),
@@ -94,7 +99,8 @@ final class App implements RequestHandlerInterface
 
     /**
      * Lets providers add their bindings; one given by class name is made
-     * by the container.
+     * by the container. A WorkerProvider is also started and stopped in
+     * each worker.
      */
     public function register(Provider|string ...$providers): static
     {
@@ -107,6 +113,9 @@ final class App implements RequestHandlerInterface
                 }
             }
             $provider->register($this->container);
+            if ($provider instanceof WorkerProvider) {
+                $this->workerProviders[] = $provider;
+            }
         }
         return $this;
     }
@@ -130,24 +139,57 @@ final class App implements RequestHandlerInterface
 
     /**
      * A runtime serving this application over HTTP; the `serve` command
-     * runs it. Each worker assembles its middleware as it starts, so a
-     * misconfigured application fails then and not on its first request.
+     * runs it. Each worker assembles its middleware and starts the worker
+     * providers as it starts, so a misconfigured application fails then
+     * and not on its first request. A task that fails in a worker is
+     * logged.
      */
     public function runtime(string $address = 'tcp://127.0.0.1:8080', int $workers = 1): Runtime
     {
         $runtime = new Runtime();
         $runtime->group('http', $workers)
             ->listen($address, new HttpServer(new EngineHandler($this)))
-            ->onStart(function (Worker $worker): void {
-                try {
-                    $this->pipeline ??= $this->pipeline();
-                } catch (\Throwable $error) {
-                    // The supervisor reports only that a worker failed to start.
-                    fwrite(STDERR, "Worker {$worker->index} cannot start: {$error->getMessage()}\n");
-                    throw $error;
-                }
-            });
+            ->onStart($this->start(...))
+            ->onStop($this->stop(...))
+            ->onFailure($this->report(...));
         return $runtime;
+    }
+
+    private function start(Worker $worker): void
+    {
+        try {
+            $this->pipeline ??= $this->pipeline();
+            foreach ($this->workerProviders as $provider) {
+                $provider->start($worker);
+            }
+        } catch (\Throwable $error) {
+            // The supervisor reports only that a worker failed to start.
+            fwrite(STDERR, "Worker {$worker->index} cannot start: {$error->getMessage()}\n");
+            throw $error;
+        }
+    }
+
+    private function stop(Worker $worker): void
+    {
+        foreach (array_reverse($this->workerProviders) as $provider) {
+            try {
+                $provider->stop($worker);
+            } catch (\Throwable $error) {
+                // One provider's failure must not keep the others open.
+                $this->report($error);
+            }
+        }
+    }
+
+    /**
+     * Logs a failure that happened outside a request.
+     */
+    private function report(\Throwable $error): void
+    {
+        $this->container->get(LoggerInterface::class)->error('Background work failed: {message}', [
+            'message' => $error->getMessage(),
+            'exception' => $error,
+        ]);
     }
 
     /**

@@ -4,6 +4,7 @@
 - Nothing under `src/Engine/` may reference a `Crab\` namespace other than `Crab\Engine\`; `tests/EngineBoundaryTest.php` enforces this. The framework may depend on the engine, never the reverse.
 - Engine tests live in `tests/Engine/`, engine benchmarks in `benchmarks/`.
 - [ARCHITECTURE.md](ARCHITECTURE.md) is the agreed design: layers, lifecycle, scopes, concurrency model and build order. Read it before designing a component and keep it true when the design changes.
+- [COMPONENTS.md](COMPONENTS.md) is the flow for building a component. Follow its steps in order and meet its definition of done; when the flow itself changes, change that file in the same change.
 - When a convention is decided or changed, record it in this file in the same change. Before adding a class, interface or helper, check it against these rules and against how the existing components already do it.
 
 ## Lean and standard
@@ -31,7 +32,8 @@
 ## Application wiring
 
 - `App` binds the core directly: configuration, container, router, HTTP factory, logger, error handler and console. Everything optional is added by a `Provider`, the same way for our packages as for anyone else's, registered explicitly with `$app->register()`.
-- A provider has `register(Container $container)`. There is no `boot()`; bindings are closures run on first use. Work that must happen in each worker goes in optional `start(Worker $worker)` and `stop(Worker $worker)` methods; these are agreed but not built yet.
+- A provider has `register(Container $container)`. There is no `boot()`; bindings are closures run on first use. A provider with work to do in each worker implements `WorkerProvider` as well: `start(Worker $worker)` opens what holds a socket, file or timer and `stop(Worker $worker)` releases it. Providers stop in reverse order, and `stop()` must not suspend.
+- Nothing fails silently outside a request: `App` sends a failed worker task or a failing `stop()` to the logger through the engine group's `onFailure()`. A new entry point (queue job, scheduled job) gets the same treatment.
 - `App` assembles its middleware, the error handler included, in each worker as the worker starts, never in the parent and never lazily on a request, so a misconfiguration stops startup with its cause printed.
 - Objects the container keeps are shared by every request a worker serves: they hold no state of a single request, and anything holding a socket or file is made in the worker on first use, not in the parent.
 - State has three scopes. Process scope (config, routes, provider list) is read-only once the application is defined. Worker scope is the container's kept objects. Request scope travels only on the PSR-7 request and its attributes, never in a service or a static.

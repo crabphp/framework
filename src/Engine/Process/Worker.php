@@ -101,6 +101,15 @@ final class Worker
             }
         } finally {
             $this->draining = true;
+            if (!$this->starting) {
+                foreach (array_reverse($this->group->stopCallbacks()) as $callback) {
+                    try {
+                        $callback($this);
+                    } catch (\Throwable $error) {
+                        $this->report($error, 'Stop callback failed');
+                    }
+                }
+            }
             foreach ($this->listeners as $listener) { $listener->close(); }
             foreach ($this->pendingConnects as $cancel) { $cancel(); }
             foreach ($this->tasks as $task) { $task->cancel(); }
@@ -149,7 +158,7 @@ final class Worker
             } catch (CancelledException) {
                 // Cooperative shutdown is an expected task outcome.
             } catch (\Throwable $error) {
-                error_log('[Crab] Task failed: '.$error);
+                $this->report($error, 'Task failed');
             }
             $this->finishDrain();
         });
@@ -238,6 +247,26 @@ final class Worker
                 $this->stop();
             }
         });
+    }
+
+    /**
+     * Hands a failure to the group's failure callbacks, or to PHP's error
+     * log when there are none or one of them fails.
+     */
+    private function report(\Throwable $error, string $what): void
+    {
+        $callbacks = $this->group->failureCallbacks();
+        try {
+            foreach ($callbacks as $callback) {
+                $callback($error, $this);
+            }
+        } catch (\Throwable $reportingError) {
+            error_log('[Crab] Failure callback failed: '.$reportingError->getMessage());
+            $callbacks = [];
+        }
+        if ($callbacks === []) {
+            error_log('[Crab] '.$what.': '.$error);
+        }
     }
 
     private function hasWork(): bool

@@ -18,6 +18,14 @@ final class WorkerGroup
      * @var list<\Closure>
      */
     private array $startCallbacks = [];
+    /**
+     * @var list<\Closure>
+     */
+    private array $stopCallbacks = [];
+    /**
+     * @var list<\Closure>
+     */
+    private array $failureCallbacks = [];
     private bool $frozen = false;
 
     public function __construct(
@@ -52,9 +60,37 @@ final class WorkerGroup
         return $this;
     }
 
+    /**
+     * Runs in each worker once it has drained or reached its shutdown
+     * deadline, before it releases what it still holds; the callback
+     * receives the Worker. Callbacks run in reverse order of registration,
+     * and only in a worker whose start callbacks all completed. The event
+     * loop has stopped, so a callback must not suspend.
+     */
+    public function onStop(callable $callback): self
+    {
+        $this->assertMutable();
+        $this->stopCallbacks[] = $callback(...);
+        return $this;
+    }
+
+    /**
+     * Receives (Throwable, Worker) when a task spawned on the worker fails
+     * or a stop callback throws. Without one, such failures go to PHP's
+     * error log.
+     */
+    public function onFailure(callable $callback): self
+    {
+        $this->assertMutable();
+        $this->failureCallbacks[] = $callback(...);
+        return $this;
+    }
+
     public function listeners(): array { return $this->listeners; }
     public function datagrams(): array { return $this->datagrams; }
     public function startCallbacks(): array { return $this->startCallbacks; }
+    public function stopCallbacks(): array { return $this->stopCallbacks; }
+    public function failureCallbacks(): array { return $this->failureCallbacks; }
     public function freeze(): void { $this->frozen = true; }
 
     private function assertMutable(): void

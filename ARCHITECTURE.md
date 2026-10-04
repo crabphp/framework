@@ -51,7 +51,7 @@ A contract exists for everything a package touches, including where no PSR exist
 | --- | --- | --- |
 | `Http\Request` | PSR-7 `ServerRequestInterface` | today |
 | `Container\Container` | PSR-11 `ContainerInterface` | today |
-| `Provider` | none | today |
+| `Provider`, `WorkerProvider` | none | today |
 | `Console\Command`, `Input`, `Output` | none | today |
 | `Config\Config` | none | today |
 | `Routing\Router` | PSR-15 `RequestHandlerInterface` | today |
@@ -87,7 +87,7 @@ A long-running server has four phases. The most common bug in this style of fram
 | 3. Request | Each worker, many times, possibly overlapping | Request → error handler → middleware → router → handler → response | Request-scoped data, carried **only** on the request object |
 | 4. Stop | Each worker | Drain in-flight requests, run worker-stop hooks, close connections | none |
 
-Phases 1 and 3 exist today. Phase 2 exists for the middleware chain only. General worker-start and worker-stop hooks are *proposed*: a provider may implement an optional `start(Worker $worker)` and `stop(Worker $worker)`.
+All four phases exist today. A provider that implements `WorkerProvider` gets `start(Worker $worker)` in phase 2 and `stop(Worker $worker)` in phase 4. Providers start in the order registered and stop in reverse. `stop()` runs only in a worker where every provider started, and after the event loop has stopped, so it cannot suspend.
 
 ### The three scopes
 
@@ -137,7 +137,7 @@ Small and explicit; there are five, and no others are planned.
 | Point | How | Status |
 | --- | --- | --- |
 | Services | `Provider::register(Container)` | today |
-| Per-worker work | `Provider::start(Worker)` / `stop(Worker)` | proposed |
+| Per-worker work | `WorkerProvider::start(Worker)` / `stop(Worker)` | today |
 | Around requests | PSR-15 middleware via `$app->middleware()` | today |
 | Commands | `Console` contract, `add()` | today |
 | Reacting to events | PSR-14 dispatcher | proposed, when the first component needs it |
@@ -146,7 +146,7 @@ No auto-discovery, no facades, no `boot()` phase, no global container accessor.
 
 ## Errors and observability
 
-- **One error path per entry point.** HTTP requests go through `ErrorHandler` *(today)*. Console commands report through `Console::run()` *(today)*. Background tasks, queue jobs and scheduled jobs need the same guarantee: nothing fails silently *(proposed)*.
+- **One error path per entry point.** HTTP requests go through `ErrorHandler` *(today)*. Console commands report through `Console::run()` *(today)*. A task spawned on a worker that fails, and a provider that fails to stop, are written to the application's logger *(today)*. Queue jobs and scheduled jobs get the same guarantee when those components are built.
 - **Fail at startup, not at first use.** Misconfiguration stops `serve` with its cause *(today for middleware and logger)*.
 - **Structured context** *(proposed)*. A request id is assigned by middleware, stored as a request attribute and added to every log record for that request.
 - **Health and metrics** *(proposed)*. A built-in health route, and `Worker::stats()` exposed through a command or route.
@@ -167,7 +167,7 @@ A PSR implementation should also pass that PSR's public conformance suite where 
 ## Build order
 
 1. **Close the contract gaps:** `Config`, `Router`, `Console` contracts; boundary tests for the layer rules. *Done.*
-2. **Worker lifecycle hooks:** `start` and `stop` for providers; error path for background tasks.
+2. **Worker lifecycle hooks:** `start` and `stop` for providers; error path for background tasks. *Done.*
 3. **Finish Http:** response cookies, multipart uploads, bodies for router 404 and 405, request id middleware, warnings to exceptions.
 4. **Small PSR components:** clock (PSR-20), events (PSR-14), cache (PSR-16).
 5. **Decide the concurrency model**, then **Database** with a pool contract.
@@ -182,6 +182,6 @@ All agreed on 2026-10-04:
 
 1. **Contracts:** Crab keeps its own contract for everything a package touches.
 2. **Concurrency model:** contracts are written for async drivers; blocking drivers ship first.
-3. **Worker hooks:** a provider may implement optional `start(Worker)` and `stop(Worker)`.
+3. **Worker hooks:** a provider may also implement `WorkerProvider`, with `start(Worker)` and `stop(Worker)`.
 4. **Packaging:** each component is published as its own package, at step 9 of the build order.
 5. **Global helpers:** process-scope values only (`config()`, `env()`), permanently.

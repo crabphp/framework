@@ -99,7 +99,7 @@ $runtime->group('jobs', maxTasks: 128)->onStart(
 );
 ~~~
 
-`Worker::spawn()` tracks tasks until they exit and requests cancellation during shutdown. Tasks return results through `await()`; cancellation of an await only cancels that wait. Pass the supplied token into async operations. HTTP handlers receive `$request->cancellation` for the same purpose. `php bin/crab examples/coroutines.php --single` runs a complete task example.
+`Worker::spawn()` tracks tasks until they exit and requests cancellation during shutdown. A group's `onStop()` callbacks run in each worker after it drains, for releasing what `onStart()` opened, and `onFailure()` receives a task that failed, which otherwise goes to PHP's error log. Tasks return results through `await()`; cancellation of an await only cancels that wait. Pass the supplied token into async operations. HTTP handlers receive `$request->cancellation` for the same purpose. `php bin/crab examples/coroutines.php --single` runs a complete task example.
 
 Use the same driver directly for timers: `$worker->loop->delay($seconds, $callback)`, `repeat()`, and `cancel($id)`. `Async\ConnectionStream` gives one coroutine reader and one writer exclusive ownership of a TCP connection, with demand-driven reads and bounded writes. It must not share ownership with a protocol parser or raw data handler.
 

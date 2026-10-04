@@ -53,6 +53,84 @@ final class RuntimeTest extends TestCase
         self::assertTrue($cleaned, 'Shutdown must unwind the task finally block.');
     }
 
+    public function testStopCallbacksRunInReverseAfterDrainAndFailuresReachTheFailureCallback(): void
+    {
+        $events = [];
+        $failures = [];
+        $runtime = new Runtime(shutdownTimeout: 0.1);
+        $runtime->group()
+            ->onStart(static function (Worker $worker) use (&$events): void {
+                $events[] = 'start';
+                $worker->spawn(static function () use ($worker, &$events): void {
+                    Async::sleep($worker->loop, 0.002);
+                    $events[] = 'task';
+                    throw new RuntimeException('deliberate task failure');
+                });
+                $worker->loop->delay(0.02, $worker->stop(...));
+            })
+            ->onStop(static function (Worker $worker) use (&$events): void {
+                $events[] = 'first stop, draining: ' . var_export($worker->isDraining(), true);
+            })
+            ->onStop(static function () use (&$events): void {
+                $events[] = 'second stop';
+                throw new RuntimeException('deliberate stop failure');
+            })
+            ->onFailure(static function (Throwable $error, Worker $worker) use (&$failures): void {
+                $failures[] = $error->getMessage() . ' in worker ' . $worker->index;
+            });
+        $runtime->run(singleProcess: true);
+
+        self::assertSame(['start', 'task', 'second stop', 'first stop, draining: true'], $events);
+        self::assertSame(['deliberate task failure in worker 0', 'deliberate stop failure in worker 0'], $failures);
+    }
+
+    public function testStopCallbacksDoNotRunWhenStartupFails(): void
+    {
+        $stopped = false;
+        $runtime = new Runtime(shutdownTimeout: 0.1);
+        $runtime->group()
+            ->onStart(static function (): void {
+                throw new RuntimeException('deliberate startup failure');
+            })
+            ->onStop(static function () use (&$stopped): void {
+                $stopped = true;
+            });
+        try {
+            $runtime->run(singleProcess: true);
+            self::fail('A failed startup was not reported.');
+        } catch (RuntimeException $error) {
+            self::assertSame('deliberate startup failure', $error->getMessage());
+        }
+        self::assertFalse($stopped);
+    }
+
+    public function testAFailingFailureCallbackFallsBackToTheErrorLog(): void
+    {
+        $log = tempnam(sys_get_temp_dir(), 'crab-failure-callback-');
+        self::assertNotFalse($log);
+        $this->deferCleanup(static function () use ($log): void { if (is_file($log)) { unlink($log); } });
+        $previousLog = ini_set('error_log', $log);
+        try {
+            $runtime = new Runtime(shutdownTimeout: 0.1);
+            $runtime->group()
+                ->onStart(static function (Worker $worker): void {
+                    $worker->spawn(static function (): void {
+                        throw new RuntimeException('deliberate task failure');
+                    });
+                    $worker->loop->delay(0.005, $worker->stop(...));
+                })
+                ->onFailure(static function (): void {
+                    throw new RuntimeException('deliberate reporting failure');
+                });
+            $runtime->run(singleProcess: true);
+            $written = file_get_contents($log);
+            self::assertStringContainsString('Failure callback failed: deliberate reporting failure', $written);
+            self::assertStringContainsString('Task failed: RuntimeException: deliberate task failure', $written);
+        } finally {
+            ini_set('error_log', $previousLog === false ? '' : $previousLog);
+        }
+    }
+
     public function testDetachedTaskFailureIsReported(): void
     {
         $log = tempnam(sys_get_temp_dir(), 'crab-task-error-');

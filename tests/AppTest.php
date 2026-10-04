@@ -11,6 +11,8 @@ use Crab\Contracts\Container\Container;
 use Crab\Contracts\Http\Request as RequestContract;
 use Crab\Contracts\Provider;
 use Crab\Contracts\Routing\Router as RouterContract;
+use Crab\Contracts\WorkerProvider;
+use Crab\Engine\Process\Worker;
 use Crab\Engine\Http\Request as EngineRequest;
 use Crab\Engine\Runtime;
 use Crab\Http\EngineHandler;
@@ -68,6 +70,36 @@ final class TagMiddleware implements MiddlewareInterface
         $trail = $request->getAttribute('trail', '') . $this->tag . '>';
         $response = $handler->handle($request->withAttribute('trail', $trail));
         return $response->withAddedHeader('X-Trail', $this->tag);
+    }
+}
+
+final class RecordingProvider implements WorkerProvider
+{
+    /**
+     * @var list<string>
+     */
+    public static array $events = [];
+
+    public function __construct(private string $name, private bool $failsToStop = false)
+    {
+    }
+
+    public function register(Container $container): void
+    {
+        self::$events[] = "{$this->name} register";
+    }
+
+    public function start(Worker $worker): void
+    {
+        self::$events[] = "{$this->name} start in worker {$worker->index}";
+    }
+
+    public function stop(Worker $worker): void
+    {
+        self::$events[] = "{$this->name} stop";
+        if ($this->failsToStop) {
+            throw new \RuntimeException("{$this->name} cannot stop");
+        }
     }
 }
 
@@ -136,6 +168,40 @@ final class AppTest extends TestCase
             $app->container->instance(ErrorHandler::class, new TagMiddleware('custom'));
             $app->middleware();
             self::assertSame(['inner', 'custom'], $app->handle(new Request('GET', '/missing'))->getHeader('X-Trail'));
+        } finally {
+            @unlink($path);
+        }
+    }
+
+    public function testWorkerProvidersStartAndStopWithTheWorkerAndTaskFailuresAreLogged(): void
+    {
+        $path = sys_get_temp_dir() . '/crab-app-' . bin2hex(random_bytes(6)) . '.log';
+        RecordingProvider::$events = [];
+        try {
+            $app = new App(new Config(['log' => ['path' => $path]]));
+            $app->register(new RecordingProvider('first'), new RecordingProvider('second', failsToStop: true));
+            $app->register(new class implements WorkerProvider {
+                public function register(Container $container): void
+                {
+                }
+
+                public function start(Worker $worker): void
+                {
+                    $worker->spawn(static fn() => throw new \RuntimeException('job broke'));
+                    $worker->loop->delay(0.02, $worker->stop(...));
+                }
+
+                public function stop(Worker $worker): void
+                {
+                }
+            });
+            $app->runtime('tcp://127.0.0.1:0')->run(singleProcess: true);
+
+            self::assertSame(['first register', 'second register', 'first start in worker 0', 'second start in worker 0',
+                'second stop', 'first stop'], RecordingProvider::$events);
+            $log = file_get_contents($path);
+            self::assertStringContainsString('ERROR Background work failed: job broke', $log);
+            self::assertStringContainsString('ERROR Background work failed: second cannot stop', $log);
         } finally {
             @unlink($path);
         }
