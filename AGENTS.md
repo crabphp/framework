@@ -63,6 +63,13 @@
 
 - Commit directly on `main`, without feature branches. Commit and push only when asked.
 
+## Application skeleton
+
+- The skeleton is the separate repository `crabphp/crab`, beside this one, and reads the framework from `../framework` until there is a release.
+- It stays minimal and readable at a glance: `app.php` builds the application top to bottom, `cua` is the command line (`php cua serve`), and the folders are `routes/`, `app/Handlers/`, `app/Providers/`, `config/` and `tests/`. Add a folder to it only when a component that needs one is built.
+- A route or command file returns a closure that receives the contract (`Router`, `Console`); nothing reaches the skeleton through a magic variable or a global.
+- When the framework changes how an application is written, change the skeleton and its README in the same piece of work, and run its tests.
+
 # Engine conventions
 
 - Use multiline docblocks for class, function, and member declarations; allow single-line docblocks only inside method or function bodies.

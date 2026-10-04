@@ -175,7 +175,7 @@ A PSR implementation should also pass that PSR's public conformance suite where 
 5. **Decide the concurrency model**, then **Database** with a pool contract.
 6. **Queue**, then **Scheduling**, each as its own worker group.
 7. **Validation, Session, Auth.**
-8. **Application skeleton** (`crabphp/crab`) and the `make:*` commands, once the conventions above are fixed.
+8. **Application skeleton** (`crabphp/crab`) and the `make:*` commands. *The skeleton exists, kept minimal; it grows a folder when a component arrives. The `make:*` commands are not built.*
 9. **Per-component packages**, CI and the first tagged release.
 
 ## Decisions
