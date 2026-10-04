@@ -6,9 +6,11 @@ namespace Crab\Tests;
 
 use Crab\App;
 use Crab\Config\Config;
+use Crab\Contracts\Config\Config as ConfigContract;
 use Crab\Contracts\Container\Container;
 use Crab\Contracts\Http\Request as RequestContract;
 use Crab\Contracts\Provider;
+use Crab\Contracts\Routing\Router as RouterContract;
 use Crab\Engine\Http\Request as EngineRequest;
 use Crab\Engine\Runtime;
 use Crab\Http\EngineHandler;
@@ -78,6 +80,7 @@ final class AppTest extends TestCase
         self::assertSame("Hello, world!\n", (string) $app->handle(new Request('GET', '/'))->getBody());
         self::assertInstanceOf(Runtime::class, $app->runtime('tcp://127.0.0.1:0'));
         self::assertSame($app, $app->container->get(App::class));
+        self::assertSame($app->router, $app->container->get(RouterContract::class));
         self::assertSame($app->router, $app->container->get(Router::class));
         self::assertInstanceOf(Factory::class, $app->container->get(ResponseFactoryInterface::class));
     }
@@ -112,6 +115,7 @@ final class AppTest extends TestCase
         $path = sys_get_temp_dir() . '/crab-app-' . bin2hex(random_bytes(6)) . '.log';
         try {
             $app = new App(new Config(['app' => ['debug' => true], 'log' => ['path' => $path, 'level' => 'error']]));
+            self::assertSame($app->config, $app->container->get(ConfigContract::class));
             self::assertSame($app->config, $app->container->get(Config::class));
             $app->router->get('/fail', static fn() => throw new \RuntimeException('broken'));
             $app->router->get('/wrong', Greeter::class);

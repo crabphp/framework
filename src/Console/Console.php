@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Crab\Console;
 
 use Crab\Contracts\Console\Command;
+use Crab\Contracts\Console\Console as ConsoleContract;
 use Crab\Contracts\Console\Input as InputContract;
 use Crab\Contracts\Console\Output as OutputContract;
 use Psr\Container\ContainerInterface;
@@ -14,7 +15,7 @@ use Psr\Container\ContainerInterface;
  * and output, or a class name; a class is made only when its command runs,
  * by the container when there is one.
  */
-final class Console
+final class Console implements ConsoleContract
 {
     /**
      * @var array<string, Command|\Closure|string>
@@ -50,11 +51,11 @@ final class Console
     }
 
     /**
-     * @param list<string> $arguments The command's name followed by its own words.
-     * @return int The process exit status.
+     * Without an output, writes to standard output and standard error.
      */
-    public function run(array $arguments, OutputContract $output = new Output()): int
+    public function run(array $arguments, ?OutputContract $output = null): int
     {
+        $output ??= new Output();
         $name = array_shift($arguments) ?? 'list';
         try {
             if (in_array($name, ['list', '--help', '-h'], true)) {

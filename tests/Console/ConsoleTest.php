@@ -10,6 +10,7 @@ use Crab\Console\Input;
 use Crab\Console\Output;
 use Crab\Container\Container;
 use Crab\Contracts\Console\Command;
+use Crab\Contracts\Console\Console as ConsoleContract;
 use Crab\Contracts\Console\Input as InputContract;
 use Crab\Contracts\Console\Output as OutputContract;
 use PHPUnit\Framework\TestCase;
@@ -163,6 +164,7 @@ final class ConsoleTest extends TestCase
     public function testApplicationCommands(): void
     {
         $app = new App();
+        self::assertSame($app->console, $app->container->get(ConsoleContract::class));
         self::assertSame($app->console, $app->container->get(Console::class));
         self::assertTrue($app->console->has('serve') && $app->console->has('routes'));
         self::assertSame(0, $this->exec($app->console, 'routes'));

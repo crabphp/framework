@@ -9,8 +9,11 @@ use Crab\Commands\Serve;
 use Crab\Config\Config;
 use Crab\Console\Console;
 use Crab\Container\Container;
+use Crab\Contracts\Config\Config as ConfigContract;
+use Crab\Contracts\Console\Console as ConsoleContract;
 use Crab\Contracts\Container\Container as ContainerContract;
 use Crab\Contracts\Provider;
+use Crab\Contracts\Routing\Router as RouterContract;
 use Crab\Engine\Process\Worker;
 use Crab\Engine\Runtime;
 use Crab\Engine\Server\HttpServer;
@@ -42,8 +45,8 @@ final class App implements RequestHandlerInterface
 {
     private static ?self $current = null;
 
-    public readonly Router $router;
-    public readonly Console $console;
+    public readonly RouterContract $router;
+    public readonly ConsoleContract $console;
     /**
      * @var list<MiddlewareInterface|string>
      */
@@ -51,12 +54,14 @@ final class App implements RequestHandlerInterface
     private ?RequestHandlerInterface $pipeline = null;
 
     public function __construct(
-        public readonly Config $config = new Config(),
+        public readonly ConfigContract $config = new Config(),
         public readonly ContainerContract $container = new Container(),
     ) {
         self::$current = $this;
         $container->instance(self::class, $this);
-        $container->instance(Config::class, $config);
+        $container->instance(ConfigContract::class, $config);
+        // Asking by class must not autowire a second, empty one.
+        $container->instance($config::class, $config);
         $container->singleton(LoggerInterface::class, static fn(): Logger => new Logger(
             $config->get('log.path', 'php://stderr'),
             $config->get('log.level', 'debug'),
@@ -71,8 +76,10 @@ final class App implements RequestHandlerInterface
             $container->singleton($factory, Factory::class);
         }
         $this->router = new Router($container->get(ResponseFactoryInterface::class), $container);
+        $container->instance(RouterContract::class, $this->router);
         $container->instance(Router::class, $this->router);
         $this->console = (new Console($container))->add('serve', Serve::class)->add('routes', Routes::class);
+        $container->instance(ConsoleContract::class, $this->console);
         $container->instance(Console::class, $this->console);
     }
 

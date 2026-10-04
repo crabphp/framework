@@ -58,7 +58,7 @@ Anything thrown while handling a request is caught by `Http\ErrorHandler`, logge
 | `serve` | Serves the application. `--address=tcp://127.0.0.1:8080` and `--workers=1` default to the `server.address` and `server.workers` configuration keys; `--single` serves in one process without `pcntl` and `posix`. |
 | `routes` | Lists the registered routes. |
 
-Add your own with `$app->console->add('mail:send', SendMail::class)`. A command is a class implementing `Contracts\Console\Command` (`description()` and `handle(Input $input, Output $output): int`), made by the container when it runs, or a closure taking the input and output. `Input` gives positional arguments and `--name=value` or `--flag` options. A provider adds commands through the container's `Console` entry.
+Add your own with `$app->console->add('mail:send', SendMail::class)`. A command is a class implementing `Contracts\Console\Command` (`description()` and `handle(Input $input, Output $output): int`), made by the container when it runs, or a closure taking the input and output. `Input` gives positional arguments and `--name=value` or `--flag` options. A provider adds commands through the container's `Contracts\Console\Console` entry.
 
 ## Services, providers and middleware
 
@@ -96,5 +96,7 @@ composer test
 php bin/crab examples/hello.php serve --single   # the framework
 php bin/crab examples/servers.php --single   # the engine alone
 ~~~
+
+The design is described in [ARCHITECTURE.md](ARCHITECTURE.md) and the conventions in [AGENTS.md](AGENTS.md).
 
 `composer test:linux` and `composer soak` are manual checks, described in the engine README.

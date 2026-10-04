@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Crab\Routing;
 
+use Crab\Contracts\Routing\Router as RouterContract;
 use Crab\Http\ClosureHandler;
 use Crab\Http\Factory;
 use Psr\Container\ContainerInterface;
@@ -18,7 +19,7 @@ use Psr\Http\Server\RequestHandlerInterface;
  * per method, built when that method is first matched. Parameters reach the
  * route's handler as request attributes.
  */
-final class Router implements RequestHandlerInterface
+final class Router implements RouterContract
 {
     /**
      * Routes per combined expression, keeping each within PCRE's limits.
@@ -57,9 +58,8 @@ final class Router implements RequestHandlerInterface
     }
 
     /**
-     * A pattern is a path with {name} or {name:expression} parameters; a
-     * parameter matches one segment unless its expression says otherwise.
-     * A string handler names a container entry that is a PSR-15 handler.
+     * A parameter matches one path segment unless its expression says
+     * otherwise.
      */
     public function add(string $method, string $pattern, RequestHandlerInterface|\Closure|string $handler): static
     {
@@ -115,9 +115,6 @@ final class Router implements RequestHandlerInterface
         return $this->add('DELETE', $pattern, $handler);
     }
 
-    /**
-     * @return list<array{string, string, string}> Method, pattern and handler name of each route.
-     */
     public function routes(): array
     {
         return array_values($this->routes);

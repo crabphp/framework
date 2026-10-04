@@ -4,10 +4,12 @@ declare(strict_types=1);
 
 namespace Crab\Config;
 
+use Crab\Contracts\Config\Config as ConfigContract;
+
 /**
  * Read-only configuration, addressed with dotted keys such as "log.level".
  */
-final readonly class Config
+final readonly class Config implements ConfigContract
 {
     /**
      * @param array<string, mixed> $items
@@ -60,9 +62,6 @@ final readonly class Config
         return true;
     }
 
-    /**
-     * @return array<string, mixed>
-     */
     public function all(): array
     {
         return $this->items;

@@ -7,7 +7,7 @@ namespace Crab\Commands;
 use Crab\Contracts\Console\Command;
 use Crab\Contracts\Console\Input;
 use Crab\Contracts\Console\Output;
-use Crab\Routing\Router;
+use Crab\Contracts\Routing\Router;
 
 final readonly class Routes implements Command
 {

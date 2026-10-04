@@ -3,6 +3,7 @@
 - This repository is `crabphp/framework`. The networking engine lives in `src/Engine/` with its own `composer.json` and is also published alone as `crabphp/engine`; framework components are sibling namespaces under `src/`.
 - Nothing under `src/Engine/` may reference a `Crab\` namespace other than `Crab\Engine\`; `tests/EngineBoundaryTest.php` enforces this. The framework may depend on the engine, never the reverse.
 - Engine tests live in `tests/Engine/`, engine benchmarks in `benchmarks/`.
+- [ARCHITECTURE.md](ARCHITECTURE.md) is the agreed design: layers, lifecycle, scopes, concurrency model and build order. Read it before designing a component and keep it true when the design changes.
 - When a convention is decided or changed, record it in this file in the same change. Before adding a class, interface or helper, check it against these rules and against how the existing components already do it.
 
 ## Lean and standard
@@ -14,13 +15,15 @@
 ## Components
 
 - Each component has its own folder and namespace under `src/` (`Http`, `Routing`, `Container`, `Config`, `Log`, `Console`) and its tests in the matching folder under `tests/`.
-- A component works on its own, without `App`, the container or a provider. It may depend on `Contracts`, on PSR interfaces and on the engine, and on another component only where that is its purpose.
+- Every component has the same shape: it works standalone, has a contract when packages touch it, ships a `<Component>Provider` when it is optional, and is kept able to be published as its own package the way the engine is.
+- A component works on its own, without `App`, the container or a provider. It may depend on `Contracts`, on PSR interfaces and on the engine, and on another component only where that is its purpose. `tests/LayerBoundaryTest.php` enforces this; a new dependency between components is added to its `ALLOWED` list deliberately, never worked around.
 - The root of `src/` is the glue that makes components an application: `App.php`, `helpers.php`, and `Commands/` for built-in commands. Code that needs `App` belongs there, not inside a component.
 - Do not add a `Support` or utility namespace until two components need the same code, and then put only that code in it.
 
 ## Contracts
 
-- Every interface that another package implements or type-hints lives in `Crab\Contracts\<Component>`, never inside the component. This includes interfaces with no PSR counterpart, such as `Provider` and the console's `Command`, `Input` and `Output`.
+- A package depends on `Crab\Contracts` and PSR interfaces only, never on a component's class. So everything a package touches has a contract in `Crab\Contracts\<Component>`, never inside the component, including where no PSR exists: `Config`, `Router`, `Console`, `Container`, `Provider`, and the console's `Command`, `Input` and `Output`.
+- `App` binds each contract in the container, and binds the concrete class to the same object so that asking by class cannot autowire a second one. The glue type-hints contracts too.
 - Where a PSR interface exists, the contract extends it and adds only methods Crab really needs; do not add a contract that adds nothing to its PSR interface.
 - A contract references only PSR interfaces, other contracts and engine types, never a component's class. The component's class implements the contract and shares its short name (`Crab\Http\Request` implements `Crab\Contracts\Http\Request`).
 - Signatures accept the PSR type wherever PSR methods suffice, so third-party implementations plug in; ask for a Crab contract only where its extra methods are used.
@@ -28,12 +31,17 @@
 ## Application wiring
 
 - `App` binds the core directly: configuration, container, router, HTTP factory, logger, error handler and console. Everything optional is added by a `Provider`, the same way for our packages as for anyone else's, registered explicitly with `$app->register()`.
-- A provider has `register(Container $container)` only. There is no `boot()`; bindings are closures run on first use. Work that must happen in each worker after the engine forks gets its own explicit hook when first needed.
+- A provider has `register(Container $container)`. There is no `boot()`; bindings are closures run on first use. Work that must happen in each worker goes in optional `start(Worker $worker)` and `stop(Worker $worker)` methods; these are agreed but not built yet.
 - `App` assembles its middleware, the error handler included, in each worker as the worker starts, never in the parent and never lazily on a request, so a misconfiguration stops startup with its cause printed.
 - Objects the container keeps are shared by every request a worker serves: they hold no state of a single request, and anything holding a socket or file is made in the worker on first use, not in the parent.
+- State has three scopes. Process scope (config, routes, provider list) is read-only once the application is defined. Worker scope is the container's kept objects. Request scope travels only on the PSR-7 request and its attributes, never in a service or a static.
+- A component that does I/O (database, cache, queue, HTTP client) exposes a pool in its contract, `acquire()` and `release()`, so code written against it is correct with blocking drivers now and async drivers later. Blocking drivers ship first.
+- HTTP, queue consumers and the scheduler run as separate engine worker groups. Workers hold nothing another worker needs; shared state lives in external stores behind contracts.
 
 ## Helpers
 
+- Global helpers exist only for process-scope values (`config()`, `env()`). There is no helper for the request, the authenticated user or the container.
+- Call `env()` only inside configuration files; everything else reads `config()`.
 - A global helper function lives in the `helpers.php` of the component it belongs to when it needs only that component (`env()` in `src/Config/helpers.php`). A helper that needs the running application lives in `src/helpers.php` (`config()`).
 - Wrap each helper in `function_exists`, list its file under Composer's `files`, and keep it a thin call to a class method that works without the helper.
 
