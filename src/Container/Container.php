@@ -86,10 +86,13 @@ final class Container implements ContainerContract
             $concrete = $this->concretes[$id] ?? $id;
             if ($concrete instanceof \Closure) {
                 $value = $concrete($this);
-            } elseif ($concrete !== $id && (isset($this->concretes[$concrete]) || array_key_exists($concrete, $this->instances))) {
-                $value = $this->get($concrete);
-            } else {
+            } elseif ($concrete === $id) {
+                $value = $this->build($id);
+            } elseif (isset($this->transient[$id]) && !isset($this->concretes[$concrete]) && !array_key_exists($concrete, $this->instances)) {
+                // A new one each time, not the kept instance of the class.
                 $value = $this->build($concrete);
+            } else {
+                $value = $this->get($concrete);
             }
         } finally {
             unset($this->resolving[$id]);

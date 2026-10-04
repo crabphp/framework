@@ -174,6 +174,7 @@ final class AppTest extends TestCase
 
         $text = (new EngineHandler(static fn() => Response::text('hi')))(new EngineRequest('GET', '/', '1.1', []));
         self::assertSame(['Content-Type' => 'text/plain; charset=utf-8'], $text->headers);
+        self::assertSame('plain', (new EngineHandler(static fn() => 'plain'))(new EngineRequest('GET', '/', '1.1', []))->body);
     }
 
     public function testEngineHandlerStreamsResourceBodies(): void

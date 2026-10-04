@@ -18,11 +18,11 @@ final readonly class EngineHandler
     private \Closure $handler;
 
     /**
-     * A closure receives Crab's Request and returns a PSR-7 response.
+     * A closure is handled as a route's closure is; see ClosureHandler.
      */
     public function __construct(RequestHandlerInterface|\Closure $handler)
     {
-        $this->handler = $handler instanceof \Closure ? $handler : $handler->handle(...);
+        $this->handler = ($handler instanceof \Closure ? new ClosureHandler($handler) : $handler)->handle(...);
     }
 
     public function __invoke(EngineRequest $request): EngineResponse

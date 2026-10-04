@@ -40,9 +40,10 @@ final class Router implements RequestHandlerInterface
      */
     private array $combined = [];
     /**
-     * Method, pattern and a name for the handler of every route, as added.
+     * Method, pattern and a name for the handler of every route, in the
+     * order added and keyed by method and pattern.
      *
-     * @var list<array{string, string, string}>
+     * @var array<string, array{string, string, string}>
      */
     private array $routes = [];
 
@@ -62,11 +63,15 @@ final class Router implements RequestHandlerInterface
      */
     public function add(string $method, string $pattern, RequestHandlerInterface|\Closure|string $handler): static
     {
-        $this->routes[] = [$method, $pattern, match (true) {
+        [$expression, $names] = self::compile($pattern);
+        if (isset($this->routes[$method . ' ' . $pattern])) {
+            throw new \LogicException("Route {$method} {$pattern} is already defined.");
+        }
+        $name = match (true) {
             is_string($handler) => $handler,
             $handler instanceof \Closure => 'Closure',
             default => $handler::class,
-        }];
+        };
         if ($handler instanceof \Closure) {
             $handler = new ClosureHandler($handler);
         } elseif (is_string($handler)) {
@@ -75,12 +80,10 @@ final class Router implements RequestHandlerInterface
             }
             $handler = new ContainerHandler($this->container, $handler);
         }
-        [$expression, $names] = self::compile($pattern);
+        $this->routes[$method . ' ' . $pattern] = [$method, $pattern, $name];
         if ($names !== []) {
             $this->dynamic[$method][] = [$expression, $names, $handler];
             unset($this->combined[$method]);
-        } elseif (isset($this->static[$method][$pattern])) {
-            throw new \LogicException("Route {$method} {$pattern} is already defined.");
         } else {
             $this->static[$method][$pattern] = $handler;
         }
@@ -117,13 +120,17 @@ final class Router implements RequestHandlerInterface
      */
     public function routes(): array
     {
-        return $this->routes;
+        return array_values($this->routes);
     }
 
     public function handle(ServerRequestInterface $request): ResponseInterface
     {
         $method = $request->getMethod();
         $path = $request->getUri()->getPath();
+        if ($path === '') {
+            // An absolute-form target may name only the authority.
+            $path = '/';
+        }
         $parameters = [];
         $handler = $this->find($method, $path, $parameters);
         if ($handler === null && $method === 'HEAD') {

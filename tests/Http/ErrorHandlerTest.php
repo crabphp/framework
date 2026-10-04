@@ -62,6 +62,13 @@ final class ErrorHandlerTest extends TestCase
         self::assertNotEmpty($error['trace']);
     }
 
+    public function testFailureTextThatIsNotUtf8StillAnswersAsJson(): void
+    {
+        $response = $this->handle(static fn() => throw new \RuntimeException("bad \xB1 byte"), debug: true, accept: 'application/json');
+        self::assertSame(500, $response->getStatusCode());
+        self::assertSame("bad \u{FFFD} byte", json_decode((string) $response->getBody(), true)['error']['message']);
+    }
+
     public function testHttpExceptionIsAnAnswer(): void
     {
         $response = $this->handle(static fn() => throw new HttpException(404, 'No such user', ['X-Reason' => 'missing']));

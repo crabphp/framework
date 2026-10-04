@@ -88,7 +88,12 @@ final class Console
         sort($names);
         $rows = [];
         foreach ($names as $name) {
-            $rows[] = [(string) $name, strtok($this->describe((string) $name), "\n") ?: ''];
+            try {
+                $description = strtok($this->describe((string) $name), "\n") ?: '';
+            } catch (\Throwable $error) {
+                $description = '(unavailable: ' . $error->getMessage() . ')';
+            }
+            $rows[] = [(string) $name, $description];
         }
         $output->line('Commands:');
         $output->table([...$rows, ['help <command>', 'Describe a command'], ['list', 'List the commands']], '  ');

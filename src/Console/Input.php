@@ -9,7 +9,8 @@ use Crab\Contracts\Console\Input as InputContract;
 /**
  * The words after a command's name. `--name=value` is an option with a
  * value, `--name` and each letter of `-abc` are options that are simply
- * present, and everything else, or anything after `--`, is an argument.
+ * present, and everything else, including a negative number and anything
+ * after `--`, is an argument.
  */
 final readonly class Input implements InputContract
 {
@@ -31,7 +32,7 @@ final readonly class Input implements InputContract
         $options = [];
         $literal = false;
         foreach ($tokens as $token) {
-            if ($literal || $token === '-' || $token === '' || $token[0] !== '-') {
+            if ($literal || $token === '-' || $token === '' || $token[0] !== '-' || is_numeric($token)) {
                 $arguments[] = $token;
             } elseif ($token === '--') {
                 $literal = true;

@@ -79,6 +79,7 @@ final class ContainerTest extends TestCase
         self::assertInstanceOf(SystemClock::class, $mailer->clock);
         self::assertSame($mailer, $container->get(Mailer::class));
         self::assertSame($mailer->system, $container->get(SystemClock::class));
+        self::assertSame($mailer->system, $mailer->clock);
         self::assertSame($mailer->clock, $mailer->fallback);
         self::assertNull($mailer->missing);
         self::assertSame(['crab@example.com', null], [$mailer->from, $mailer->limit]);
@@ -89,6 +90,7 @@ final class ContainerTest extends TestCase
         $container = new Container();
         $container->bind(Clock::class, SystemClock::class);
         self::assertNotSame($container->get(Clock::class), $container->get(Clock::class));
+        self::assertNotSame($container->get(Clock::class), $container->get(SystemClock::class));
 
         $container->bind('counter', static function (): object {
             static $made = 0;

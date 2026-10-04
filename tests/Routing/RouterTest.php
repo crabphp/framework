@@ -115,11 +115,24 @@ final class RouterTest extends TestCase
         ];
     }
 
-    public function testDuplicateStaticRouteIsRejected(): void
+    public function testDuplicateRoutesAreRejected(): void
     {
-        $router = (new Router())->get('/', static fn() => 'a');
-        $this->expectException(\LogicException::class);
-        $router->get('/', static fn() => 'b');
+        $router = (new Router())->get('/', static fn() => 'a')->get('/users/{id}', static fn() => 'a');
+        $router->post('/', static fn() => 'another method')->get('/users/{id}/posts', static fn() => 'another pattern');
+        foreach (['/', '/users/{id}'] as $pattern) {
+            try {
+                $router->get($pattern, static fn() => 'b');
+                self::fail("{$pattern} was defined twice.");
+            } catch (\LogicException) {
+            }
+        }
+        self::assertCount(4, $router->routes());
+    }
+
+    public function testAnAbsoluteTargetWithoutAPathIsTheRoot(): void
+    {
+        $router = (new Router())->get('/', static fn() => 'home');
+        self::assertSame('home', (string) $router->handle(new Request('GET', 'http://example.com'))->getBody());
     }
 
     private static function body(Router $router, string $method, string $target): string

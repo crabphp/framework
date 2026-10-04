@@ -56,7 +56,8 @@ final readonly class ErrorHandler implements MiddlewareInterface
                 $body['error'] += ['exception' => $error::class, 'file' => $error->getFile(),
                     'line' => $error->getLine(), 'trace' => explode("\n", $error->getTraceAsString())];
             }
-            return Response::json($body, $status, $headers);
+            // A failure's own text may not be valid UTF-8.
+            return Response::json($body, $status, $headers, JSON_INVALID_UTF8_SUBSTITUTE);
         }
         $body = $status . ' ' . $message . "\n";
         if ($this->debug && $status >= 500) {

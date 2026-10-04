@@ -72,6 +72,7 @@ final class ConsoleTest extends TestCase
         self::assertTrue($input->flag('force') && $input->flag('name') && $input->flag('v'));
         self::assertFalse($input->flag('missing') || $input->flag('empty'));
         self::assertFalse((new Input(['--single=false']))->flag('single'));
+        self::assertSame([['-5', '3', '-1.5'], []], [(new Input(['-5', '3', '-1.5']))->arguments(), (new Input(['-5', '3', '-1.5']))->options()]);
     }
 
     public function testRunsClosuresObjectsAndClasses(): void
@@ -119,6 +120,14 @@ final class ConsoleTest extends TestCase
         rewind($this->out);
         self::assertSame(0, $this->exec($console, 'help', 'greet'));
         self::assertSame("Greet someone\n\nArguments:\n  name\n", $this->written($this->out));
+    }
+
+    public function testListSurvivesACommandThatCannotBeMade(): void
+    {
+        $console = (new Console())->add('fine', static fn() => 0, 'Fine')->add('broken', 'No\\Such\\Command');
+        self::assertSame(0, $this->exec($console, 'list'));
+        self::assertStringContainsString("  broken          (unavailable: Command \"broken\" is No\\Such\\Command", $this->written($this->out));
+        self::assertStringContainsString("  fine            Fine\n", $this->written($this->out));
     }
 
     public function testFailuresReturnOne(): void

@@ -68,7 +68,7 @@ $app->middleware(Acme\Cors::class);                   // any PSR-15 middleware
 $app->router->get('/users/{id}', ShowUser::class);     // a PSR-15 handler made by the container
 ~~~
 
-`$app->container` autowires constructors by type and keeps one object of each class per worker; use `bind()` for a new one each time, `singleton()` to say how one is made and `instance()` for an existing value. Because those objects are shared by every request a worker serves, they must not hold the state of one request. Handlers and middleware given by class name are made when the first request arrives, inside the worker.
+`$app->container` autowires constructors by type and keeps one object of each class per worker; use `bind()` for a new one each time, `singleton()` to say how one is made and `instance()` for an existing value. Because those objects are shared by every request a worker serves, they must not hold the state of one request. Middleware given by class name is made inside each worker as it starts, so a misconfigured application fails at startup; a handler given by class name is made when its route is first requested.
 
 ## Layout
 

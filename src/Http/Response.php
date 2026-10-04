@@ -47,10 +47,11 @@ final class Response extends Message implements ResponseInterface
 
     /**
      * @param array<string, string|list<string>> $headers
+     * @param int $flags Further json_encode() flags; a value that cannot be encoded always throws.
      */
-    public static function json(mixed $value, int $status = 200, array $headers = []): self
+    public static function json(mixed $value, int $status = 200, array $headers = [], int $flags = 0): self
     {
-        return self::typed('application/json', json_encode($value, JSON_THROW_ON_ERROR), $status, $headers);
+        return self::typed('application/json', json_encode($value, JSON_THROW_ON_ERROR | $flags), $status, $headers);
     }
 
     public function getStatusCode(): int

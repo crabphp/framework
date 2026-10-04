@@ -19,13 +19,15 @@ final class LoggerTest extends TestCase
         self::assertInstanceOf(LoggerInterface::class, $logger);
         $logger->info('User {id} signed in from {ip}', ['id' => 7, 'ip' => '127.0.0.1', 'agent' => 'curl/8', 'tags' => ['a']]);
         $logger->debug('plain');
+        $logger->notice('{method} {target}: {message}', ['method' => 'GET', 'target' => '/x{message}', 'message' => 'boom']);
         $logger->warning('{missing} stays', ['other' => "caf\xC3\xA9 /path"]);
 
         $lines = explode("\n", rtrim(self::contents($stream)));
-        self::assertCount(3, $lines);
+        self::assertCount(4, $lines);
+        self::assertStringEndsWith(' NOTICE GET /x{message}: boom', $lines[2]);
         self::assertMatchesRegularExpression('/^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{3}[+-]\d\d:\d\d INFO User 7 signed in from 127\.0\.0\.1 \{"agent":"curl\/8","tags":\["a"\]\}$/', $lines[0]);
         self::assertStringEndsWith(' DEBUG plain', $lines[1]);
-        self::assertStringEndsWith(' WARNING {missing} stays {"other":"café /path"}', $lines[2]);
+        self::assertStringEndsWith(' WARNING {missing} stays {"other":"café /path"}', $lines[3]);
     }
 
     public function testExceptionFollowsWithItsTrace(): void

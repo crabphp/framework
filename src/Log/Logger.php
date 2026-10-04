@@ -51,14 +51,15 @@ final class Logger extends AbstractLogger
             $exception = null;
         }
         if ($context !== [] && str_contains($message, '{')) {
+            $replacements = [];
             foreach ($context as $key => $value) {
-                if (is_scalar($value) || $value instanceof \Stringable) {
-                    $message = str_replace('{' . $key . '}', (string) $value, $message, $count);
-                    if ($count > 0) {
-                        unset($context[$key]);
-                    }
+                if ((is_scalar($value) || $value instanceof \Stringable) && str_contains($message, '{' . $key . '}')) {
+                    $replacements['{' . $key . '}'] = (string) $value;
+                    unset($context[$key]);
                 }
             }
+            // One pass, so a placeholder inside a value is left as text.
+            $message = strtr($message, $replacements);
         }
         $line = (new \DateTimeImmutable())->format('Y-m-d\TH:i:s.vP') . ' ' . strtoupper($level) . ' ' . $message;
         if ($context !== []) {

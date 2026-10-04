@@ -11,6 +11,7 @@ use Crab\Console\Console;
 use Crab\Container\Container;
 use Crab\Contracts\Container\Container as ContainerContract;
 use Crab\Contracts\Provider;
+use Crab\Engine\Process\Worker;
 use Crab\Engine\Runtime;
 use Crab\Engine\Server\HttpServer;
 use Crab\Http\EngineHandler;
@@ -105,8 +106,8 @@ final class App implements RequestHandlerInterface
 
     /**
      * Adds PSR-15 middleware around every route, the first added outermost,
-     * inside the error handler. One given by name is made by the container when the first request
-     * arrives, in the worker that serves it.
+     * inside the error handler. One given by name is made by the container
+     * in the worker that serves requests, when that worker starts.
      */
     public function middleware(MiddlewareInterface|string ...$middleware): static
     {
@@ -122,12 +123,23 @@ final class App implements RequestHandlerInterface
 
     /**
      * A runtime serving this application over HTTP; the `serve` command
-     * runs it.
+     * runs it. Each worker assembles its middleware as it starts, so a
+     * misconfigured application fails then and not on its first request.
      */
     public function runtime(string $address = 'tcp://127.0.0.1:8080', int $workers = 1): Runtime
     {
         $runtime = new Runtime();
-        $runtime->group('http', $workers)->listen($address, new HttpServer(new EngineHandler($this)));
+        $runtime->group('http', $workers)
+            ->listen($address, new HttpServer(new EngineHandler($this)))
+            ->onStart(function (Worker $worker): void {
+                try {
+                    $this->pipeline ??= $this->pipeline();
+                } catch (\Throwable $error) {
+                    // The supervisor reports only that a worker failed to start.
+                    fwrite(STDERR, "Worker {$worker->index} cannot start: {$error->getMessage()}\n");
+                    throw $error;
+                }
+            });
         return $runtime;
     }
 

@@ -29,6 +29,7 @@
 
 - `App` binds the core directly: configuration, container, router, HTTP factory, logger, error handler and console. Everything optional is added by a `Provider`, the same way for our packages as for anyone else's, registered explicitly with `$app->register()`.
 - A provider has `register(Container $container)` only. There is no `boot()`; bindings are closures run on first use. Work that must happen in each worker after the engine forks gets its own explicit hook when first needed.
+- `App` assembles its middleware, the error handler included, in each worker as the worker starts, never in the parent and never lazily on a request, so a misconfiguration stops startup with its cause printed.
 - Objects the container keeps are shared by every request a worker serves: they hold no state of a single request, and anything holding a socket or file is made in the worker on first use, not in the parent.
 
 ## Helpers

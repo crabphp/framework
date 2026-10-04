@@ -21,6 +21,7 @@ interface Container extends ContainerInterface
 
     /**
      * Makes the value on first use and keeps it; see bind() for $concrete.
+     * Naming another entry or class makes this entry that one's kept value.
      */
     public function singleton(string $id, \Closure|string|null $concrete = null): void;
 
