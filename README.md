@@ -250,7 +250,7 @@ $db->transaction(function (Connection $tx) use ($from, $to, $amount) {
 - **Failures** throw `Crab\Database\DatabaseException`, whose message and `$sql` hold the SQL but never the bound values.
 - **PDO blocks.** While a statement runs, its worker serves nothing else; run more workers for more concurrent queries.
 
-It works without the framework too: `new Database(fn () => new PDO($dsn, $user, $password))`. MySQL and SQLite are supported: the tests run on SQLite, and on MySQL when `CRAB_TEST_MYSQL_DSN` is set. PostgreSQL is not supported for now. There is no model or migration yet.
+It works without the framework too: `new Database(fn () => new PDO($dsn, $user, $password))`. MySQL and SQLite are supported: the tests run on SQLite, and on MySQL when `CRAB_TEST_MYSQL_DSN` is set. PostgreSQL is not supported for now. There is no model yet.
 
 ### Query builder
 
@@ -307,6 +307,94 @@ $db->table('posts')
 - **Large tables** are read with `chunkById(500, fn (array $rows) => ...)`, which is not thrown off by rows added or removed meanwhile.
 - `toSql()` and `bindings()` show what would run. A query can be the list of another: `whereIn('id', $db->table('posts')->select('user_id'))`.
 
+### Several databases
+
+Describe each under a name, and say which is the default:
+
+~~~php
+// config/database.php
+return [
+    'default' => 'main',
+    'connections' => [
+        'main' => [
+            'dsn' => env('DB_DSN'),
+            'username' => env('DB_USERNAME'),
+            'password' => env('DB_PASSWORD'),
+            'migrations' => dirname(__DIR__) . '/database/migrations',
+        ],
+        'reports' => [
+            'dsn' => env('REPORTS_DSN'),
+            'migrations' => dirname(__DIR__) . '/database/reports',
+        ],
+    ],
+];
+~~~
+
+~~~php
+$db->table('users')->count();                                  // the default
+$db->connection('reports')->table('daily_totals')->get();      // another, by name
+~~~
+
+- **Asking for `Database` gives the default**, so code that uses one database does not change.
+- **The database is told by its `dsn`**, `mysql:` or `sqlite:`; there is no separate driver setting to keep in step with it.
+- **Each database has its own connections**, opened in each worker when first used, and its own `pool` and `timeout`.
+- **A transaction is on one database.** Neither MySQL nor SQLite can commit across two.
+- **Each has its own migrations:** a folder, and a `migrations` table inside it. The commands take `--database=reports`.
+
+### Migrations
+
+A migration is a file that changes the tables and knows how to take the change back. Set `database.migrations` to the folder that holds them, then:
+
+~~~sh
+php bin/crab app.php make:migration create_users_table    # writes database/migrations/2026_10_06_101500_create_users_table.php
+php bin/crab app.php migrate                              # runs those that have not run
+php bin/crab app.php migrate:status
+php bin/crab app.php migrate:rollback                     # takes back the last run
+~~~
+
+~~~php
+use Crab\Contracts\Database\Migration;
+use Crab\Contracts\Database\Schema;
+use Crab\Contracts\Database\Table;
+
+return new class implements Migration {
+    public function up(Schema $schema): void
+    {
+        $schema->create('posts', function (Table $table) {
+            $table->id();
+            $table->foreignId('user_id')->references('users', onDelete: 'cascade');
+            $table->string('title');
+            $table->string('slug')->unique();
+            $table->text('body')->nullable();
+            $table->boolean('published')->default(false);
+            $table->timestamps();
+            $table->index(['user_id', 'published']);
+        });
+    }
+
+    public function down(Schema $schema): void
+    {
+        $schema->drop('posts');
+    }
+};
+~~~
+
+| Columns | `id`, `foreignId`, `integer`, `bigInteger`, `string`, `text`, `boolean`, `decimal`, `float`, `date`, `dateTime`, `json`, `binary`, `timestamps` |
+| --- | --- |
+| On a column | `nullable()`, `default($value)`, `useCurrent()`, `unsigned()`, `unique()`, `index()`, `references($table, $column, onDelete:)` |
+| On the table | `index($columns)`, `unique($columns)`, `primary($columns)` |
+| Changing a table, in `$schema->table()` | new columns and indexes, `renameColumn()`, `dropColumn()`, `dropIndex()`, `dropUnique()` |
+| On the schema | `create()`, `table()`, `drop()`, `dropIfExists()`, `rename()`, `hasTable()`, `hasColumn()`, `connection()` |
+
+- **A column must have a value** unless it is `nullable()` or has a default.
+- **The same file runs on MySQL and SQLite.** The schema is written for the database in use.
+- **Migrations run in the order of their file names** and each run is a batch; `migrate:rollback` takes back the last batch, newest first.
+- **On SQLite a migration that fails leaves nothing behind**, because it runs in a transaction. MySQL commits each change to a table as it is made, so there a migration that fails halfway has done the first half: keep each one small.
+- **Rows can be moved in a migration** with `$schema->connection()->table('users')->...`.
+- **SQLite checks foreign keys** on the connections the provider opens.
+- **A column's type cannot be changed** in `$schema->table()`; SQLite has no statement for it. Add a column, copy the values and drop the old one.
+- A package adds its own folder through `Crab\Contracts\Database\Migrator::path()`. To build tables outside a migration, ask for `Crab\Contracts\Database\Schema`.
+
 ## Console
 
 `bin/crab app.php` lists the application's commands and `bin/crab app.php <command>` runs one. Two are built in:
@@ -315,6 +403,9 @@ $db->table('posts')
 | --- | --- |
 | `serve` | Serves the application. `--address=tcp://127.0.0.1:8080` and `--workers=1` default to the `server.address` and `server.workers` configuration keys; `--single` serves in one process without `pcntl` and `posix`. |
 | `routes` | Lists the registered routes. |
+| `openapi` | Writes the OpenAPI description of the routes. |
+
+The database provider adds `migrate`, `migrate:rollback`, `migrate:status` and `make:migration`.
 
 Add your own with `Command::add('mail:send', SendMail::class)`, which is `$app->console->add()` under a shorter name. A command is a class implementing `Contracts\Console\Command` (`description()` and `handle(Input $input, Output $output): int`), made by the container when it runs, or a closure taking the input and output. `Input` gives positional arguments and `--name=value` or `--flag` options. A provider adds commands through the container's `Contracts\Console\Console` entry.
 
@@ -342,7 +433,8 @@ A provider that needs something open in every worker, such as a connection or a 
 | `src/Console/` | The command runner, with its input and output. |
 | `src/Commands/` | The application's built-in commands. |
 | `src/Container/` | The PSR-11 container. |
-| `src/Database/` | Pooled PDO connections, the query layer and the query builder. |
+| `src/Clock/` | The PSR-20 clock. |
+| `src/Database/` | Pooled PDO connections, the query layer, the query builder, the schema builder and migrations. |
 | `src/Config/` | Configuration files and environment variables. |
 | `src/Log/` | The PSR-3 logger. |
 | `src/Testing/` | Helpers for testing components. |

@@ -4,26 +4,17 @@ declare(strict_types=1);
 
 namespace Crab\Http;
 
-use Psr\Http\Message\ResponseFactoryInterface;
+use Crab\Contracts\Http\Factory as FactoryContract;
 use Psr\Http\Message\ResponseInterface;
-use Psr\Http\Message\ServerRequestFactoryInterface;
 use Psr\Http\Message\ServerRequestInterface;
-use Psr\Http\Message\StreamFactoryInterface;
 use Psr\Http\Message\StreamInterface;
-use Psr\Http\Message\UploadedFileFactoryInterface;
 use Psr\Http\Message\UploadedFileInterface;
-use Psr\Http\Message\UriFactoryInterface;
 use Psr\Http\Message\UriInterface;
 
 /**
  * The PSR-17 factories for Crab's messages, in one object.
  */
-final class Factory implements
-    ResponseFactoryInterface,
-    ServerRequestFactoryInterface,
-    StreamFactoryInterface,
-    UploadedFileFactoryInterface,
-    UriFactoryInterface
+final class Factory implements FactoryContract
 {
     public function createResponse(int $code = 200, string $reasonPhrase = ''): ResponseInterface
     {

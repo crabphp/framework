@@ -4,16 +4,20 @@ declare(strict_types=1);
 
 namespace Crab;
 
+use Crab\Clock\SystemClock;
 use Crab\Commands\OpenApi;
 use Crab\Commands\Routes;
 use Crab\Commands\Serve;
 use Crab\Config\Config;
 use Crab\Console\Console;
 use Crab\Container\Container;
+use Crab\Contracts\Clock\Clock as ClockContract;
 use Crab\Contracts\Config\Config as ConfigContract;
 use Crab\Contracts\Console\Console as ConsoleContract;
 use Crab\Contracts\Container\Container as ContainerContract;
+use Crab\Contracts\Http\Factory as FactoryContract;
 use Crab\Contracts\Http\MiddlewareStack as MiddlewareStackContract;
+use Crab\Contracts\Log\Logger as LoggerContract;
 use Crab\Contracts\Provider;
 use Crab\Contracts\Routing\Router as RouterContract;
 use Crab\Contracts\Validation\Validator as ValidatorContract;
@@ -29,6 +33,7 @@ use Crab\Http\RequestId;
 use Crab\Log\Logger;
 use Crab\Routing\Router;
 use Crab\Validation\Validator;
+use Psr\Clock\ClockInterface;
 use Psr\Http\Message\ResponseFactoryInterface;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestFactoryInterface;
@@ -81,18 +86,26 @@ final class App implements RequestHandlerInterface
         $container->instance(ConfigContract::class, $config);
         // Asking by class must not autowire a second, empty one.
         $container->instance($config::class, $config);
-        $container->singleton(LoggerInterface::class, static fn(): Logger => new Logger(
-            $config->get('log.path', 'php://stderr'),
+        $container->singleton(LoggerContract::class, fn(): Logger => new Logger(
+            // A relative path is inside the application's directory, not wherever the process was started.
+            $basePath === null ? $config->get('log.path', 'php://stderr') : $this->path((string) $config->get('log.path', 'php://stderr')),
             $config->get('log.level', 'debug'),
         ));
+        // Each service is also reachable by its PSR name and by class, as the same object.
+        $container->singleton(LoggerInterface::class, LoggerContract::class);
+        $container->singleton(Logger::class, LoggerContract::class);
+        $container->singleton(ClockContract::class, static fn(): SystemClock => new SystemClock());
+        $container->singleton(ClockInterface::class, ClockContract::class);
+        $container->singleton(SystemClock::class, ClockContract::class);
         $container->singleton(ErrorHandler::class, static fn(ContainerContract $container): ErrorHandler => new ErrorHandler(
             $container->get(LoggerInterface::class),
             (bool) $config->get('app.debug', false),
         ));
-        $container->singleton(Factory::class);
+        $container->singleton(FactoryContract::class, static fn(): Factory => new Factory());
+        $container->singleton(Factory::class, FactoryContract::class);
         foreach ([ResponseFactoryInterface::class, ServerRequestFactoryInterface::class,
             StreamFactoryInterface::class, UploadedFileFactoryInterface::class, UriFactoryInterface::class] as $factory) {
-            $container->singleton($factory, Factory::class);
+            $container->singleton($factory, FactoryContract::class);
         }
         // Made here because routes are declared, and their inputs read, before any worker starts.
         $validator = new Validator();

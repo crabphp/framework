@@ -12,6 +12,13 @@ namespace Crab\Contracts\Database;
 interface Database extends Connection
 {
     /**
+     * Another of the application's databases, by the name it is configured
+     * under: $db->connection('reports')->table('totals')->get(). Each has
+     * its own connections, so a transaction never spans two.
+     */
+    public function connection(string $name): Database;
+
+    /**
      * Borrows a connection, waiting for one to be free when every one is
      * in use. Whatever is acquired must be released; prefer run().
      */

@@ -10,14 +10,14 @@
 ## Lean and standard
 
 - Keep the framework lean. Prefer a small implementation of our own to a third-party dependency; runtime dependencies are Revolt and the PSR interface packages. Ask before adding any other.
-- Everything is used through a `Crab\` type, so that nothing we depend on is outside our control. A third-party library is wrapped behind our own interface in one place, and only that place names it. PSR interfaces are the one exception, because they are the standard we chose to follow.
+- Everything is used through a `Crab\` type, so that nothing we depend on is outside our control and Crab always has a place to add a method. A third-party library is wrapped behind our own interface in one place, and only that place names it. A PSR interface is extended by a Crab contract, never asked for bare by Crab's own services.
 - Async tools come from `Crab\Engine`: `EventLoop`, `Suspension`, and `Async\Pool`, `Task`, `Async` and `Cancellation`. Only `src/Engine/EventLoop/` may name Revolt; `tests/EngineBoundaryTest.php` enforces it for all of `src/`.
 - Follow PHP-FIG wherever a PSR exists: PSR-7 messages, PSR-17 factories, PSR-15 handlers and middleware, PSR-11 container, PSR-3 logger, and PSR-14, PSR-16, PSR-18 and PSR-20 when those components are built.
 - Use the multiline docblock rule from the engine conventions in framework code too.
 
 ## Components
 
-- Each component has its own folder and namespace under `src/` (`Http`, `Routing`, `Validation`, `Container`, `Config`, `Log`, `Console`, `Database`, `Testing`) and its tests in the matching folder under `tests/`.
+- Each component has its own folder and namespace under `src/` (`Http`, `Routing`, `Validation`, `Container`, `Config`, `Log`, `Clock`, `Console`, `Database`, `Testing`) and its tests in the matching folder under `tests/`.
 - Every component has the same shape: it works standalone, has a contract when packages touch it, ships a `<Component>Provider` when it is optional, and is kept able to be published as its own package the way the engine is.
 - A component works on its own, without `App`, the container or a provider. It may depend on `Contracts`, on PSR interfaces and on the engine, and on another component only where that is its purpose. `tests/LayerBoundaryTest.php` enforces this; a new dependency between components is added to its `ALLOWED` list deliberately, never worked around.
 - The root of `src/` is the glue that makes components an application: `App.php`, `AppBuilder.php`, `Route.php`, `Command.php`, `helpers.php`, and `Commands/` for built-in commands. Code that needs `App` belongs there, not inside a component.
@@ -25,18 +25,18 @@
 
 ## Contracts
 
-- A package depends on `Crab\Contracts` and PSR interfaces only, never on a component's class. So everything a package touches has a contract in `Crab\Contracts\<Component>`, never inside the component, including where no PSR exists: `Config`, `Router`, `Console`, `Container`, `Database`, `Connection`, `Query`, `Validator`, `Rule`, `MiddlewareStack`, `Provider`, `WorkerProvider`, and the console's `Command`, `Input` and `Output`.
+- A package depends on `Crab\Contracts` and PSR interfaces only, never on a component's class. So everything a package touches has a contract in `Crab\Contracts\<Component>`, never inside the component, including where no PSR exists: `Config`, `Router`, `Console`, `Container`, `Database`, `Connection`, `Query`, `Schema`, `Table`, `Column`, `Migration`, `Migrator`, `Validator`, `Rule`, `Clock`, `Logger`, `Factory`, `MiddlewareStack`, `Provider`, `WorkerProvider`, and the console's `Command`, `Input` and `Output`.
 - Anything an application can do through `App`, a provider can do through a contract in the container. When `App` gains a way to extend the application, the contract comes with it.
 - Exceptions and immutable value objects are the exception to that: `HttpException`, `DatabaseException`, `ValidationException`, `Cookie`, the `Response` factories and the validation attributes (`Email`, `Length`, `ListOf`, ...) are named by class, because there is no behaviour behind them to swap.
 - A value object that a contract returns lives beside it in `Crab\Contracts`, as a final readonly class with no I/O (`Contracts\Database\Page`), since a contract may not name a component's class.
 - `App` binds each contract in the container, and binds the concrete class to the same object so that asking by class cannot autowire a second one. The glue type-hints contracts too.
-- Where a PSR interface exists, the contract extends it and adds only methods Crab really needs; do not add a contract that adds nothing to its PSR interface.
+- Every service has a contract of Crab's own, including where a PSR interface covers it completely: the contract then extends the PSR interface and may add nothing (`Contracts\Log\Logger`, `Contracts\Clock\Clock`, `Contracts\Http\Factory`). It is the name applications ask for and the place a method is added when Crab needs one. `App` binds the contract and binds the PSR interface to the same object, so code written against the standard gets it too. What an application implements rather than asks for, such as PSR-15 middleware, needs no contract.
 - A contract references only PSR interfaces, other contracts and engine types, never a component's class. The component's class implements the contract and shares its short name (`Crab\Http\Request` implements `Crab\Contracts\Http\Request`).
 - Signatures accept the PSR type wherever PSR methods suffice, so third-party implementations plug in; ask for a Crab contract only where its extra methods are used.
 
 ## Application wiring
 
-- `App` binds the core directly: configuration, container, validator, router, HTTP factory, logger, error handler and console. Everything optional is added by a `Provider`, the same way for our packages as for anyone else's, registered explicitly with `$app->register()`.
+- `App` binds the core directly: configuration, container, validator, router, HTTP factory, logger, clock, error handler and console. Everything optional is added by a `Provider`, the same way for our packages as for anyone else's, registered explicitly with `$app->register()`.
 - A provider has `register(Container $container)`. There is no `boot()`; bindings are closures run on first use. A provider with work to do in each worker implements `WorkerProvider` as well: `start(Worker $worker, Container $container)` opens what holds a socket, file or timer and `stop(Worker $worker, Container $container)` releases it. Providers stop in reverse order, `stop()` must not suspend, and a provider keeps no state of its own.
 - A provider declares its settings and their defaults once with `Config::defaults()`; code reads them with no default argument. The container has no per-request scope: `singleton()` is one per worker, `bind()` is new on every `get()`.
 - Every error response is built by `Http\ErrorResponse`, for the error handler and for the router's 404 and 405 alike. Expected answers such as an unmatched route are returned as responses, not thrown, so they pass back through middleware.
@@ -70,7 +70,11 @@
 - MySQL and SQLite are the supported databases. PostgreSQL is out of scope for now: do not add code, tests or documentation for it until the owner asks.
 - SQL values are always bound, never concatenated; an exception's message carries the SQL and never the bound values.
 - A statement is retried on a new connection only when the old one was already closed before the statement was sent and no transaction was open. Anything that may have reached the server is reported, not repeated.
-- The layers are built in order and each works without the one above it: pool, query layer, query builder, model. Do not make a lower layer depend on a higher one.
+- Code that needs the time asks for `Contracts\Clock\Clock` (or PSR-20's `ClockInterface`, which is bound to the same object, where a signature should accept any PSR clock) and never calls `time()`, `date()` or `new DateTime('now')` itself, so a test can hold the clock still with `Testing\FrozenClock`. A component that works standalone takes the clock as an optional argument.
+- `Table` and `Column` collect what a migration says and hold no SQL; `SchemaGrammar` writes it, and a dialect subclass says only where its database differs, as with `Query` and `Grammar`. A new column type is added to `Table`, to both dialects and to the tests of both.
+- A migration runs in a transaction only where the database can roll back a change to its tables; say so wherever that difference reaches the user.
+- An application's databases are configured by name and held by `DatabaseManager`. Asking for the `Database` contract gives the default one, and `Database::connection($name)` another; do not bind a second database in the container under a name of its own. The kind of database is read from its `dsn`, never from a separate setting.
+- The layers are built in order and each works without the one above it: pool, query layer, query builder, schema builder, migrator, model. Do not make a lower layer depend on a higher one.
 - The query builder needs only the `Connection` contract. The one place a lower layer names it is `Connection::table()`, a single `new Query($this, $table)`; nothing else in the pool or query layer may know it.
 - `Query` collects what a statement says and holds no SQL; `Grammar` writes it, and a dialect subclass overrides only where its database differs. A new clause is state on `Query` and a method on `Grammar`, never SQL assembled in `Query`.
 - In the builder, values are bound, names are quoted and operators are checked against a fixed list. Only methods ending in `Raw` take SQL as written, and every one of them takes bindings.
@@ -106,7 +110,8 @@
 ## Application skeleton
 
 - The skeleton is the separate repository `crabphp/crab`, beside this one, and reads the framework from `../framework` until there is a release.
-- It stays minimal and readable at a glance: `app.php` builds the application top to bottom, `cua` is the command line (`php cua serve`), and the folders are `routes/`, `app/Handlers/`, `app/Providers/`, `config/` and `tests/`. Add a folder to it only when a component that needs one is built.
+- It stays minimal and readable at a glance: `app.php` describes the application, `cua` is the command line (`php cua serve`), and the folders are `routes/`, `app/Handlers/`, `app/Providers/`, `config/`, `database/migrations/`, `storage/` and `tests/`.
+- `storage/` holds what the application writes while it runs (logs in `storage/logs/`, the SQLite file, later caches and uploads) and is never committed. Nothing the application needs in order to start lives there. A relative `log.path` is inside the application's base path. Add a folder to it only when a component that needs one is built.
 - `app.php` is one `App::configure(__DIR__)` chain that names the providers and, in `withRouting(routes:, commands:)`, the route and command files, and ends in `create()`. `AppBuilder` has no defaults of its own and finds nothing by convention: what an application starts with is a chain of ordinary steps in `App::configure()`, today `withEnv('.env')` and `withConfig('config', required: false)`, where anyone can read it. A new default is added to that chain, with the owner's agreement. A step that takes several things takes them one by one or as a list. The route files declare with `Route::` and `Command::`, and no skeleton file uses a variable it did not define.
 - When the framework changes how an application is written, change the skeleton and its README in the same piece of work, and run its tests.
 

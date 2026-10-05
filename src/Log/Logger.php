@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Crab\Log;
 
+use Crab\Contracts\Log\Logger as LoggerContract;
 use Psr\Log\AbstractLogger;
 use Psr\Log\InvalidArgumentException;
 use Psr\Log\LogLevel;
@@ -13,7 +14,7 @@ use Psr\Log\LogLevel;
  * time, level, message, then the remaining context as JSON. An exception in
  * the context follows on its own lines with its trace.
  */
-final class Logger extends AbstractLogger
+final class Logger extends AbstractLogger implements LoggerContract
 {
     private const LEVELS = [
         LogLevel::DEBUG => 0, LogLevel::INFO => 1, LogLevel::NOTICE => 2, LogLevel::WARNING => 3,

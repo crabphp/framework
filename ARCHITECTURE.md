@@ -57,11 +57,15 @@ A contract exists for everything a package touches, including where no PSR exist
 | `Console\Command`, `Input`, `Output` | none | today |
 | `Config\Config` | none | today |
 | `Database\Database`, `Database\Connection`, `Database\Query` | none | today |
+| `Database\Schema`, `Database\Table`, `Database\Column`, `Database\Migration`, `Database\Migrator` | none | today |
 | `Routing\Router` | PSR-15 `RequestHandlerInterface` | today |
 | `Routing\RouteInfo` | none; a value object | today |
 | `Validation\Validator`, `Validation\Rule` | none | today |
 | `Console\Console` | none | today |
-| Logger, cache, events, clock, HTTP client | used directly as PSR-3, 16, 14, 20, 18 | no Crab contract unless we add a method |
+| `Clock\Clock` | PSR-20 `ClockInterface` | today |
+| `Log\Logger` | PSR-3 `LoggerInterface` | today |
+| `Http\Factory` | the five PSR-17 factory interfaces | today |
+| Cache, events, HTTP client | PSR-16, 14, 18, each behind a Crab contract | not built |
 
 Contracts are the stable surface. Once there is a release, a contract changes only in a major version; component classes may change freely behind it.
 
@@ -198,11 +202,11 @@ A PSR implementation should also pass that PSR's public conformance suite where 
 1. **Close the contract gaps:** `Config`, `Router`, `Console` contracts; boundary tests for the layer rules. *Done.*
 2. **Worker lifecycle hooks:** `start` and `stop` for providers; error path for background tasks. *Done.*
 3. **Finish Http:** response cookies, multipart uploads, JSON bodies, bodies for router 404 and 405, request id middleware, warnings to exceptions. *Done.* Still open: multipart is read in memory, and the request body is copied from the engine's spool.
-4. **Small PSR components:** clock (PSR-20), events (PSR-14), cache (PSR-16).
-5. **Database.** *Connection pool, the thin query layer and the query builder are done, ahead of step 4, tested on SQLite and MySQL.* Next, in this order and each needing its own decisions: models with relationships, migrations.
+4. **Small PSR components:** clock (PSR-20), events (PSR-14), cache (PSR-16). *The clock is done.*
+5. **Database.** *Connection pool, the thin query layer, the query builder, the schema builder and migrations are done, tested on SQLite and MySQL.* Next: models with relationships.
 6. **Queue**, then **Scheduling**, each as its own worker group.
 7. **Validation, Session, Auth.** *Validation is done, ahead of the steps before it, together with typed route handlers and the OpenAPI document written from them.* Auth by token comes next of these; sessions matter less for an API.
-8. **Application skeleton** (`crabphp/crab`) and the `make:*` commands. *The skeleton exists, kept minimal; it grows a folder when a component arrives. The `make:*` commands are not built.*
+8. **Application skeleton** (`crabphp/crab`) and the `make:*` commands. *The skeleton exists, kept minimal; it grows a folder when a component arrives. `make:migration` is the first `make:*` command.*
 9. **Per-component packages**, CI and the first tagged release.
 
 ## Decisions

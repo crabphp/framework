@@ -5,14 +5,25 @@ declare(strict_types=1);
 namespace Crab\Database;
 
 use Crab\Contracts\Config\Config;
+use Crab\Contracts\Console\Console;
 use Crab\Contracts\Container\Container;
 use Crab\Contracts\Database\Connection;
 use Crab\Contracts\Database\Database as DatabaseContract;
+use Crab\Contracts\Database\Migrator as MigratorContract;
+use Crab\Contracts\Database\Schema as SchemaContract;
 use Crab\Contracts\WorkerProvider;
+use Crab\Database\Commands\MakeMigration;
+use Crab\Database\Commands\Migrate;
+use Crab\Database\Commands\Rollback;
+use Crab\Database\Commands\Status;
 use Crab\Engine\Process\Worker;
+use Psr\Clock\ClockInterface;
 
 /**
- * Binds the database from the "database" configuration section. Each
+ * Binds the default database, its schema builder and its migrator from
+ * the "database" configuration section, and adds the migration commands.
+ * The section describes one database, or several under "connections";
+ * another than the default is reached with Database::connection(). Each
  * worker opens its own connections when it first runs a statement and
  * closes them when it stops.
  */
@@ -21,33 +32,47 @@ final class DatabaseProvider implements WorkerProvider
     public function register(Container $container): void
     {
         $container->get(Config::class)->defaults('database', [
-            // A MySQL or SQLite data source name: "mysql:host=127.0.0.1;dbname=app" or "sqlite:/path/app.sqlite".
+            // One database: its settings go here. See DatabaseManager for each of them.
             'dsn' => null,
             'username' => null,
             'password' => null,
-            // Further PDO attributes, as PDO's constructor takes them.
             'options' => [],
-            // The most connections each worker opens; unset, it is 1 for SQLite, which allows one writer, and 10 otherwise.
             'pool' => null,
-            // Seconds to wait for a connection when all are in use.
             'timeout' => 5.0,
+            'migrations' => null,
+            // Several databases: the same settings for each, by a name of your choosing, and which one is the default.
+            'connections' => [],
+            'default' => null,
         ]);
-        $container->singleton(DatabaseContract::class, static function (Container $container): Database {
+        $container->singleton(DatabaseManager::class, static function (Container $container): DatabaseManager {
             $config = $container->get(Config::class);
-            $dsn = $config->get('database.dsn');
-            if (!is_string($dsn) || $dsn === '') {
-                throw new DatabaseException('The "database.dsn" setting is not configured.');
+            $connections = (array) $config->get('database.connections');
+            if ($connections === []) {
+                $connections = ['default' => [
+                    'dsn' => $config->get('database.dsn'),
+                    'username' => $config->get('database.username'),
+                    'password' => $config->get('database.password'),
+                    'options' => $config->get('database.options'),
+                    'pool' => $config->get('database.pool'),
+                    'timeout' => $config->get('database.timeout'),
+                    'migrations' => $config->get('database.migrations'),
+                ]];
             }
-            $username = $config->get('database.username');
-            $password = $config->get('database.password');
-            $options = (array) $config->get('database.options');
-            return new Database(
-                static fn (): \PDO => new \PDO($dsn, $username, $password, $options),
-                (int) ($config->get('database.pool') ?? (str_starts_with($dsn, 'sqlite:') ? 1 : 10)),
-                (float) $config->get('database.timeout'),
-            );
+            $default = (string) ($config->get('database.default') ?? array_key_first($connections));
+            $clock = $container->has(ClockInterface::class) ? $container->get(ClockInterface::class) : null;
+            return new DatabaseManager($connections, $default, $clock);
         });
+        $container->singleton(DatabaseContract::class, static fn (Container $container): Database => $container->get(DatabaseManager::class)->connection());
         $container->singleton(Connection::class, DatabaseContract::class);
+        $container->singleton(SchemaContract::class, static fn (Container $container): Schema => new Schema($container->get(DatabaseContract::class)));
+        $container->singleton(MigratorContract::class, static fn (Container $container): Migrator => $container->get(DatabaseManager::class)->migrator());
+        if ($container->has(Console::class)) {
+            $console = $container->get(Console::class);
+            $console->add('migrate', Migrate::class);
+            $console->add('migrate:rollback', Rollback::class);
+            $console->add('migrate:status', Status::class);
+            $console->add('make:migration', MakeMigration::class);
+        }
     }
 
     public function start(Worker $worker, Container $container): void
@@ -56,6 +81,6 @@ final class DatabaseProvider implements WorkerProvider
 
     public function stop(Worker $worker, Container $container): void
     {
-        $container->get(DatabaseContract::class)->close();
+        $container->get(DatabaseManager::class)->close();
     }
 }

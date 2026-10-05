@@ -10,7 +10,7 @@ Write the answers down before any code. They decide everything that follows.
 
 | Question | Why it matters | Cache example |
 | --- | --- | --- |
-| Is there a PSR for it? | The contract extends it, or the PSR is used directly | PSR-16 `CacheInterface` |
+| Is there a PSR for it? | The Crab contract extends it | PSR-16 `CacheInterface` |
 | Is it core or optional? | Core is bound by `App`; optional ships a provider | Optional |
 | What scope is its state? | Process, worker or request; see the table in step 4 | Worker: one store connection per worker |
 | Does it do I/O? | I/O components expose a pool and open nothing in the parent | Yes for Redis, no for an in-memory array |
@@ -22,9 +22,10 @@ A component is **core** only if the application cannot run without it. Everythin
 
 Decide what a package will type-hint, before writing the class.
 
-- **A PSR covers it completely:** use the PSR interface directly and add no Crab contract. Cache does this with `Psr\SimpleCache\CacheInterface`.
-- **A PSR covers part of it:** add `Crab\Contracts\<Component>\<Name>` extending the PSR interface, with only the extra methods.
+- **A PSR exists:** add `Crab\Contracts\<Component>\<Name>` extending the PSR interface, with the extra methods Crab needs, or none. Cache does this with `Crab\Contracts\Cache\Cache extends Psr\SimpleCache\CacheInterface`.
 - **No PSR exists:** add `Crab\Contracts\<Component>\<Name>` on its own.
+
+Every service has a Crab contract, even one that adds nothing to its PSR interface: it is the name applications ask for, and the place a method goes when Crab needs one. The provider binds the contract and also binds the PSR interface to the same object.
 
 A contract references PSR interfaces, other contracts and engine types, nothing else. Keep it to what a package needs; methods only the glue uses do not belong in it.
 
@@ -37,9 +38,9 @@ The class lives in `src/<Component>/` and works with plain `new`.
 ~~~php
 namespace Crab\Cache;
 
-use Psr\SimpleCache\CacheInterface;
+use Crab\Contracts\Cache\Cache;
 
-final class FileCache implements CacheInterface
+final class FileCache implements Cache
 {
     public function __construct(private readonly string $directory, private readonly int $defaultTtl = 3600)
     {
@@ -81,7 +82,7 @@ A provider with `start()` and `stop()` is tested with `Testing\WorkerHarness`, w
 
 ~~~php
 $hits = WorkerHarness::run([new CacheProvider()], static function (Worker $worker, Container $container): int {
-    $cache = $container->get(CacheInterface::class);
+    $cache = $container->get(Cache::class);
     $cache->set('key', 'value');
     Async::sleep($worker->loop, 0.01);   // the body may wait
     return $cache->get('key') === 'value' ? 1 : 0;
@@ -97,6 +98,7 @@ An optional component ships `<Component>Provider` in its own folder. This is the
 ~~~php
 namespace Crab\Cache;
 
+use Crab\Contracts\Cache\Cache;
 use Crab\Contracts\Config\Config;
 use Crab\Contracts\Container\Container;
 use Crab\Contracts\Provider;
@@ -110,10 +112,12 @@ final class CacheProvider implements Provider
             'directory' => sys_get_temp_dir() . '/crab-cache',
             'ttl' => 3600,
         ]);
-        $container->singleton(CacheInterface::class, static function (Container $container): FileCache {
+        $container->singleton(Cache::class, static function (Container $container): FileCache {
             $config = $container->get(Config::class);
             return new FileCache($config->get('cache.directory'), $config->get('cache.ttl'));
         });
+        // The same object for code written against the standard.
+        $container->singleton(CacheInterface::class, Cache::class);
     }
 }
 ~~~
@@ -128,7 +132,7 @@ The application then opts in with one line: `$app->register(CacheProvider::class
 
 ## 7. Give every entry point an error path
 
-If the component runs code outside a request (a timer, a consumer loop, a spawned task), a failure there must reach the logger. A task spawned with `$worker->spawn()` and a timer or watcher on `$worker->loop` already do, and the worker keeps running. A loop that must survive its own failures, such as a queue consumer taking the next job, catches them itself and logs through `Psr\Log\LoggerInterface`. Nothing fails silently.
+If the component runs code outside a request (a timer, a consumer loop, a spawned task), a failure there must reach the logger. A task spawned with `$worker->spawn()` and a timer or watcher on `$worker->loop` already do, and the worker keeps running. A loop that must survive its own failures, such as a queue consumer taking the next job, catches them itself and logs through `Crab\Contracts\Log\Logger`. Nothing fails silently.
 
 ## 8. Check the boundaries
 

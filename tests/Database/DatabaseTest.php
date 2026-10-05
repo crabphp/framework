@@ -374,7 +374,7 @@ final class DatabaseTest extends TestCase
         $unset = new App();
         $unset->register(DatabaseProvider::class);
         $this->expectException(DatabaseException::class);
-        $this->expectExceptionMessage('database.dsn');
+        $this->expectExceptionMessage('The database "default" has no "dsn" configured');
         $unset->container->get(DatabaseContract::class);
     }
 

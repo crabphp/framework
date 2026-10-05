@@ -377,4 +377,22 @@ final class AppTest extends TestCase
         $empty = new EngineHandler(static fn() => (new Response(204))->withBody($factory->createStreamFromResource(fopen('php://memory', 'r+b'))));
         self::assertSame('', $empty(new EngineRequest('GET', '/', '1.1', []))->body);
     }
+
+    public function testEveryCoreServiceIsBoundByItsContractItsPsrNameAndItsClass(): void
+    {
+        $app = new App();
+        $same = [
+            [\Crab\Contracts\Log\Logger::class, \Psr\Log\LoggerInterface::class, \Crab\Log\Logger::class],
+            [\Crab\Contracts\Clock\Clock::class, \Psr\Clock\ClockInterface::class, \Crab\Clock\SystemClock::class],
+            [\Crab\Contracts\Http\Factory::class, \Psr\Http\Message\ResponseFactoryInterface::class, \Crab\Http\Factory::class],
+            [\Crab\Contracts\Http\Factory::class, \Psr\Http\Message\StreamFactoryInterface::class, \Psr\Http\Message\UriFactoryInterface::class],
+            [\Crab\Contracts\Container\Container::class, \Psr\Container\ContainerInterface::class, \Crab\Container\Container::class],
+        ];
+        foreach ($same as [$contract, $standard, $class]) {
+            $service = $app->container->get($contract);
+            self::assertInstanceOf($contract, $service);
+            self::assertSame($service, $app->container->get($standard), "{$standard} is another object than {$contract}.");
+            self::assertSame($service, $app->container->get($class), "{$class} is another object than {$contract}.");
+        }
+    }
 }

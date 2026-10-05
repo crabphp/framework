@@ -28,15 +28,25 @@ final class Database implements DatabaseContract
      * @param \Closure(): \PDO $connect Opens one connection, for example `fn() => new PDO($dsn, $user, $password)`.
      * @param int $max The most connections this pool opens.
      * @param float $timeout Seconds to wait for a connection when all are in use.
+     * @param DatabaseManager|null $manager The databases this one is among, which connection() chooses from.
      */
     public function __construct(
         private readonly \Closure $connect,
         private readonly int $max = 10,
         private readonly float $timeout = 5.0,
+        private readonly ?DatabaseManager $manager = null,
     ) {
         if ($max < 1 || !is_finite($timeout) || $timeout <= 0) {
             throw new \InvalidArgumentException('A database needs a positive pool size and a finite, positive timeout.');
         }
+    }
+
+    public function connection(string $name): DatabaseContract
+    {
+        if ($this->manager === null) {
+            throw new \LogicException("This database was made on its own and knows no other, so it has none named \"{$name}\". Named databases come from a DatabaseManager, or from the \"database.connections\" setting.");
+        }
+        return $this->manager->connection($name);
     }
 
     public function acquire(): Connection
