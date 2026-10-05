@@ -71,8 +71,7 @@ final class AppBuilderTest extends TestCase
     {
         // Given backwards on purpose: routes need the application, providers the configuration, configuration the environment.
         $app = App::configure()
-            ->withCommands($this->directory . '/console.php')
-            ->withRoutes($this->directory . '/web.php', $this->directory . '/api.php')
+            ->withRouting(commands: $this->directory . '/console.php', routes: [$this->directory . '/web.php', $this->directory . '/api.php'])
             ->withMiddleware(Mark::class)
             ->withMiddleware(new Mark('object'))
             ->withProviders(GreetingProvider::class)
@@ -86,6 +85,59 @@ final class AppBuilderTest extends TestCase
         self::assertSame(['Built', 'object, class'], [(string) $home->getBody(), $home->getHeaderLine('X-Mark')], 'The first middleware given is outermost.');
         self::assertSame('{"leaked":false}', (string) $app->handle(new Request('GET', '/api'))->getBody(), 'A route file sees no variable it did not define.');
         self::assertTrue($app->console->has('hello'));
+    }
+
+    public function testABasePathLoadsEnvAndConfigAndResolvesRelativePaths(): void
+    {
+        $app = App::configure($this->directory . '/')
+            ->withProviders([GreetingProvider::class])
+            ->withMiddleware([Mark::class, new Mark('object')])
+            ->withRouting(routes: ['web.php', $this->directory . '/api.php'], commands: 'console.php')
+            ->create();
+
+        self::assertSame($this->directory, $app->basePath);
+        self::assertSame('Hello from env', $app->container->get(Greeting::class)->text, '.env and config/ in the base path are loaded without being named.');
+        $home = $app->handle(new Request('GET', '/'));
+        self::assertSame(['Built', 'object, class'], [(string) $home->getBody(), $home->getHeaderLine('X-Mark')]);
+        self::assertSame(200, $app->handle(new Request('GET', '/api'))->getStatusCode());
+        self::assertTrue($app->console->has('hello'));
+        self::assertSame(404, App::configure($this->directory)->withRouting(commands: 'console.php')->create()->handle(new Request('GET', '/'))->getStatusCode(), 'Either may be left out.');
+
+        self::assertSame($this->directory, $app->path());
+        self::assertSame($this->directory . '/storage/app.log', $app->path('storage/app.log'));
+        self::assertSame(['/var/log/app.log', 'php://stderr', 'C:\\logs\\app.log'], [$app->path('/var/log/app.log'), $app->path('php://stderr'), $app->path('C:\\logs\\app.log')]);
+
+        mkdir($this->directory . '/settings');
+        file_put_contents($this->directory . '/settings/app.php', "<?php return ['name' => 'Other'];");
+        file_put_contents($this->directory . '/other.env', "CRAB_BUILDER_OTHER=1\n");
+        $other = App::configure($this->directory)->withConfig('settings')->withEnv('other.env')->create();
+        self::assertSame(['Other', true], [$other->config->get('app.name'), env('CRAB_BUILDER_OTHER') === 1 || env('CRAB_BUILDER_OTHER') === '1']);
+        unlink($this->directory . '/settings/app.php');
+        unlink($this->directory . '/other.env');
+        rmdir($this->directory . '/settings');
+
+        $bare = sys_get_temp_dir() . '/crab-bare-' . bin2hex(random_bytes(4));
+        mkdir($bare);
+        self::assertNull(App::configure($bare)->create()->config->get('app.name'), 'A base path with no .env and no config folder is still an application.');
+        rmdir($bare);
+
+        $mistakes = [
+            'is not a directory' => static fn () => App::configure('/no/such/app'),
+            'This application has no base path. Give it one with App::configure(__DIR__)' => static fn () => (new App())->path('x'),
+            'withProviders() takes providers or their class names, not int' => static fn () => App::configure()->withProviders([1]),
+            'withMiddleware() takes PSR-15 middleware or their class names, not stdClass' => static fn () => App::configure()->withMiddleware([new \stdClass()]),
+            'withRouting() takes file paths, not int' => static fn () => App::configure()->withRouting(routes: [1]),
+            'withRouting() takes file paths, not null' => static fn () => App::configure()->withRouting(commands: [null]),
+        ];
+        foreach ($mistakes as $expected => $mistake) {
+            try {
+                $mistake();
+                self::fail("Not refused: {$expected}");
+            } catch (\LogicException $error) {
+                self::assertStringContainsString($expected, $error->getMessage());
+            }
+        }
+        self::assertSame('/x', (new App())->path('/x'), 'An absolute path needs no base path.');
     }
 
     public function testEveryStepIsOptional(): void
@@ -102,7 +154,7 @@ final class AppBuilderTest extends TestCase
     {
         $before = App::current();
         try {
-            App::configure()->withConfig($this->directory . '/config')->withRoutes($this->directory . '/missing.php')->create();
+            App::configure()->withConfig($this->directory . '/config')->withRouting(routes: $this->directory . '/missing.php')->create();
             self::fail('A missing route file was ignored.');
         } catch (\LogicException $error) {
             self::assertStringContainsString('/missing.php to load, and there is no such file', $error->getMessage());

@@ -173,17 +173,23 @@ $app = new App(Config::load(__DIR__ . '/config'));
 An application with more than one file is usually described in one chain instead, which does the same and loads the route files too:
 
 ~~~php
-return App::configure()
-    ->withEnv(__DIR__ . '/.env')
-    ->withConfig(__DIR__ . '/config')
-    ->withProviders(DatabaseProvider::class, AppProvider::class)
+return App::configure(__DIR__)
+    ->withProviders([
+        DatabaseProvider::class,
+        AppProvider::class,
+    ])
     ->withMiddleware(Cors::class)
-    ->withRoutes(__DIR__ . '/routes/web.php')
-    ->withCommands(__DIR__ . '/routes/console.php')
+    ->withRouting(
+        routes: 'routes/web.php',
+        commands: 'routes/console.php',
+    )
     ->create();
 ~~~
 
-Each step is optional and they may come in any order: `create()` loads the environment, then the configuration, makes the application, registers the providers and middleware, and then includes the route and command files, which declare with `Route::` and `Command::`.
+- **The base path** is the directory given to `configure()`. Its `.env` file and `config` folder are loaded by default, because `App::configure()` begins the chain with `withEnv('.env')` and `withConfig('config', required: false)`; call either again to name another. Nothing else is found by convention.
+- **Paths may be relative** to the base path, and `$app->path('storage/app.log')` gives one in full anywhere else.
+- **Providers and middleware** are given one by one or as a list; `routes:` and `commands:` each take one file or a list of files.
+- **Each step is optional and they may come in any order:** `create()` loads the environment, then the configuration, makes the application, registers the providers and middleware, and then includes the route and command files, which declare with `Route::` and `Command::`.
 
 `Config::load()` reads every PHP file of a directory, keyed by file name:
 

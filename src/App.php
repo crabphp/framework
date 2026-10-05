@@ -68,9 +68,13 @@ final class App implements RequestHandlerInterface
      */
     private array $workerProviders = [];
 
+    /**
+     * @param string|null $basePath The application's own directory, which path() resolves against.
+     */
     public function __construct(
         public readonly ConfigContract $config = new Config(),
         public readonly ContainerContract $container = new Container(),
+        public readonly ?string $basePath = null,
     ) {
         self::$current = $this;
         $container->instance(self::class, $this);
@@ -113,13 +117,37 @@ final class App implements RequestHandlerInterface
     }
 
     /**
-     * Starts describing an application; see AppBuilder. `new App($config)`
-     * followed by register() and middleware() does the same in separate
-     * statements.
+     * Starts describing an application; see AppBuilder. Given the
+     * application's directory, `App::configure(__DIR__)`, paths may be
+     * relative to it and the defaults below apply: its .env file and its
+     * config folder. They are ordinary steps, so calling one again in
+     * app.php replaces it.
      */
-    public static function configure(): AppBuilder
+    public static function configure(?string $basePath = null): AppBuilder
     {
-        return new AppBuilder();
+        $builder = new AppBuilder($basePath);
+        if ($basePath === null) {
+            // With no directory to look in, there is nothing to load by default.
+            return $builder;
+        }
+        return $builder
+            ->withEnv('.env')
+            ->withConfig('config', required: false);
+    }
+
+    /**
+     * A path inside the application's directory: path('storage/app.log').
+     * A path that is already absolute is returned as it is.
+     */
+    public function path(string $path = ''): string
+    {
+        if ($path !== '' && ($path[0] === '/' || preg_match('~^[A-Za-z]:[\\\\/]|^[a-z][a-z0-9+.-]*://~i', $path) === 1)) {
+            return $path;
+        }
+        if ($this->basePath === null) {
+            throw new \LogicException('This application has no base path. Give it one with App::configure(__DIR__).');
+        }
+        return $path === '' ? $this->basePath : $this->basePath . '/' . $path;
     }
 
     /**

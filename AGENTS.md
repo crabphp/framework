@@ -107,7 +107,7 @@
 
 - The skeleton is the separate repository `crabphp/crab`, beside this one, and reads the framework from `../framework` until there is a release.
 - It stays minimal and readable at a glance: `app.php` builds the application top to bottom, `cua` is the command line (`php cua serve`), and the folders are `routes/`, `app/Handlers/`, `app/Providers/`, `config/` and `tests/`. Add a folder to it only when a component that needs one is built.
-- `app.php` is one `App::configure()` chain that names the `.env` file, the config directory, the providers and the route and command files, and ends in `create()`. Every path is given in full; `AppBuilder` finds nothing by convention. The route files declare with `Route::` and `Command::`, and no skeleton file uses a variable it did not define.
+- `app.php` is one `App::configure(__DIR__)` chain that names the providers and, in `withRouting(routes:, commands:)`, the route and command files, and ends in `create()`. `AppBuilder` has no defaults of its own and finds nothing by convention: what an application starts with is a chain of ordinary steps in `App::configure()`, today `withEnv('.env')` and `withConfig('config', required: false)`, where anyone can read it. A new default is added to that chain, with the owner's agreement. A step that takes several things takes them one by one or as a list. The route files declare with `Route::` and `Command::`, and no skeleton file uses a variable it did not define.
 - When the framework changes how an application is written, change the skeleton and its README in the same piece of work, and run its tests.
 
 # Engine conventions
