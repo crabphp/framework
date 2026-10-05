@@ -27,7 +27,11 @@ final readonly class Routes implements Command
             $output->line('No routes are registered.');
             return 0;
         }
-        $output->table($routes);
+        $rows = [];
+        foreach ($routes as $route) {
+            $rows[] = [$route->method, $route->pattern, $route->handler];
+        }
+        $output->table($rows);
         return 0;
     }
 }

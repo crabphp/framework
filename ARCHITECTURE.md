@@ -9,7 +9,7 @@ Status: **agreed 2026-10-04.** Sections marked *(today)* describe code that exis
 3. **Long-running by design.** The process serves many requests, so the rules about where state may live are part of the architecture, not an afterthought.
 4. **Scalable.** Workers are stateless and interchangeable; adding workers or machines adds capacity.
 5. **Measured.** Request-path cost is measured against the engine alone whenever it changes.
-6. **Readable by people and by AI agents.** The primary use is a JSON API. Someone, or something, reading a file should understand it without knowing the rest: explicit types on everything, no facades or hidden globals, no auto-discovery, one way to do each thing, and the rules written down in [AGENTS.md](AGENTS.md).
+6. **Readable by people and by AI agents.** The primary use is a JSON API. Someone, or something, reading a file should understand it without knowing the rest: explicit types on everything, no hidden globals, no auto-discovery, one way to do each thing, and the rules written down in [AGENTS.md](AGENTS.md).
 
 ## Layers
 
@@ -35,14 +35,14 @@ flowchart TD
 | Engine *(today)* | `src/Engine/` | PHP only, plus Revolt inside the one adapter folder `src/Engine/EventLoop/`; enforced by `tests/EngineBoundaryTest.php` |
 | Contracts *(today)* | `src/Contracts/` | PSR interfaces, other contracts, engine types |
 | Components *(today)* | `src/<Component>/` | Contracts, PSR interfaces, the engine; another component only where that is its purpose |
-| Glue *(today)* | `src/App.php`, `src/helpers.php`, `src/Commands/` | Everything above |
+| Glue *(today)* | `src/App.php`, `src/AppBuilder.php`, `src/Route.php`, `src/Command.php`, `src/helpers.php`, `src/Commands/` | Everything above |
 | Applications and packages | outside this repository | **Contracts and PSR interfaces only**, plus `App` in the one file that builds it |
 
 The last row is the rule that keeps the framework replaceable piece by piece: a package never names a component's class.
 
 ### Enforcing the layers *(today)*
 
-`tests/LayerBoundaryTest.php` fails when a contract references a component, or when a component references the glue or a component it is not listed as built on. Today the listed pairs are `Routing` on `Http` and `Testing` on `Container`. `tests/EngineBoundaryTest.php` does the same for the engine. A rule that is only written down drifts.
+`tests/LayerBoundaryTest.php` fails when a contract references a component, or when a component references the glue or a component it is not listed as built on. Today the listed pairs are `Routing` on `Http` and `Validation`, and `Testing` on `Container`. `tests/EngineBoundaryTest.php` does the same for the engine. A rule that is only written down drifts.
 
 ## Contracts
 
@@ -58,6 +58,8 @@ A contract exists for everything a package touches, including where no PSR exist
 | `Config\Config` | none | today |
 | `Database\Database`, `Database\Connection`, `Database\Query` | none | today |
 | `Routing\Router` | PSR-15 `RequestHandlerInterface` | today |
+| `Routing\RouteInfo` | none; a value object | today |
+| `Validation\Validator`, `Validation\Rule` | none | today |
 | `Console\Console` | none | today |
 | Logger, cache, events, clock, HTTP client | used directly as PSR-3, 16, 14, 20, 18 | no Crab contract unless we add a method |
 
@@ -78,6 +80,26 @@ Every component has the same shape, so the tenth looks like the first.
 | Package *(proposed)* | Its own `composer.json`, published read-only from this repository as `crabphp/<component>`, the way the engine already is |
 
 Publishing components separately is what lets someone use the router or container without the framework. It costs a split step at release time and nothing day to day.
+
+## Handlers *(today)*
+
+The primary use is a JSON API, so what goes into a route is the contract with every client. A handler declares it in its signature, and the framework does the HTTP around it:
+
+~~~mermaid
+flowchart LR
+    REQ[Request] --> VAL[Validate against the signature]
+    VAL -->|does not fit| E422[422, problems by field]
+    VAL -->|fits| H["Handler: fn (int $id, string $name): User"]
+    H -->|data| JSON[JSON, 200]
+    H -->|a response| ASIS[Sent as it is]
+~~~
+
+- A handler takes the request's data as typed parameters, one per field, or as one input class when there are many. It returns data, or a response when it needs to set the status, a header or the body. It extends nothing and builds no response in the common case, so it can be called and tested as an ordinary function.
+- The signature is read once, in the parent, when the route is added. A handler the router cannot call, or a field that cannot be validated, stops the application from starting.
+- `Validation` builds values from request data by the declared types and rules, and writes the same description as JSON Schema; it knows nothing of HTTP. `Routing` turns a mismatch into a 422 through `Http\ErrorResponse`, as an ordinary response, so it passes back through middleware.
+- Services are never handler parameters. A handler class takes them in its constructor, which keeps "what the request sends" and "what the application provides" apart.
+- Status and headers are set in code, with the `Response` factories. There is no second place that states them, so nothing can fall out of step.
+- The OpenAPI document is a by-product of the signatures. Inputs are always described; a response body when the handler declares a return type; the status only as 200 or 204. PHP has no generics and no inference of a type from a value, so a design that documented more would need either a second declaration or analysis of the source, and both were turned down for simplicity.
 
 ## Lifecycle and where state lives
 
@@ -102,7 +124,7 @@ All four phases exist today. A provider that implements `WorkerProvider` gets `s
 
 Consequences worth stating plainly:
 
-- There is no `request()` or `auth()` global helper. Global helpers are for process-scope values only (`config()`, `env()`). Request data is read from the request the handler was given.
+- There is no `request()` or `auth()` global helper. Global helpers and static names are for process-scope things only (`config()`, `env()`, `Route::get()`, `Command::add()`). Request data is read from the request the handler was given.
 - A container entry is worker-scoped by default. Anything per-request is passed as an argument.
 - `env()` is called only inside config files. Everything else reads `config()`, so configuration has one source and can later be cached.
 
@@ -147,7 +169,7 @@ Small and explicit; there are five, and no others are planned.
 | Commands | `Console` contract, `add()` | today |
 | Reacting to events | PSR-14 dispatcher | proposed, when the first component needs it |
 
-No auto-discovery, no facades, no `boot()` phase, no global container accessor.
+No auto-discovery, no `boot()` phase, no global container accessor. `Route::get()` and `Command::add()` are static names for `$app->router` and `$app->console`, for declaring routes and commands before workers start; they are the only ones, and there is none for anything a request or a worker owns.
 
 ## Errors and observability
 
@@ -179,7 +201,7 @@ A PSR implementation should also pass that PSR's public conformance suite where 
 4. **Small PSR components:** clock (PSR-20), events (PSR-14), cache (PSR-16).
 5. **Database.** *Connection pool, the thin query layer and the query builder are done, ahead of step 4, tested on SQLite and MySQL.* Next, in this order and each needing its own decisions: models with relationships, migrations.
 6. **Queue**, then **Scheduling**, each as its own worker group.
-7. **Validation, Session, Auth.**
+7. **Validation, Session, Auth.** *Validation is done, ahead of the steps before it, together with typed route handlers and the OpenAPI document written from them.* Auth by token comes next of these; sessions matter less for an API.
 8. **Application skeleton** (`crabphp/crab`) and the `make:*` commands. *The skeleton exists, kept minimal; it grows a folder when a component arrives. The `make:*` commands are not built.*
 9. **Per-component packages**, CI and the first tagged release.
 

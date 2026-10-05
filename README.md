@@ -8,25 +8,140 @@ A minimal PHP 8.4 framework for JSON APIs, built on the Crab networking engine. 
 <?php
 
 use Crab\App;
-use Crab\Contracts\Http\Request;
-use Crab\Http\Response;
+use Crab\Route;
 
 $app = new App();
-$app->router
-    ->get('/', static fn() => "Hello, world!\n")
-    ->get('/hello/{name}', static fn(Request $request) => Response::json(['hello' => $request->getAttribute('name')]));
+
+Route::get('/', static fn (): string => "Hello, world!\n");
+Route::get('/hello/{name}', static fn (string $name): array => ['hello' => $name]);
 
 return $app;
 ~~~
 
-Save it as `app.php` and run `php bin/crab app.php serve --single`. A route handler is a closure or any PSR-15 `RequestHandlerInterface`; a closure returns a PSR-7 response, or a string that is sent as plain text. Route parameters arrive as request attributes. `{name}` matches one path segment and `{name:expression}` matches a regular expression.
+Save it as `app.php` and run `php bin/crab app.php serve --single`. `Route::get()` declares a route on the application just created; it is `$app->router->get()` under a shorter name. `{name}` matches one path segment and `{name:expression}` matches a regular expression.
+
+## Handlers
+
+A route's handler says in its signature what it takes, and the framework checks the request against it before the handler runs.
+
+~~~php
+use Crab\Http\Response;
+use Crab\Validation\Email;
+use Crab\Validation\Length;
+
+// A few fields: take them as parameters.
+Route::get('/users', static fn (int $page = 1, ?string $search = null): array => $users->page($page, $search));
+
+Route::post('/users', static function (#[Email] string $email, #[Length(min: 2, max: 50)] string $name): Response {
+    $user = $users->create($email, $name);
+
+    return Response::created($user, "/users/{$user->id}");
+});
+
+// Several routes that share services: a class, one method per route.
+Route::get('/orders/{id}', [OrderController::class, 'show']);
+Route::post('/orders', [OrderController::class, 'store']);
+~~~
+
+~~~php
+final readonly class OrderController
+{
+    public function __construct(private Database $db)             // services, from the container
+    {
+    }
+
+    public function show(int $id): Order                           // a route parameter
+    {
+        $row = $this->db->table('orders')->find($id) ?? throw new HttpException(404);
+
+        return new Order($row['id'], $row['total']);
+    }
+
+    public function store(CreateOrder $input): Order               // many fields: one class
+    {
+        ...
+    }
+}
+~~~
+
+A handler is a closure, a class and the name of its method, or the name of a class with `__invoke()`. A class is made by the container, once per worker, and extends nothing.
+
+### What a handler takes
+
+| Parameter | Is |
+| --- | --- |
+| Named as in the pattern, `string`, `int`, `float` or `bool` | That route parameter, as that type |
+| Any other `int`, `float`, `string`, `bool`, `array`, enum or `DateTimeImmutable` | A field of the request's data, by its name |
+| One class | The input: all the fields in one object, in place of separate parameters |
+| Typed as a PSR-7 server request, or not typed | The request itself |
+
+The request's data is the JSON body, or the query string for `GET`, `HEAD` and `DELETE`. Fields the handler does not name are ignored and never reach it; to read them, or the raw body, take the request as well and call `getParsedBody()`.
+
+Take a few flat fields as parameters. Use a class when there are many, when they nest, or when several routes take the same ones. Services are not parameters; they belong in the constructor of a handler class. Anything else in a signature is refused when the route is added, so a mistake stops the application from starting.
+
+### What a handler returns
+
+~~~php
+return $user;                                             // an object or array: JSON, 200
+return 'pong';                                            // a string: plain text
+return;                                                   // nothing: 204
+return Response::created($user, "/users/{$user->id}");    // 201, with a Location header
+return Response::noContent();                             // 204
+return Response::redirect('/login');                      // 302; pass 301, 303, 307 or 308 for another
+return Response::download($path, 'invoice.pdf');          // a file, read as it is sent
+return Response::json($user)->withHeader('Cache-Control', 'max-age=60');
+~~~
+
+Return the data when 200 is right, and a response when the status, a header or the body needs saying. Dates are written as ISO 8601 text.
+
+### Validation
+
+The type of a parameter says what is accepted, and attributes add rules. This holds for a handler's own parameters and for the constructor of an input class alike:
+
+| Declaration | Accepts |
+| --- | --- |
+| `int`, `float`, `string`, `bool` | That value. JSON is not converted: `"36"` is not a whole number. A query string is text, so there `page=3` is read as `3`. |
+| `?type`, or a default value | May be left out |
+| A backed enum | One of its values |
+| `DateTimeImmutable` | A date and time as text, such as `2026-01-31T12:00:00Z` |
+| Another class | An object, checked the same way |
+| `#[ListOf(Tag::class)] array` | A list of those; `ListOf('int')` for plain values |
+| `#[Email]`, `#[Url]`, `#[Length(min:, max:)]`, `#[Range(min:, max:)]`, `#[Pattern('^[a-z]+$')]`, `#[OneOf('a', 'b')]` | The rule |
+
+A request that does not fit is answered with `422` and every problem, by field:
+
+~~~json
+{"error": {"status": 422, "message": "The request is invalid.", "fields": {
+    "email": ["must be an email address"],
+    "address.city": ["is required"]
+}}}
+~~~
+
+A rule of your own is an attribute class that implements `Crab\Contracts\Validation\Rule`: `check()` returns what is wrong or null, and `schema()` says the same for the documentation. To validate outside a route, ask for `Crab\Contracts\Validation\Validator` and call `validate(CreateUser::class, $data)`, which returns the object or throws `Crab\Validation\ValidationException` with `$errors`.
+
+### OpenAPI
+
+~~~sh
+php bin/crab app.php openapi                        # print the document
+php bin/crab app.php openapi --output=openapi.json
+~~~
+
+The OpenAPI 3.1 document is written from the signatures. There is nothing to annotate: it is a by-product of the code, and it says as much as the code declares.
+
+- **What goes in is always described:** path and query parameters, the request body and the `422`.
+- **What comes out is described when the handler declares it:** `: User`, or `: User|Response` for a handler that builds the response around a user. A list says what it holds with `#[ListOf(User::class)]`, since PHP's `array` cannot. Without a return type the route is listed with no response body.
+- **The status is always listed as 200,** or 204 for a handler that returns nothing, because a status set with `Response::created()` is decided in the code and not in the signature.
+
+The title and version are `app.name` and `app.version`.
+
+Reading a signature costs nothing per request, because it is read once when the route is added. Calling a closure by its signature adds about 0.05 µs to a request over a PSR-15 handler, and validated input with a typed response about 1 µs over the same checks written by hand (`benchmarks/typed-handler.php`, PHP 8.4 with JIT, Apple M1 Pro).
 
 ## Requests and responses
 
-A closure handler receives `Contracts\Http\Request`, a PSR-7 server request with four additions:
+A handler that asks for the request receives `Contracts\Http\Request`, a PSR-7 server request with four additions. A PSR-15 `RequestHandlerInterface` can be a route's handler too; it receives the request, with the route parameters as attributes.
 
 ~~~php
-$app->router->post('/users/{id}/avatar', static function (Request $request) {
+Route::post('/users/{id}/avatar', static function (Request $request) {
     $id = $request->getAttribute('id');          // route parameter
     $page = $request->query('page', 1);           // query string
     $name = $request->input('name');              // form field or JSON key
@@ -54,6 +169,21 @@ use Crab\Config\Env;
 Env::load(__DIR__ . '/.env');
 $app = new App(Config::load(__DIR__ . '/config'));
 ~~~
+
+An application with more than one file is usually described in one chain instead, which does the same and loads the route files too:
+
+~~~php
+return App::configure()
+    ->withEnv(__DIR__ . '/.env')
+    ->withConfig(__DIR__ . '/config')
+    ->withProviders(DatabaseProvider::class, AppProvider::class)
+    ->withMiddleware(Cors::class)
+    ->withRoutes(__DIR__ . '/routes/web.php')
+    ->withCommands(__DIR__ . '/routes/console.php')
+    ->create();
+~~~
+
+Each step is optional and they may come in any order: `create()` loads the environment, then the configuration, makes the application, registers the providers and middleware, and then includes the route and command files, which declare with `Route::` and `Command::`.
 
 `Config::load()` reads every PHP file of a directory, keyed by file name:
 
@@ -180,14 +310,14 @@ $db->table('posts')
 | `serve` | Serves the application. `--address=tcp://127.0.0.1:8080` and `--workers=1` default to the `server.address` and `server.workers` configuration keys; `--single` serves in one process without `pcntl` and `posix`. |
 | `routes` | Lists the registered routes. |
 
-Add your own with `$app->console->add('mail:send', SendMail::class)`. A command is a class implementing `Contracts\Console\Command` (`description()` and `handle(Input $input, Output $output): int`), made by the container when it runs, or a closure taking the input and output. `Input` gives positional arguments and `--name=value` or `--flag` options. A provider adds commands through the container's `Contracts\Console\Console` entry.
+Add your own with `Command::add('mail:send', SendMail::class)`, which is `$app->console->add()` under a shorter name. A command is a class implementing `Contracts\Console\Command` (`description()` and `handle(Input $input, Output $output): int`), made by the container when it runs, or a closure taking the input and output. `Input` gives positional arguments and `--name=value` or `--flag` options. A provider adds commands through the container's `Contracts\Console\Console` entry.
 
 ## Services, providers and middleware
 
 ~~~php
 $app->register(Acme\Mailer\MailerProvider::class);   // a class with register(Container $container)
 $app->middleware(Acme\Cors::class);                   // any PSR-15 middleware
-$app->router->get('/users/{id}', ShowUser::class);     // a PSR-15 handler made by the container
+Route::get('/users/{id}', ShowUser::class);            // a handler class made by the container
 ~~~
 
 A provider reaches the application through contracts in the container: `Contracts\Routing\Router` to add routes, `Contracts\Console\Console` to add commands, `Contracts\Http\MiddlewareStack` to add middleware, and `Contracts\Config\Config` to declare its settings with `defaults('cache', [...])`, which the application's own configuration overrides.
@@ -210,7 +340,8 @@ A provider that needs something open in every worker, such as a connection or a 
 | `src/Config/` | Configuration files and environment variables. |
 | `src/Log/` | The PSR-3 logger. |
 | `src/Testing/` | Helpers for testing components. |
-| `src/Routing/` | The router, itself a PSR-15 handler. |
+| `src/Routing/` | The router, itself a PSR-15 handler, typed handlers and the OpenAPI document. |
+| `src/Validation/` | Builds typed objects from request data, with rules as attributes and JSON Schema. |
 | `src/Contracts/` | Every interface another package implements or type-hints; they extend the PSR ones where Crab adds methods. |
 | `tests/` | Framework tests beside their components; engine tests in `tests/Engine/`. `tests/EngineBoundaryTest.php` keeps the engine free of framework dependencies. |
 | `benchmarks/` | Engine benchmarks and their recorded results; start at [BENCHMARKS.md](BENCHMARKS.md). |

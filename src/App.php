@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Crab;
 
+use Crab\Commands\OpenApi;
 use Crab\Commands\Routes;
 use Crab\Commands\Serve;
 use Crab\Config\Config;
@@ -15,6 +16,7 @@ use Crab\Contracts\Container\Container as ContainerContract;
 use Crab\Contracts\Http\MiddlewareStack as MiddlewareStackContract;
 use Crab\Contracts\Provider;
 use Crab\Contracts\Routing\Router as RouterContract;
+use Crab\Contracts\Validation\Validator as ValidatorContract;
 use Crab\Contracts\WorkerProvider;
 use Crab\Engine\Process\Worker;
 use Crab\Engine\Runtime;
@@ -26,6 +28,7 @@ use Crab\Http\MiddlewareStack;
 use Crab\Http\RequestId;
 use Crab\Log\Logger;
 use Crab\Routing\Router;
+use Crab\Validation\Validator;
 use Psr\Http\Message\ResponseFactoryInterface;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestFactoryInterface;
@@ -87,7 +90,11 @@ final class App implements RequestHandlerInterface
             StreamFactoryInterface::class, UploadedFileFactoryInterface::class, UriFactoryInterface::class] as $factory) {
             $container->singleton($factory, Factory::class);
         }
-        $this->router = new Router($container);
+        // Made here because routes are declared, and their inputs read, before any worker starts.
+        $validator = new Validator();
+        $container->instance(ValidatorContract::class, $validator);
+        $container->instance(Validator::class, $validator);
+        $this->router = new Router($container, $validator);
         $container->instance(RouterContract::class, $this->router);
         $container->instance(Router::class, $this->router);
         // The error handler is the entry bound as ErrorHandler; rebinding it to
@@ -100,18 +107,28 @@ final class App implements RequestHandlerInterface
         $this->stack->add(ErrorHandler::class);
         $container->instance(MiddlewareStackContract::class, $this->stack);
         $container->instance(MiddlewareStack::class, $this->stack);
-        $this->console = (new Console($container, (string) $config->get('app.name', '')))->add('serve', Serve::class)->add('routes', Routes::class);
+        $this->console = (new Console($container, (string) $config->get('app.name', '')))->add('serve', Serve::class)->add('routes', Routes::class)->add('openapi', OpenApi::class);
         $container->instance(ConsoleContract::class, $this->console);
         $container->instance(Console::class, $this->console);
     }
 
     /**
+     * Starts describing an application; see AppBuilder. `new App($config)`
+     * followed by register() and middleware() does the same in separate
+     * statements.
+     */
+    public static function configure(): AppBuilder
+    {
+        return new AppBuilder();
+    }
+
+    /**
      * The application most recently created in this process; the global
-     * helpers read from it.
+     * helpers read from it, and Route and Command declare on it.
      */
     public static function current(): self
     {
-        return self::$current ?? throw new \LogicException('No application has been created.');
+        return self::$current ?? throw new \LogicException('No application has been created. Create the App before declaring routes or commands, or reading config().');
     }
 
     /**

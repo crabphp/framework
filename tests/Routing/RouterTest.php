@@ -132,14 +132,6 @@ final class RouterTest extends TestCase
         self::assertCount(4, $router->routes());
     }
 
-    public function testAClosureThatReturnsNeitherAResponseNorAStringIsNamed(): void
-    {
-        $router = (new Router())->get('/', static fn() => ['not' => 'a response']);
-        $this->expectException(\LogicException::class);
-        $this->expectExceptionMessage('it returned array');
-        $router->handle(new Request('GET', '/'));
-    }
-
     public function testAnAbsoluteTargetWithoutAPathIsTheRoot(): void
     {
         $router = (new Router())->get('/', static fn() => 'home');

@@ -17,17 +17,17 @@
 
 ## Components
 
-- Each component has its own folder and namespace under `src/` (`Http`, `Routing`, `Container`, `Config`, `Log`, `Console`, `Database`, `Testing`) and its tests in the matching folder under `tests/`.
+- Each component has its own folder and namespace under `src/` (`Http`, `Routing`, `Validation`, `Container`, `Config`, `Log`, `Console`, `Database`, `Testing`) and its tests in the matching folder under `tests/`.
 - Every component has the same shape: it works standalone, has a contract when packages touch it, ships a `<Component>Provider` when it is optional, and is kept able to be published as its own package the way the engine is.
 - A component works on its own, without `App`, the container or a provider. It may depend on `Contracts`, on PSR interfaces and on the engine, and on another component only where that is its purpose. `tests/LayerBoundaryTest.php` enforces this; a new dependency between components is added to its `ALLOWED` list deliberately, never worked around.
-- The root of `src/` is the glue that makes components an application: `App.php`, `helpers.php`, and `Commands/` for built-in commands. Code that needs `App` belongs there, not inside a component.
+- The root of `src/` is the glue that makes components an application: `App.php`, `AppBuilder.php`, `Route.php`, `Command.php`, `helpers.php`, and `Commands/` for built-in commands. Code that needs `App` belongs there, not inside a component.
 - Do not add a `Support` or utility namespace until two components need the same code, and then put only that code in it.
 
 ## Contracts
 
-- A package depends on `Crab\Contracts` and PSR interfaces only, never on a component's class. So everything a package touches has a contract in `Crab\Contracts\<Component>`, never inside the component, including where no PSR exists: `Config`, `Router`, `Console`, `Container`, `Database`, `Connection`, `Query`, `MiddlewareStack`, `Provider`, `WorkerProvider`, and the console's `Command`, `Input` and `Output`.
+- A package depends on `Crab\Contracts` and PSR interfaces only, never on a component's class. So everything a package touches has a contract in `Crab\Contracts\<Component>`, never inside the component, including where no PSR exists: `Config`, `Router`, `Console`, `Container`, `Database`, `Connection`, `Query`, `Validator`, `Rule`, `MiddlewareStack`, `Provider`, `WorkerProvider`, and the console's `Command`, `Input` and `Output`.
 - Anything an application can do through `App`, a provider can do through a contract in the container. When `App` gains a way to extend the application, the contract comes with it.
-- Exceptions and immutable value objects are the exception to that: `HttpException`, `DatabaseException`, `Cookie` and the `Response` factories are named by class, because there is no behaviour behind them to swap.
+- Exceptions and immutable value objects are the exception to that: `HttpException`, `DatabaseException`, `ValidationException`, `Cookie`, the `Response` factories and the validation attributes (`Email`, `Length`, `ListOf`, ...) are named by class, because there is no behaviour behind them to swap.
 - A value object that a contract returns lives beside it in `Crab\Contracts`, as a final readonly class with no I/O (`Contracts\Database\Page`), since a contract may not name a component's class.
 - `App` binds each contract in the container, and binds the concrete class to the same object so that asking by class cannot autowire a second one. The glue type-hints contracts too.
 - Where a PSR interface exists, the contract extends it and adds only methods Crab really needs; do not add a contract that adds nothing to its PSR interface.
@@ -36,7 +36,7 @@
 
 ## Application wiring
 
-- `App` binds the core directly: configuration, container, router, HTTP factory, logger, error handler and console. Everything optional is added by a `Provider`, the same way for our packages as for anyone else's, registered explicitly with `$app->register()`.
+- `App` binds the core directly: configuration, container, validator, router, HTTP factory, logger, error handler and console. Everything optional is added by a `Provider`, the same way for our packages as for anyone else's, registered explicitly with `$app->register()`.
 - A provider has `register(Container $container)`. There is no `boot()`; bindings are closures run on first use. A provider with work to do in each worker implements `WorkerProvider` as well: `start(Worker $worker, Container $container)` opens what holds a socket, file or timer and `stop(Worker $worker, Container $container)` releases it. Providers stop in reverse order, `stop()` must not suspend, and a provider keeps no state of its own.
 - A provider declares its settings and their defaults once with `Config::defaults()`; code reads them with no default argument. The container has no per-request scope: `singleton()` is one per worker, `bind()` is new on every `get()`.
 - Every error response is built by `Http\ErrorResponse`, for the error handler and for the router's 404 and 405 alike. Expected answers such as an unmatched route are returned as responses, not thrown, so they pass back through middleware.
@@ -50,6 +50,20 @@
 - A component that does I/O (database, cache, queue, HTTP client) exposes a pool in its contract, `acquire()` and `release()`, so code written against it is correct with blocking drivers now and async drivers later. Blocking drivers ship first. The pool is the engine's `Async\Pool`; do not write another.
 - A pooled component resolves the event loop when it is used, not when it is constructed: a worker installs its own loop after the fork, and anything that kept the parent's would wait forever.
 - HTTP, queue consumers and the scheduler run as separate engine worker groups. Workers hold nothing another worker needs; shared state lives in external stores behind contracts.
+
+## Handlers
+
+- A handler says what it takes in its signature, and the framework validates the request against it before calling it. Do not add a second place to describe a route, such as an annotation or a schema file.
+- A handler's parameters are the request, the pattern's parameters by name, and the request's data: either as further typed parameters, one per field, or as one input class, never both. Services are never handler parameters; a handler class takes them in its constructor.
+- Take a few flat fields as parameters. Use an input class when there are many, when they nest, or when several routes share them. An input class is a final readonly class whose constructor declares every field with one type.
+- A handler is a closure, `[Controller::class, 'method']`, or a class with `__invoke()`. A controller is a plain class: there is no base class and no helper to inherit.
+- A handler returns data, which is sent as JSON with 200, or a response when the status, a header or the body needs saying. Status and headers are set in code with the `Response` factories and nowhere else, so nothing has to be kept in step. Do not add an attribute for something code can say.
+- The OpenAPI document is a by-product: it describes what signatures declare and is never a reason to make application code longer. A route is never refused or warned about for being under-described.
+- Attributes are for what PHP cannot say in a type: validation rules, and `#[ListOf]` for what an array holds.
+- A signature is read when the route is added, never on a request, and one that cannot be honoured throws there, naming the route and saying what to do instead.
+- Data that does not fit is a 422 built by `Http\ErrorResponse` with every problem by field, returned and not thrown. JSON is taken as it is; only text sources (query string, route parameters) are converted to numbers and booleans. Fields a handler does not declare are ignored and never reach it.
+- `Validation` knows nothing of HTTP or routing. A rule is an attribute implementing `Contracts\Validation\Rule`, which checks a value and describes itself as JSON Schema, so the document cannot disagree with the check.
+- A new rule or supported type is added to validation and to its JSON Schema together, with a test of both.
 
 ## Database
 
@@ -66,9 +80,11 @@
 ## Readability
 
 - Crab is built for JSON APIs and to be read by people and AI agents alike. A file should be understandable on its own: declare parameter, return and property types everywhere, and prefer a named class to an array whose keys the reader must look up.
-- Nothing happens that the code does not show: no facades, no hidden globals, no auto-discovery, no behaviour switched by a naming convention. Offer one way to do a thing, not two.
+- Nothing happens that the code does not show: no hidden globals, no auto-discovery, no behaviour switched by a naming convention. Offer one way to do a thing, not two.
+- A static name is allowed only for declaring what is fixed before workers start: `Route::get()` for routes and `Command::add()` for commands, each one line onto the current application, like `config()`. There is none for the request, the user, the container or any service, because a worker serves overlapping requests. Do not add another without the owner's agreement.
 - An error message says what was wrong and what to do instead, so that a person or an agent can fix it without reading the framework.
-- Write plain statements that read top to bottom. Name a value on one line and use it on the next; do not call the result of a `require`, nest closures to pass one value, or chain steps into one expression.
+- Write plain statements that read top to bottom. Name a value on one line and use it on the next; do not call the result of a `require`, nest closures to pass one value, or pack unrelated steps into one expression.
+- A fluent chain is fine where each call is one named, typed step on its own line, as in `App::configure()->with...()->create()` and the query builder: the editor completes every step and the reader sees one thing per line.
 - This matters most in what application developers see: the skeleton, the README examples and error messages.
 
 ## Helpers
@@ -91,7 +107,7 @@
 
 - The skeleton is the separate repository `crabphp/crab`, beside this one, and reads the framework from `../framework` until there is a release.
 - It stays minimal and readable at a glance: `app.php` builds the application top to bottom, `cua` is the command line (`php cua serve`), and the folders are `routes/`, `app/Handlers/`, `app/Providers/`, `config/` and `tests/`. Add a folder to it only when a component that needs one is built.
-- `app.php` sets `$router` and `$console` and then includes `routes/web.php` and `routes/console.php`, which use the variable directly and declare its type in a `@var` line. Nothing else reaches a skeleton file through a variable it did not define.
+- `app.php` is one `App::configure()` chain that names the `.env` file, the config directory, the providers and the route and command files, and ends in `create()`. Every path is given in full; `AppBuilder` finds nothing by convention. The route files declare with `Route::` and `Command::`, and no skeleton file uses a variable it did not define.
 - When the framework changes how an application is written, change the skeleton and its README in the same piece of work, and run its tests.
 
 # Engine conventions

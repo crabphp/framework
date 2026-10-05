@@ -4,9 +4,11 @@ declare(strict_types=1);
 
 namespace Crab\Routing;
 
+use Crab\Contracts\Routing\RouteInfo;
 use Crab\Contracts\Routing\Router as RouterContract;
-use Crab\Http\ClosureHandler;
+use Crab\Contracts\Validation\Validator as ValidatorContract;
 use Crab\Http\ErrorResponse;
+use Crab\Validation\Validator;
 use Psr\Container\ContainerInterface;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface;
@@ -18,6 +20,12 @@ use Psr\Http\Server\RequestHandlerInterface;
  * per method, built when that method is first matched. Parameters reach the
  * route's handler as request attributes. A path no route matches is answered
  * with 404, or with 405 and the methods that would match.
+ *
+ * A closure, the name of a class with __invoke(), or a class and the name
+ * of its method is called with what its signature asks for, and its
+ * return value becomes the response; see TypedHandler. A PSR-15 handler,
+ * or the name of a container entry that is one, receives the request and
+ * returns the response itself.
  */
 final class Router implements RouterContract
 {
@@ -41,44 +49,45 @@ final class Router implements RouterContract
      */
     private array $combined = [];
     /**
-     * Method, pattern and a name for the handler of every route, in the
-     * order added and keyed by method and pattern.
+     * Every route, in the order added and keyed by method and pattern.
      *
-     * @var array<string, array{string, string, string}>
+     * @var array<string, RouteInfo>
      */
     private array $routes = [];
+    private readonly ValidatorContract $validator;
 
     /**
-     * The container resolves handlers that are given by name.
+     * The container makes handlers that are given by name; the validator
+     * builds the inputs of typed handlers.
      */
-    public function __construct(private readonly ?ContainerInterface $container = null)
+    public function __construct(private readonly ?ContainerInterface $container = null, ?ValidatorContract $validator = null)
     {
+        $this->validator = $validator ?? new Validator();
     }
 
     /**
      * A parameter matches one path segment unless its expression says
      * otherwise.
      */
-    public function add(string $method, string $pattern, RequestHandlerInterface|\Closure|string $handler): static
+    public function add(string $method, string $pattern, RequestHandlerInterface|\Closure|string|array $handler): static
     {
         [$expression, $names] = self::compile($pattern);
-        if (isset($this->routes[$method . ' ' . $pattern])) {
+        $key = $method . ' ' . $pattern;
+        if (isset($this->routes[$key])) {
             throw new \LogicException("Route {$method} {$pattern} is already defined.");
         }
-        $name = match (true) {
-            is_string($handler) => $handler,
-            $handler instanceof \Closure => 'Closure',
-            default => $handler::class,
-        };
-        if ($handler instanceof \Closure) {
-            $handler = new ClosureHandler($handler);
+        if ($handler instanceof \Closure || is_array($handler) || (is_string($handler) && method_exists($handler, '__invoke'))) {
+            $handler = new TypedHandler($method, $pattern, $names, $handler, $this->validator, $this->container);
+            $this->routes[$key] = $handler->route;
         } elseif (is_string($handler)) {
             if ($this->container === null) {
                 throw new \LogicException("Route {$method} {$pattern} names its handler, which needs a router with a container.");
             }
+            $this->routes[$key] = new RouteInfo($method, $pattern, $handler, array_fill_keys($names, 'string'));
             $handler = new ContainerHandler($this->container, $handler);
+        } else {
+            $this->routes[$key] = new RouteInfo($method, $pattern, $handler::class, array_fill_keys($names, 'string'));
         }
-        $this->routes[$method . ' ' . $pattern] = [$method, $pattern, $name];
         if ($names !== []) {
             $this->dynamic[$method][] = [$expression, $names, $handler];
             unset($this->combined[$method]);
@@ -88,27 +97,27 @@ final class Router implements RouterContract
         return $this;
     }
 
-    public function get(string $pattern, RequestHandlerInterface|\Closure|string $handler): static
+    public function get(string $pattern, RequestHandlerInterface|\Closure|string|array $handler): static
     {
         return $this->add('GET', $pattern, $handler);
     }
 
-    public function post(string $pattern, RequestHandlerInterface|\Closure|string $handler): static
+    public function post(string $pattern, RequestHandlerInterface|\Closure|string|array $handler): static
     {
         return $this->add('POST', $pattern, $handler);
     }
 
-    public function put(string $pattern, RequestHandlerInterface|\Closure|string $handler): static
+    public function put(string $pattern, RequestHandlerInterface|\Closure|string|array $handler): static
     {
         return $this->add('PUT', $pattern, $handler);
     }
 
-    public function patch(string $pattern, RequestHandlerInterface|\Closure|string $handler): static
+    public function patch(string $pattern, RequestHandlerInterface|\Closure|string|array $handler): static
     {
         return $this->add('PATCH', $pattern, $handler);
     }
 
-    public function delete(string $pattern, RequestHandlerInterface|\Closure|string $handler): static
+    public function delete(string $pattern, RequestHandlerInterface|\Closure|string|array $handler): static
     {
         return $this->add('DELETE', $pattern, $handler);
     }
