@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Crab\Tests\Database;
 
 use Crab\Contracts\Database\Connection;
+use Crab\Contracts\Database\Page;
 use Crab\Contracts\Database\Query as QueryContract;
 use Crab\Database\Database;
 use Crab\Database\DatabaseException;
@@ -349,6 +350,45 @@ final class QueryTest extends TestCase
             ++$calls;
         });
         self::assertSame(1, $calls, 'Nothing is passed when nothing matches, and a full last part needs no empty one after it.');
+    }
+
+    #[DataProvider('drivers')]
+    public function testResultsArePagedWithOrWithoutTheirTotal(string $driver): void
+    {
+        $db = $this->seeded($driver);
+        $users = $db->table('users')->select('name')->orderBy('id');
+
+        $page = $users->paginate(3, 2);
+        self::assertInstanceOf(Page::class, $page);
+        self::assertSame([['name' => 'Margaret']], $page->items);
+        self::assertSame([4, 3, 2, 2, false, 4, 4], [$page->total, $page->perPage, $page->currentPage, $page->lastPage, $page->hasMore, $page->from, $page->to]);
+        self::assertSame(
+            '{"data":[{"name":"Margaret"}],"current_page":2,"per_page":3,"from":4,"to":4,"has_more":false,"total":4,"last_page":2}',
+            json_encode($page),
+        );
+
+        $first = $users->paginate(3, (int) 'not a number');
+        self::assertSame([1, true, 1, 3, 3], [$first->currentPage, $first->hasMore, $first->from, $first->to, count($first)]);
+        self::assertSame(['Ada', 'Grace', 'Linus'], array_column(iterator_to_array($first), 'name'));
+        self::assertSame(['Ada', 'Grace', 'Linus', 'Margaret'], $users->pluck('name'), 'Paging leaves the query as it was.');
+
+        $beyond = $users->paginate(3, 9);
+        self::assertSame([[], 4, 2, false, null, null], [$beyond->items, $beyond->total, $beyond->lastPage, $beyond->hasMore, $beyond->from, $beyond->to]);
+        $none = $db->table('users')->where('id', 99)->paginate();
+        self::assertSame([[], 0, 15, 1, 1, false], [$none->items, $none->total, $none->perPage, $none->currentPage, $none->lastPage, $none->hasMore]);
+        self::assertSame(4, $db->table('users')->orderBy('id')->limit(1)->paginate(2)->total, 'A limit on the query does not cap the total.');
+        self::assertSame([2, 2], [$db->table('posts')->select('user_id')->groupBy('user_id')->paginate(1)->total, $db->table('users')->where('active', true)->paginate(1)->lastPage]);
+
+        $simple = $users->simplePaginate(3);
+        self::assertSame(['Ada', 'Grace', 'Linus'], array_column($simple->items, 'name'));
+        self::assertSame([true, null, null, 1, 3], [$simple->hasMore, $simple->total, $simple->lastPage, $simple->from, $simple->to]);
+        self::assertSame('{"data":[{"name":"Margaret"}],"current_page":2,"per_page":3,"from":4,"to":4,"has_more":false}', json_encode($users->simplePaginate(3, 2)));
+        self::assertTrue($users->simplePaginate(2, 1)->hasMore);
+        self::assertFalse($users->simplePaginate(2, 2)->hasMore, 'A full last page has nothing after it.');
+        self::assertSame([1, 2], [$users->simplePaginate(2, -5)->currentPage, count($users->simplePaginate(2, -5))], 'A page below 1 is the first page.');
+
+        $this->expectException(\InvalidArgumentException::class);
+        $users->paginate(0);
     }
 
     #[DataProvider('drivers')]

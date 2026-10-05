@@ -256,6 +256,22 @@ interface Query
     public function chunkById(int $size, \Closure $callback, string $column = 'id'): void;
 
     /**
+     * One page of the matching rows and the count of them all, which is a
+     * second statement. Pages are numbered from 1, and a page below 1 is
+     * read as 1, so the number can come straight from a request:
+     * paginate(20, (int) $request->query('page', 1)). Order the query, or
+     * the pages are not stable.
+     */
+    public function paginate(int $perPage = 15, int $page = 1): Page;
+
+    /**
+     * The same without counting: the page knows whether another follows
+     * but not the total, which is what a "next" link needs and is cheaper
+     * on a large table.
+     */
+    public function simplePaginate(int $perPage = 15, int $page = 1): Page;
+
+    /**
      * Inserts one row, given as column to value.
      *
      * @param array<string, mixed> $values

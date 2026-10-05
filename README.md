@@ -167,6 +167,7 @@ $db->table('posts')
 - **Building changes the query; running does not.** `get()`, `count()` and the rest leave it as it was, so one query can be counted and then fetched. `clone` it to branch into two.
 - **In a transaction, start from the transaction's connection**: `$tx->table('users')`, not `$db->table('users')`.
 - **Mistakes are refused when they are made**, not by the database later: an unknown comparison, `update()` on a query with a limit, rows with different columns.
+- **Pages:** `paginate(20, $page)` returns a `Crab\Contracts\Database\Page` with `items`, `total`, `perPage`, `currentPage`, `lastPage`, `hasMore`, `from` and `to`. It can be looped over, and returned as JSON with the keys Laravel's paginator uses. `simplePaginate()` skips the count and knows only `hasMore`. The page number is passed in, since nothing reads the request behind your back: `paginate(20, (int) $request->query('page', 1))`.
 - **Large tables** are read with `chunkById(500, fn (array $rows) => ...)`, which is not thrown off by rows added or removed meanwhile.
 - `toSql()` and `bindings()` show what would run. A query can be the list of another: `whereIn('id', $db->table('posts')->select('user_id'))`.
 

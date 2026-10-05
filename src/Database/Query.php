@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Crab\Database;
 
 use Crab\Contracts\Database\Connection;
+use Crab\Contracts\Database\Page;
 use Crab\Contracts\Database\Query as QueryContract;
 
 /**
@@ -380,6 +381,27 @@ final class Query implements QueryContract
             }
             $last = $rows[count($rows) - 1][$key];
         } while (count($rows) === $size);
+    }
+
+    public function paginate(int $perPage = 15, int $page = 1): Page
+    {
+        $page = max(1, $page);
+        // A limit already on the query would cap the count; the page sets its own.
+        $all = clone $this;
+        $all->limit = null;
+        $all->offset = null;
+        $total = $all->count();
+        $items = $total === 0 ? [] : $all->forPage($page, $perPage)->get();
+        return new Page($items, $perPage, $page, $page * $perPage < $total, $total);
+    }
+
+    public function simplePaginate(int $perPage = 15, int $page = 1): Page
+    {
+        $page = max(1, $page);
+        // One row more than the page holds tells whether another page follows.
+        $query = clone $this;
+        $rows = $query->forPage($page, $perPage)->limit($perPage + 1)->get();
+        return new Page(array_slice($rows, 0, $perPage), $perPage, $page, count($rows) > $perPage);
     }
 
     public function insert(array $values): int|string
