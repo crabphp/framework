@@ -9,6 +9,7 @@ Status: **agreed 2026-10-04.** Sections marked *(today)* describe code that exis
 3. **Long-running by design.** The process serves many requests, so the rules about where state may live are part of the architecture, not an afterthought.
 4. **Scalable.** Workers are stateless and interchangeable; adding workers or machines adds capacity.
 5. **Measured.** Request-path cost is measured against the engine alone whenever it changes.
+6. **Readable by people and by AI agents.** The primary use is a JSON API. Someone, or something, reading a file should understand it without knowing the rest: explicit types on everything, no facades or hidden globals, no auto-discovery, one way to do each thing, and the rules written down in [AGENTS.md](AGENTS.md).
 
 ## Layers
 

@@ -65,6 +65,9 @@
 
 ## Readability
 
+- Crab is built for JSON APIs and to be read by people and AI agents alike. A file should be understandable on its own: declare parameter, return and property types everywhere, and prefer a named class to an array whose keys the reader must look up.
+- Nothing happens that the code does not show: no facades, no hidden globals, no auto-discovery, no behaviour switched by a naming convention. Offer one way to do a thing, not two.
+- An error message says what was wrong and what to do instead, so that a person or an agent can fix it without reading the framework.
 - Write plain statements that read top to bottom. Name a value on one line and use it on the next; do not call the result of a `require`, nest closures to pass one value, or chain steps into one expression.
 - This matters most in what application developers see: the skeleton, the README examples and error messages.
 
