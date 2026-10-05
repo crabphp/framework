@@ -36,12 +36,23 @@ final class PdoConnection implements Connection
      * @var array<string, \PDOStatement>
      */
     private array $statements = [];
+    private ?string $driver = null;
 
     /**
      * @param \Closure(): \PDO $connect Opens the connection; called again after one is lost.
      */
     public function __construct(private readonly \Closure $connect)
     {
+    }
+
+    public function table(string $table): Query
+    {
+        return new Query($this, $table);
+    }
+
+    public function driver(): string
+    {
+        return $this->driver ??= (string) $this->pdo()->getAttribute(\PDO::ATTR_DRIVER_NAME);
     }
 
     public function select(string $sql, array $bindings = []): array

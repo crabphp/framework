@@ -12,6 +12,19 @@ namespace Crab\Contracts\Database;
 interface Connection
 {
     /**
+     * Starts a query on a table, built with methods instead of SQL:
+     * table('users')->where('active', true)->get(). The table may be given
+     * an alias, "users as u".
+     */
+    public function table(string $table): Query;
+
+    /**
+     * The database this connection talks to, "mysql" or "sqlite", which
+     * decides the SQL a query is written in. Asking may open a connection.
+     */
+    public function driver(): string;
+
+    /**
      * @param array<int|string, mixed> $bindings
      * @return list<array<string, mixed>> Every row, as column name to value.
      */

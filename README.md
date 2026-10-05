@@ -114,7 +114,61 @@ $db->transaction(function (Connection $tx) use ($from, $to, $amount) {
 - **Failures** throw `Crab\Database\DatabaseException`, whose message and `$sql` hold the SQL but never the bound values.
 - **PDO blocks.** While a statement runs, its worker serves nothing else; run more workers for more concurrent queries.
 
-It works without the framework too: `new Database(fn () => new PDO($dsn, $user, $password))`. MySQL and SQLite are supported: the tests run on SQLite, and on MySQL when `CRAB_TEST_MYSQL_DSN` is set. PostgreSQL is not supported for now. There is no query builder, model or migration yet.
+It works without the framework too: `new Database(fn () => new PDO($dsn, $user, $password))`. MySQL and SQLite are supported: the tests run on SQLite, and on MySQL when `CRAB_TEST_MYSQL_DSN` is set. PostgreSQL is not supported for now. There is no model or migration yet.
+
+### Query builder
+
+`$db->table('users')` starts a query that is built with methods instead of SQL, and written for the database it runs on.
+
+~~~php
+$users = $db->table('users');
+
+$adults = $db->table('users')->where('age', '>=', 18)->orderBy('name')->get();    // every row
+$ada    = $db->table('users')->where('email', 'ada@example.com')->first();        // one row or null
+$user   = $users->find(7);                                                        // by id
+$email  = $db->table('users')->where('id', 7)->value('email');                    // one value
+$names  = $db->table('users')->pluck('name', 'id');                               // [id => name]
+$total  = $db->table('users')->where('active', true)->count();                    // also sum, avg, min, max, exists
+
+$id = $users->insert(['name' => 'Ada', 'email' => 'ada@example.com']);            // the new id
+$users->insertMany([['name' => 'Grace'], ['name' => 'Linus']]);
+$users->upsert(['email' => 'ada@example.com', 'name' => 'Ada L.'], 'email');      // insert, or update the row with that email
+$db->table('users')->where('id', $id)->update(['name' => 'Ada L.']);              // rows affected
+$db->table('posts')->where('id', 3)->increment('views');
+$db->table('users')->where('active', false)->delete();
+~~~
+
+Conditions read as they are written:
+
+~~~php
+$db->table('users')
+    ->where('active', true)                                   // equals
+    ->where('age', '>', 18)                                   // = != < > <= >= like
+    ->where('deleted_at', null)                               // is null
+    ->whereIn('role', ['admin', 'editor'])
+    ->whereBetween('age', 18, 65)
+    ->where(function (Query $group) {                         // (name like ? or email like ?)
+        $group->where('name', 'like', 'A%')->orWhere('email', 'like', 'a%');
+    })
+    ->when($search !== '', fn (Query $query) => $query->where('name', 'like', "%{$search}%"))
+    ->get();
+
+$db->table('posts')
+    ->join('users', 'users.id', 'posts.user_id')
+    ->select('posts.title', 'users.name as author')
+    ->latest('posts.created_at')
+    ->forPage(2, 20)
+    ->get();
+~~~
+
+`Query` there is `Crab\Contracts\Database\Query`, which lists every method.
+
+- **Values are bound and names are quoted**, so both may come from a request. Only the methods ending in `Raw` (`selectRaw`, `whereRaw`, `havingRaw`, `orderByRaw`) put SQL in as written; give them placeholders, never a user's text.
+- **Building changes the query; running does not.** `get()`, `count()` and the rest leave it as it was, so one query can be counted and then fetched. `clone` it to branch into two.
+- **In a transaction, start from the transaction's connection**: `$tx->table('users')`, not `$db->table('users')`.
+- **Mistakes are refused when they are made**, not by the database later: an unknown comparison, `update()` on a query with a limit, rows with different columns.
+- **Large tables** are read with `chunkById(500, fn (array $rows) => ...)`, which is not thrown off by rows added or removed meanwhile.
+- `toSql()` and `bindings()` show what would run. A query can be the list of another: `whereIn('id', $db->table('posts')->select('user_id'))`.
 
 ## Console
 
@@ -151,7 +205,7 @@ A provider that needs something open in every worker, such as a connection or a 
 | `src/Console/` | The command runner, with its input and output. |
 | `src/Commands/` | The application's built-in commands. |
 | `src/Container/` | The PSR-11 container. |
-| `src/Database/` | Pooled PDO connections and the query layer. |
+| `src/Database/` | Pooled PDO connections, the query layer and the query builder. |
 | `src/Config/` | Configuration files and environment variables. |
 | `src/Log/` | The PSR-3 logger. |
 | `src/Testing/` | Helpers for testing components. |

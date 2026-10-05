@@ -22,6 +22,7 @@ final class Database implements DatabaseContract
      * The event loop the pool waits on.
      */
     private ?EventLoop $loop = null;
+    private ?string $driver = null;
 
     /**
      * @param \Closure(): \PDO $connect Opens one connection, for example `fn() => new PDO($dsn, $user, $password)`.
@@ -69,6 +70,16 @@ final class Database implements DatabaseContract
         } finally {
             $this->release($connection);
         }
+    }
+
+    public function table(string $table): Query
+    {
+        return new Query($this, $table);
+    }
+
+    public function driver(): string
+    {
+        return $this->driver ??= $this->run(static fn (Connection $connection): string => $connection->driver());
     }
 
     public function select(string $sql, array $bindings = []): array
