@@ -203,12 +203,11 @@ final class Server
      *
      * @param list<string> $command The command that serves in the foreground, starting with the script.
      * @param list<string> $paths Directories and files to watch, inside the application.
-     * @param \Closure(string): void $say Tells the developer what is happening.
+     * @param \Closure(string): void $say Tells the developer what happened: a restart, or the server stopping by itself.
      */
     public function watch(array $command, array $paths, \Closure $say): int
     {
         $watcher = new FileWatcher(array_map($this->path(...), $paths));
-        $say('Watching ' . implode(', ', $paths) . " ({$watcher->count()} files). The server restarts when one changes.");
 
         $stopping = false;
         if (extension_loaded('pcntl')) {
@@ -228,7 +227,7 @@ final class Server
                     proc_close($process);
                     $process = null;
                     if (!$stopping) {
-                        $say("The server stopped with status {$status['exitcode']}. It starts again when a file changes.");
+                        $say("The server stopped (status {$status['exitcode']}). Save a file to start it again.");
                     }
                 }
             }
@@ -244,12 +243,27 @@ final class Server
             } while ($more !== []);
             $changed = array_values(array_unique($changed));
             $others = count($changed) - 1;
-            $say('Changed: ' . $this->shortened($changed[0]) . ($others > 0 ? " and {$others} more" : '') . '. Restarting.');
+            $say('Restarted: ' . $this->shortened($changed[0]) . ($others > 0 ? " and {$others} more" : '') . ' changed.');
             self::terminate($process);
-            $process = self::spawn($command);
+            // It said where it serves the first time; once is enough.
+            $process = self::spawn([...$command, '--quiet']);
         }
         self::terminate($process);
         return 0;
+    }
+
+    /**
+     * Where the server is reached, as an address to open, and with how
+     * many workers when there are several: "http://127.0.0.1:8080 with 4
+     * workers". The setting is the socket's address, "tcp://...", since
+     * that is what is listened on; what is spoken over it is HTTP.
+     */
+    public static function describe(string $address, int $workers = 1): string
+    {
+        $url = (string) preg_replace('~^tcp://~', 'http://', $address);
+        // Listening on every interface is not an address to open; this machine's own is.
+        $url = str_replace(['://0.0.0.0:', '://[::]:'], '://localhost:', $url);
+        return $workers > 1 ? "{$url} with {$workers} workers" : $url;
     }
 
     /**

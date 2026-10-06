@@ -42,12 +42,12 @@ final readonly class Restart implements Command
             if ($old !== null) {
                 $output->line("Stopped the server, pid {$old}.");
             }
-            $pid = $server->start($address, $workers, Server::invocation('restart'));
+            $server->start($address, $workers, Server::invocation('restart'));
         } catch (\RuntimeException $error) {
             $output->error($error->getMessage());
             return 1;
         }
-        $output->line("Serving on {$address} with {$workers} worker(s) in the background, pid {$pid}.");
+        Serve::announceBackground($output, $this->app, $address);
         return 0;
     }
 }

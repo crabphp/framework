@@ -16,6 +16,10 @@ final class ServerTest extends TestCase
     private string $directory;
     private string $address;
     /**
+     * The address as the commands show it: something to open.
+     */
+    private string $url;
+    /**
      * @var resource|null A watcher left running by a test that failed.
      */
     private mixed $watcher = null;
@@ -36,6 +40,7 @@ final class ServerTest extends TestCase
         $probe = stream_socket_server('tcp://127.0.0.1:0');
         $this->address = 'tcp://' . stream_socket_get_name($probe, false);
         fclose($probe);
+        $this->url = str_replace('tcp://', 'http://', $this->address);
     }
 
     protected function tearDown(): void
@@ -66,9 +71,8 @@ final class ServerTest extends TestCase
 
         [$status, $output] = $this->cua('serve', '--daemon', "--address={$this->address}", '--workers=2');
         self::assertSame(0, $status, $output);
-        self::assertMatchesRegularExpression("~^Serving on {$this->address} with 2 worker\\(s\\) in the background, pid (\\d+)\\.\n~", $output);
         $pid = $this->pid();
-        self::assertStringContainsString("pid {$pid}.", $output);
+        self::assertSame("Crab server running on {$this->url}\n", $output);
         self::assertSame('one', $this->get(), 'It accepts connections by the time the command returns.');
         self::assertSame(1, posix_getpgid($pid) === posix_getpgid(getmypid()) ? 0 : 1, 'It is not in the group of the terminal that started it.');
         self::assertSame([0, "The server is running in the background, pid {$pid}.\nIts output goes to {$this->directory}/storage/logs/server.log.\n"], $this->cua('status'));
@@ -132,7 +136,7 @@ final class ServerTest extends TestCase
         self::assertSame(0, $status, $output);
         self::assertSame($pid, $this->pid(), 'The server keeps its process id across a reload.');
         self::assertMatchesRegularExpression(
-            "~^Reloaded the server, pid {$pid}: it serves on {$this->address} with 2 worker\\(s\\) and the code as it is now\\.\nProcess (\\d+) took over from process (\\d+), which finishes the requests it has and stops\\.\n$~",
+            "~^Reloaded the server, pid {$pid}, on {$this->url} with 2 workers\\. It now runs the code as it is\\.\nProcess (\\d+) took over from process (\\d+), which finishes the requests it has and stops\\.\n$~",
             $output,
         );
         preg_match('~Process (\d+) took over from process (\d+)~', $output, $processes);
@@ -191,13 +195,13 @@ final class ServerTest extends TestCase
     {
         [$status, $output] = $this->cua('restart', "--address={$this->address}");
         self::assertSame(0, $status, 'With nothing running, a restart is a start.');
-        self::assertStringStartsWith("Serving on {$this->address} with 1 worker(s) in the background, pid ", $output);
+        self::assertSame("Crab server running on {$this->url}\n", $output);
         $first = $this->pid();
         $this->version('two');
         [$status, $output] = $this->cua('restart', "--address={$this->address}", '--workers=2');
         self::assertSame(0, $status, $output);
         $second = $this->pid();
-        self::assertSame("Stopped the server, pid {$first}.\nServing on {$this->address} with 2 worker(s) in the background, pid {$second}.\n", $output);
+        self::assertSame("Stopped the server, pid {$first}.\nCrab server running on {$this->url}\n", $output);
         self::assertNotSame($first, $second);
         self::assertSame('two', $this->get());
 
@@ -228,35 +232,40 @@ final class ServerTest extends TestCase
         );
         stream_set_blocking($pipes[1], false);
         $output = '';
-        $until = function (string $text) use (&$output, $pipes): void {
+        $everything = '';
+        $until = function (string $text) use (&$output, &$everything, $pipes): void {
             $deadline = microtime(true) + 10;
             while (!str_contains($output, $text)) {
                 self::assertLessThan($deadline, microtime(true), "The watcher never said \"{$text}\". It said:\n{$output}");
-                $output .= (string) fread($pipes[1], 8192);
+                $read = (string) fread($pipes[1], 8192);
+                $output .= $read;
+                $everything .= $read;
                 usleep(20_000);
             }
             $output = substr($output, strpos($output, $text) + strlen($text));
         };
 
-        $until('Watching app, config, routes, .env (1 files). The server restarts when one changes.');
-        $until("Serving on {$this->address} with this process.");
+        $banner = "Crab server running on {$this->url}\nPress Ctrl+C to stop\n";
+        $until($banner);
         self::assertSame('one', $this->get(retry: true));
 
         $this->version('two');
-        $until('Changed: app/routes.php. Restarting.');
-        $until("Serving on {$this->address} with this process.");
+        $until("Restarted: app/routes.php changed.\n");
         self::assertSame('two', $this->get(retry: true));
+        $said = $banner . "Restarted: app/routes.php changed.\n";
 
         file_put_contents($this->directory . '/app/routes.php', '<?php this is not PHP');
-        $until('Changed: app/routes.php. Restarting.');
-        $until('The server stopped with status 255. It starts again when a file changes.');
+        $until("Restarted: app/routes.php changed.\n");
+        $until("The server stopped (status 255). Save a file to start it again.\n");
         self::assertNull($this->get());
 
         $this->version('three');
         file_put_contents($this->directory . '/app/Added.php', '<?php // a new file is a change too');
-        $until(' Restarting.');
-        $until("Serving on {$this->address} with this process.");
+        $until(' changed.');
         self::assertSame('three', $this->get(retry: true));
+        self::assertStringStartsWith($said, $everything, 'It says where it serves once, and after that only what happened.');
+        self::assertSame(1, substr_count($everything, $this->url), 'Not again at every restart.');
+        self::assertStringNotContainsString('tcp://', $everything);
 
         proc_terminate($this->watcher, SIGINT);
         for ($waited = 0; $waited < 200 && proc_get_status($this->watcher)['running']; ++$waited) {
@@ -311,5 +320,15 @@ final class ServerTest extends TestCase
             usleep(50_000);
         }
         return null;
+    }
+
+    public function testTheAddressIsShownAsSomethingToOpen(): void
+    {
+        self::assertSame('http://127.0.0.1:8080', \Crab\Server::describe('tcp://127.0.0.1:8080'));
+        self::assertSame('http://127.0.0.1:8080', \Crab\Server::describe('tcp://127.0.0.1:8080', 1));
+        self::assertSame('http://127.0.0.1:8080 with 4 workers', \Crab\Server::describe('tcp://127.0.0.1:8080', 4));
+        self::assertSame('http://localhost:9000', \Crab\Server::describe('tcp://0.0.0.0:9000'), 'Every interface is not an address to open.');
+        self::assertSame('http://localhost:9000 with 2 workers', \Crab\Server::describe('tcp://[::]:9000', 2));
+        self::assertSame('http://api.test:80', \Crab\Server::describe('tcp://api.test:80'));
     }
 }

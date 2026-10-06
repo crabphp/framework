@@ -63,13 +63,12 @@ final readonly class Serve implements Command
                 return 1;
             }
             try {
-                $pid = $server->start($address, $workers, Server::invocation('serve'));
+                $server->start($address, $workers, Server::invocation('serve'));
             } catch (\RuntimeException $error) {
                 $output->error($error->getMessage());
                 return 1;
             }
-            $output->line("Serving on {$address} with {$workers} worker(s) in the background, pid {$pid}.");
-            $output->line("Its output goes to {$server->logFile()}. `stop` ends it; `reload` gives it new code without refusing a connection.");
+            self::announceBackground($output, $this->app, $address);
             return 0;
         }
         $paths = $this->watched($input);
@@ -77,9 +76,35 @@ final readonly class Serve implements Command
             // This process only watches; a child serves, and is started again when a file changes.
             return $server->watch([...self::withoutWatch($_SERVER['argv'] ?? []), '--no-watch'], $paths, $output->line(...));
         }
-        $output->line("Serving on {$address} with " . ($single ? 'this process' : "{$workers} worker(s)") . '.');
+        if (!$input->flag('quiet')) {
+            $this->announce($output, $address);
+        }
         $server->serve($address, $workers, $single);
         return 0;
+    }
+
+    /**
+     * What a developer wants to know when the server comes up: where to
+     * open it, and how to stop it.
+     */
+    private function announce(Output $output, string $address): void
+    {
+        $output->line(self::name($this->app) . ' server running on ' . Server::describe($address));
+        $output->line('Press Ctrl+C to stop');
+    }
+
+    /**
+     * One line for a server that was put in the background: it is up, and
+     * where. `status`, `reload` and `stop` say the rest when asked.
+     */
+    public static function announceBackground(Output $output, App $app, string $address): void
+    {
+        $output->line(self::name($app) . ' server running on ' . Server::describe($address));
+    }
+
+    private static function name(App $app): string
+    {
+        return (string) $app->config->get('app.name', 'Crab');
     }
 
     /**
