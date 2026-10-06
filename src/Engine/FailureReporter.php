@@ -59,11 +59,14 @@ final class FailureReporter
     private static function write(string $what, ?\Throwable $error): void
     {
         $line = '[Crab] ' . $what . ($error === null ? '' : ': ' . $error) . "\n";
-        // Standard error exists in the command line, where servers run; elsewhere PHP's log is all there is.
-        if (defined('STDERR')) {
-            fwrite(STDERR, $line);
-        } else {
+        // Opened each time, not kept: a process that went into the background has
+        // pointed standard error at its log, and the STDERR constant is closed with it.
+        $stream = @fopen('php://stderr', 'ab');
+        if ($stream === false) {
             error_log(rtrim($line));
+            return;
         }
+        fwrite($stream, $line);
+        fclose($stream);
     }
 }

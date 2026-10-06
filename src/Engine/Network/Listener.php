@@ -62,6 +62,25 @@ final class Listener
         return $stream;
     }
 
+    /**
+     * A listening socket this process was started with, by its descriptor
+     * number, as the server it takes over from passed it on.
+     *
+     * @return resource
+     */
+    public static function inherited(int $descriptor): mixed
+    {
+        $stream = @fopen("php://fd/{$descriptor}", 'r+');
+        if ($stream === false || !str_contains((string) (stream_get_meta_data($stream)['stream_type'] ?? ''), 'socket')) {
+            throw new RuntimeException("Descriptor {$descriptor} is not a listening socket passed to this process.");
+        }
+        if (!stream_set_blocking($stream, false)) {
+            fclose($stream);
+            throw new RuntimeException("Could not make the inherited listener {$descriptor} nonblocking.");
+        }
+        return $stream;
+    }
+
     public function attach(): void
     {
         if ($this->closed || $this->watcher !== null) {

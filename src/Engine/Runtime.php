@@ -19,6 +19,11 @@ final class Runtime
     private \Closure $loopFactory;
     private Worker|Supervisor|null $runner = null;
     private bool $running = false;
+    private ?\Closure $onReady = null;
+    /**
+     * @var array<int, \Closure>
+     */
+    private array $onSignal = [];
 
     /**
      * The factory makes each process's EventLoop; without one it is a
@@ -43,6 +48,35 @@ final class Runtime
         return $this->groups[$name] = new WorkerGroup($name, $workers, $maxConnections, $maxTasks);
     }
 
+    /**
+     * Calls back once, in the process that called run(), when every
+     * worker has started and is accepting connections. A process that
+     * starts the server on someone's behalf waits for this to say that it
+     * is up.
+     */
+    public function onReady(callable $callback): self
+    {
+        if ($this->running) {
+            throw new \LogicException('Say what to do when ready before startup.');
+        }
+        $this->onReady = $callback(...);
+        return $this;
+    }
+
+    /**
+     * Calls back, in the process that called run(), when that process
+     * receives the signal. Workers ignore it. The callback runs in the
+     * parent's own loop, not inside the signal, so it may do real work.
+     */
+    public function onSignal(int $signal, callable $callback): self
+    {
+        if ($this->running) {
+            throw new \LogicException('Say what a signal does before startup.');
+        }
+        $this->onSignal[$signal] = $callback(...);
+        return $this;
+    }
+
     public function run(bool $singleProcess = false): void
     {
         if ($this->running || $this->groups === []) {
@@ -61,7 +95,9 @@ final class Runtime
                 $group->freeze();
                 $bindings[$name] = ['tcp' => [], 'udp' => []];
                 foreach ($group->listeners() as $definition) {
-                    $bindings[$name]['tcp'][] = Listener::bind($definition['address'], $definition['options']);
+                    $socket = $definition['socket'] ?? Listener::bind($definition['address'], $definition['options']);
+                    stream_set_blocking($socket, false);
+                    $bindings[$name]['tcp'][] = $socket;
                 }
                 foreach ($group->datagrams() as $definition) {
                     $bindings[$name]['udp'][] = UdpEndpoint::bind($definition['address'], $definition['options']['socket'] ?? []);
@@ -71,8 +107,22 @@ final class Runtime
                 $group = reset($this->groups);
                 $driver = EventLoop::install(($this->loopFactory)());
                 $this->runner = new Worker($driver, $group, 0, $bindings[$group->name], $this->shutdownTimeout);
+                if ($this->onReady !== null) {
+                    // The first turn of the loop comes after the worker has started.
+                    $onReady = $this->onReady;
+                    $driver->defer(static function () use ($onReady): void {
+                        $onReady();
+                    });
+                }
+                if (extension_loaded('pcntl')) {
+                    foreach ($this->onSignal as $signal => $callback) {
+                        $driver->onSignal($signal, static function () use ($callback): void {
+                            $callback();
+                        });
+                    }
+                }
             } else {
-                $this->runner = new Supervisor($this->groups, $bindings, $this->loopFactory, $this->shutdownTimeout);
+                $this->runner = new Supervisor($this->groups, $bindings, $this->loopFactory, $this->shutdownTimeout, onReady: $this->onReady, onSignal: $this->onSignal);
             }
             $this->runner->run();
         } finally {

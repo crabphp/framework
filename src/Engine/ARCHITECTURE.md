@@ -61,7 +61,17 @@ SIGINT/SIGTERM stop admission and initiate drain. HTTP finishes its active respo
 
 Worker and parent enforce the shutdown deadline, default five seconds. The parent can kill and reap a blocked child; single-process deadlines are cooperative. A control/wakeup stream keeps intended live workers alive without a polling statistics timer.
 
-Unexpected exits receive exponential backoff and at most five restarts per slot in sixty seconds. Readiness has a ten-second deadline. SIGUSR1 starts one replacement at a time, draining its predecessor only after readiness. A failed replacement preserves a healthy previous worker. Fresh-code deployment requires restarting the parent because loaded classes survive fork.
+Unexpected exits receive exponential backoff and at most five restarts per slot in sixty seconds. Readiness has a ten-second deadline. SIGUSR1 starts one replacement at a time, draining its predecessor only after readiness. A failed replacement preserves a healthy previous worker. Fresh-code deployment requires a new parent because loaded classes survive fork.
+
+`Process\Keeper` replaces a parent without refusing a connection. It binds the address once, starts a parent (a generation) with the socket as descriptor 3 and a pipe to report on as descriptor 4, and on request starts another on the same socket; `WorkerGroup::listen(socket:)` and `Process\Generation` are the other side. Old and new accept from one queue, and the keeper retires the old only when `Runtime::onReady()` in the new has said every worker accepts connections. A parent that is stopping closes its own copy of the listening sockets at once, since it will start no more workers.
+
+Two servers binding one address with `SO_REUSEPORT` would be simpler and was measured and turned down: on Linux each socket has its own queue, and connections queued on the one that closes are reset unless `net.ipv4.tcp_migrate_req` is on. A parent starting its own successor was turned down too: a process started with `proc_open` inherits every descriptor its parent has open and PHP cannot close them by number, so each generation would carry the descriptors of all before it. The keeper opens next to nothing, and generations are siblings.
+
+A generation stops by itself when its keeper has gone, checked every two seconds through `Runtime::onSignal()` and an alarm, because a server no keeper knows of could be neither reloaded nor stopped. `onSignal()` callbacks run in the parent's own loop, not inside the signal, and workers ignore those signals.
+
+An HTTP connection that is idle when its worker starts to drain is read for 0.2 seconds more before it is closed. A client cannot know the server is stopping, so a request may already be on its way to a connection just accepted or to a kept-alive one being used again; it is answered, with `Connection: close`, like any last request. With this and the shared queue, a client opening about 13,000 connections a second through ten reloads in a row lost none of some 100,000 requests, on Linux 7.0 and macOS 26.
+
+`Process\Daemon` puts a process in the background and lets its launcher wait for it to report: two forks and a session of its own, with standard input closed and standard output and error appended to a file. `Process\PidFile` is the file a background server names itself in. `Process\FileWatcher` notices changed source files by looking at them again, with no extension or operating system service. None of these is used unless asked for.
 
 ## Failure reporting
 

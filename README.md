@@ -66,6 +66,19 @@ final readonly class OrderController
 
 A handler is a closure, a class and the name of its method, or the name of a class with `__invoke()`. A class is made by the container, once per worker, and extends nothing.
 
+### Groups
+
+Routes that share a path prefix, middleware, or both are declared in a group:
+
+~~~php
+Route::group(prefix: '/admin', middleware: [Authenticate::class], routes: function () {
+    Route::get('/users', [AdminController::class, 'users']);          // GET /admin/users
+    Route::get('/users/{id}', [AdminController::class, 'user']);
+});
+~~~
+
+Either may be left out, and groups may be nested. The first middleware given is outermost. Middleware given by class name is made by the container in each worker as it starts, so one that cannot be made stops the worker then.
+
 ### What a handler takes
 
 | Parameter | Is |
@@ -74,6 +87,7 @@ A handler is a closure, a class and the name of its method, or the name of a cla
 | Any other `int`, `float`, `string`, `bool`, `array`, enum or `DateTimeImmutable` | A field of the request's data, by its name |
 | One class | The input: all the fields in one object, in place of separate parameters |
 | Typed as a PSR-7 server request, or not typed | The request itself |
+| A class that implements `Contracts\Auth\Identity` | The logged-in user; see [Authentication](#authentication) |
 
 The request's data is the JSON body, or the query string for `GET`, `HEAD` and `DELETE`. Fields the handler does not name are ignored and never reach it; to read them, or the raw body, take the request as well and call `getParsedBody()`.
 
@@ -135,6 +149,83 @@ The OpenAPI 3.1 document is written from the signatures. There is nothing to ann
 The title and version are `app.name` and `app.version`.
 
 Reading a signature costs nothing per request, because it is read once when the route is added. Calling a closure by its signature adds about 0.05 µs to a request over a PSR-15 handler, and validated input with a typed response about 1 µs over the same checks written by hand (`benchmarks/typed-handler.php`, PHP 8.4 with JIT, Apple M1 Pro).
+
+## Authentication
+
+~~~php
+// app.php
+->withProviders([DatabaseProvider::class, AuthProvider::class, AppProvider::class])
+~~~
+
+~~~php
+use Crab\Contracts\Auth\Identity;
+
+final readonly class User implements Identity          // your user: anything with a public $id
+{
+    public function __construct(public int $id, public string $email)
+    {
+    }
+}
+
+Route::post('/login', [AuthController::class, 'login']);                  // open to all
+
+Route::group(middleware: [Authenticate::class], routes: function () {
+    Route::get('/me', static fn (User $user): User => $user);            // the logged-in user, by type
+    Route::post('/posts', [PostController::class, 'store']);
+});
+~~~
+
+~~~php
+final readonly class AuthController
+{
+    public function __construct(private Database $db, private PasswordHasher $passwords, private TokenStore $tokens)
+    {
+    }
+
+    /**
+     * @return array{token: string}
+     */
+    public function login(#[Email] string $email, string $password): array
+    {
+        $row = $this->db->table('users')->where('email', $email)->first();
+        if ($row === null || !$this->passwords->verify($password, $row['password'])) {
+            throw new HttpException(401, 'These credentials do not match.');
+        }
+
+        return ['token' => $this->tokens->issue($row['id'], 'login')];
+    }
+}
+~~~
+
+The client then sends `Authorization: Bearer <token>`.
+
+- **The user reaches a handler by type.** A parameter whose class implements `Identity` receives whoever the `Authenticate` middleware found; a request with no such user is answered with `401`. Make the parameter nullable for a route that works either way. There is no `Auth::user()`: a worker serves requests that overlap, so the user travels with the request and nowhere else. It is also the request's `user` attribute.
+- **You say how a user is found.** Bind `Contracts\Auth\IdentityResolver` in your own provider; its `resolve($id)` returns your user or null.
+- **Tokens** are kept in the `auth_tokens` table, which `php cua migrate` creates. `TokenStore` has `issue($user, $name, $expiresAt)`, `owner($token)`, `revoke($token)` and `revokeAll($user)`. A token is 64 random characters, shown once; only its hash is stored. Checking one is one query, and a revoked token stops working at once.
+- **Passwords:** `PasswordHasher` has `hash()`, `verify()` and `needsRehash()`, over PHP's own password hashing.
+
+### Other ways to authenticate
+
+A bearer token is the default, not the only way. Each way is an `Authenticator`: it reads the request and returns the user or null.
+
+| Authenticator | Reads |
+| --- | --- |
+| `Auth\BearerToken` | `Authorization: Bearer <token>` |
+| `Auth\ApiKey` | A header of its own, `X-Api-Key` unless another is named |
+| Your own | A session cookie, a signed address, a JWT, a header a proxy sets |
+
+~~~php
+final readonly class TrustedProxy implements Authenticator
+{
+    public function authenticate(ServerRequestInterface $request): ?Identity { ... }
+
+    public function challenge(): string { return 'Proxy'; }             // the WWW-Authenticate of a 401
+}
+
+Route::group(prefix: '/internal', middleware: [new Authenticate($trustedProxy)], routes: function () { ... });
+~~~
+
+`Authenticate::class` uses whichever `Authenticator` is bound in the container; bind your own after `AuthProvider` to change the default. `new Authenticate($other)` protects one group another way. Roles and permissions, and sessions with cookies, are not built.
 
 ## Requests and responses
 
@@ -395,13 +486,70 @@ return new class implements Migration {
 - **A column's type cannot be changed** in `$schema->table()`; SQLite has no statement for it. Add a column, copy the values and drop the old one.
 - A package adds its own folder through `Crab\Contracts\Database\Migrator::path()`. To build tables outside a migration, ask for `Crab\Contracts\Database\Schema`.
 
+## Running the server
+
+~~~sh
+php cua serve                # in the foreground, restarting when a file changes; Ctrl-C stops it
+php cua serve --no-watch     # in the foreground, as it is: for a container
+php cua serve --daemon       # in the background, returning once it is up: for a machine you deploy to
+~~~
+
+`--address=tcp://0.0.0.0:8080` and `--workers=4` override the `server.address` and `server.workers` settings. `--single` serves in one process, without PHP's `pcntl` and `posix` extensions.
+
+### In development
+
+Plain `serve` is what you want while writing code. It runs the server as a child process and starts it again whenever a PHP file under `app`, `config` or `routes`, or `.env`, is added, changed or removed. Set `server.watch` to a list of other paths, or pass them: `--watch=app,config,packages`. Folders named `vendor`, `node_modules`, `storage` and `.git` are never looked into.
+
+When the code does not load, the server stays down and the error stays on the screen; saving a fix starts it again. Files are checked a few times a second by their time and size, so no extension is needed. Options given to PHP itself (`php -d ...`) are not passed on to the child.
+
+Where nothing should restart by itself, such as a container, pass `--no-watch` or set `server.watch` to `false`. A server in the background never watches; it is given new code with `reload`.
+
+### In production
+
+~~~sh
+php cua serve --daemon       # start
+php cua status               # is it running? exit status 0 when it is
+php cua reload               # new code, without refusing a connection
+php cua restart              # stop, then start: a short gap
+php cua stop                 # finish the requests in hand, then stop
+~~~
+
+- **`serve --daemon`** (or `-d`) returns when the server accepts connections, and fails with the reason when it cannot start, so a deploy script can rely on its exit status. The server leaves the terminal behind: closing it does not stop the server.
+- **`reload`** is how new code goes live. The server starts a new process, with the code and configuration as they are now, on the socket it already listens on. When every worker of the new process accepts connections, the old process finishes the requests it has and stops. If the new one cannot start, because of a syntax error or a service that cannot be made, the old one goes on serving and `reload` fails, showing what went wrong first.
+- **`stop`** waits up to `--timeout=15` seconds for requests to finish. `--force` ends a server that has not stopped by then.
+- **Files.** The process id is in `server.pid` (`storage/crab.pid`) and everything the server prints goes to `server.log` (`storage/logs/server.log`); both are settings. The log is opened for appending, so it can be rotated by copying and truncating.
+- **A deploy** is then: put the new code in place, run the migrations, `php cua reload`.
+
+How it holds together:
+
+~~~text
+keeper            holds the listening socket; its process id is the server's and never changes
+└─ server         the application, loaded once; a reload starts a new one beside it and retires this one
+   ├─ worker      serves requests
+   └─ worker
+~~~
+
+- **No connection is refused or cut short by a reload.** The old and the new server process accept from the same socket, so a connection always has someone to take it, and a process that is stopping still answers a request that was already on its way. Measured on Linux and macOS with a client opening about 13,000 new connections a second through ten reloads in a row: none of some 100,000 requests failed.
+- **A server process that dies is started again** by the keeper, on the socket that never closed, so connections made meanwhile wait and are served. Six deaths within a minute and the keeper gives up and stops.
+- **The keeper runs the code it was started with** until a `restart`. It does very little, so that rarely matters; restart after upgrading the framework itself.
+- **The new process starts in the directory `reload` was run from**, with the script it was run with, so deploying into a new folder and reloading from there works. `storage/` must then be shared between the folders, since the process id file is how `reload` finds the server.
+
+Things to know:
+
+- A server in the foreground is not controlled by these commands. Under Docker, or systemd with `Type=simple`, run `php cua serve --no-watch` and let the manager restart it; a container is replaced, not reloaded.
+- For systemd with reloads, use the background server: `Type=forking`, `PIDFile=` the `server.pid` path, `ExecStart=php cua serve --daemon`, `ExecReload=php cua reload`, `ExecStop=php cua stop`.
+- Running in the background needs PHP's `pcntl` and `posix` extensions, and so Linux or macOS.
+- The server has no TLS. Put it behind a proxy that does.
+- Sending the server SIGUSR1 replaces its workers one at a time with the code it already has. It does not load new code; `reload` does.
+
 ## Console
 
-`bin/crab app.php` lists the application's commands and `bin/crab app.php <command>` runs one. Two are built in:
+`bin/crab app.php` lists the application's commands and `bin/crab app.php <command>` runs one. `<command> --help`, or `-h`, describes a command without running it, as `help <command>` does. These are built in:
 
 | Command | Does |
 | --- | --- |
-| `serve` | Serves the application. `--address=tcp://127.0.0.1:8080` and `--workers=1` default to the `server.address` and `server.workers` configuration keys; `--single` serves in one process without `pcntl` and `posix`. |
+| `serve` | Serves the application; see [Running the server](#running-the-server). |
+| `stop`, `reload`, `restart`, `status` | Control a server running in the background. |
 | `routes` | Lists the registered routes. |
 | `openapi` | Writes the OpenAPI description of the routes. |
 
@@ -433,11 +581,13 @@ A provider that needs something open in every worker, such as a connection or a 
 | `src/Console/` | The command runner, with its input and output. |
 | `src/Commands/` | The application's built-in commands. |
 | `src/Container/` | The PSR-11 container. |
+| `src/Auth/` | Authentication: the middleware, bearer tokens and API keys, tokens in the database, password hashing. |
 | `src/Clock/` | The PSR-20 clock. |
 | `src/Database/` | Pooled PDO connections, the query layer, the query builder, the schema builder and migrations. |
 | `src/Config/` | Configuration files and environment variables. |
 | `src/Log/` | The PSR-3 logger. |
 | `src/Testing/` | Helpers for testing components. |
+| `src/Server.php` | Runs the server in the foreground, in the background and under a watcher, and controls a running one. |
 | `src/Routing/` | The router, itself a PSR-15 handler, typed handlers and the OpenAPI document. |
 | `src/Validation/` | Builds typed objects from request data, with rules as attributes and JSON Schema. |
 | `src/Contracts/` | Every interface another package implements or type-hints; they extend the PSR ones where Crab adds methods. |

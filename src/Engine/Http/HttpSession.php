@@ -16,6 +16,13 @@ final class HttpSession
     private const COMPLETE_RESPONSE = 1;
     private const COMPLETE_CONTINUE = 2;
     private const COMPLETE_CLOSE = 3;
+    /**
+     * Seconds an idle connection is still read after it is asked to drain.
+     * A client cannot know the server is stopping, so a request may be on
+     * its way to a connection that looks idle: one just accepted, or a
+     * kept-alive one being used again. Closing at once would drop it.
+     */
+    private const DRAIN_GRACE = 0.2;
 
     private Parser $parser;
     private bool $busy = false;
@@ -28,6 +35,7 @@ final class HttpSession
     private ?string $scheduled = null;
     private ?string $writeScheduled = null;
     private ?string $deadline = null;
+    private ?string $drainGrace = null;
     private float $deadlineAt = 0;
     private float $deadlineScheduledAt = 0;
     private string $deadlinePhase = '';
@@ -67,11 +75,22 @@ final class HttpSession
                 return;
             }
             $this->draining = true;
-            $this->connection->pauseRead();
-            if (!$this->busy) {
+            if ($this->busy) {
+                // The response in hand is finished, and the connection closed after it.
+                $this->connection->pauseRead();
+                return;
+            }
+            // Idle, as far as this side can tell. Go on reading for a moment: a request
+            // that arrives is answered, with "Connection: close", like any last one.
+            $this->drainGrace = $this->connection->loop()->delay(self::DRAIN_GRACE, function (): void {
+                $this->drainGrace = null;
+                // Part of a request has come: its own deadlines, and the connection's, end the wait.
+                if ($this->retired || $this->busy || $this->parser->phase() !== 'idle') {
+                    return;
+                }
                 $this->retire();
                 $this->connection->end();
-            }
+            });
         });
         // The first request of a read turn runs without a scheduler round
         // trip; pipelined successors keep their own deferred turns.
@@ -430,12 +449,12 @@ final class HttpSession
         }
         $this->retired = true;
         $this->releaseRequest();
-        foreach ([$this->deadline, $this->scheduled, $this->writeScheduled] as $id) {
+        foreach ([$this->deadline, $this->scheduled, $this->writeScheduled, $this->drainGrace] as $id) {
             if ($id !== null) {
                 $this->connection->loop()->cancel($id);
             }
         }
-        $this->deadline = $this->scheduled = $this->writeScheduled = null;
+        $this->deadline = $this->scheduled = $this->writeScheduled = $this->drainGrace = null;
         $this->output = null;
         $this->pending = '';
         $this->completion = self::COMPLETE_NONE;

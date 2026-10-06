@@ -17,7 +17,7 @@ final class EventLoopTest extends TestCase
         $loop = RevoltEventLoop::create();
         self::assertInstanceOf(EventLoop::class, $loop);
         $events = [];
-        $loop->delay(0.004, static function () use (&$events): void { $events[] = 'delay'; });
+        $loop->delay(0.05, static function () use (&$events): void { $events[] = 'delay'; });
         $loop->defer(static function (string $id) use (&$events): void { $events[] = 'defer ' . (strlen($id) > 0 ? 'with id' : 'without id'); });
         $cancelled = $loop->delay(0.001, static function () use (&$events): void { $events[] = 'cancelled'; });
         $loop->cancel($cancelled);

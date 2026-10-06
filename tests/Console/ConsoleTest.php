@@ -115,7 +115,7 @@ final class ConsoleTest extends TestCase
             rewind($this->out);
             self::assertSame(0, $this->exec($console, ...$arguments));
             self::assertSame("Commands:\n  greet           Greet someone\n  zeta            Last\n"
-                . "  help <command>  Describe a command\n  list            List the commands\n", $this->written($this->out));
+                . "  help <command>  Describe a command; so does <command> --help\n  list            List the commands\n", $this->written($this->out));
         }
         ftruncate($this->out, 0);
         rewind($this->out);
@@ -126,6 +126,35 @@ final class ConsoleTest extends TestCase
         rewind($this->out);
         self::assertSame(0, $this->exec($console, 'help', 'greet'));
         self::assertSame("Greet someone\n\nArguments:\n  name\n", $this->written($this->out));
+    }
+
+    public function testAskingACommandForHelpDescribesItAndDoesNotRunIt(): void
+    {
+        $ran = 0;
+        $console = (new Console())
+            ->add('greet', Greet::class)
+            ->add('count', static function () use (&$ran): int {
+                ++$ran;
+                return 0;
+            }, 'Count up');
+        Greet::$made = 0;
+        foreach ([['greet', '--help'], ['greet', '-h'], ['greet', 'Ada', '--shout', '--help'], ['greet', '-sh']] as $index => $arguments) {
+            $out = fopen('php://memory', 'w+');
+            self::assertSame(0, $console->run($arguments, new Output($out, $out)));
+            rewind($out);
+            $written = stream_get_contents($out);
+            if ($index < 3) {
+                self::assertSame("Greet someone\n\nArguments:\n  name\n", $written, implode(' ', $arguments));
+            } else {
+                self::assertStringStartsWith('Hello, world', $written, 'A letter among others is that command\'s own option.');
+            }
+        }
+        $out = fopen('php://memory', 'w+');
+        self::assertSame(0, $console->run(['count', '--help'], new Output($out, $out)));
+        rewind($out);
+        self::assertSame(["Count up\n", 0], [stream_get_contents($out), $ran]);
+        self::assertSame(0, $console->run(['count', '--', '--help'], new Output($out, $out)));
+        self::assertSame(1, $ran, 'After "--" the words are arguments, and the command runs.');
     }
 
     public function testListSurvivesACommandThatCannotBeMade(): void

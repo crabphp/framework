@@ -17,15 +17,15 @@
 
 ## Components
 
-- Each component has its own folder and namespace under `src/` (`Http`, `Routing`, `Validation`, `Container`, `Config`, `Log`, `Clock`, `Console`, `Database`, `Testing`) and its tests in the matching folder under `tests/`.
+- Each component has its own folder and namespace under `src/` (`Http`, `Routing`, `Validation`, `Auth`, `Container`, `Config`, `Log`, `Clock`, `Console`, `Database`, `Testing`) and its tests in the matching folder under `tests/`.
 - Every component has the same shape: it works standalone, has a contract when packages touch it, ships a `<Component>Provider` when it is optional, and is kept able to be published as its own package the way the engine is.
 - A component works on its own, without `App`, the container or a provider. It may depend on `Contracts`, on PSR interfaces and on the engine, and on another component only where that is its purpose. `tests/LayerBoundaryTest.php` enforces this; a new dependency between components is added to its `ALLOWED` list deliberately, never worked around.
-- The root of `src/` is the glue that makes components an application: `App.php`, `AppBuilder.php`, `Route.php`, `Command.php`, `helpers.php`, and `Commands/` for built-in commands. Code that needs `App` belongs there, not inside a component.
+- The root of `src/` is the glue that makes components an application: `App.php`, `AppBuilder.php`, `Server.php`, `Route.php`, `Command.php`, `helpers.php`, and `Commands/` for built-in commands. Code that needs `App` belongs there, not inside a component.
 - Do not add a `Support` or utility namespace until two components need the same code, and then put only that code in it.
 
 ## Contracts
 
-- A package depends on `Crab\Contracts` and PSR interfaces only, never on a component's class. So everything a package touches has a contract in `Crab\Contracts\<Component>`, never inside the component, including where no PSR exists: `Config`, `Router`, `Console`, `Container`, `Database`, `Connection`, `Query`, `Schema`, `Table`, `Column`, `Migration`, `Migrator`, `Validator`, `Rule`, `Clock`, `Logger`, `Factory`, `MiddlewareStack`, `Provider`, `WorkerProvider`, and the console's `Command`, `Input` and `Output`.
+- A package depends on `Crab\Contracts` and PSR interfaces only, never on a component's class. So everything a package touches has a contract in `Crab\Contracts\<Component>`, never inside the component, including where no PSR exists: `Config`, `Router`, `Console`, `Container`, `Database`, `Connection`, `Query`, `Schema`, `Table`, `Column`, `Migration`, `Migrator`, `Validator`, `Rule`, `Clock`, `Logger`, `Factory`, `Identity`, `Authenticator`, `IdentityResolver`, `TokenStore`, `PasswordHasher`, `MiddlewareStack`, `Provider`, `WorkerProvider`, and the console's `Command`, `Input` and `Output`.
 - Anything an application can do through `App`, a provider can do through a contract in the container. When `App` gains a way to extend the application, the contract comes with it.
 - Exceptions and immutable value objects are the exception to that: `HttpException`, `DatabaseException`, `ValidationException`, `Cookie`, the `Response` factories and the validation attributes (`Email`, `Length`, `ListOf`, ...) are named by class, because there is no behaviour behind them to swap.
 - A value object that a contract returns lives beside it in `Crab\Contracts`, as a final readonly class with no I/O (`Contracts\Database\Page`), since a contract may not name a component's class.
@@ -64,6 +64,29 @@
 - Data that does not fit is a 422 built by `Http\ErrorResponse` with every problem by field, returned and not thrown. JSON is taken as it is; only text sources (query string, route parameters) are converted to numbers and booleans. Fields a handler does not declare are ignored and never reach it.
 - `Validation` knows nothing of HTTP or routing. A rule is an attribute implementing `Contracts\Validation\Rule`, which checks a value and describes itself as JSON Schema, so the document cannot disagree with the check.
 - A new rule or supported type is added to validation and to its JSON Schema together, with a test of both.
+
+## Running the server
+
+- Plain `serve` is for the developer: it watches and restarts. Production says what it wants, `--no-watch` or `--daemon`. A default is chosen for whoever types the command most.
+- `<command> --help` and `-h` describe a command and never run it; the console handles them, so a command does not use `h` for an option of its own.
+- `Server` in the glue is the one place that starts, replaces and stops the application's server; a command about the server calls it and holds no process logic of its own.
+- New code is loaded by a new process, never into a running one: classes cannot be redefined, and the application is defined in the server process before it forks. Do not add a way to "reload" that keeps that process.
+- A background server is a keeper, a server process under it, and workers under that. The keeper owns the listening socket and passes it to each server process it starts, so that old and new accept from one queue. Do not make two servers bind the same address instead (`SO_REUSEPORT`): on Linux, connections queued on the socket that closes are lost.
+- The keeper stays small and loads nothing of the application, because it runs old code for as long as the service lives. What a reload needs to know travels in the request, not in the keeper.
+- A command that starts or reloads a server returns only when it accepts connections, and exits with a failure and the reason when it does not. A reload that fails leaves the running server untouched.
+- A process that stops gracefully goes on reading a connection that looks idle for a moment (`HttpSession::DRAIN_GRACE`): the client may have sent a request before it could know.
+- A process id read from a file is checked to be a server before it is reported or signalled; the file may be older than the process that now has the number.
+- After going into the background a process must not use the `STDIN`, `STDOUT` or `STDERR` constants, which are closed; `echo`, `php://stdout` and `php://stderr` reach its log.
+- A process started with `proc_open` inherits every descriptor its parent has open, and PHP cannot close them by number. So only a process that opens almost nothing, the keeper, may start a long-lived one; a server process must never start its own successor.
+- Process control that is not about HTTP (`Keeper`, `Generation`, `Daemon`, `PidFile`, `FileWatcher`, `Runtime::onReady()` and `onSignal()`) lives in `Engine\Process` and is tested there with real processes; what needs `App` lives in `Server`, tested by driving a real application in `tests/ServerTest.php`. Run both on Linux (`composer test:linux`) before changing either.
+
+## Authentication
+
+- Who makes a request is request state. It travels as the request's `user` attribute and reaches a handler as a parameter whose class implements `Contracts\Auth\Identity`. There is no static accessor for it and none may be added.
+- A way of authenticating is an `Authenticator`, and `Authenticate` is the one middleware that applies one. Do not add a middleware per scheme; add an authenticator.
+- Crab does not know an application's users. It asks the application's `IdentityResolver` for one by id and keeps no user table of its own.
+- A secret is never stored as it is: a token is kept as its SHA-256 hash and a password through `PasswordHasher`. Neither appears in a log or an exception's message.
+- Middleware for some routes is given to `Route::group()`. A route's middleware is made when the worker starts, like the application's, never on the first request.
 
 ## Database
 

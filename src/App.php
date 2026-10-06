@@ -6,8 +6,12 @@ namespace Crab;
 
 use Crab\Clock\SystemClock;
 use Crab\Commands\OpenApi;
+use Crab\Commands\Reload;
+use Crab\Commands\Restart;
 use Crab\Commands\Routes;
 use Crab\Commands\Serve;
+use Crab\Commands\Status;
+use Crab\Commands\Stop;
 use Crab\Config\Config;
 use Crab\Console\Console;
 use Crab\Container\Container;
@@ -72,6 +76,10 @@ final class App implements RequestHandlerInterface
      * @var list<WorkerProvider>
      */
     private array $workerProviders = [];
+    /**
+     * The router as the class it is, for what only the application asks of it.
+     */
+    private readonly Router $routes;
 
     /**
      * @param string|null $basePath The application's own directory, which path() resolves against.
@@ -111,7 +119,9 @@ final class App implements RequestHandlerInterface
         $validator = new Validator();
         $container->instance(ValidatorContract::class, $validator);
         $container->instance(Validator::class, $validator);
-        $this->router = new Router($container, $validator);
+        $router = new Router($container, $validator);
+        $this->router = $router;
+        $this->routes = $router;
         $container->instance(RouterContract::class, $this->router);
         $container->instance(Router::class, $this->router);
         // The error handler is the entry bound as ErrorHandler; rebinding it to
@@ -124,7 +134,14 @@ final class App implements RequestHandlerInterface
         $this->stack->add(ErrorHandler::class);
         $container->instance(MiddlewareStackContract::class, $this->stack);
         $container->instance(MiddlewareStack::class, $this->stack);
-        $this->console = (new Console($container, (string) $config->get('app.name', '')))->add('serve', Serve::class)->add('routes', Routes::class)->add('openapi', OpenApi::class);
+        $this->console = new Console($container, (string) $config->get('app.name', ''));
+        $this->console->add('serve', Serve::class);
+        $this->console->add('stop', Stop::class);
+        $this->console->add('reload', Reload::class);
+        $this->console->add('restart', Restart::class);
+        $this->console->add('status', Status::class);
+        $this->console->add('routes', Routes::class);
+        $this->console->add('openapi', OpenApi::class);
         $container->instance(ConsoleContract::class, $this->console);
         $container->instance(Console::class, $this->console);
     }
@@ -217,12 +234,14 @@ final class App implements RequestHandlerInterface
      * providers as it starts, so a misconfigured application fails then
      * and not on its first request. A task or timer that fails in a
      * worker is logged.
+     *
+     * @param resource|null $socket A socket that already listens on the address, inherited from the server this one takes over from.
      */
-    public function runtime(string $address = 'tcp://127.0.0.1:8080', int $workers = 1): Runtime
+    public function runtime(string $address = 'tcp://127.0.0.1:8080', int $workers = 1, mixed $socket = null): Runtime
     {
         $runtime = new Runtime();
         $runtime->group('http', $workers)
-            ->listen($address, new HttpServer(new EngineHandler($this->stack)))
+            ->listen($address, new HttpServer(new EngineHandler($this->stack)), socket: $socket)
             ->onStart($this->start(...))
             ->onStop($this->stop(...))
             ->onFailure($this->report(...));
@@ -234,6 +253,7 @@ final class App implements RequestHandlerInterface
         set_error_handler($this->raise(...));
         try {
             $this->stack->assemble();
+            $this->routes->assemble();
             foreach ($this->workerProviders as $provider) {
                 $provider->start($worker, $this->container);
             }

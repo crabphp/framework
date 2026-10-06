@@ -13,7 +13,8 @@ use Psr\Container\ContainerInterface;
 /**
  * Runs commands by name. A command is a Command, a closure taking the input
  * and output, or a class name; a class is made only when its command runs,
- * by the container when there is one.
+ * by the container when there is one. `<command> --help`, or `-h`, describes
+ * a command without running it, as `help <command>` does.
  */
 final class Console implements ConsoleContract
 {
@@ -78,12 +79,36 @@ final class Console implements ConsoleContract
                 $output->error("Unknown command \"{$name}\". Run `list` to see the commands.");
                 return 1;
             }
+            if (self::asksForHelp($arguments)) {
+                $output->line($this->describe($name));
+                return 0;
+            }
             return $this->resolve($name)->handle(new Input($arguments), $output);
         } catch (\Throwable $error) {
             $output->error($error::class . ': ' . $error->getMessage()
                 . ' (' . $error->getFile() . ':' . $error->getLine() . ')');
             return 1;
         }
+    }
+
+    /**
+     * Whether --help or -h is among a command's words, before any "--"
+     * that makes the rest plain arguments. Asking a command for help
+     * describes it and does not run it.
+     *
+     * @param list<string> $arguments
+     */
+    private static function asksForHelp(array $arguments): bool
+    {
+        foreach ($arguments as $argument) {
+            if ($argument === '--') {
+                return false;
+            }
+            if ($argument === '--help' || $argument === '-h') {
+                return true;
+            }
+        }
+        return false;
     }
 
     private function list(OutputContract $output): int
@@ -104,7 +129,7 @@ final class Console implements ConsoleContract
             $output->line();
         }
         $output->line('Commands:');
-        $output->table([...$rows, ['help <command>', 'Describe a command'], ['list', 'List the commands']], '  ');
+        $output->table([...$rows, ['help <command>', 'Describe a command; so does <command> --help'], ['list', 'List the commands']], '  ');
         return 0;
     }
 

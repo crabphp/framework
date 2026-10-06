@@ -42,7 +42,7 @@ The last row is the rule that keeps the framework replaceable piece by piece: a 
 
 ### Enforcing the layers *(today)*
 
-`tests/LayerBoundaryTest.php` fails when a contract references a component, or when a component references the glue or a component it is not listed as built on. Today the listed pairs are `Routing` on `Http` and `Validation`, and `Testing` on `Container`. `tests/EngineBoundaryTest.php` does the same for the engine. A rule that is only written down drifts.
+`tests/LayerBoundaryTest.php` fails when a contract references a component, or when a component references the glue or a component it is not listed as built on. Today the listed pairs are `Routing` on `Http` and `Validation`, `Auth` on `Http`, and `Testing` on `Container`. `tests/EngineBoundaryTest.php` does the same for the engine. A rule that is only written down drifts.
 
 ## Contracts
 
@@ -63,6 +63,7 @@ A contract exists for everything a package touches, including where no PSR exist
 | `Validation\Validator`, `Validation\Rule` | none | today |
 | `Console\Console` | none | today |
 | `Clock\Clock` | PSR-20 `ClockInterface` | today |
+| `Auth\Identity`, `Auth\Authenticator`, `Auth\IdentityResolver`, `Auth\TokenStore`, `Auth\PasswordHasher` | none | today |
 | `Log\Logger` | PSR-3 `LoggerInterface` | today |
 | `Http\Factory` | the five PSR-17 factory interfaces | today |
 | Cache, events, HTTP client | PSR-16, 14, 18, each behind a Crab contract | not built |
@@ -128,6 +129,7 @@ All four phases exist today. A provider that implements `WorkerProvider` gets `s
 
 Consequences worth stating plainly:
 
+- The logged-in user is request scope like everything else about a request: the `Authenticate` middleware puts it on the request and a handler takes it as a parameter.
 - There is no `request()` or `auth()` global helper. Global helpers and static names are for process-scope things only (`config()`, `env()`, `Route::get()`, `Command::add()`). Request data is read from the request the handler was given.
 - A container entry is worker-scoped by default. Anything per-request is passed as an argument.
 - `env()` is called only inside config files. Everything else reads `config()`, so configuration has one source and can later be cached.
@@ -159,17 +161,49 @@ Components take every async tool from the engine's own types (`EventLoop`, `Susp
 - **Process scaling.** `serve --workers=N` on one machine; identical instances behind a load balancer across machines. TLS terminates at the proxy (the engine has no TLS).
 - **Isolation by worker group.** HTTP, queue consumers and the scheduler run as separate engine worker groups, so a slow job cannot starve request handling.
 - **Bounded everything.** The engine already bounds connections, tasks, buffers and body size per worker; framework components that queue or buffer take an explicit limit too.
-- **Graceful change.** SIGTERM drains; SIGUSR1 replaces workers one at a time. Deploying new code restarts the parent.
+- **Graceful change.** SIGTERM drains, and a connection that looks idle is read a moment longer, since a request may already be on its way to it. New code needs a new process, because everything defined in phase 1 lives in the server's parent: `reload` has the server's keeper start a new server process on the socket it holds, and retire the old one only once the new one accepts connections. If the new one cannot start, the old one is left serving. SIGUSR1 still replaces the workers of one server process one at a time, with the code it already has.
+
+## Running the server *(today)*
+
+One class, the glue's `Server`, runs the application's HTTP server and controls a running one; the commands are that class with words around it.
+
+| Way | Command | For |
+| --- | --- | --- |
+| Watched | `serve` | Development, and so the default: a launcher runs the server as a child and starts it again when a source file changes |
+| Foreground | `serve --no-watch` | Containers and process managers that keep a process in the foreground |
+| Background | `serve --daemon`, then `status`, `reload`, `restart`, `stop` | A machine you deploy to |
+
+A server in the background is three levels of process:
+
+~~~mermaid
+flowchart TD
+    K["Keeper: holds the listening socket.<br/>Its process id is the server's, for good."]
+    G1["Server process (generation):<br/>phase 1 runs here, then it forks"]
+    W1[Worker]
+    W2[Worker]
+    G2["New generation, started by a reload<br/>on the same socket"]
+    K --> G1
+    G1 --> W1
+    G1 --> W2
+    K -.-> G2
+~~~
+
+- **New code is a new process.** PHP cannot redefine a class, and the application is defined in the server process before it forks, so neither a watcher nor a reload tries to change a running process. The watcher stops the old one first, since a moment's gap does not matter in development. A reload overlaps the two.
+- **The keeper is what makes the overlap exact.** It binds the address once and passes the socket to each generation it starts, so the old and the new accept from one queue and no connection is left without a taker. It serves nothing and loads nothing new, so it never needs replacing itself, and what a generation opens is never inherited by the next.
+- **A reload is all or nothing.** The keeper retires the old generation only when the new one reports that every worker accepts connections; otherwise it ends the new one and says why. A generation that dies by itself is started again.
+- **Starting is not done until it works.** `serve --daemon` and `reload` return when connections are accepted, or fail with the reason, so a deploy script can trust the exit status.
+- A background server writes its process id to `server.pid` and what it prints to `server.log`. A foreground server writes neither and is controlled by whatever started it.
 
 ## Extension points
 
-Small and explicit; there are five, and no others are planned.
+Small and explicit; there are six, and no others are planned.
 
 | Point | How | Status |
 | --- | --- | --- |
 | Services | `Provider::register(Container)` | today |
 | Per-worker work | `WorkerProvider::start(Worker)` / `stop(Worker)` | today |
-| Around requests | PSR-15 middleware via `$app->middleware()`, or the `MiddlewareStack` contract from a provider | today |
+| Around requests | PSR-15 middleware via `$app->middleware()`, or the `MiddlewareStack` contract from a provider; around some routes, `Route::group(middleware:)` | today |
+| Who makes a request | An `Authenticator` given to the `Authenticate` middleware | today |
 | Commands | `Console` contract, `add()` | today |
 | Reacting to events | PSR-14 dispatcher | proposed, when the first component needs it |
 
@@ -205,7 +239,7 @@ A PSR implementation should also pass that PSR's public conformance suite where 
 4. **Small PSR components:** clock (PSR-20), events (PSR-14), cache (PSR-16). *The clock is done.*
 5. **Database.** *Connection pool, the thin query layer, the query builder, the schema builder and migrations are done, tested on SQLite and MySQL.* Next: models with relationships.
 6. **Queue**, then **Scheduling**, each as its own worker group.
-7. **Validation, Session, Auth.** *Validation is done, ahead of the steps before it, together with typed route handlers and the OpenAPI document written from them.* Auth by token comes next of these; sessions matter less for an API.
+7. **Validation, Session, Auth.** *Validation is done, ahead of the steps before it, together with typed route handlers and the OpenAPI document written from them. Authentication is done: pluggable authenticators, tokens in the database, the user as a handler parameter.* Roles and permissions, and sessions, are not built; sessions matter less for an API.
 8. **Application skeleton** (`crabphp/crab`) and the `make:*` commands. *The skeleton exists, kept minimal; it grows a folder when a component arrives. `make:migration` is the first `make:*` command.*
 9. **Per-component packages**, CI and the first tagged release.
 

@@ -21,6 +21,13 @@ final class Supervisor
     private bool $reloadRequested = false;
     private ?\Throwable $failure = null;
     private array $signalHandlers = [];
+    private bool $announced = false;
+    /**
+     * Signals received and not yet acted on.
+     *
+     * @var array<int, true>
+     */
+    private array $pendingSignals = [];
 
     /**
      * @param array<string, WorkerGroup> $groups
@@ -31,6 +38,8 @@ final class Supervisor
         private readonly \Closure $loopFactory,
         private readonly float $shutdownTimeout,
         private readonly float $startupTimeout = 10.0,
+        private readonly ?\Closure $onReady = null,
+        private readonly array $onSignal = [],
     ) {
         foreach ($groups as $name => $group) {
             for ($index = 0; $index < $group->workers; ++$index) {
@@ -49,6 +58,11 @@ final class Supervisor
                 if ($signal === SIGUSR1) { $this->reloadRequested = true; }
                 else { $this->stopRequested = true; }
             });
+        }
+        foreach (array_keys($this->onSignal) as $signal) {
+            $this->signalHandlers[$signal] = pcntl_signal_get_handler($signal);
+            // Only noted here; acted on in the loop, where real work is safe.
+            pcntl_signal($signal, function (int $signal): void { $this->pendingSignals[$signal] = true; });
         }
         try {
             foreach (array_keys($this->slots) as $slot) {
@@ -78,6 +92,16 @@ final class Supervisor
         $this->stopping = true;
         $this->restartAt = $this->reloadQueue = [];
         foreach (array_keys($this->children) as $pid) { $this->retire($pid); }
+        // No worker will be started again, so the parent lets go of the listening
+        // sockets: once the workers have closed theirs, the address is free, and a
+        // server taking over on the same address stops sharing new connections with this one.
+        foreach ($this->bindings as $bindings) {
+            foreach ($bindings as $streams) {
+                foreach ($streams as $stream) {
+                    if (is_resource($stream)) { fclose($stream); }
+                }
+            }
+        }
     }
 
     public function reload(): void { $this->reloadRequested = true; }
@@ -105,8 +129,10 @@ final class Supervisor
             foreach ($this->children as $child) {
                 if (is_resource($child['stream'])) { fclose($child['stream']); }
             }
-            // The reload signal is the parent's; its default action would end this worker.
-            foreach (array_keys($this->signalHandlers) as $signal) { pcntl_signal($signal, $signal === SIGUSR1 ? SIG_IGN : SIG_DFL); }
+            // The reload signal and the application's own are the parent's; their default action would end this worker.
+            foreach (array_keys($this->signalHandlers) as $signal) {
+                pcntl_signal($signal, $signal === SIGUSR1 || isset($this->onSignal[$signal]) ? SIG_IGN : SIG_DFL);
+            }
             $definition = $this->slots[$slot];
             foreach ($this->bindings as $name => $bindings) {
                 if ($name === $definition['group']) { continue; }
@@ -139,6 +165,18 @@ final class Supervisor
     {
         if ($this->stopRequested) { $this->stop(); }
         $this->readMessages();
+        foreach (array_keys($this->pendingSignals) as $signal) {
+            unset($this->pendingSignals[$signal]);
+            try {
+                ($this->onSignal[$signal])();
+            } catch (\Throwable $error) {
+                FailureReporter::report('Signal callback failed', $error);
+            }
+        }
+        if (!$this->announced && !$this->stopping && $this->onReady !== null && $this->allReady()) {
+            $this->announced = true;
+            ($this->onReady)();
+        }
         $now = self::now();
         foreach (array_keys($this->children) as $pid) {
             $waited = pcntl_waitpid($pid, $status, WNOHANG);
@@ -173,6 +211,19 @@ final class Supervisor
                 $this->replacement = $this->spawn($slot, $pid);
             }
         }
+    }
+
+    /**
+     * Whether every worker of every group has started and reported itself ready.
+     */
+    private function allReady(): bool
+    {
+        foreach ($this->slots as $slot) {
+            if ($slot['pid'] === null || !($this->children[$slot['pid']]['ready'] ?? false)) {
+                return false;
+            }
+        }
+        return true;
     }
 
     private function readMessages(): void

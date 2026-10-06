@@ -39,10 +39,16 @@ final class WorkerGroup
         }
     }
 
-    public function listen(string $address, callable $handler, array $options = []): self
+    /**
+     * @param resource|null $socket A socket that already listens on the address, inherited from the server this one takes over from; it is used instead of binding the address.
+     */
+    public function listen(string $address, callable $handler, array $options = [], mixed $socket = null): self
     {
         $this->assertMutable();
-        $this->listeners[] = ['address' => $address, 'handler' => $handler(...), 'options' => $options];
+        if ($socket !== null && !is_resource($socket)) {
+            throw new \InvalidArgumentException('An inherited socket must be an open stream.');
+        }
+        $this->listeners[] = ['address' => $address, 'handler' => $handler(...), 'options' => $options, 'socket' => $socket];
         return $this;
     }
 

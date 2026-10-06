@@ -24,7 +24,26 @@ For parallel workers on Unix, enable PHP's `pcntl` and `posix` extensions and om
 CRAB_WORKERS=4 php bin/crab examples/servers.php
 ~~~
 
-Send SIGINT or SIGTERM to the parent for bounded graceful shutdown. SIGUSR1, sent to the parent, starts replacement workers one at a time and waits for readiness before draining their predecessors. Classes already loaded into the parent are inherited, so deploying changed PHP classes requires restarting the parent.
+Send SIGINT or SIGTERM to the parent for bounded graceful shutdown. SIGUSR1, sent to the parent, starts replacement workers one at a time and waits for readiness before draining their predecessors. Classes already loaded into the parent are inherited, so deploying changed PHP classes requires a new parent.
+
+A `Process\Keeper` replaces the parent without refusing a connection. It holds the listening socket and starts each parent, a generation, on it:
+
+~~~php
+// The service: binds the address, starts "php server.php", and stays.
+$keeper = new Keeper(new PidFile('/run/app.pid'), '/var/log/app.log');
+exit($keeper->run('tcp://0.0.0.0:8080', ['server.php'], __DIR__, static fn () => print("up\n")));
+
+// server.php, the generation: listens on the socket the keeper passed on.
+$generation = Generation::inherit();
+$runtime->group('web', workers: 2)->listen('tcp://0.0.0.0:8080', $server, socket: $generation->socket);
+$generation->attach($runtime);
+$runtime->run();
+
+// A deploy: a new generation, and the old one retired once the new one accepts connections.
+Keeper::request($pidFile, $pidFile->pid(), 'tcp://0.0.0.0:8080', ['server.php'], __DIR__, 20.0);
+~~~
+
+`Process\Daemon::start($logFile)` puts the calling process in the background and lets the launcher `await()` its `ready()` or `fail()`; `Process\PidFile` records and finds a background server; `Process\FileWatcher` reports changed source files for a development restart. The framework's `serve --daemon`, `reload`, `stop` and `serve --watch` commands are built from these.
 
 ## Minimal HTTP server
 
