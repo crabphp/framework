@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Crab\Routing;
 
+use Crab\Contracts\Auth\Identity;
 use Crab\Contracts\Routing\RouteInfo;
 use Crab\Contracts\Validation\Validator;
 use Crab\Http\ErrorResponse;
@@ -21,6 +22,8 @@ use Psr\Http\Server\RequestHandlerInterface;
  * of these:
  *
  *     the request          typed as a PSR-7 server request, or not typed at all
+ *     the user             typed as a class that implements Identity: whoever
+ *                          the Authenticate middleware found the request is made by
  *     a route parameter    named as in the pattern: string, int, float or bool
  *     a field              any other int, float, string, bool, array, enum or
  *                          date: one value of the request's data, by its name
@@ -28,7 +31,8 @@ use Psr\Http\Server\RequestHandlerInterface;
  *
  * The request's data is the JSON body, or the query string for GET, HEAD
  * and DELETE. A request whose data does not fit is answered with 422 and
- * the problems by field, and the handler is not called.
+ * the problems by field, and one with no user where the handler takes one
+ * with 401; in neither case is the handler called.
  *
  * What the handler returns is the response: a PSR-7 response as it is, a
  * string as plain text, nothing as 204, anything else as JSON.
@@ -52,6 +56,13 @@ final class TypedHandler implements RequestHandlerInterface
      * @var array<string, string>
      */
     private array $parameters = [];
+    /**
+     * Parameters that receive the logged-in user: the class each must be,
+     * and whether it may be null when nobody is logged in.
+     *
+     * @var array<string, array{class-string, bool}>
+     */
+    private array $users = [];
     /**
      * Parameters that are fields of the request's data.
      *
@@ -140,6 +151,7 @@ final class TypedHandler implements RequestHandlerInterface
             $takesData ? ($this->fromQuery ? 'query' : 'body') : null,
             $output,
             $list !== null,
+            in_array(false, array_column($this->users, 1), true),
         );
     }
 
@@ -149,6 +161,16 @@ final class TypedHandler implements RequestHandlerInterface
         $errors = [];
         foreach ($this->requests as $name) {
             $arguments[$name] = $request;
+        }
+        foreach ($this->users as $name => [$class, $optional]) {
+            $user = $request->getAttribute(Identity::ATTRIBUTE);
+            if (!$user instanceof $class) {
+                if (!$optional) {
+                    return ErrorResponse::make($request, 401, 'Authentication is required.');
+                }
+                $user = null;
+            }
+            $arguments[$name] = $user;
         }
         foreach ($this->parameters as $name => $type) {
             $arguments[$name] = self::parameter((string) $request->getAttribute($name), $type, $name, $errors);
@@ -207,6 +229,8 @@ final class TypedHandler implements RequestHandlerInterface
             $this->parameters[$name] = $typeName;
         } elseif ($typeName === null || is_a($typeName, ServerRequestInterface::class, true)) {
             $this->requests[] = $name;
+        } elseif (is_a($typeName, Identity::class, true)) {
+            $this->users[$name] = [$typeName, $type->allowsNull()];
         } elseif (self::isField($typeName)) {
             $this->fields[] = $name;
         } elseif (class_exists($typeName)) {
@@ -215,7 +239,7 @@ final class TypedHandler implements RequestHandlerInterface
             }
             $this->input = [$name, $typeName];
         } else {
-            throw new \LogicException("The handler of {$route} takes {$typeName} \${$name}, which is neither the request, a parameter of the pattern, a field nor an input class. Services belong in the constructor of a handler class.");
+            throw new \LogicException("The handler of {$route} takes {$typeName} \${$name}, which is neither the request, the user, a parameter of the pattern, a field nor an input class. Services belong in the constructor of a handler class.");
         }
     }
 

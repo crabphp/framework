@@ -60,6 +60,21 @@ final class Route
     }
 
     /**
+     * Routes that share a path prefix, middleware, or both:
+     *
+     *     Route::group(prefix: '/admin', middleware: [Authenticate::class], routes: function () {
+     *         Route::get('/users', [AdminController::class, 'users']);
+     *     });
+     *
+     * @param \Closure(Router): mixed $routes
+     * @param list<\Psr\Http\Server\MiddlewareInterface|class-string<\Psr\Http\Server\MiddlewareInterface>> $middleware
+     */
+    public static function group(\Closure $routes, string $prefix = '', array $middleware = []): Router
+    {
+        return App::current()->router->group($routes, $prefix, $middleware);
+    }
+
+    /**
      * A route for any other method, such as OPTIONS.
      *
      * @param RequestHandlerInterface|\Closure|string|array{class-string, string} $handler

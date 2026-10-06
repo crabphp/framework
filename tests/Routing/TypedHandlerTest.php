@@ -370,7 +370,7 @@ final class TypedHandlerTest extends TestCase
     {
         $router = new Router();
         $refused = [
-            'takes Crab\Contracts\Validation\Validator $validator, which is neither the request, a parameter of the pattern, a field nor an input class' => static fn () => $router->get('/a', static fn (ValidatorContract $validator) => ''),
+            'takes Crab\Contracts\Validation\Validator $validator, which is neither the request, the user, a parameter of the pattern, a field nor an input class' => static fn () => $router->get('/a', static fn (ValidatorContract $validator) => ''),
             'Services belong in the constructor of a handler class' => static fn () => $router->get('/a', static fn (ValidatorContract $validator) => ''),
             "cannot take the request's data: Crab\\Database\\Database::\$connect is declared as Closure" => static fn () => $router->get('/a', static fn (\Crab\Database\Database $db) => ''),
             'If it is a service, it belongs in the constructor of a handler class' => static fn () => $router->get('/a', static fn (\Crab\Database\Database $db) => ''),
@@ -463,10 +463,10 @@ final class TypedHandlerTest extends TestCase
         self::assertSame(['id', 'email', 'name', 'plan'], $document['components']['schemas']['User']['required']);
 
         $other = new Router();
-        $other->post('/a', static fn (CreateUser $input): \Crab\Tests\Validation\Tag => new \Crab\Tests\Validation\Tag('aa'));
+        $other->post('/a', static fn (CreateUser $input): Event => new Event('a', new \DateTimeImmutable()));
         $other->post('/b', static fn (\Crab\Tests\Routing\Other\CreateUser $input): array => []);
         $names = array_keys((new OpenApi($other, new Validator()))->document('A', '1')['components']['schemas']);
-        self::assertSame(['Crab.Tests.Routing.Other.CreateUser', 'CreateUser', 'Tag', 'ValidationError'], $names, 'Two classes with one short name are both listed.');
+        self::assertSame(['Crab.Tests.Routing.Other.CreateUser', 'CreateUser', 'Event', 'ValidationError'], $names, 'Two classes with one short name are both listed.');
         self::assertSame('{"openapi":"3.1.0","info":{"title":"Empty","version":"1"},"paths":{}}', json_encode((new OpenApi(new Router(), new Validator()))->document('Empty', '1')));
     }
 

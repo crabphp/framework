@@ -144,4 +144,83 @@ final class RouterTest extends TestCase
         self::assertSame(200, $response->getStatusCode());
         return (string) $response->getBody();
     }
+
+    public function testGroupsSharePrefixAndMiddleware(): void
+    {
+        $mark = static fn (string $name): \Psr\Http\Server\MiddlewareInterface => new class($name) implements \Psr\Http\Server\MiddlewareInterface {
+            public function __construct(private string $name)
+            {
+            }
+
+            public function process(\Psr\Http\Message\ServerRequestInterface $request, \Psr\Http\Server\RequestHandlerInterface $handler): \Psr\Http\Message\ResponseInterface
+            {
+                return $handler->handle($request)->withAddedHeader('X-Mark', $this->name);
+            }
+        };
+        $container = new \Crab\Container\Container();
+        $container->instance('named', $mark('named'));
+        $router = new Router($container);
+        $router->get('/', static fn (): string => 'home');
+        $returned = $router->group(prefix: '/admin', middleware: [$mark('outer'), 'named'], routes: static function (Router $router) use ($mark): void {
+            $router->get('/', static fn (): string => 'admin home');
+            $router->get('/users/{id}', static fn (int $id): array => ['id' => $id]);
+            $router->group(prefix: '/reports/{year}', middleware: [$mark('inner')], routes: static function (Router $router): void {
+                $router->get('/sales', static fn (int $year): array => ['year' => $year]);
+            });
+            $router->group(static function (Router $router): void {
+                $router->post('/plain', static fn (): string => 'no prefix of its own');
+            });
+        });
+        $router->group(middleware: [$mark('only')], routes: static fn (Router $router) => $router->get('/after', static fn (): string => 'after'));
+        self::assertSame($router, $returned);
+        $router->assemble();
+
+        $answers = [];
+        foreach ([['GET', '/'], ['GET', '/admin'], ['GET', '/admin/users/7'], ['GET', '/admin/reports/2026/sales'], ['POST', '/admin/plain'], ['GET', '/after']] as [$method, $path]) {
+            $response = $router->handle(new Request($method, $path));
+            $answers[] = [(string) $response->getBody(), $response->getHeaderLine('X-Mark')];
+        }
+        self::assertSame([
+            ['home', ''],
+            ['admin home', 'named, outer'],
+            ['{"id":7}', 'named, outer'],
+            ['{"year":2026}', 'inner, named, outer'],
+            ['no prefix of its own', 'named, outer'],
+            ['after', 'only'],
+        ], $answers, 'The first middleware given is outermost, and a group\'s end is the end of its prefix and middleware.');
+        self::assertSame(['/', '/admin', '/admin/users/{id}', '/admin/reports/{year}/sales', '/admin/plain', '/after'], array_column($router->routes(), 'pattern'));
+        self::assertSame(404, $router->handle(new Request('GET', '/users/7'))->getStatusCode());
+        self::assertSame(422, $router->handle(new Request('GET', '/admin/users/x'))->getStatusCode());
+        self::assertSame('named, outer', $router->handle(new Request('GET', '/admin/users/x'))->getHeaderLine('X-Mark'), 'A refusal passes back through the middleware.');
+
+        $mistakes = [
+            'starts with "/" and does not end with one' => static fn () => $router->group(static fn () => null, 'admin'),
+            'does not end with one: "/admin", not "/admin/"' => static fn () => $router->group(static fn () => null, '/admin/'),
+            'PSR-15 middleware or their class names, not int' => static fn () => $router->group(static fn () => null, middleware: [1]),
+        ];
+        foreach ($mistakes as $expected => $mistake) {
+            try {
+                $mistake();
+                self::fail("Not refused: {$expected}");
+            } catch (\InvalidArgumentException $error) {
+                self::assertStringContainsString($expected, $error->getMessage());
+            }
+        }
+        try {
+            $router->group(prefix: '/broken', routes: static function (): void {
+                throw new \DomainException('inside the group');
+            });
+        } catch (\DomainException) {
+        }
+        $router->get('/outside', static fn (): string => 'outside');
+        self::assertSame('outside', (string) $router->handle(new Request('GET', '/outside'))->getBody(), 'A group that failed does not leave its prefix behind.');
+    }
+
+    public function testMiddlewareThatCannotBeMadeStopsTheWorkerFromStarting(): void
+    {
+        $router = new Router(new \Crab\Container\Container());
+        $router->group(middleware: ['App\\Missing\\Middleware'], routes: static fn (Router $router) => $router->get('/x', static fn (): string => 'x'));
+        $this->expectException(\Throwable::class);
+        $router->assemble();
+    }
 }

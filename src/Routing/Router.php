@@ -8,10 +8,12 @@ use Crab\Contracts\Routing\RouteInfo;
 use Crab\Contracts\Routing\Router as RouterContract;
 use Crab\Contracts\Validation\Validator as ValidatorContract;
 use Crab\Http\ErrorResponse;
+use Crab\Http\MiddlewareStack;
 use Crab\Validation\Validator;
 use Psr\Container\ContainerInterface;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface;
+use Psr\Http\Server\MiddlewareInterface;
 use Psr\Http\Server\RequestHandlerInterface;
 
 /**
@@ -55,6 +57,18 @@ final class Router implements RouterContract
      */
     private array $routes = [];
     private readonly ValidatorContract $validator;
+    /**
+     * The prefix and middleware of each group being declared, outermost first.
+     *
+     * @var list<array{string, list<MiddlewareInterface|string>}>
+     */
+    private array $groups = [];
+    /**
+     * The middleware of every route that has some, to be made when a worker starts.
+     *
+     * @var list<MiddlewareStack>
+     */
+    private array $stacks = [];
 
     /**
      * The container makes handlers that are given by name; the validator
@@ -71,6 +85,16 @@ final class Router implements RouterContract
      */
     public function add(string $method, string $pattern, RequestHandlerInterface|\Closure|string|array $handler): static
     {
+        $middleware = [];
+        $prefix = '';
+        foreach ($this->groups as [$groupPrefix, $groupMiddleware]) {
+            $prefix .= $groupPrefix;
+            $middleware = [...$middleware, ...$groupMiddleware];
+        }
+        if ($prefix !== '') {
+            // "/" inside a group is the group's own path.
+            $pattern = $pattern === '/' ? $prefix : $prefix . $pattern;
+        }
         [$expression, $names] = self::compile($pattern);
         $key = $method . ' ' . $pattern;
         if (isset($this->routes[$key])) {
@@ -88,6 +112,12 @@ final class Router implements RouterContract
         } else {
             $this->routes[$key] = new RouteInfo($method, $pattern, $handler::class, array_fill_keys($names, 'string'));
         }
+        if ($middleware !== []) {
+            $stack = new MiddlewareStack($handler, $this->container);
+            $stack->add(...$middleware);
+            $this->stacks[] = $stack;
+            $handler = $stack;
+        }
         if ($names !== []) {
             $this->dynamic[$method][] = [$expression, $names, $handler];
             unset($this->combined[$method]);
@@ -95,6 +125,37 @@ final class Router implements RouterContract
             $this->static[$method][$pattern] = $handler;
         }
         return $this;
+    }
+
+    public function group(\Closure $routes, string $prefix = '', array $middleware = []): static
+    {
+        if ($prefix !== '' && ($prefix[0] !== '/' || str_ends_with($prefix, '/'))) {
+            throw new \InvalidArgumentException("A group's prefix starts with \"/\" and does not end with one: \"/admin\", not \"{$prefix}\".");
+        }
+        foreach ($middleware as $layer) {
+            if (!is_string($layer) && !$layer instanceof MiddlewareInterface) {
+                throw new \InvalidArgumentException("A group's middleware is PSR-15 middleware or their class names, not " . get_debug_type($layer) . '.');
+            }
+        }
+        $this->groups[] = [$prefix, array_values($middleware)];
+        try {
+            $routes($this);
+        } finally {
+            array_pop($this->groups);
+        }
+        return $this;
+    }
+
+    /**
+     * Makes the middleware of every group now. A worker calls it as it
+     * starts, so that middleware that cannot be made stops it then and
+     * not on the first request to one route.
+     */
+    public function assemble(): void
+    {
+        foreach ($this->stacks as $stack) {
+            $stack->assemble();
+        }
     }
 
     public function get(string $pattern, RequestHandlerInterface|\Closure|string|array $handler): static

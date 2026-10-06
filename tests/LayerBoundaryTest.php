@@ -22,6 +22,8 @@ final class LayerBoundaryTest extends TestCase
      * Components that another component is built on, by design.
      */
     private const ALLOWED = [
+        // Its middleware answers 401 through the one error renderer.
+        'Auth' => ['Http'],
         // A route's handler is called with an input the validator builds.
         'Routing' => ['Http', 'Validation'],
         'Testing' => ['Container'],

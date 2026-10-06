@@ -86,6 +86,9 @@ final class OpenApi
             $operation['requestBody'] = ['required' => true, 'content' => ['application/json' => ['schema' => $schema]]];
         }
         $operation['responses'] = $this->success($route);
+        if ($route->authenticated) {
+            $operation['responses']['401'] = ['description' => 'Authentication is required.'];
+        }
         if ($route->inputFrom !== null || $checked) {
             $operation['responses']['422'] = [
                 'description' => 'The request is invalid.',

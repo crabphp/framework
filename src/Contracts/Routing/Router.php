@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Crab\Contracts\Routing;
 
+use Psr\Http\Server\MiddlewareInterface;
 use Psr\Http\Server\RequestHandlerInterface;
 
 /**
@@ -27,6 +28,22 @@ use Psr\Http\Server\RequestHandlerInterface;
 interface Router extends RequestHandlerInterface
 {
     public function add(string $method, string $pattern, RequestHandlerInterface|\Closure|string|array $handler): static;
+
+    /**
+     * Routes that share a path prefix, middleware, or both. The closure
+     * declares them; what it adds gets the prefix in front of its pattern
+     * and the middleware around its handler, the first given outermost:
+     *
+     *     $router->group(prefix: '/admin', middleware: [Authenticate::class], routes: function () {
+     *         Route::get('/users', [AdminController::class, 'users']);     // GET /admin/users
+     *     });
+     *
+     * Groups may be nested; the closure receives the router.
+     *
+     * @param \Closure(static): mixed $routes
+     * @param list<MiddlewareInterface|class-string<MiddlewareInterface>> $middleware PSR-15 middleware; one given by class name is made by the container.
+     */
+    public function group(\Closure $routes, string $prefix = '', array $middleware = []): static;
 
     public function get(string $pattern, RequestHandlerInterface|\Closure|string|array $handler): static;
 

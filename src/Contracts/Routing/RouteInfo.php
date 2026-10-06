@@ -19,6 +19,7 @@ final readonly class RouteInfo
      * @param string|null $inputFrom Where that data is read from, "query" or "body"; null when the handler takes none.
      * @param string|null $output What the handler declares it returns: a class, a built-in type, or null when it does not say.
      * @param bool $outputList Whether the handler returns a list of $output and not one.
+     * @param bool $authenticated Whether the handler takes the logged-in user, so that a request without one is answered with 401.
      */
     public function __construct(
         public string $method,
@@ -30,6 +31,7 @@ final readonly class RouteInfo
         public ?string $inputFrom = null,
         public ?string $output = null,
         public bool $outputList = false,
+        public bool $authenticated = false,
     ) {
     }
 }
