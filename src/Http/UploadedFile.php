@@ -10,6 +10,11 @@ use Psr\Http\Message\UploadedFileInterface;
 /**
  * A PSR-7 uploaded file. The client's file name and media type are what the
  * client claimed and must not be trusted.
+ *
+ * A file from a request is not in memory: it lies in the request's body,
+ * which the engine keeps on disk when it is large, and moveTo() copies it
+ * from there. Copying a large file takes the worker's time, as any
+ * reading or writing of a file does.
  */
 final class UploadedFile implements UploadedFileInterface
 {
@@ -45,6 +50,14 @@ final class UploadedFile implements UploadedFileInterface
             throw new \RuntimeException("Cannot write the uploaded file to {$targetPath}.");
         }
         try {
+            if ($this->stream instanceof StreamSlice) {
+                // A file still lying in the request's body is copied out of it without passing through memory.
+                if (!$this->stream->copyTo($target)) {
+                    throw new \RuntimeException("Cannot write the uploaded file to {$targetPath}.");
+                }
+                $this->moved = true;
+                return;
+            }
             if ($text !== null) {
                 // Content still held as a string needs no stream to copy it through.
                 if (@fwrite($target, $text) !== strlen($text)) {

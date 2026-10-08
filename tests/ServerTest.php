@@ -280,6 +280,64 @@ final class ServerTest extends TestCase
     /**
      * Makes the application answer "/" with this text.
      */
+    public function testALargeUploadIsTakenUpToTheSizeAllowedAndTheApplicationSaysItIsUp(): void
+    {
+        mkdir($this->directory . '/config');
+        file_put_contents($this->directory . '/config/server.php', "<?php\nreturn ['max_body' => 24 * 1024 * 1024];\n");
+        file_put_contents($this->directory . '/app.php', "<?php\nreturn Crab\\App::configure(__DIR__)->withRouting(routes: 'app/routes.php', health: '/up')->create();\n");
+        file_put_contents($this->directory . '/app/routes.php', <<<'PHP'
+            <?php
+            Crab\Route::post('/upload', static function (Psr\Http\Message\ServerRequestInterface $request): array {
+                $before = memory_get_usage();
+                memory_reset_peak_usage();
+                $file = $request->getUploadedFiles()['file'];
+                $target = dirname(__DIR__) . '/stored.bin';
+                $file->moveTo($target);
+                return [
+                    'title' => $request->getParsedBody()['title'],
+                    'name' => $file->getClientFilename(),
+                    'size' => filesize($target),
+                    'hash' => md5_file($target),
+                    'memory' => memory_get_peak_usage() - $before,
+                ];
+            });
+            // Calls the server it is served by, which has one worker: only a client that does not hold the worker gets an answer.
+            Crab\Route::get('/call', static function (Psr\Http\Message\ServerRequestInterface $request): array {
+                $http = new Crab\HttpClient\Client('http://' . $request->getHeaderLine('Host'), timeout: 3.0);
+                try {
+                    return ['called' => $http->get('/up')->json()];
+                } finally {
+                    $http->close();
+                }
+            });
+            PHP);
+        [$status, $output] = $this->cua('serve', '--daemon', "--address={$this->address}");
+        self::assertSame(0, $status, $output);
+
+        $http = new \Crab\HttpClient\Client($this->url);
+        try {
+            $up = $http->get('/up');
+            self::assertSame([200, ['status' => 'up']], [$up->getStatusCode(), $up->json()]);
+            self::assertSame(['called' => ['status' => 'up']], $http->get('/call')->json(), 'A handler called its own worker and was answered.');
+
+            $content = random_bytes(1024 * 1024);
+            $content = str_repeat($content, 16);
+            $upload = static fn (string $content): \Crab\Contracts\HttpClient\Response => $http->request('POST', '/upload', headers: ['Content-Type' => 'multipart/form-data; boundary=B'], body:
+                "--B\r\nContent-Disposition: form-data; name=\"title\"\r\n\r\nBackup\r\n"
+                . "--B\r\nContent-Disposition: form-data; name=\"file\"; filename=\"backup.bin\"\r\nContent-Type: application/octet-stream\r\n\r\n"
+                . $content . "\r\n--B--\r\n");
+            $stored = $upload($content);
+            self::assertSame(200, $stored->getStatusCode(), (string) $stored->getBody());
+            self::assertSame(['Backup', 'backup.bin', strlen($content), md5($content)], array_slice(array_values($stored->json()), 0, 4));
+            self::assertLessThan(2 * 1024 * 1024, $stored->json()['memory'], 'A 16 MiB file was stored without being held in memory.');
+
+            self::assertSame(413, $upload(str_repeat($content, 2))->getStatusCode(), 'A body over the size allowed is refused.');
+        } finally {
+            $http->close();
+            \Crab\Engine\EventLoop::current()->run();
+        }
+    }
+
     private function version(string $text): void
     {
         file_put_contents($this->directory . '/app/routes.php', "<?php\nCrab\\Route::get('/', static fn (): string => '{$text}');\n");

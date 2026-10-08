@@ -9,7 +9,10 @@ use Crab\Http\Factory;
 use Crab\Http\HttpException;
 use Crab\Http\Request;
 use Crab\Http\Response;
+use Crab\Engine\Http\Body as EngineBody;
+use Crab\Engine\Http\Request as EngineRequest;
 use Crab\Http\Stream;
+use Crab\Http\StreamSlice;
 use Crab\Http\UploadedFile;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
@@ -102,6 +105,81 @@ final class UploadTest extends TestCase
             self::assertSame(413, $error->status);
         }
         self::assertCount(1000, self::multipart(array_fill(0, 1000, ['name="a[]"', 'x']))->getParsedBody()['a']);
+    }
+
+    public function testALargeUploadIsReadWhereItLiesAndNeverHeldInMemory(): void
+    {
+        // 40 MiB of content that holds line breaks and near-boundaries everywhere, built as the engine stores a body.
+        $boundary = self::BOUNDARY;
+        $block = str_repeat("line of a file\r\n--almost a boundary\r\n--{$boundary[0]}\r\n", 1024);
+        $blocks = intdiv(40 * 1024 * 1024, strlen($block));
+        $body = new EngineBody();
+        $body->append("--{$boundary}\r\nContent-Disposition: form-data; name=\"title\"\r\n\r\nBackup\r\n");
+        $body->append("--{$boundary}\r\nContent-Disposition: form-data; name=\"file\"; filename=\"big.bin\"\r\nContent-Type: application/octet-stream\r\n\r\n");
+        $hash = hash_init('xxh128');
+        for ($i = 0; $i < $blocks; ++$i) {
+            $body->append($block);
+            hash_update($hash, $block);
+        }
+        $body->append("\r\n--{$boundary}\r\nContent-Disposition: form-data; name=\"note\"\r\n\r\nafter the file\r\n--{$boundary}--\r\n");
+        $size = $blocks * strlen($block);
+        $request = Request::fromEngine(new EngineRequest('POST', '/upload', '1.1', [
+            'content-type' => ["multipart/form-data; boundary={$boundary}"],
+        ], $body));
+
+        $target = sys_get_temp_dir() . '/crab-upload-' . bin2hex(random_bytes(6));
+        $before = memory_get_usage();
+        memory_reset_peak_usage();
+        try {
+            $file = $request->file('file');
+            self::assertSame(['title' => 'Backup', 'note' => 'after the file'], $request->getParsedBody());
+            self::assertSame([$size, 'big.bin', 'application/octet-stream'], [$file->getSize(), $file->getClientFilename(), $file->getClientMediaType()]);
+            $stream = $file->getStream();
+            self::assertSame(substr($block, 0, 100), $stream->read(100));
+            $stream->seek(-20, SEEK_END);
+            self::assertSame(substr($block, -20), $stream->getContents());
+            self::assertTrue($stream->eof());
+            $file->moveTo($target);
+            self::assertLessThan(4 * 1024 * 1024, memory_get_peak_usage() - $before, 'Reading and moving a 40 MiB file took a few megabytes at most.');
+            self::assertSame($size, filesize($target));
+            self::assertSame(hash_final($hash), hash_file('xxh128', $target));
+        } finally {
+            @unlink($target);
+        }
+    }
+
+    public function testPartsAreFoundWhereverTheBodyIsCutWhileReading(): void
+    {
+        // Sizes around the 64 KiB the body is read in, so that every marker falls across a read at some size.
+        foreach ([65500, 65530, 65536, 65540, 131060, 131072] as $size) {
+            $content = str_repeat('x', $size);
+            $request = self::multipart([
+                ['name="before"', 'b'],
+                ['name="f"; filename="f.bin"', $content, 'application/octet-stream'],
+                ['name="after"', 'a'],
+                ['name="g"; filename="g.bin"', $content . 'g', 'application/octet-stream'],
+            ]);
+            self::assertSame(['before' => 'b', 'after' => 'a'], $request->getParsedBody(), "At {$size} bytes.");
+            self::assertSame([$size, $size + 1], [$request->file('f')->getSize(), $request->file('g')->getSize()]);
+            self::assertSame($content, (string) $request->file('f')->getStream());
+            self::assertSame($content . 'g', (string) $request->file('g')->getStream(), 'Two files of one body are read apart.');
+        }
+    }
+
+    public function testFieldsMayOnlyBeSoLargeAndAStreamOfAnotherKindIsRead(): void
+    {
+        try {
+            self::multipart([['name="a"', str_repeat('x', 600000)], ['name="b"', str_repeat('x', 600000)]])->getParsedBody();
+            self::fail('Fields of any size were read into memory.');
+        } catch (HttpException $error) {
+            self::assertSame([413, 'The form\'s fields are too large. Send large content as a file.'], [$error->status, $error->getMessage()]);
+        }
+        self::assertSame(1200000, self::multipart([['name="f"; filename="f"', str_repeat('x', 1200000), 'text/plain']])->file('f')->getSize(), 'A file may be.');
+
+        $slice = new StreamSlice(fopen('php://memory', 'w+b'), 0, 0);
+        self::assertSame(['', 0, true, false, true], [(string) $slice, $slice->getSize(), $slice->eof(), $slice->isWritable(), $slice->isSeekable()]);
+        $slice->close();
+        self::assertSame([false, false, null], [$slice->isReadable(), $slice->isSeekable(), $slice->detach()]);
     }
 
     public function testUploadedFileMovesOnce(): void

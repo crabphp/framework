@@ -52,10 +52,13 @@ use Psr\Log\LoggerInterface;
  * An application: configuration, a container, routes, the middleware in
  * front of them, console commands and the engine runtime that serves them.
  *
- * It reads four configuration keys: "app.name" heads the command list,
+ * It reads these configuration keys: "app.name" heads the command list,
  * "app.debug" shows failure details to clients, "log.path" is where the
  * default logger writes (standard error when unset) and "log.level" is
- * the least severe level it writes.
+ * the least severe level it writes. Of the server it serves requests
+ * with, "server.max_body" is the largest request body it takes, in bytes
+ * (1 MiB unless set), and "server.body_timeout" how many seconds a client
+ * has to send one (30).
  */
 final class App implements RequestHandlerInterface
 {
@@ -233,7 +236,11 @@ final class App implements RequestHandlerInterface
     {
         $runtime = new Runtime();
         $runtime->group('http', $workers)
-            ->listen($address, new HttpServer(new EngineHandler($this->stack)), socket: $socket)
+            ->listen($address, new HttpServer(
+                new EngineHandler($this->stack),
+                maxBodyBytes: (int) $this->config->get('server.max_body', 1048576),
+                bodyTimeout: (float) $this->config->get('server.body_timeout', 30),
+            ), socket: $socket)
             ->onStart($this->start(...))
             ->onStop($this->stop(...))
             ->onFailure($this->report(...));

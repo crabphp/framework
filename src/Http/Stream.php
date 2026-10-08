@@ -82,7 +82,9 @@ final class Stream implements StreamInterface
         if ($this->resource === null) {
             return null;
         }
-        return fstat($this->resource)['size'] ?? null;
+        $stat = fstat($this->resource);
+        // Only a file has a size; a pipe or a socket reports none that means anything.
+        return $stat !== false && ($stat['mode'] & 0170000) === 0100000 ? $stat['size'] : null;
     }
 
     public function tell(): int
@@ -184,6 +186,18 @@ final class Stream implements StreamInterface
         }
         $metadata = stream_get_meta_data($this->resource());
         return $key === null ? $metadata : ($metadata[$key] ?? null);
+    }
+
+    /**
+     * The resource behind the stream, still owned by it, for reading its
+     * content where it lies.
+     *
+     * @internal
+     * @return resource
+     */
+    public function handle(): mixed
+    {
+        return $this->resource();
     }
 
     /**

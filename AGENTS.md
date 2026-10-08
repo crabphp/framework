@@ -17,7 +17,7 @@
 
 ## Components
 
-- Each component has its own folder and namespace under `src/` (`Http`, `Routing`, `Validation`, `Auth`, `Container`, `Config`, `Log`, `Clock`, `Console`, `Database`, `Testing`) and its tests in the matching folder under `tests/`.
+- Each component has its own folder and namespace under `src/` (`Http`, `HttpClient`, `Routing`, `Validation`, `Auth`, `Container`, `Config`, `Log`, `Clock`, `Console`, `Database`, `Testing`) and its tests in the matching folder under `tests/`.
 - Every component has the same shape: it works standalone, has a contract when packages touch it, ships a `<Component>Provider` when it is optional, and is kept able to be published as its own package the way the engine is.
 - A component works on its own, without `App`, the container or a provider. It may depend on `Contracts`, on PSR interfaces and on the engine, and on another component only where that is its purpose. `tests/LayerBoundaryTest.php` enforces this; a new dependency between components is added to its `ALLOWED` list deliberately, never worked around.
 - The root of `src/` is the glue that makes components an application: `App.php`, `AppBuilder.php`, `Server.php`, `Route.php`, `Command.php`, `helpers.php`, and `Commands/` for built-in commands. Code that needs `App` belongs there, not inside a component.
@@ -25,7 +25,7 @@
 
 ## Contracts
 
-- A package depends on `Crab\Contracts` and PSR interfaces only, never on a component's class. So everything a package touches has a contract in `Crab\Contracts\<Component>`, never inside the component, including where no PSR exists: `Config`, `Router`, `Console`, `Container`, `Database`, `Connection`, `Query`, `Schema`, `Table`, `Column`, `Migration`, `Migrator`, `Validator`, `Rule`, `Clock`, `Logger`, `Factory`, `Middleware`, `Identity`, `IdentityResolver`, `TokenStore`, `PasswordHasher`, `MiddlewareStack`, `Provider`, `WorkerProvider`, and the console's `Command`, `Input` and `Output`.
+- A package depends on `Crab\Contracts` and PSR interfaces only, never on a component's class. So everything a package touches has a contract in `Crab\Contracts\<Component>`, never inside the component, including where no PSR exists: `Config`, `Router`, `Console`, `Container`, `Database`, `Connection`, `Query`, `Schema`, `Table`, `Column`, `Migration`, `Migrator`, `Validator`, `Rule`, `Clock`, `Logger`, `Factory`, `Middleware`, the HTTP client's `Client` and `Response`, `Identity`, `IdentityResolver`, `TokenStore`, `PasswordHasher`, `MiddlewareStack`, `Provider`, `WorkerProvider`, and the console's `Command`, `Input` and `Output`.
 - Anything an application can do through `App`, a provider can do through a contract in the container. When `App` gains a way to extend the application, the contract comes with it.
 - Exceptions and immutable value objects are the exception to that: `HttpException`, `DatabaseException`, `ValidationException`, `Cookie`, the `Response` factories and the validation attributes (`Email`, `Length`, `ListOf`, ...) are named by class, because there is no behaviour behind them to swap.
 - A value object that a contract returns lives beside it in `Crab\Contracts`, as a final readonly class with no I/O (`Contracts\Database\Page`), since a contract may not name a component's class.
@@ -41,13 +41,14 @@
 - A provider declares its settings and their defaults once with `Config::defaults()`; code reads them with no default argument. The container has no per-request scope: `singleton()` is one per worker, `bind()` is new on every `get()`.
 - Every error response is built by `Http\ErrorResponse`, for the error handler and for the router's 404 and 405 alike. Expected answers such as an unmatched route are returned as responses, not thrown, so they pass back through middleware.
 - Inside a worker, PHP warnings and notices are thrown as `ErrorException`; code must not rely on a warning being ignored, and uses `@` only where a failure is then checked by return value.
-- Anything that adds work to every request and is not needed to answer it, such as the request id, is off by default: it is middleware an application adds, with its measured cost documented.
+- Anything that adds work to every request and is not needed to answer it, such as the request id or CORS, is off by default: it is middleware an application adds, with its measured cost documented.
+- A route the framework adds, such as the health path, is asked for in `app.php` (`withRouting(health: '/up')`) and shows in `routes` like any other. `App` adds none by itself.
 - Nothing fails silently outside a request: `App` sends everything the engine catches in a worker (a failed task, a failure escaping a timer, a failing `stop()`, a request failure that escaped the error handler) to the logger through the engine group's `onFailure()`, and the worker keeps running. A new entry point (queue job, scheduled job) gets the same treatment.
 - `App` assembles its middleware, the error handler included, in each worker as the worker starts, never in the parent and never lazily on a request, so a misconfiguration stops startup with its cause printed.
 - A binding's closure and a constructor the container calls must not suspend: the container is shared by every fiber in the worker and guards against circular dependencies by entry name, so a second request asking for an entry that is still being made is refused.
 - Objects the container keeps are shared by every request a worker serves: they hold no state of a single request, and anything holding a socket or file is made in the worker on first use, not in the parent.
 - State has three scopes. Process scope (config, routes, provider list) is fixed once the application is defined. Worker scope is the container's kept objects. Request scope travels only on the PSR-7 request and its attributes, never in a service or a static.
-- A component that does I/O (database, cache, queue, HTTP client) exposes a pool in its contract, `acquire()` and `release()`, so code written against it is correct with blocking drivers now and async drivers later. Blocking drivers ship first. The pool is the engine's `Async\Pool`; do not write another.
+- A component that does I/O (database, cache, queue) exposes a pool in its contract, `acquire()` and `release()`, so code written against it is correct with blocking drivers now and async drivers later. Blocking drivers ship first. The pool is the engine's `Async\Pool`; do not write another. The HTTP client keeps its pools to itself, one per server: a call is one request and its answer, and there is nothing for a caller to hold between two.
 - A pooled component resolves the event loop when it is used, not when it is constructed: a worker installs its own loop after the fork, and anything that kept the parent's would wait forever.
 - HTTP, queue consumers and the scheduler run as separate engine worker groups. Workers hold nothing another worker needs; shared state lives in external stores behind contracts.
 
@@ -92,6 +93,20 @@
 - A middleware object may be made before the workers are forked, so it chooses nothing per worker in its constructor (`RequestId` picks its prefix on the first request).
 - An application sets the middleware around every request with `withMiddleware()` and a provider adds to it through the `MiddlewareStack` contract. `App` has no method of its own for it.
 - A way of doing something for some routes, such as authenticating, is a middleware. Do not add a contract and a wrapper middleware around it where PSR-15 already says the same.
+
+## Calling out
+
+- Code that calls another server asks for `Contracts\HttpClient\Client` and never uses `file_get_contents()`, cURL or a stream wrapper for it: those hold the whole worker until the other side answers.
+- The client waits on the event loop: a socket is read and written only when it is ready, and the fiber that asked is suspended meanwhile. It names no Revolt type; its loop is `EventLoop::current()`, asked for when a connection is made.
+- An answer with an error status is returned, not thrown. Only a request that got no answer throws, and its message carries the method, host and path, never the query string or a header.
+- A request is sent again by itself only when a kept connection turned out to be closed, nothing came back, and doing it twice is doing it once (`GET`, `HEAD`, `OPTIONS`, `PUT`, `DELETE`). A `POST` is never repeated.
+- What the client does not do is said where an application developer reads it: no HTTP/2, no proxy, and a name is looked up with the system's blocking resolver and remembered for a minute.
+
+## Request bodies
+
+- A file in a request is never read into memory by the framework. The engine keeps a large body on disk, `Multipart` reads it through a window, and an `UploadedFile` is a `StreamSlice` of the place the file lies in. Do not turn an upload into a string to parse or to move it.
+- What is kept in memory is bounded: a form's fields together, the number of its parts, and the headers of one part.
+- The size a body may be and the time a client has to send it are settings, `server.max_body` and `server.body_timeout`, with the engine's defaults.
 
 ## Generality
 

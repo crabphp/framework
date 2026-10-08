@@ -42,7 +42,7 @@ The last row is the rule that keeps the framework replaceable piece by piece: a 
 
 ### Enforcing the layers *(today)*
 
-`tests/LayerBoundaryTest.php` fails when a contract references a component, or when a component references the glue or a component it is not listed as built on. Today the listed pairs are `Routing` on `Http` and `Validation`, `Auth` on `Http`, and `Testing` on `Container`. `tests/EngineBoundaryTest.php` does the same for the engine. A rule that is only written down drifts.
+`tests/LayerBoundaryTest.php` fails when a contract references a component, or when a component references the glue or a component it is not listed as built on. Today the listed pairs are `Routing` on `Http` and `Validation`, `Auth` on `Http`, `HttpClient` on `Http`, and `Testing` on `Container`. `tests/EngineBoundaryTest.php` does the same for the engine. A rule that is only written down drifts.
 
 ## Contracts
 
@@ -68,7 +68,9 @@ A contract exists for everything a package touches, including where no PSR exist
 | `Auth\TokenStore`, `Auth\IdentityResolver` | none | today, for authentication by token |
 | `Log\Logger` | PSR-3 `LoggerInterface` | today |
 | `Http\Factory` | the five PSR-17 factory interfaces | today |
-| Cache, events, HTTP client | PSR-16, 14, 18, each behind a Crab contract | not built |
+| `HttpClient\Client` | PSR-18 `ClientInterface` | today |
+| `HttpClient\Response` | PSR-7 `ResponseInterface` | today |
+| Cache, events | PSR-16, 14, each behind a Crab contract | not built |
 
 Contracts are the stable surface. Once there is a release, a contract changes only in a major version; component classes may change freely behind it.
 
@@ -240,7 +242,9 @@ No auto-discovery, no `boot()` phase, no global container accessor. `Route::get(
 - **The engine drops nothing.** Whatever it catches goes to the group's failure callbacks, and so to the application's logger, or to standard error when there are none *(today)*.
 - **Fail at startup, not at first use.** Misconfiguration stops `serve` with its cause *(today for middleware and logger)*.
 - **Request ids** *(today, opt-in)*. `Http\RequestId` is middleware an application adds with `withMiddleware(prepend: [RequestId::class])`; it assigns an id, stores it as the `request_id` attribute, returns it in `X-Request-Id` and the error handler adds it to the failure's log record. It is opt-in because it costs about 2 µs per request. The logger is shared by overlapping requests, so it cannot add the id by itself; code that logs passes it in the context.
-- **Health and metrics** *(proposed)*. A built-in health route, and `Worker::stats()` exposed through a command or route.
+- **Health** *(today, opt-in)*. `withRouting(health: '/up')` adds a route answered by `Http\Health`, which says that the worker takes requests and asks nothing of any store.
+- **Metrics** *(proposed)*. `Worker::stats()` exposed through a command or route.
+- **CORS** *(today, opt-in)*. `Http\Cors` is middleware an application prepends, with its origins as an argument.
 - **Warnings are errors** *(today, in workers)*. Inside a worker, PHP warnings and notices are thrown as `ErrorException` so they reach the same error path; deprecations are logged once per place. Console commands other than `serve` run without this.
 - **One error renderer** *(today)*. `Http\ErrorResponse` builds every error response, for the error handler and for the router's 404 and 405, so they look the same and unmatched routes still pass back through middleware as ordinary responses.
 
@@ -260,8 +264,8 @@ A PSR implementation should also pass that PSR's public conformance suite where 
 
 1. **Close the contract gaps:** `Config`, `Router`, `Console` contracts; boundary tests for the layer rules. *Done.*
 2. **Worker lifecycle hooks:** `start` and `stop` for providers; error path for background tasks. *Done.*
-3. **Finish Http:** response cookies, multipart uploads, JSON bodies, bodies for router 404 and 405, request id middleware, warnings to exceptions. *Done.* Still open: multipart is read in memory, and the request body is copied from the engine's spool.
-4. **Small PSR components:** clock (PSR-20), events (PSR-14), cache (PSR-16). *The clock is done.*
+3. **Finish Http:** response cookies, multipart uploads, JSON bodies, bodies for router 404 and 405, request id middleware, warnings to exceptions. *Done.* A multipart body is read where the engine stored it, and an uploaded file is never held in memory. Still open: `getBody()` copies a body from the engine's storage when it is asked for.
+4. **Small PSR components:** clock (PSR-20), events (PSR-14), cache (PSR-16), HTTP client (PSR-18). *The clock and the HTTP client are done. The client is HTTP/1.1 on the event loop, with TLS through PHP's streams; it does not look names up asynchronously.*
 5. **Database.** *Connection pool, the thin query layer, the query builder, the schema builder and migrations are done, tested on SQLite and MySQL.* Next: models with relationships.
 6. **Queue**, then **Scheduling**, each as its own worker group.
 7. **Validation, Session, Auth.** *Validation is done, ahead of the steps before it, together with typed route handlers. Authentication is done: a way of authenticating is middleware that puts the user on the request, a handler takes the user as a parameter, and tokens in the database are one such way, opt-in, with a migration the application owns.* Roles and permissions, and sessions, are not built; sessions matter less for an API.

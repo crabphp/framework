@@ -165,7 +165,7 @@ There are two places to use one, and the same class works in both.
 
 ~~~php
 return App::configure(__DIR__)
-    ->withMiddleware([Cors::class])                         // after the framework's
+    ->withMiddleware([AddApiVersion::class])                // after the framework's
     ->withMiddleware(prepend: [RequestId::class])           // before them, outermost
     ->create();
 ~~~
@@ -204,6 +204,34 @@ request  →  every request's  →  the group's  →  the route's  →  handler
 - **`php cua routes` shows the middleware around each route**, its groups' included.
 - **With options, give an object:** `middleware: [new TokenAuth($tokens, $users, 'X-Api-Key', '')]`.
 - **Without the error handler** nothing turns an exception into a response for the client; the engine answers 500 and the failure is logged. Replace it rather than remove it.
+
+### CORS
+
+A page served from another origin, such as a frontend on `https://app.example.com`, can call the API from a browser only when the API says it may. `Http\Cors` says so:
+
+~~~php
+use Crab\Http\Cors;
+
+return App::configure(__DIR__)
+    ->withMiddleware(prepend: [new Cors(['https://app.example.com'])])
+    ->create();
+~~~
+
+| Argument | What it says | Default |
+| --- | --- | --- |
+| `origins` | Who may call. `'https://*.example.dev'` allows any one host name in that place; `['*']` allows anyone. | required |
+| `methods` | The methods a page may use | `GET`, `POST`, `PUT`, `PATCH`, `DELETE` |
+| `headers` | The request headers a page may send | `['*']`: whichever it asks for |
+| `exposed` | Response headers a page may read beyond the few a browser always shows | none |
+| `credentials` | Whether cookies and HTTP authentication may be sent. Not with `['*']`. | `false` |
+| `maxAge` | Seconds a browser remembers the permission | `600` |
+
+- **Put it first, with `prepend:`,** outside the error handler, so that a page can read an error's body too.
+- **It answers the browser's question itself.** Before most requests a browser sends an `OPTIONS` request asking permission; that is answered with 204 and never reaches a route.
+- **It protects nothing.** A request from an origin that is not listed is still handled, without the headers a browser needs; anything that is not a browser ignores them. Authentication is what keeps callers out.
+- **It costs about 0.1 µs** for a request that names no origin and about 0.9 µs for one that does, measured in process.
+
+### Request ids
 
 `Http\RequestId` is a middleware that ships but is not on by default. It gives each request an id: the `X-Request-Id` it arrived with when that is a plain token, otherwise a new one. The id is the request's `request_id` attribute, is returned in `X-Request-Id`, and is added to the log record of a failure. Add it with `prepend:` so that it is outside the error handler. It costs about 2 µs per request, measured in process, where a routed request otherwise costs about 3.
 
@@ -304,10 +332,64 @@ Route::post('/users/{id}/avatar', static function (Request $request) {
 ~~~
 
 - **Parsed body:** `input()` and `getParsedBody()` read urlencoded forms, `multipart/form-data` and JSON objects or arrays. A body that claims one of these and is malformed is answered with 400.
-- **Uploads:** `getUploadedFiles()` returns the PSR-7 tree; `photos[]` fields nest as in PHP. A multipart body is held in memory while it is read, bounded by the HTTP server's body limit (1 MiB by default), and a form may have at most 1,000 parts.
+- **Uploads:** `getUploadedFiles()` returns the PSR-7 tree; `photos[]` fields nest as in PHP. A form may have at most 1,000 parts, and its fields together 1 MiB; a file may be as large as a body may.
+- **Large uploads:** a request body may be 1 MiB unless `server.max_body` says more, in bytes, and a client has `server.body_timeout` seconds to send it (30). A file is never held in memory: the engine keeps a large body on disk, the file is read from where it lies in it, and `moveTo()` copies it out. A 40 MiB upload is read and stored within a few megabytes. Copying a large file takes the worker's time while it lasts, as any reading or writing of a file does.
 - **Responses:** `Response::text()`, `html()` and `json()`, or `new Response($status, $headers, $body)`. `withCookie()` adds a `Set-Cookie`; with a response from another library use `withAddedHeader('Set-Cookie', (string) $cookie)`.
 - **Cookies:** `new Cookie($name, $value, maxAge: ..., path: ..., domain: ..., secure: ..., httpOnly: ..., sameSite: ...)` defaults to `HttpOnly` and `SameSite=Lax`; `Cookie::forget($name)` deletes one. Read them with `$request->getCookieParams()`.
 - **Unmatched routes:** 404, or 405 with an `Allow` header, with the same JSON-or-text body as any other error.
+
+## Calling other APIs
+
+~~~php
+->withProviders([HttpClientProvider::class])
+~~~
+
+~~~php
+use Crab\Contracts\HttpClient\Client;
+
+final readonly class ShowWeather
+{
+    public function __construct(private Client $http)
+    {
+    }
+
+    public function __invoke(string $city): array
+    {
+        $weather = $this->http->get('https://api.weather.example/v1/now', query: ['city' => $city]);
+
+        return $weather->ok() ? $weather->json() : ['error' => $weather->getStatusCode()];
+    }
+}
+~~~
+
+While a request waits for its answer the worker serves other requests, which a call with `file_get_contents()` or cURL does not allow: either holds the whole worker until the other server answers.
+
+~~~php
+$http->get($url, query: ['page' => 2], headers: ['Accept' => 'application/json']);
+$http->post($url, json: ['name' => 'Ada']);            // also put() and patch()
+$http->delete($url);
+$http->request('POST', $url, form: ['user' => 'ada'], timeout: 5.0);        // or body: for anything else
+$http->request('GET', $url, cancellation: $request->cancellation());        // given up when the caller has gone
+~~~
+
+- **The answer** is a PSR-7 response with `ok()`, whether the status is 200 to 299, and `json()`, the body decoded.
+- **An error status is an answer.** A 404 or a 500 is returned like any other; test `ok()` or the status.
+- **No answer throws** a `Psr\Http\Client\ClientExceptionInterface`: `HttpClient\NetworkException` when the server could not be reached or took too long, `HttpClient\RequestException` when the request itself cannot be sent. The message names the method, the host and the path, never the query string or a header.
+- **Connections are kept and used again,** up to 8 requests on their way to one server at once; another waits its turn.
+- **Redirects are followed,** up to 5, as a browser follows them, and what proves who is asking is not sent on to another server.
+- **A client for one API** is an object you make and bind in a provider: `new Client('https://api.stripe.com/v1', headers: ['Authorization' => "Bearer {$key}"])`, then `$stripe->post('/charges', json: [...])`.
+- **It is PSR-18's client** under the contract `Contracts\HttpClient\Client`; `sendRequest()` takes any PSR-7 request, and a library that asks for `Psr\Http\Client\ClientInterface` is given the same object.
+
+| Setting | Default | |
+| --- | --- | --- |
+| `http_client.timeout` | `30.0` | Seconds a whole exchange may take |
+| `http_client.connect_timeout` | `5.0` | Seconds connecting may take |
+| `http_client.redirects` | `5` | `0` returns the redirect itself |
+| `http_client.connections` | `8` | Requests on their way to one server at once |
+| `http_client.base_url`, `http_client.headers` | none | Added to every request of the default client |
+| `http_client.tls` | `[]` | PHP's `ssl` context options, such as `['cafile' => '/path/ca.pem']` |
+
+What it does not do: HTTP/2, proxies, and looking a name up without holding the worker. Finding a server's address takes as long as the system's resolver does, usually a millisecond or two, and the address is then remembered for a minute. `https` needs PHP's `openssl` extension, and a compressed answer its `zlib`.
 
 ## Configuration, errors and logging
 
@@ -328,10 +410,11 @@ return App::configure(__DIR__)
         DatabaseProvider::class,
         AppProvider::class,
     ])
-    ->withMiddleware([Cors::class])
+    ->withMiddleware(prepend: [new Cors(['https://app.example.com'])])
     ->withRouting(
         routes: 'routes/web.php',
         commands: 'routes/console.php',
+        health: '/up',
     )
     ->create();
 ~~~
@@ -339,6 +422,7 @@ return App::configure(__DIR__)
 - **The base path** is the directory given to `configure()`. Its `.env` file and `config` folder are loaded by default, because `App::configure()` begins the chain with `withEnv('.env')` and `withConfig('config', required: false)`; call either again to name another. Nothing else is found by convention.
 - **Paths may be relative** to the base path, and `$app->path('storage/app.log')` gives one in full anywhere else.
 - **Providers** are given one by one or as a list; `routes:` and `commands:` each take one file or a list of files. `withMiddleware()` is described under [Middleware](#middleware).
+- **`health: '/up'`** makes `GET /up` answer 200 and `{"status":"up"}`, for a load balancer or a deploy script that needs to know the server takes requests. It says that this worker answers and asks nothing of the database, so that a slow store does not take every server out of rotation at once; route the path to a handler of your own to check more.
 - **Each step is optional and they may come in any order:** `create()` loads the environment, then the configuration, makes the application, registers the providers and middleware, and then includes the route and command files, which declare with `Route::` and `Command::`.
 
 `Config::load()` reads every PHP file of a directory, keyed by file name:
@@ -617,7 +701,7 @@ Add your own with `Command::add('mail:send', SendMail::class)`, which is `$app->
 
 ~~~php
 $app->register(Acme\Mailer\MailerProvider::class);   // a class with register(Container $container)
-->withMiddleware([Acme\Cors::class])                 // in app.php: any PSR-15 middleware, around every request
+->withMiddleware([Acme\Tracing::class])              // in app.php: any PSR-15 middleware, around every request
 Route::get('/users/{id}', ShowUser::class);            // a handler class made by the container
 ~~~
 
@@ -645,6 +729,7 @@ A provider that needs something open in every worker, such as a connection or a 
 | `src/Testing/` | Helpers for testing components. |
 | `src/Server.php` | Runs the server in the foreground, in the background and under a watcher, and controls a running one. |
 | `src/Routing/` | The router, itself a PSR-15 handler, and typed handlers. |
+| `src/HttpClient/` | The HTTP client: PSR-18, on the event loop, with kept connections. |
 | `src/Validation/` | Builds typed objects from request data, with rules as attributes. |
 | `src/Contracts/` | Every interface another package implements or type-hints; they extend the PSR ones where Crab adds methods. |
 | `tests/` | Framework tests beside their components; engine tests in `tests/Engine/`. `tests/EngineBoundaryTest.php` keeps the engine free of framework dependencies. |

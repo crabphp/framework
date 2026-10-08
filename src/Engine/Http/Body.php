@@ -40,6 +40,15 @@ final class Body implements \Stringable
 
     public function size(): int { return $this->length; }
 
+    /**
+     * The storage itself, for reading a large body where it lies and not
+     * through a copy; null for an empty body. Whoever takes it seeks
+     * before each read, and neither writes to it nor closes it.
+     *
+     * @return resource|null
+     */
+    public function stream(): mixed { return $this->stream; }
+
     public function rewind(): void
     {
         if ($this->stream !== null) {

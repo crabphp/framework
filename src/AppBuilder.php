@@ -7,6 +7,7 @@ namespace Crab;
 use Crab\Config\Config;
 use Crab\Config\Env;
 use Crab\Contracts\Provider;
+use Crab\Http\Health;
 use Psr\Http\Server\MiddlewareInterface;
 
 /**
@@ -14,8 +15,8 @@ use Psr\Http\Server\MiddlewareInterface;
  *
  *     return App::configure(__DIR__)
  *         ->withProviders(AppProvider::class)
- *         ->withMiddleware([Cors::class])
- *         ->withRouting(routes: 'routes/web.php', commands: 'routes/console.php')
+ *         ->withMiddleware(prepend: [new Cors(['https://app.example.com'])])
+ *         ->withRouting(routes: 'routes/web.php', commands: 'routes/console.php', health: '/up')
  *         ->create();
  *
  * The directory given to configure() is the application's base path, and
@@ -66,6 +67,10 @@ final class AppBuilder
      * @var list<string>
      */
     private array $files = [];
+    /**
+     * The path that answers that the application is up.
+     */
+    private ?string $health = null;
     private readonly ?string $basePath;
 
     /**
@@ -123,10 +128,10 @@ final class AppBuilder
      * the framework's, App::MIDDLEWARE, and this says how its own relate
      * to them:
      *
-     *     ->withMiddleware([Cors::class])                         after the framework's
+     *     ->withMiddleware([AddApiVersion::class])                after the framework's
      *     ->withMiddleware(prepend: [RequestId::class])           before them, outermost
      *     ->withMiddleware(remove: [ErrorHandler::class])         without one of the framework's
-     *     ->withMiddleware(only: [MyErrors::class, Cors::class])  these and no others
+     *     ->withMiddleware(only: [MyErrors::class])               these and no others
      *
      * Within each list the first is outermost. Called again, it adds to
      * what was said before, except that only: replaces an earlier only:.
@@ -169,13 +174,18 @@ final class AppBuilder
      * and the like, and its commands, with Command::add(). Each is one
      * file or a list of files:
      *
-     *     ->withRouting(routes: 'routes/web.php', commands: 'routes/console.php')
+     *     ->withRouting(routes: 'routes/web.php', commands: 'routes/console.php', health: '/up')
+     *
+     * With health:, a GET of that path is answered 200 and {"status":"up"}
+     * by Http\Health, for whatever needs to know the server takes requests.
      *
      * @param string|list<string> $routes
      * @param string|list<string> $commands
+     * @param string|null $health The path that says the application is up; none when not given.
      */
-    public function withRouting(string|array $routes = [], string|array $commands = []): static
+    public function withRouting(string|array $routes = [], string|array $commands = [], ?string $health = null): static
     {
+        $this->health = $health ?? $this->health;
         foreach ([...(array) $routes, ...(array) $commands] as $file) {
             if (!is_string($file)) {
                 throw new \LogicException('withRouting() takes file paths, not ' . get_debug_type($file) . '.');
@@ -199,6 +209,9 @@ final class AppBuilder
         }
         $app = new App($this->config(), basePath: $this->basePath, middleware: $this->globalMiddleware());
         $app->register(...$this->providers);
+        if ($this->health !== null) {
+            $app->router->get($this->health, new Health());
+        }
         foreach ($files as $file) {
             self::load($file);
         }

@@ -21,7 +21,7 @@ final readonly class MakeMiddleware implements Command
             Write a new middleware class
 
             Arguments:
-              name   The class: Cors, or RequireAdmin
+              name   The class: RequireAdmin, or AddApiVersion
 
             Options:
               --path=app/Middleware         The folder to write it in

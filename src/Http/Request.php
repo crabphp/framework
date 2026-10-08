@@ -328,7 +328,7 @@ final class Request extends Message implements RequestContract
      */
     private function readMultipart(): void
     {
-        [$fields, $files] = Multipart::parse($this->getHeaderLine('content-type'), (string) $this->getBody());
+        [$fields, $files] = Multipart::parse($this->getHeaderLine('content-type'), $this->bodyResource());
         if (!$this->filesKnown) {
             $this->files = $files;
             $this->filesKnown = true;
@@ -337,6 +337,39 @@ final class Request extends Message implements RequestContract
             $this->parsed = $fields;
             $this->parsedKnown = true;
         }
+    }
+
+    /**
+     * The body as a seekable resource, to read a large one where it is
+     * stored: the engine's own storage for a request it received, with no
+     * copy made.
+     *
+     * @return resource
+     */
+    private function bodyResource(): mixed
+    {
+        if ($this->body === '' && $this->source !== null) {
+            $stream = $this->source->body->stream();
+            if ($stream !== null) {
+                return $stream;
+            }
+        }
+        $body = $this->getBody();
+        if ($body instanceof Stream) {
+            return $body->handle();
+        }
+        // Another implementation's stream is copied once, to disk when it is large.
+        $copy = fopen('php://temp', 'w+b');
+        if ($copy === false) {
+            throw new \RuntimeException('Cannot allocate request body storage.');
+        }
+        if ($body->isSeekable()) {
+            $body->rewind();
+        }
+        while (!$body->eof()) {
+            fwrite($copy, $body->read(65536));
+        }
+        return $copy;
     }
 
     /**

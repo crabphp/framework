@@ -24,6 +24,8 @@ final class LayerBoundaryTest extends TestCase
     private const ALLOWED = [
         // Its middleware answers 401 through the one error renderer.
         'Auth' => ['Http'],
+        // It sends and returns PSR-7 messages, which are Crab's own.
+        'HttpClient' => ['Http'],
         // A route's handler is called with an input the validator builds.
         'Routing' => ['Http', 'Validation'],
         'Testing' => ['Container'],

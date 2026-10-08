@@ -155,13 +155,14 @@ final class AppBuilderTest extends TestCase
             ->withMiddleware(prepend: new Mark('prepended'))
             ->withMiddleware(new Mark('one alone'))
             ->create();
+        // Before the first request, which is when the error handler is made with its logger.
+        $app->container->instance(\Psr\Log\LoggerInterface::class, new \Psr\Log\NullLogger());
         $route();
         self::assertSame('one alone, appended too, appended, prepended', $marks($app));
         self::assertSame('one alone, appended too, appended, prepended', $marks($app, '/missing'), 'It runs for a request no route matches, too.');
 
         // A failure beneath the framework's error handler is answered by it, inside what was prepended.
         \Crab\Route::get('/fail', static fn () => throw new \RuntimeException('broken'));
-        $app->container->instance(\Psr\Log\LoggerInterface::class, new \Psr\Log\NullLogger());
         $failed = $app->handle(new Request('GET', '/fail'));
         self::assertSame([500, 'prepended'], [$failed->getStatusCode(), $failed->getHeaderLine('X-Mark')]);
 
@@ -242,6 +243,18 @@ final class AppBuilderTest extends TestCase
         foreach (['/app/Middleware', '/app', '/src/Http/Middleware', '/src/Http', '/src'] as $folder) {
             rmdir($this->directory . $folder);
         }
+    }
+
+    public function testTheApplicationSaysItIsUpWhereItIsAskedTo(): void
+    {
+        $app = App::configure()->withRouting(health: '/up')->create();
+        $up = $app->handle(new Request('GET', '/up'));
+        self::assertSame([200, '{"status":"up"}', 'application/json'], [$up->getStatusCode(), (string) $up->getBody(), $up->getHeaderLine('Content-Type')]);
+        self::assertSame(405, $app->handle(new Request('POST', '/up'))->getStatusCode());
+        self::assertSame(['GET', '/up', \Crab\Http\Health::class], [$app->router->routes()[0]->method, $app->router->routes()[0]->pattern, $app->router->routes()[0]->handler]);
+
+        self::assertSame(404, App::configure()->create()->handle(new Request('GET', '/up'))->getStatusCode(), 'Only where it is asked to.');
+        self::assertSame(200, App::configure()->withRouting(health: '/up')->withRouting(health: '/healthz')->create()->handle(new Request('GET', '/healthz'))->getStatusCode());
     }
 
     public function testEveryStepIsOptional(): void
