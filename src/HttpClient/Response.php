@@ -16,6 +16,7 @@ final class Response extends Message implements ResponseContract
 {
     /**
      * @param array<string, list<string>> $headers As received; a field that is not valid HTTP throws.
+     * @param string $request The request this answers, by method, host and path, for throw() to name.
      */
     public function __construct(
         private int $status,
@@ -23,6 +24,7 @@ final class Response extends Message implements ResponseContract
         string|StreamInterface $body = '',
         private string $reason = '',
         string $version = '1.1',
+        private readonly string $request = '',
     ) {
         foreach ($headers as $name => $values) {
             $this->put((string) $name, $values, true);
@@ -34,6 +36,14 @@ final class Response extends Message implements ResponseContract
     public function ok(): bool
     {
         return $this->status >= 200 && $this->status < 300;
+    }
+
+    public function throw(): static
+    {
+        if (!$this->ok()) {
+            throw new ResponseException($this, $this->request);
+        }
+        return $this;
     }
 
     public function json(): mixed

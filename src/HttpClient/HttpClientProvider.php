@@ -36,6 +36,8 @@ final class HttpClientProvider implements WorkerProvider
             'connections' => 8,
             // PHP's "ssl" context options, such as ['cafile' => '/path/ca.pem'].
             'tls' => [],
+            // A proxy every request goes through: "http://proxy.example:8080", with "user:password@" before the host when it asks.
+            'proxy' => null,
         ]);
         $container->singleton(ClientContract::class, static function (Container $container): Client {
             $config = $container->get(Config::class);
@@ -47,6 +49,7 @@ final class HttpClientProvider implements WorkerProvider
                 (int) $config->get('http_client.redirects'),
                 (int) $config->get('http_client.connections'),
                 (array) $config->get('http_client.tls'),
+                $config->get('http_client.proxy'),
             );
         });
         // The same object for code written against the standard, and by class.

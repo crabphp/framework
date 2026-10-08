@@ -77,15 +77,22 @@ final class Exchange
         if ($storage === false) {
             throw new \RuntimeException('there is no room to keep the answer');
         }
-        $compressed = strtolower($headers['content-encoding'][0] ?? '') === 'gzip' && function_exists('inflate_init');
+        $coding = strtolower(trim($headers['content-encoding'][0] ?? ''));
+        $compressed = ($coding === 'gzip' || $coding === 'deflate') && function_exists('inflate_init');
         $delimited = true;
         if ($method === 'HEAD' || $status === 204 || $status === 304 || $status < 200) {
             // These have no body, whatever their headers say.
             $compressed = false;
         } else {
-            $inflate = $compressed ? inflate_init(ZLIB_ENCODING_GZIP) : null;
-            $store = static function (string $bytes) use ($storage, $inflate): void {
-                if ($inflate !== null) {
+            $inflate = null;
+            $store = static function (string $bytes) use ($storage, $compressed, $coding, &$inflate): void {
+                if ($compressed) {
+                    // "deflate" is sent both with and without its two-byte header; the first bytes tell which.
+                    $inflate ??= inflate_init(match (true) {
+                        $coding === 'gzip' => ZLIB_ENCODING_GZIP,
+                        strlen($bytes) > 1 && (ord($bytes[0]) & 0x0F) === 8 && ((ord($bytes[0]) << 8) | ord($bytes[1])) % 31 === 0 => ZLIB_ENCODING_DEFLATE,
+                        default => ZLIB_ENCODING_RAW,
+                    });
                     $bytes = @inflate_add($inflate, $bytes);
                     if ($bytes === false) {
                         throw new \RuntimeException('the answer says it is compressed and is not');
@@ -117,7 +124,7 @@ final class Exchange
         $this->reusable = $unsent === null && $delimited && $version === '1.1' && $status !== 101 && $this->buffer === ''
             && !$closing($headers['connection'] ?? []) && !$closing($request->getHeader('Connection'));
         try {
-            return new Response($status, $headers, new Stream($storage), $reason, $version);
+            return new Response($status, $headers, new Stream($storage), $reason, $version, self::describe($request));
         } catch (\InvalidArgumentException $error) {
             throw new \RuntimeException('the answer is not valid HTTP: ' . $error->getMessage(), previous: $error);
         }
@@ -131,7 +138,18 @@ final class Exchange
         $size = $body->getSize();
         $headers = $request->getHeaders();
         $given = array_change_key_case($headers, CASE_LOWER);
-        $head = "{$method} " . ($target === '' ? '/' : $target) . " HTTP/1.1\r\n";
+        if ($target === '') {
+            $target = '/';
+        }
+        if ($this->connection->forwarded) {
+            // A proxy that forwards is told the whole URL, and who is asking when it wants to know.
+            $uri = $request->getUri();
+            $target = $uri->getScheme() . '://' . $uri->getHost() . ($uri->getPort() === null ? '' : ':' . $uri->getPort()) . $target;
+        }
+        $head = "{$method} {$target} HTTP/1.1\r\n";
+        if ($this->connection->forwarded && $this->connection->proxyAuthorization !== null) {
+            $head .= "Proxy-Authorization: {$this->connection->proxyAuthorization}\r\n";
+        }
         if (!isset($given['host'])) {
             $uri = $request->getUri();
             $head .= 'Host: ' . $uri->getHost() . ($uri->getPort() === null ? '' : ':' . $uri->getPort()) . "\r\n";
@@ -152,7 +170,7 @@ final class Exchange
             $head .= "Accept: */*\r\n";
         }
         if (!isset($given['accept-encoding']) && function_exists('inflate_init')) {
-            $head .= "Accept-Encoding: gzip\r\n";
+            $head .= "Accept-Encoding: gzip, deflate\r\n";
         }
         if ($size === null) {
             $head .= "Transfer-Encoding: chunked\r\n";
@@ -186,6 +204,17 @@ final class Exchange
         if ($pending !== '') {
             $this->connection->write($pending, $this->deadline, $this->cancellation);
         }
+    }
+
+    /**
+     * A request by its method and where it goes, without the query string
+     * or anything else that may hold a secret.
+     */
+    public static function describe(RequestInterface $request): string
+    {
+        $uri = $request->getUri();
+        $where = $uri->getHost() === '' ? $uri->getPath() : $uri->getScheme() . '://' . $uri->getHost() . ($uri->getPort() === null ? '' : ':' . $uri->getPort()) . $uri->getPath();
+        return $request->getMethod() . ' ' . $where;
     }
 
     /**

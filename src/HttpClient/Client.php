@@ -5,18 +5,17 @@ declare(strict_types=1);
 namespace Crab\HttpClient;
 
 use Crab\Contracts\HttpClient\Client as ClientContract;
+use Crab\Contracts\HttpClient\CookieJar as CookieJarContract;
+use Crab\Contracts\HttpClient\File;
 use Crab\Contracts\HttpClient\Response as ResponseContract;
 use Crab\Engine\Async\Cancellation;
-use Crab\Engine\Async\CancelledException;
-use Crab\Engine\Async\Pool;
-use Crab\Engine\Async\PoolExhaustedException;
-use Crab\Engine\EventLoop;
 use Crab\Http\Request;
 use Crab\Http\Stream;
 use Crab\Http\Uri;
 use Psr\Http\Message\RequestInterface;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\StreamInterface;
+use Psr\Http\Message\UploadedFileInterface;
 use Psr\Http\Message\UriInterface;
 
 /**
@@ -24,47 +23,23 @@ use Psr\Http\Message\UriInterface;
  * waits for its answer, the worker serves other requests.
  *
  *     $http = new Client();
- *     $user = $http->get('https://api.example.com/users/7')->json();
+ *     $user = $http->get('https://api.example.com/users/7')->throw()->json();
  *
  *     $stripe = new Client('https://api.stripe.com/v1', headers: ['Authorization' => "Bearer {$key}"]);
- *     $charge = $stripe->post('/charges', json: ['amount' => 500]);
+ *     $charge = $stripe->timeout(5.0)->post('/charges', json: ['amount' => 500]);
  *
  * Connections are kept and used again, up to a number per server; a
  * request beyond that waits for one. Redirects are followed, and a
  * compressed answer is handed over as what it says.
  *
- * Finding a server's address by its name is the one step that holds the
- * worker, for as long as the system's resolver takes; an address found is
- * remembered for a minute.
+ * In a test, FakeClient is this client with replies written in advance
+ * in place of the network.
  */
-final class Client implements ClientContract
+class Client implements ClientContract
 {
-    /**
-     * Methods that may be sent again when a kept connection turns out to
-     * have been closed, because doing them twice is doing them once.
-     */
-    private const REPEATABLE = ['GET', 'HEAD', 'OPTIONS', 'PUT', 'DELETE'];
-    /**
-     * How long a kept connection is trusted without being used, in seconds.
-     */
-    private const IDLE = 30.0;
-    /**
-     * How long an address found for a name is remembered, in seconds.
-     */
-    private const REMEMBER = 60.0;
-
-    /**
-     * The kept connections to each server, by scheme, host and port.
-     *
-     * @var array<string, Pool>
-     */
-    private array $pools = [];
-    /**
-     * Addresses found for names, and until when each is remembered.
-     *
-     * @var array<string, array{list<string>, float}>
-     */
-    private array $addresses = [];
+    private float $timeout;
+    private ?CookieJarContract $jar;
+    private readonly Transport $transport;
 
     /**
      * @param string $baseUrl What a path given to a request is added to: "https://api.example.com/v1".
@@ -74,24 +49,51 @@ final class Client implements ClientContract
      * @param int $redirects How many redirects are followed for one request; 0 to return the redirect itself.
      * @param int $connections How many requests may be on their way to one server at once.
      * @param array<string, mixed> $tls PHP's "ssl" context options for encrypted connections, such as ['cafile' => '/path/ca.pem']. The server's certificate is verified unless this says not to.
+     * @param string|null $proxy A proxy every request goes through: "http://proxy.example:8080", with "user:password@" before the host when it asks.
+     * @param CookieJarContract|null $cookies Keeps the cookies servers set and sends them back. None unless given, since one jar would be shared by everyone the client works for.
+     * @param Transport|null $transport @internal What carries the requests; the network when left out.
      */
     public function __construct(
         private readonly string $baseUrl = '',
         private readonly array $headers = [],
-        private readonly float $timeout = 30.0,
-        private readonly float $connectTimeout = 5.0,
+        float $timeout = 30.0,
+        float $connectTimeout = 5.0,
         private readonly int $redirects = 5,
-        private readonly int $connections = 8,
-        private readonly array $tls = [],
+        int $connections = 8,
+        array $tls = [],
+        ?string $proxy = null,
+        ?CookieJarContract $cookies = null,
+        ?Transport $transport = null,
     ) {
         if ($timeout <= 0 || $connectTimeout <= 0 || $redirects < 0 || $connections < 1) {
             throw new \LogicException('An HTTP client needs timeouts above zero, at least one connection per server and a number of redirects that is not negative.');
         }
+        $this->timeout = $timeout;
+        $this->jar = $cookies;
+        $this->transport = $transport ?? new Network($connectTimeout, $connections, $tls, $proxy);
+    }
+
+    public function timeout(float $seconds): static
+    {
+        if ($seconds <= 0) {
+            throw new \LogicException('A timeout is a number of seconds above zero.');
+        }
+        // The copy carries its requests the same way, over the same connections.
+        $new = clone $this;
+        $new->timeout = $seconds;
+        return $new;
+    }
+
+    public function cookies(CookieJarContract $jar): static
+    {
+        $new = clone $this;
+        $new->jar = $jar;
+        return $new;
     }
 
     public function sendRequest(RequestInterface $request): ResponseInterface
     {
-        return $this->send($request, $this->timeout, null);
+        return $this->send($request, null);
     }
 
     public function request(
@@ -101,12 +103,12 @@ final class Client implements ClientContract
         array $headers = [],
         mixed $json = null,
         array $form = [],
+        array $files = [],
         string|StreamInterface|null $body = null,
-        ?float $timeout = null,
         ?Cancellation $cancellation = null,
     ): ResponseContract {
-        if (($json !== null) + ($form !== []) + ($body !== null) > 1) {
-            throw new \LogicException('A request has one body: give json:, form: or body:, not several.');
+        if (($json !== null) + ($form !== [] || $files !== []) + ($body !== null) > 1) {
+            throw new \LogicException('A request has one body: give json:, a form (form: and files:) or body:, not several.');
         }
         if (preg_match('~^[a-z][a-z0-9+.-]*://~i', $url) !== 1) {
             if ($this->baseUrl === '') {
@@ -122,17 +124,29 @@ final class Client implements ClientContract
         if ($json !== null) {
             $body = json_encode($json, JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
             $type = 'application/json';
+        } elseif ($files !== []) {
+            [$body, $type] = self::multipart($form, $files);
         } elseif ($form !== []) {
             $body = http_build_query($form);
             $type = 'application/x-www-form-urlencoded';
         }
-        if (isset($type) && !isset($names['content-type'])) {
-            $headers['Content-Type'] = $type;
+        if (isset($type)) {
+            if ($files !== []) {
+                // Only this type names the boundary the body was written with.
+                foreach (array_keys($headers) as $name) {
+                    if (strtolower((string) $name) === 'content-type') {
+                        unset($headers[$name]);
+                    }
+                }
+                $headers['Content-Type'] = $type;
+            } elseif (!isset($names['content-type'])) {
+                $headers['Content-Type'] = $type;
+            }
         }
         if ($json !== null && !isset($names['accept'])) {
             $headers['Accept'] = 'application/json';
         }
-        return $this->send(new Request(strtoupper($method), $url, $headers, $body ?? ''), $timeout ?? $this->timeout, $cancellation);
+        return $this->send(new Request(strtoupper($method), $url, $headers, $body ?? ''), $cancellation);
     }
 
     public function get(string $url, array $query = [], array $headers = []): ResponseContract
@@ -140,19 +154,19 @@ final class Client implements ClientContract
         return $this->request('GET', $url, $query, $headers);
     }
 
-    public function post(string $url, mixed $json = null, array $headers = []): ResponseContract
+    public function post(string $url, mixed $json = null, array $form = [], array $files = [], array $headers = []): ResponseContract
     {
-        return $this->request('POST', $url, [], $headers, $json);
+        return $this->request('POST', $url, [], $headers, $json, $form, $files);
     }
 
-    public function put(string $url, mixed $json = null, array $headers = []): ResponseContract
+    public function put(string $url, mixed $json = null, array $form = [], array $files = [], array $headers = []): ResponseContract
     {
-        return $this->request('PUT', $url, [], $headers, $json);
+        return $this->request('PUT', $url, [], $headers, $json, $form, $files);
     }
 
-    public function patch(string $url, mixed $json = null, array $headers = []): ResponseContract
+    public function patch(string $url, mixed $json = null, array $form = [], array $files = [], array $headers = []): ResponseContract
     {
-        return $this->request('PATCH', $url, [], $headers, $json);
+        return $this->request('PATCH', $url, [], $headers, $json, $form, $files);
     }
 
     public function delete(string $url, array $query = [], array $headers = []): ResponseContract
@@ -161,165 +175,40 @@ final class Client implements ClientContract
     }
 
     /**
-     * Closes the kept connections; one in use is closed when its request ends.
+     * Closes the kept connections; one in use is closed when its request
+     * ends. Clients made from this one with timeout() or cookies() use
+     * the same connections, and are closed with it.
      */
     public function close(): void
     {
-        $pools = $this->pools;
-        $this->pools = [];
-        foreach ($pools as $pool) {
-            $pool->close();
-        }
+        $this->transport->close();
     }
 
     /**
-     * Sends a request and follows where its answer redirects to.
+     * Sends a request and follows where its answer redirects to, keeping
+     * and sending cookies on the way when there is a jar.
      */
-    private function send(RequestInterface $request, float $timeout, ?Cancellation $cancellation): Response
+    private function send(RequestInterface $request, ?Cancellation $cancellation): Response
     {
-        $deadline = hrtime(true) / 1_000_000_000 + $timeout;
+        $deadline = hrtime(true) / 1_000_000_000 + $this->timeout;
         for ($followed = 0; ; ++$followed) {
-            $response = $this->exchange($request, $deadline, $timeout, $cancellation);
+            $sending = $request;
+            $cookies = $this->jar?->header($request->getUri()) ?? '';
+            if ($cookies !== '') {
+                $own = $request->getHeaderLine('Cookie');
+                $sending = $request->withHeader('Cookie', $own === '' ? $cookies : "{$own}; {$cookies}");
+            }
+            $response = $this->transport->exchange($sending, $deadline, $this->timeout, $cancellation);
+            $this->jar?->store($request->getUri(), $response->getHeader('Set-Cookie'));
             $next = $this->redirected($request, $response);
             if ($next === null) {
                 return $response;
             }
             if ($followed === $this->redirects) {
-                throw new ClientException(self::describe($request) . " was redirected more than {$this->redirects} times.");
+                throw new ClientException(Exchange::describe($request) . " was redirected more than {$this->redirects} times.");
             }
             $request = $next;
         }
-    }
-
-    /**
-     * One request and its answer, on a kept connection when there is one.
-     */
-    private function exchange(RequestInterface $request, float $deadline, float $timeout, ?Cancellation $cancellation): Response
-    {
-        $uri = $request->getUri();
-        $scheme = strtolower($uri->getScheme());
-        $host = $uri->getHost();
-        if ($host === '' || ($scheme !== 'http' && $scheme !== 'https')) {
-            throw new RequestException(self::describe($request) . ' cannot be sent: a request needs an http:// or https:// URL with a host.', $request);
-        }
-        if ($scheme === 'https' && !extension_loaded('openssl')) {
-            throw new RequestException(self::describe($request) . ' cannot be sent: https needs PHP\'s openssl extension.', $request);
-        }
-        $port = $uri->getPort() ?? ($scheme === 'https' ? 443 : 80);
-        $pool = $this->pool($scheme, $host, $port);
-        $body = $request->getBody();
-        $repeatable = in_array($request->getMethod(), self::REPEATABLE, true) && ($body->getSize() === 0 || $body->isSeekable());
-        for ($attempt = 1; ; ++$attempt) {
-            try {
-                $connection = $this->connection($pool, $cancellation);
-            } catch (CancelledException $cancelled) {
-                throw $cancelled;
-            } catch (PoolExhaustedException $error) {
-                throw new NetworkException(self::describe($request) . " failed: every one of the {$this->connections} connections to {$host} stayed busy.", $request, $error);
-            } catch (\RuntimeException $error) {
-                throw new NetworkException(self::describe($request) . " failed: {$error->getMessage()}.", $request, $error);
-            }
-            $exchange = new Exchange($connection, $deadline, $cancellation);
-            try {
-                $response = $exchange->run($request);
-            } catch (\Throwable $error) {
-                $pool->discard($connection);
-                if ($error instanceof CancelledException || !$error instanceof \RuntimeException) {
-                    throw $error;
-                }
-                // A kept connection the server had closed carried nothing: the request is sent once more, on a new one.
-                if ($connection->used && !$exchange->answered && !$error instanceof TimedOut && $repeatable && $attempt === 1) {
-                    continue;
-                }
-                $why = $error instanceof TimedOut ? "it took more than {$timeout} seconds, and was {$error->doing} when given up" : $error->getMessage();
-                throw new NetworkException(self::describe($request) . " failed: {$why}.", $request, $error);
-            }
-            if ($exchange->reusable) {
-                $connection->used = true;
-                $connection->idleSince = hrtime(true) / 1_000_000_000;
-                $pool->release($connection);
-            } else {
-                $pool->discard($connection);
-            }
-            return $response;
-        }
-    }
-
-    /**
-     * A connection to use: a kept one that still works, else a new one.
-     */
-    private function connection(Pool $pool, ?Cancellation $cancellation): Connection
-    {
-        while (true) {
-            /** @var Connection $connection */
-            $connection = $pool->acquire($cancellation);
-            if (!$connection->used) {
-                return $connection;
-            }
-            if (hrtime(true) / 1_000_000_000 - $connection->idleSince < self::IDLE && $connection->isReusable()) {
-                return $connection;
-            }
-            $pool->discard($connection);
-        }
-    }
-
-    private function pool(string $scheme, string $host, int $port): Pool
-    {
-        return $this->pools["{$scheme}://{$host}:{$port}"] ??= new Pool(
-            // Asked for now and not when the client was made: a worker has a loop of its own.
-            EventLoop::current(),
-            fn (): Connection => $this->connect($scheme, $host, $port),
-            $this->connections,
-            $this->timeout,
-            static fn (Connection $connection) => $connection->close(),
-        );
-    }
-
-    private function connect(string $scheme, string $host, int $port): Connection
-    {
-        $failure = null;
-        foreach ($this->resolve($host) as $address) {
-            try {
-                return Connection::open(
-                    EventLoop::current(),
-                    $address,
-                    $port,
-                    $scheme === 'https' ? $host : null,
-                    $this->tls,
-                    hrtime(true) / 1_000_000_000 + $this->connectTimeout,
-                );
-            } catch (TimedOut $error) {
-                $failure = new \RuntimeException("connecting to {$host} took more than {$this->connectTimeout} seconds", previous: $error);
-            } catch (\RuntimeException $error) {
-                $failure = new \RuntimeException("{$host} could not be reached: {$error->getMessage()}", previous: $error);
-            }
-        }
-        throw $failure;
-    }
-
-    /**
-     * The numeric addresses of a host. Looking a name up holds the worker
-     * while the system answers, so what is found is remembered a while.
-     *
-     * @return non-empty-list<string>
-     */
-    private function resolve(string $host): array
-    {
-        $literal = trim($host, '[]');
-        if (filter_var($literal, FILTER_VALIDATE_IP) !== false) {
-            return [$literal];
-        }
-        $now = hrtime(true) / 1_000_000_000;
-        if (isset($this->addresses[$host]) && $this->addresses[$host][1] > $now) {
-            return $this->addresses[$host][0];
-        }
-        $found = @gethostbynamel($host);
-        if ($found === false || $found === []) {
-            unset($this->addresses[$host]);
-            throw new \RuntimeException("no address was found for the name {$host}");
-        }
-        $this->addresses[$host] = [$found, $now + self::REMEMBER];
-        return $found;
     }
 
     /**
@@ -384,13 +273,97 @@ final class Client implements ClientContract
     }
 
     /**
-     * A request by its method and where it goes, without the query string
-     * or anything else that may hold a secret.
+     * A form with files as a multipart/form-data body. It is written to a
+     * temporary stream, which goes to disk when it is large, so that a
+     * file is not held in memory and the body's length is known.
+     *
+     * @param array<string, mixed> $form
+     * @param array<string, mixed> $files
+     * @return array{Stream, string} The body and its Content-Type.
      */
-    private static function describe(RequestInterface $request): string
+    private static function multipart(array $form, array $files): array
     {
-        $uri = $request->getUri();
-        $where = $uri->getHost() === '' ? $uri->getPath() : $uri->getScheme() . '://' . $uri->getHost() . ($uri->getPort() === null ? '' : ':' . $uri->getPort()) . $uri->getPath();
-        return $request->getMethod() . ' ' . $where;
+        $boundary = 'crab-' . bin2hex(random_bytes(12));
+        $body = fopen('php://temp', 'w+b');
+        if ($body === false) {
+            throw new \RuntimeException('Cannot allocate storage for the request body.');
+        }
+        foreach (self::fields($form, '') as [$name, $value]) {
+            fwrite($body, "--{$boundary}\r\nContent-Disposition: form-data; name=\"" . self::quoted($name) . "\"\r\n\r\n{$value}\r\n");
+        }
+        foreach ($files as $field => $given) {
+            $several = is_array($given);
+            foreach ($several ? $given : [$given] as $file) {
+                if ($file instanceof UploadedFileInterface) {
+                    [$name, $type] = [(string) $file->getClientFilename(), $file->getClientMediaType() ?? 'application/octet-stream'];
+                } elseif ($file instanceof File) {
+                    [$name, $type] = [$file->name, $file->type];
+                } else {
+                    throw new \LogicException("files: takes File::fromPath(), File::fromContents() or an uploaded file for \"{$field}\", not " . get_debug_type($file) . '.');
+                }
+                $fieldName = self::quoted($several ? "{$field}[]" : (string) $field);
+                fwrite($body, "--{$boundary}\r\nContent-Disposition: form-data; name=\"{$fieldName}\"; filename=\"" . self::quoted($name) . "\"\r\nContent-Type: {$type}\r\n\r\n");
+                self::copy($file, $body);
+                fwrite($body, "\r\n");
+            }
+        }
+        fwrite($body, "--{$boundary}--\r\n");
+        return [new Stream($body), "multipart/form-data; boundary={$boundary}"];
+    }
+
+    /**
+     * @param resource $into
+     */
+    private static function copy(File|UploadedFileInterface $file, mixed $into): void
+    {
+        if ($file instanceof File && $file->contents !== null) {
+            fwrite($into, $file->contents);
+            return;
+        }
+        if ($file instanceof File) {
+            $source = is_file((string) $file->path) ? @fopen((string) $file->path, 'rb') : false;
+            if ($source === false) {
+                throw new \RuntimeException("The file to send cannot be read: {$file->path}");
+            }
+            stream_copy_to_stream($source, $into);
+            fclose($source);
+            return;
+        }
+        $stream = $file->getStream();
+        if ($stream->isSeekable()) {
+            $stream->rewind();
+        }
+        while (!$stream->eof()) {
+            fwrite($into, $stream->read(65536));
+        }
+    }
+
+    /**
+     * A form's fields as names and values, a nested one named as a
+     * browser names it: "user[name]", "tags[0]".
+     *
+     * @param array<mixed> $form
+     * @return list<array{string, string}>
+     */
+    private static function fields(array $form, string $inside): array
+    {
+        $fields = [];
+        foreach ($form as $key => $value) {
+            $name = $inside === '' ? (string) $key : "{$inside}[{$key}]";
+            if (is_array($value)) {
+                $fields = [...$fields, ...self::fields($value, $name)];
+            } else {
+                $fields[] = [$name, is_bool($value) ? (string) (int) $value : (string) $value];
+            }
+        }
+        return $fields;
+    }
+
+    /**
+     * A name as it may stand between quotes in a part's header.
+     */
+    private static function quoted(string $name): string
+    {
+        return str_replace(['"', "\r", "\n"], ['%22', '%0D', '%0A'], $name);
     }
 }

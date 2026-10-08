@@ -366,19 +366,91 @@ While a request waits for its answer the worker serves other requests, which a c
 
 ~~~php
 $http->get($url, query: ['page' => 2], headers: ['Accept' => 'application/json']);
-$http->post($url, json: ['name' => 'Ada']);            // also put() and patch()
+$http->post($url, json: ['name' => 'Ada']);                                // also put() and patch()
+$http->post($url, form: ['user' => 'ada', 'pass' => $secret]);
 $http->delete($url);
-$http->request('POST', $url, form: ['user' => 'ada'], timeout: 5.0);        // or body: for anything else
 $http->request('GET', $url, cancellation: $request->cancellation());        // given up when the caller has gone
+$http->request('PUT', $url, body: $csv, headers: ['Content-Type' => 'text/csv']);
 ~~~
 
 - **The answer** is a PSR-7 response with `ok()`, whether the status is 200 to 299, and `json()`, the body decoded.
-- **An error status is an answer.** A 404 or a 500 is returned like any other; test `ok()` or the status.
-- **No answer throws** a `Psr\Http\Client\ClientExceptionInterface`: `HttpClient\NetworkException` when the server could not be reached or took too long, `HttpClient\RequestException` when the request itself cannot be sent. The message names the method, the host and the path, never the query string or a header.
+- **An error status is an answer.** A 404 or a 500 is returned like any other, unless you ask otherwise: `$http->get($url)->throw()->json()` throws `HttpClient\ResponseException`, which names the request and the status and holds the answer in `$error->response`.
+- **No answer always throws:** `HttpClient\NetworkException` when the server could not be reached or took too long, `HttpClient\RequestException` when the request itself cannot be sent. All three are a `Psr\Http\Client\ClientExceptionInterface`, and no message holds the query string or a header.
 - **Connections are kept and used again,** up to 8 requests on their way to one server at once; another waits its turn.
 - **Redirects are followed,** up to 5, as a browser follows them, and what proves who is asking is not sent on to another server.
-- **A client for one API** is an object you make and bind in a provider: `new Client('https://api.stripe.com/v1', headers: ['Authorization' => "Bearer {$key}"])`, then `$stripe->post('/charges', json: [...])`.
+- **An answer compressed with gzip or deflate** is handed over as what it says. Brotli is not asked for.
 - **It is PSR-18's client** under the contract `Contracts\HttpClient\Client`; `sendRequest()` takes any PSR-7 request, and a library that asks for `Psr\Http\Client\ClientInterface` is given the same object.
+
+### Timeouts
+
+~~~php
+$http->timeout(2.0)->get($url);
+~~~
+
+`timeout()` gives a client that allows each exchange that many seconds, redirects and waiting for a free connection included, and is otherwise the same: it uses the same connections. The client it was asked of is left as it was, which matters because every request a worker serves shares it.
+
+### Sending files
+
+~~~php
+use Crab\Contracts\HttpClient\File;
+
+$http->post($url, form: ['title' => 'Q3'], files: [
+    'report' => File::fromPath('/tmp/q3.pdf', type: 'application/pdf'),
+    'notes' => File::fromContents($text, 'notes.txt', 'text/plain'),
+    'avatar' => $request->file('avatar'),               // an upload you received, passed on
+    'photos' => [File::fromPath($one), File::fromPath($two)],
+]);
+~~~
+
+The body is a form with files (`multipart/form-data`). A file is read from disk as it is written to the body, never into memory whole.
+
+### A client for one API
+
+~~~php
+$stripe = new Client('https://api.stripe.com/v1', headers: ['Authorization' => "Bearer {$key}"]);
+$stripe->post('/charges', json: ['amount' => 500])->throw();
+~~~
+
+Make it in a provider and bind it under a name of your own. It takes the same arguments as the settings below, among them `proxy:`.
+
+### Cookies
+
+~~~php
+$session = $http->cookies(new CookieJar());
+$session->post('https://shop.example/login', form: [...]);
+$session->get('https://shop.example/orders');            // sent with the cookie the login set
+~~~
+
+A client keeps no cookies unless it is given a jar, because one jar on a client every request shares would hand one caller's cookies to the next. Make a jar for each caller. A cookie goes back only where a browser would send it: to the host that set it or the hosts under the domain it named, on its paths, over an encrypted connection when it said so, and until it expires.
+
+### A proxy
+
+`proxy: 'http://user:password@proxy.example:8080'` on a client, or the `http_client.proxy` setting, sends every request through an HTTP proxy. An `https://` request goes through a tunnel the proxy makes and cannot read. Proxies reached over TLS and SOCKS proxies are not supported.
+
+### In tests
+
+`FakeClient` is the client with replies written in advance in place of the network:
+
+~~~php
+$http = new FakeClient([
+    'GET https://api.example.com/users/7' => ['id' => 7, 'name' => 'Ada'],                       // JSON, 200
+    'POST https://api.example.com/charges' => FakeClient::response(402, ['error' => 'declined']),
+    'https://slow.example.com/*' => new RuntimeException('it timed out'),                         // thrown
+    'https://echo.example.com/*' => fn (RequestInterface $request) => (string) $request->getBody(),
+]);
+$app->container->instance(Client::class, $http);
+
+// ... run the code under test ...
+
+self::assertCount(1, $http->sent('POST https://api.example.com/charges'));
+self::assertSame('{"amount":500}', (string) $http->requests[0]->getBody());
+~~~
+
+- **A reply is found by method and URL,** the first that matches. `*` stands for anything, the method may be left out, and the query string counts only when the pattern has one.
+- **A request nothing matches throws,** naming it, so a test never waits on the network.
+- **Everything else is the real client:** base URL, headers, redirects, cookies and `throw()` behave as they do over the network.
+
+### Settings
 
 | Setting | Default | |
 | --- | --- | --- |
@@ -387,9 +459,10 @@ $http->request('GET', $url, cancellation: $request->cancellation());        // g
 | `http_client.redirects` | `5` | `0` returns the redirect itself |
 | `http_client.connections` | `8` | Requests on their way to one server at once |
 | `http_client.base_url`, `http_client.headers` | none | Added to every request of the default client |
+| `http_client.proxy` | none | `http://host:port`, with `user:password@` when it asks |
 | `http_client.tls` | `[]` | PHP's `ssl` context options, such as `['cafile' => '/path/ca.pem']` |
 
-What it does not do: HTTP/2, proxies, and looking a name up without holding the worker. Finding a server's address takes as long as the system's resolver does, usually a millisecond or two, and the address is then remembered for a minute. `https` needs PHP's `openssl` extension, and a compressed answer its `zlib`.
+What it does not do: HTTP/2, and looking a name up without holding the worker. Finding a server's address takes as long as the system's resolver does, usually a millisecond or two, and the address is then remembered for a minute. `https` needs PHP's `openssl` extension, and a compressed answer its `zlib`.
 
 ## Configuration, errors and logging
 

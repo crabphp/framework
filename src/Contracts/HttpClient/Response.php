@@ -18,6 +18,16 @@ interface Response extends ResponseInterface
     public function ok(): bool;
 
     /**
+     * Throws when the status is not a success, and otherwise returns the
+     * response, so that what follows may count on one:
+     *
+     *     $user = $http->get($url)->throw()->json();
+     *
+     * @throws \Psr\Http\Client\ClientExceptionInterface Naming the request and the status; the component's ResponseException, which holds the response.
+     */
+    public function throw(): static;
+
+    /**
      * The body read as JSON, an object as an array.
      *
      * @throws \JsonException When the body is not JSON.

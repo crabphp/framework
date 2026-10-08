@@ -70,6 +70,8 @@ A contract exists for everything a package touches, including where no PSR exist
 | `Http\Factory` | the five PSR-17 factory interfaces | today |
 | `HttpClient\Client` | PSR-18 `ClientInterface` | today |
 | `HttpClient\Response` | PSR-7 `ResponseInterface` | today |
+| `HttpClient\CookieJar` | none | today |
+| `HttpClient\File` | none; a value object | today |
 | Cache, events | PSR-16, 14, each behind a Crab contract | not built |
 
 Contracts are the stable surface. Once there is a release, a contract changes only in a major version; component classes may change freely behind it.
@@ -265,7 +267,7 @@ A PSR implementation should also pass that PSR's public conformance suite where 
 1. **Close the contract gaps:** `Config`, `Router`, `Console` contracts; boundary tests for the layer rules. *Done.*
 2. **Worker lifecycle hooks:** `start` and `stop` for providers; error path for background tasks. *Done.*
 3. **Finish Http:** response cookies, multipart uploads, JSON bodies, bodies for router 404 and 405, request id middleware, warnings to exceptions. *Done.* A multipart body is read where the engine stored it, and an uploaded file is never held in memory. Still open: `getBody()` copies a body from the engine's storage when it is asked for.
-4. **Small PSR components:** clock (PSR-20), events (PSR-14), cache (PSR-16), HTTP client (PSR-18). *The clock and the HTTP client are done. The client is HTTP/1.1 on the event loop, with TLS through PHP's streams; it does not look names up asynchronously.*
+4. **Small PSR components:** clock (PSR-20), events (PSR-14), cache (PSR-16), HTTP client (PSR-18). *The clock and the HTTP client are done. The client is HTTP/1.1 on the event loop, with TLS through PHP's streams, an HTTP proxy, a cookie jar and a fake for tests; it does not look names up asynchronously.*
 5. **Database.** *Connection pool, the thin query layer, the query builder, the schema builder and migrations are done, tested on SQLite and MySQL.* Next: models with relationships.
 6. **Queue**, then **Scheduling**, each as its own worker group.
 7. **Validation, Session, Auth.** *Validation is done, ahead of the steps before it, together with typed route handlers. Authentication is done: a way of authenticating is middleware that puts the user on the request, a handler takes the user as a parameter, and tokens in the database are one such way, opt-in, with a migration the application owns.* Roles and permissions, and sessions, are not built; sessions matter less for an API.

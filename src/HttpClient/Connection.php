@@ -26,6 +26,14 @@ final class Connection
      */
     public float $idleSince = 0.0;
     /**
+     * Whether it leads to a proxy that forwards requests, which must then name the whole URL.
+     */
+    public bool $forwarded = false;
+    /**
+     * What proves to that proxy who is asking, when it wants to know.
+     */
+    public ?string $proxyAuthorization = null;
+    /**
      * @var resource|null
      */
     private mixed $stream;
@@ -45,9 +53,10 @@ final class Connection
      * @param string|null $tlsHost The name the server must hold a certificate for; null for a connection that is not encrypted.
      * @param array<string, mixed> $tls PHP's "ssl" context options, added to the defaults.
      * @param float $deadline When to give up, on the clock hrtime() reads, in seconds.
+     * @param bool $encrypt Whether to agree on encryption at once. Not when a proxy is first asked for a tunnel: encrypt() is then called once it has made one.
      * @throws \RuntimeException Saying why it could not be opened.
      */
-    public static function open(EventLoop $loop, string $address, int $port, ?string $tlsHost, array $tls, float $deadline, ?Cancellation $cancellation = null): self
+    public static function open(EventLoop $loop, string $address, int $port, ?string $tlsHost, array $tls, float $deadline, ?Cancellation $cancellation = null, bool $encrypt = true): self
     {
         $target = str_contains($address, ':') ? "tcp://[{$address}]:{$port}" : "tcp://{$address}:{$port}";
         $options = ['socket' => ['tcp_nodelay' => true]];
@@ -74,7 +83,7 @@ final class Connection
             if (@stream_socket_get_name($stream, true) === false) {
                 throw new \RuntimeException('the connection was refused');
             }
-            if ($tlsHost !== null) {
+            if ($tlsHost !== null && $encrypt) {
                 $connection->encrypt($deadline, $cancellation);
             }
         } catch (\Throwable $error) {
@@ -150,7 +159,10 @@ final class Connection
         return $this->stream ?? throw new \RuntimeException('the connection is closed');
     }
 
-    private function encrypt(float $deadline, ?Cancellation $cancellation): void
+    /**
+     * Agrees on encryption with the server the connection was opened for.
+     */
+    public function encrypt(float $deadline, ?Cancellation $cancellation = null): void
     {
         while (true) {
             error_clear_last();

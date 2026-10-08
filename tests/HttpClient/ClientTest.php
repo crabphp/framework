@@ -15,7 +15,10 @@ use Crab\Engine\Process\Worker;
 use Crab\Http\Request;
 use Crab\Http\Stream;
 use Crab\HttpClient\Client;
+use Crab\Contracts\HttpClient\File;
 use Crab\HttpClient\ClientException;
+use Crab\HttpClient\CookieJar;
+use Crab\HttpClient\ResponseException;
 use Crab\HttpClient\HttpClientProvider;
 use Crab\HttpClient\NetworkException;
 use Crab\HttpClient\RequestException;
@@ -87,7 +90,7 @@ final class ClientTest extends TestCase
         $missing = $http->get($server->url('/missing'));
         self::assertSame([404, false], [$missing->getStatusCode(), $missing->ok()]);
 
-        $form = $http->request('POST', $server->url('/login'), form: ['user' => 'ada', 'pass' => 'a b'], timeout: 2.0);
+        $form = $http->request('POST', $server->url('/login'), form: ['user' => 'ada', 'pass' => 'a b']);
         self::assertSame('user=ada&pass=a+b', $form->json()['body']);
         self::assertSame('application/x-www-form-urlencoded', $server->requests[6]['headers']['content-type']);
         $raw = $http->request('post', $server->url('/raw'), body: 'plain text', headers: ['Content-Type' => 'text/plain']);
@@ -106,7 +109,8 @@ final class ClientTest extends TestCase
 
         $mistakes = [
             '"/charges" is not a whole URL, and this client has no base URL' => fn () => $this->client()->get('/charges'),
-            'A request has one body: give json:, form: or body:' => fn () => $api->request('POST', '/x', json: [], body: 'x'),
+            'A request has one body: give json:, a form (form: and files:) or body:' => fn () => $api->request('POST', '/x', json: [], body: 'x'),
+            'A timeout is a number of seconds above zero' => fn () => $api->timeout(0),
             'needs timeouts above zero' => static fn () => new Client(timeout: 0),
         ];
         foreach ($mistakes as $expected => $mistake) {
@@ -133,6 +137,8 @@ final class ClientTest extends TestCase
         $server = $this->server(static fn (array $request): ?string => match (strtok($request['target'], '?')) {
             '/chunked' => "HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n5\r\nhello\r\n1;note=x\r\n \r\n5\r\nworld\r\n0\r\nX-Trailer: t\r\n\r\n",
             '/gzip' => TestServer::reply(200, gzencode('{"compressed":true}'), ['Content-Encoding' => 'gzip', 'Content-Type' => 'application/json']),
+            '/deflate' => TestServer::reply(200, gzcompress('deflated'), ['Content-Encoding' => 'deflate']),
+            '/deflate-raw' => TestServer::reply(200, gzdeflate('deflated without its header'), ['Content-Encoding' => 'deflate']),
             '/not-gzip' => TestServer::reply(200, 'plain', ['Content-Encoding' => 'gzip']),
             '/until-closed' => "HTTP/1.0 200 OK\r\nConnection: close\r\n\r\nall there is",
             '/big' => TestServer::reply(200, $big),
@@ -149,7 +155,9 @@ final class ClientTest extends TestCase
         self::assertSame('hello world', (string) $http->get($server->url('/chunked'))->getBody());
         $gzip = $http->get($server->url('/gzip'));
         self::assertSame([['compressed' => true], false, false], [$gzip->json(), $gzip->hasHeader('Content-Encoding'), $gzip->hasHeader('Content-Length')]);
-        self::assertSame('gzip', $server->requests[1]['headers']['accept-encoding']);
+        self::assertSame('gzip, deflate', $server->requests[1]['headers']['accept-encoding']);
+        self::assertSame('deflated', (string) $http->get($server->url('/deflate'))->getBody());
+        self::assertSame('deflated without its header', (string) $http->get($server->url('/deflate-raw'))->getBody());
         self::assertSame('all there is', (string) $http->get($server->url('/until-closed'))->getBody());
         $large = $http->get($server->url('/big'));
         self::assertSame([strlen($big), md5($big)], [$large->getBody()->getSize(), md5((string) $large->getBody())]);
@@ -224,7 +232,8 @@ final class ClientTest extends TestCase
         } catch (NetworkException $error) {
             self::assertSame("GET http://127.0.0.1:{$server->port}/slow failed: it took more than 0.1 seconds, and was waiting for the answer when given up.", $error->getMessage());
         }
-        self::assertSame('late', (string) $http->request('GET', $server->url('/slow'), timeout: 2.0)->getBody(), 'One request may be given longer.');
+        self::assertSame('late', (string) $http->timeout(2.0)->get($server->url('/slow'))->getBody(), 'One request may be given longer.');
+        self::assertSame(2, $server->connections, 'The client it was asked of is left as it was, and both use the same connections.');
 
         $closed = stream_socket_server('tcp://127.0.0.1:0');
         $port = (int) substr(strrchr(stream_socket_get_name($closed, false), ':'), 1);
@@ -369,6 +378,155 @@ final class ClientTest extends TestCase
             self::assertStringContainsString('the encrypted connection could not be made', $error->getMessage());
         }
         self::assertSame('over tls /c', (string) $this->client(tls: ['verify_peer' => false, 'verify_peer_name' => false])->get($server->url('/c', 'https'))->getBody());
+    }
+
+    public function testAnErrorStatusIsThrownWhenAskedTo(): void
+    {
+        $server = $this->server(static fn (array $request): string => TestServer::reply(str_starts_with($request['target'], '/gone') ? 410 : 200, 'body'));
+        $http = $this->client();
+        self::assertSame('body', (string) $http->get($server->url('/here'))->throw()->getBody());
+        try {
+            $http->get($server->url('/gone'), query: ['token' => 'secret'])->throw();
+            self::fail('An error status passed for a success.');
+        } catch (ResponseException $error) {
+            self::assertSame("GET http://127.0.0.1:{$server->port}/gone was answered with 410 Reply.", $error->getMessage());
+            self::assertSame('body', (string) $error->response->getBody());
+            self::assertInstanceOf(ClientExceptionInterface::class, $error);
+        }
+    }
+
+    public function testFilesAreSentAsAFormAndAReceivedUploadIsPassedOn(): void
+    {
+        $server = $this->server(static function (array $request): string {
+            // Read as the framework reads an upload it receives.
+            $received = new Request('POST', '/', ['Content-Type' => $request['headers']['content-type']], $request['body']);
+            $files = [];
+            $tree = $received->getUploadedFiles();
+            array_walk_recursive($tree, static function ($file) use (&$files): void {
+                $files[] = [$file->getClientFilename(), $file->getClientMediaType(), $file->getSize(), md5((string) $file->getStream())];
+            });
+            return TestServer::reply(200, json_encode(['fields' => $received->getParsedBody(), 'names' => array_keys($received->getUploadedFiles()), 'files' => $files, 'length' => $request['headers']['content-length']]));
+        });
+        $http = $this->client();
+        $path = sys_get_temp_dir() . '/crab-send-' . bin2hex(random_bytes(6)) . '.bin';
+        $this->files[] = $path;
+        $content = random_bytes(300000);
+        file_put_contents($path, $content);
+        $upload = (new Request('POST', '/', ['Content-Type' => 'multipart/form-data; boundary=B'],
+            "--B\r\nContent-Disposition: form-data; name=\"f\"; filename=\"given.txt\"\r\nContent-Type: text/plain\r\n\r\nreceived earlier\r\n--B--\r\n"))->file('f');
+
+        $seen = $http->post($server->url('/upload'), form: ['title' => 'Q3 "final"', 'tags' => ['a', 'b'], 'draft' => false], files: [
+            'report' => File::fromPath($path, type: 'application/pdf'),
+            'note' => File::fromContents("line one\r\n--not a boundary", 'my "note".txt', 'text/plain'),
+            'passed' => $upload,
+            'photos' => [File::fromContents('one', '1.png', 'image/png'), File::fromContents('two', '2.png', 'image/png')],
+        ])->json();
+
+        self::assertSame(['title' => 'Q3 "final"', 'tags' => ['a', 'b'], 'draft' => '0'], $seen['fields']);
+        self::assertSame(['report', 'note', 'passed', 'photos'], $seen['names']);
+        self::assertSame([
+            [basename($path), 'application/pdf', 300000, md5($content)],
+            ['my %22note%22.txt', 'text/plain', 26, md5("line one\r\n--not a boundary")],
+            ['given.txt', 'text/plain', 16, md5('received earlier')],
+            ['1.png', 'image/png', 3, md5('one')],
+            ['2.png', 'image/png', 3, md5('two')],
+        ], $seen['files']);
+        self::assertGreaterThan(300000, (int) $seen['length'], 'Its length is known, so it is not sent in chunks.');
+
+        $mistakes = [
+            'files: takes File::fromPath(), File::fromContents() or an uploaded file for "f", not string' => fn () => $http->post($server->url(), files: ['f' => '/etc/hosts']),
+            'The file to send cannot be read: /no/such/file' => fn () => $http->post($server->url(), files: ['f' => File::fromPath('/no/such/file')]),
+            'A request has one body' => fn () => $http->post($server->url(), json: ['a' => 1], files: ['f' => File::fromContents('x', 'x')]),
+        ];
+        foreach ($mistakes as $expected => $mistake) {
+            try {
+                $mistake();
+                self::fail("Not refused: {$expected}");
+            } catch (\LogicException | \RuntimeException $error) {
+                self::assertStringContainsString($expected, $error->getMessage());
+            }
+        }
+    }
+
+    public function testCookiesAreKeptOnlyWhereThereIsAJar(): void
+    {
+        $server = $this->server(static fn (array $request): string => match (strtok($request['target'], '?')) {
+            '/login' => "HTTP/1.1 302 Found\r\nLocation: /account\r\nSet-Cookie: session=abc; Path=/; HttpOnly\r\nSet-Cookie: theme=dark; Path=/account\r\nContent-Length: 0\r\n\r\n",
+            '/logout' => TestServer::reply(200, '', ['Set-Cookie' => 'session=; Max-Age=0; Path=/']),
+            default => TestServer::reply(200, $request['headers']['cookie'] ?? 'no cookie'),
+        });
+        $http = $this->client();
+        $http->post($server->url('/login'));
+        self::assertSame('no cookie', (string) $http->get($server->url('/account'))->getBody(), 'A client keeps none by itself.');
+
+        $jar = new CookieJar();
+        $session = $http->cookies($jar);
+        self::assertSame('theme=dark; session=abc', (string) $session->post($server->url('/login'))->getBody(), 'A cookie set by a redirect goes to where it points.');
+        self::assertSame('session=abc', (string) $session->get($server->url('/orders'))->getBody());
+        self::assertSame('mine=1; session=abc', (string) $session->get($server->url('/orders'), headers: ['Cookie' => 'mine=1'])->getBody());
+        self::assertSame('no cookie', (string) $http->get($server->url('/orders'))->getBody(), 'The client it was made from still keeps none.');
+        self::assertSame('no cookie', (string) $http->cookies(new CookieJar())->get($server->url('/orders'))->getBody(), 'Another jar is another caller.');
+        $session->get($server->url('/logout'));
+        self::assertSame('no cookie', (string) $session->get($server->url('/orders'))->getBody(), 'A cookie the server took back is gone.');
+    }
+
+    public function testRequestsGoThroughAProxyWhenThereIsOne(): void
+    {
+        // What is not encrypted is handed to the proxy whole, to pass on.
+        $proxy = $this->server(static fn (array $request): string => TestServer::reply(200, json_encode($request)));
+        $through = $this->client(proxy: $proxy->url('', 'http', 'user:p%40ss@127.0.0.1'));
+        $seen = $through->get('http://api.example.test/users', query: ['page' => 2])->json();
+        self::assertSame(['http://api.example.test/users?page=2', 'api.example.test', 'Basic ' . base64_encode('user:p@ss')], [$seen['target'], $seen['headers']['host'], $seen['headers']['proxy-authorization']]);
+        self::assertSame('http://api.example.test:8080/', $through->get('http://api.example.test:8080/')->json()['target']);
+
+        try {
+            new Client(proxy: 'socks5://127.0.0.1:1080');
+            self::fail('A proxy of a kind that is not supported was taken.');
+        } catch (\LogicException $error) {
+            self::assertStringContainsString('A proxy is given as "http://host:port"', $error->getMessage());
+        }
+
+        if (!extension_loaded('openssl')) {
+            return;
+        }
+        // What is encrypted goes through a tunnel the proxy makes and cannot read.
+        $certificate = $this->certificate('localhost');
+        $server = $this->server(static fn (array $request): string => TestServer::reply(200, 'tunnelled ' . $request['target'] . ' ' . ($request['headers']['proxy-authorization'] ?? 'unseen')), $certificate);
+        $tunnel = new TestTunnel();
+        $refusing = new TestTunnel('HTTP/1.1 407 Proxy Authentication Required');
+        try {
+            $secure = $this->client(proxy: $tunnel->url('user:secret'), tls: ['cafile' => $certificate]);
+            self::assertSame('tunnelled /a unseen', (string) $secure->get($server->url('/a', 'https', 'localhost'))->getBody());
+            self::assertSame('tunnelled /b unseen', (string) $secure->get($server->url('/b', 'https', 'localhost'))->getBody());
+            self::assertSame([["CONNECT localhost:{$server->port} HTTP/1.1", 'Basic ' . base64_encode('user:secret')]], array_map(static fn (array $asked): array => [$asked['line'], $asked['headers']['proxy-authorization']], $tunnel->asked), 'One tunnel carried both.');
+
+            try {
+                $this->client(proxy: $refusing->url(), tls: ['cafile' => $certificate])->get($server->url('/', 'https', 'localhost'));
+                self::fail('A proxy that refused was passed through.');
+            } catch (NetworkException $error) {
+                self::assertStringContainsString('the proxy would not connect to localhost: it answered "HTTP/1.1 407 Proxy Authentication Required"', $error->getMessage());
+            }
+        } finally {
+            $tunnel->close();
+            $refusing->close();
+        }
+    }
+
+    public function testWaitingForAConnectionEndsWithTheRequestsOwnTimeout(): void
+    {
+        $server = $this->server(static fn (array $request): array => [TestServer::reply(200, 'slow'), 0.4]);
+        $http = $this->client(connections: 1);
+        $first = Task::spawn(EventLoop::current(), static fn (): string => (string) $http->get($server->url('/'))->getBody());
+        Async::sleep(EventLoop::current(), 0.02);
+        $started = hrtime(true);
+        try {
+            $http->timeout(0.1)->get($server->url('/'));
+            self::fail('A request waited past its own timeout for a connection.');
+        } catch (NetworkException $error) {
+            self::assertStringContainsString('it took more than 0.1 seconds, and every one of the 1 connections to 127.0.0.1 was still busy', $error->getMessage());
+            self::assertLessThan(0.25, (hrtime(true) - $started) / 1e9);
+        }
+        self::assertSame('slow', $first->await());
     }
 
     public function testTheProviderBindsOneClientPerWorkerFromConfiguration(): void
