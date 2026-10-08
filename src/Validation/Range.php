@@ -32,16 +32,4 @@ final readonly class Range implements Rule
         }
         return null;
     }
-
-    public function schema(string $type): array
-    {
-        $schema = [];
-        if ($this->min !== null) {
-            $schema['minimum'] = $this->min;
-        }
-        if ($this->max !== null) {
-            $schema['maximum'] = $this->max;
-        }
-        return $schema;
-    }
 }

@@ -129,30 +129,37 @@ final class AppBuilder
      *     ->withMiddleware(only: [MyErrors::class, Cors::class])  these and no others
      *
      * Within each list the first is outermost. Called again, it adds to
-     * what was said before. Middleware for some routes only belongs on
-     * the route or its group.
+     * what was said before, except that only: replaces an earlier only:.
+     * Middleware for some routes only belongs on the route or its group.
      *
      * @param MiddlewareInterface|class-string<MiddlewareInterface>|list<MiddlewareInterface|class-string<MiddlewareInterface>> $append
-     * @param list<MiddlewareInterface|class-string<MiddlewareInterface>> $prepend
-     * @param list<class-string<MiddlewareInterface>> $remove Classes of the framework's middleware to leave out.
+     * @param MiddlewareInterface|class-string<MiddlewareInterface>|list<MiddlewareInterface|class-string<MiddlewareInterface>> $prepend
+     * @param class-string<MiddlewareInterface>|list<class-string<MiddlewareInterface>> $remove Classes of the framework's middleware to leave out.
      * @param list<MiddlewareInterface|class-string<MiddlewareInterface>>|null $only The whole list in place of the framework's.
      */
     public function withMiddleware(
         MiddlewareInterface|string|array $append = [],
-        array $prepend = [],
-        array $remove = [],
+        MiddlewareInterface|string|array $prepend = [],
+        string|array $remove = [],
         ?array $only = null,
     ): static {
+        // Each takes one or a list; only: is always the whole list.
         $this->append = [...$this->append, ...self::middleware(is_array($append) ? $append : [$append])];
-        $this->prepend = [...$this->prepend, ...self::middleware($prepend)];
-        foreach ($remove as $class) {
+        $this->prepend = [...$this->prepend, ...self::middleware(is_array($prepend) ? $prepend : [$prepend])];
+        foreach ((array) $remove as $class) {
             if (!is_string($class)) {
                 throw new \LogicException('withMiddleware(remove:) takes the class names of middleware to leave out, not ' . get_debug_type($class) . '.');
+            }
+            if (!in_array($class, App::MIDDLEWARE, true)) {
+                throw new \LogicException("withMiddleware(remove:) leaves out one of the framework's middleware, and {$class} is not one of them: " . implode(', ', App::MIDDLEWARE) . '. Middleware of your own is left out where you added it.');
             }
             $this->remove[] = $class;
         }
         if ($only !== null) {
             $this->only = self::middleware($only);
+        }
+        if ($this->only !== null && $this->remove !== []) {
+            throw new \LogicException("withMiddleware() was given both only: and remove:. only: already replaces the framework's middleware, so leave out of it what you do not want.");
         }
         return $this;
     }

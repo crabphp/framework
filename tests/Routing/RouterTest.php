@@ -205,8 +205,8 @@ final class RouterTest extends TestCase
         $mistakes = [
             'starts with "/" and does not end with one' => static fn () => $router->group(static fn () => null, 'admin'),
             'does not end with one: "/admin", not "/admin/"' => static fn () => $router->group(static fn () => null, '/admin/'),
-            'PSR-15 middleware or their class names, not int' => static fn () => $router->group(static fn () => null, middleware: [1]),
-            "A route's middleware is PSR-15 middleware or their class names, not float" => static fn () => $router->get('/bad', static fn (): string => '', middleware: [1.5]),
+            'PSR-15 middleware or their class names as its middleware, not int' => static fn () => $router->group(static fn () => null, middleware: [1]),
+            "Route GET /bad takes PSR-15 middleware or their class names as its middleware, not float" => static fn () => $router->get('/bad', static fn (): string => '', middleware: [1.5]),
         ];
         foreach ($mistakes as $expected => $mistake) {
             try {
@@ -226,11 +226,83 @@ final class RouterTest extends TestCase
         self::assertSame('outside', (string) $router->handle(new Request('GET', '/outside'))->getBody(), 'A group that failed does not leave its prefix behind.');
     }
 
+    public function testMiddlewareThatCouldNeverRunIsRefusedWhereItIsDeclared(): void
+    {
+        $router = new Router(new \Crab\Container\Container());
+        $home = static fn (): string => 'home';
+        $mistakes = [
+            'Route GET /me names App\\Missing\\Middleware as middleware, and there is no such class' => static fn () => $router->get('/me', $home, middleware: ['App\\Missing\\Middleware']),
+            'Route POST /me names stdClass as middleware, and it is not one' => static fn () => $router->post('/me', $home, middleware: [\stdClass::class]),
+            'Route PUT /me takes PSR-15 middleware or their class names as its middleware, not int' => static fn () => $router->put('/me', $home, middleware: [1]),
+            'The group /admin names App\\Missing\\Middleware as middleware' => static fn () => $router->group(prefix: '/admin', middleware: ['App\\Missing\\Middleware'], routes: static fn () => null),
+        ];
+        foreach ($mistakes as $expected => $mistake) {
+            try {
+                $mistake();
+                self::fail("Not refused: {$expected}");
+            } catch (\InvalidArgumentException $error) {
+                self::assertStringContainsString($expected, $error->getMessage());
+            }
+        }
+        self::assertSame([], $router->routes(), 'A route that was refused is not left behind.');
+    }
+
     public function testMiddlewareThatCannotBeMadeStopsTheWorkerFromStarting(): void
     {
         $router = new Router(new \Crab\Container\Container());
-        $router->group(middleware: ['App\\Missing\\Middleware'], routes: static fn (Router $router) => $router->get('/x', static fn (): string => 'x'));
+        $router->get('/x', static fn (): string => 'x', middleware: [NeedsAnArgument::class]);
         $this->expectException(\Throwable::class);
         $router->assemble();
+    }
+
+    public function testARouteSaysWhatMiddlewareIsAroundIt(): void
+    {
+        $router = new Router(new \Crab\Container\Container());
+        $router->get('/', static fn (): string => 'home');
+        $router->group(middleware: [NeedsAnArgument::class], routes: static function (Router $router): void {
+            $router->get('/in', static fn (): string => 'in', middleware: [Passes::class]);
+        });
+        [$home, $in] = $router->routes();
+        self::assertSame([], $home->middleware);
+        self::assertSame([NeedsAnArgument::class, Passes::class], $in->middleware, "Its groups' first, then its own.");
+    }
+
+    public function testAMiddlewareGivenAgainIsUsedOnceAsItWasGivenLast(): void
+    {
+        $router = new Router(new \Crab\Container\Container());
+        $home = static fn (): string => 'home';
+        $shared = new NeedsAnArgument('shared');
+        $router->group(middleware: [$shared, Passes::class], routes: static function (Router $router) use ($home, $shared): void {
+            $router->get('/group', $home);
+            $router->get('/again', $home, middleware: [$shared, Passes::class]);
+            $router->get('/other', $home, middleware: [new NeedsAnArgument('other')]);
+        });
+        $router->assemble();
+        $names = static fn (string $path): array => $router->handle(new Request('GET', $path))->getHeader('X-Name');
+        self::assertSame(['shared'], $names('/group'));
+        self::assertSame(['shared'], $names('/again'), 'The same object and the same name run once.');
+        self::assertSame([NeedsAnArgument::class, Passes::class], $router->routes()[1]->middleware);
+        // Another object of the class is another middleware, with options of its own.
+        self::assertSame(['other', 'shared'], $names('/other'));
+    }
+}
+
+final class NeedsAnArgument implements \Psr\Http\Server\MiddlewareInterface
+{
+    public function __construct(public string $name)
+    {
+    }
+
+    public function process(ServerRequestInterface $request, RequestHandlerInterface $handler): ResponseInterface
+    {
+        return $handler->handle($request)->withAddedHeader('X-Name', $this->name);
+    }
+}
+
+final class Passes implements \Psr\Http\Server\MiddlewareInterface
+{
+    public function process(ServerRequestInterface $request, RequestHandlerInterface $handler): ResponseInterface
+    {
+        return $handler->handle($request);
     }
 }

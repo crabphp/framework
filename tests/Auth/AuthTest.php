@@ -21,7 +21,6 @@ use Crab\Contracts\Auth\TokenStore;
 use Crab\Contracts\Database\Database as DatabaseContract;
 use Crab\Contracts\Http\Middleware;
 use Crab\Contracts\Database\Migrator;
-use Crab\Contracts\Routing\Router as RouterContract;
 use Crab\Database\Database;
 use Crab\Database\DatabaseProvider;
 use Crab\Database\Migrator as DatabaseMigrator;
@@ -29,9 +28,7 @@ use Crab\Http\ErrorResponse;
 use Crab\Http\Request;
 use Crab\Http\Response;
 use Crab\Route;
-use Crab\Routing\OpenApi;
 use Crab\Testing\FrozenClock;
-use Crab\Validation\Validator;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 use Psr\Clock\ClockInterface;
@@ -301,10 +298,6 @@ final class AuthTest extends TestCase
 
         self::assertInstanceOf(PasswordHasher::class, $app->container->get(PasswordHasherContract::class));
         self::assertInstanceOf(TokenAuth::class, $app->container->get(TokenAuth::class));
-        $paths = (new OpenApi($app->container->get(RouterContract::class), new Validator()))->document('A', '1')['paths'];
-        self::assertSame(['description' => 'Authentication is required.'], $paths['/me']['get']['responses']['401']);
-        self::assertArrayNotHasKey('401', $paths['/maybe']['get']['responses']);
-        self::assertArrayNotHasKey('401', $paths['/public']['get']['responses']);
         $app->container->get(DatabaseContract::class)->close();
     }
 

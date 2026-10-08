@@ -8,7 +8,7 @@ namespace Crab\Contracts\Validation;
  * Turns loose data, such as a decoded JSON body, into an object of a
  * class, checking it against the types and rules the class declares on
  * its constructor. The class is the one description of the data: what is
- * accepted, what the code receives, and what the API documents.
+ * accepted and what the code receives.
  */
 interface Validator
 {
@@ -25,10 +25,13 @@ interface Validator
     public function validate(string $class, array $data, bool $coerce = false): object;
 
     /**
+     * Reads the class now, and every class inside it, and throws a
+     * LogicException saying why when one cannot be validated. validate()
+     * reads a class on first use; this is for learning it at startup.
+     *
      * @param class-string $class
-     * @return array<string, mixed> The JSON Schema of the data the class accepts.
      */
-    public function schema(string $class): array;
+    public function inspect(string $class): void;
 
     /**
      * The same for a function whose parameters are the fields: checks the
@@ -41,8 +44,9 @@ interface Validator
     public function validateParameters(\ReflectionFunctionAbstract $function, array $names, array $data, bool $coerce = false): array;
 
     /**
+     * The same as inspect() for a function's parameters.
+     *
      * @param list<string> $names
-     * @return array<string, mixed> The JSON Schema of the data those parameters accept.
      */
-    public function parametersSchema(\ReflectionFunctionAbstract $function, array $names): array;
+    public function inspectParameters(\ReflectionFunctionAbstract $function, array $names): void;
 }

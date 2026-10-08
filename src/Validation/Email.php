@@ -16,9 +16,4 @@ final readonly class Email implements Rule
     {
         return is_string($value) && filter_var($value, FILTER_VALIDATE_EMAIL) !== false ? null : 'must be an email address';
     }
-
-    public function schema(string $type): array
-    {
-        return ['format' => 'email'];
-    }
 }

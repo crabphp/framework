@@ -5,11 +5,9 @@ declare(strict_types=1);
 namespace Crab\Routing;
 
 use Crab\Contracts\Auth\Identity;
-use Crab\Contracts\Routing\RouteInfo;
 use Crab\Contracts\Validation\Validator;
 use Crab\Http\ErrorResponse;
 use Crab\Http\Response;
-use Crab\Validation\ListOf;
 use Crab\Validation\ValidationException;
 use Psr\Container\ContainerInterface;
 use Psr\Http\Message\ResponseInterface;
@@ -42,7 +40,10 @@ use Psr\Http\Server\RequestHandlerInterface;
  */
 final class TypedHandler implements RequestHandlerInterface
 {
-    public readonly RouteInfo $route;
+    /**
+     * A name for the handler, for the route list: "Closure", its class, or "Class::method".
+     */
+    public readonly string $name;
     private readonly \ReflectionFunctionAbstract $signature;
     /**
      * Parameters that receive the request.
@@ -116,43 +117,17 @@ final class TypedHandler implements RequestHandlerInterface
         if ($this->input !== null && $this->fields !== []) {
             throw new \LogicException("The handler of {$route} takes the input {$this->input[1]} and also the field \${$this->fields[0]}; put every field in the class, or take them all as parameters.");
         }
-        $fields = null;
         try {
             // Read now, so that a field or class that cannot be validated is reported at startup.
             if ($this->input !== null) {
-                $validator->schema($this->input[1]);
+                $validator->inspect($this->input[1]);
             } elseif ($this->fields !== []) {
-                $fields = $validator->parametersSchema($this->signature, $this->fields);
+                $validator->inspectParameters($this->signature, $this->fields);
             }
         } catch (\LogicException $error) {
             throw new \LogicException("The handler of {$route} cannot take the request's data: {$error->getMessage()} If it is a service, it belongs in the constructor of a handler class.", previous: $error);
         }
-
-        $parameters = [];
-        foreach ($names as $parameter) {
-            $parameters[$parameter] = $this->parameters[$parameter] ?? 'string';
-        }
-        $list = $this->signature->getAttributes(ListOf::class)[0] ?? null;
-        $output = self::output($this->signature->getReturnType());
-        if ($list !== null) {
-            if ($output !== 'array') {
-                throw new \LogicException("The handler of {$route} has #[ListOf] but does not declare that it returns an array.");
-            }
-            $output = $list->newInstance()->type;
-        }
-        $takesData = $this->input !== null || $this->fields !== [];
-        $this->route = new RouteInfo(
-            $method,
-            $pattern,
-            $name,
-            $parameters,
-            $this->input[1] ?? null,
-            $fields,
-            $takesData ? ($this->fromQuery ? 'query' : 'body') : null,
-            $output,
-            $list !== null,
-            in_array(false, array_column($this->users, 1), true),
-        );
+        $this->name = $name;
     }
 
     public function handle(ServerRequestInterface $request): ResponseInterface
@@ -277,28 +252,6 @@ final class TypedHandler implements RequestHandlerInterface
             throw new \LogicException("The handler of {$route} names {$class}::{$method}(), which is not a public method of that class.");
         }
         return [$class, $method];
-    }
-
-    /**
-     * What the handler declares it returns, for the route's description.
-     * "User|Response" is a User: the response is only how it is sent.
-     */
-    private static function output(?\ReflectionType $type): ?string
-    {
-        if ($type instanceof \ReflectionNamedType) {
-            return $type->getName();
-        }
-        if (!$type instanceof \ReflectionUnionType) {
-            return null;
-        }
-        $data = [];
-        foreach ($type->getTypes() as $member) {
-            $name = $member instanceof \ReflectionNamedType ? $member->getName() : '';
-            if ($name !== 'null' && !is_a($name, ResponseInterface::class, true)) {
-                $data[] = $name;
-            }
-        }
-        return count($data) === 1 ? $data[0] : null;
     }
 
     /**

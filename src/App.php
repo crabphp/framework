@@ -6,7 +6,6 @@ namespace Crab;
 
 use Crab\Clock\SystemClock;
 use Crab\Commands\MakeMiddleware;
-use Crab\Commands\OpenApi;
 use Crab\Commands\Reload;
 use Crab\Commands\Restart;
 use Crab\Commands\Routes;
@@ -89,7 +88,7 @@ final class App implements RequestHandlerInterface
 
     /**
      * @param string|null $basePath The application's own directory, which path() resolves against.
-     * @param list<MiddlewareInterface|class-string<MiddlewareInterface>> $middleware The middleware around every request, the first outermost; middleware() adds inside it.
+     * @param list<MiddlewareInterface|class-string<MiddlewareInterface>> $middleware The middleware around every request, the first outermost. A provider adds inside it through the MiddlewareStack contract.
      */
     public function __construct(
         public readonly ConfigContract $config = new Config(),
@@ -145,7 +144,6 @@ final class App implements RequestHandlerInterface
         $this->console->add('restart', Restart::class);
         $this->console->add('status', Status::class);
         $this->console->add('routes', Routes::class);
-        $this->console->add('openapi', OpenApi::class);
         $this->console->add('make:middleware', MakeMiddleware::class);
         $container->instance(ConsoleContract::class, $this->console);
         $container->instance(Console::class, $this->console);
@@ -214,17 +212,6 @@ final class App implements RequestHandlerInterface
                 $this->workerProviders[] = $provider;
             }
         }
-        return $this;
-    }
-
-    /**
-     * Adds PSR-15 middleware around every route, the first added outermost,
-     * inside the error handler. One given by name is made by the container
-     * in the worker that serves requests, when that worker starts.
-     */
-    public function middleware(MiddlewareInterface|string ...$middleware): static
-    {
-        $this->stack->add(...$middleware);
         return $this;
     }
 

@@ -12,7 +12,6 @@ use Crab\Contracts\Http\Request as RequestContract;
 use Crab\Contracts\Validation\Validator as ValidatorContract;
 use Crab\Http\Request;
 use Crab\Http\Response;
-use Crab\Routing\OpenApi;
 use Crab\Routing\Router;
 use Crab\Validation\Email;
 use Crab\Validation\Length;
@@ -104,7 +103,6 @@ final readonly class UserController
         ++$names->made;
     }
 
-    #[ListOf(User::class)]
     public function index(int $page = 1): array
     {
         return [$this->show($page)];
@@ -229,8 +227,7 @@ final class TypedHandlerTest extends TestCase
         self::assertSame(422, $router->handle(new Request('GET', '/users/x'))->getStatusCode());
 
         $route = $router->routes()[0];
-        self::assertSame(['GET', '/users/{id}', ShowUser::class, ['id' => 'int'], null, null, User::class, false],
-            [$route->method, $route->pattern, $route->handler, $route->parameters, $route->input, $route->inputFrom, $route->output, $route->outputList]);
+        self::assertSame(['GET', '/users/{id}', ShowUser::class], [$route->method, $route->pattern, $route->handler]);
     }
 
     public function testDatesInADeclaredResponseAreWrittenAsText(): void
@@ -238,7 +235,7 @@ final class TypedHandlerTest extends TestCase
         $at = new \DateTimeImmutable('2026-01-31 12:00:00', new \DateTimeZone('UTC'));
         $router = new Router();
         $router->get('/event', static fn (): Event => new Event('Launch', $at, [$at->modify('-1 day')]));
-        $router->get('/events', #[ListOf(Event::class)] static fn (): array => [new Event('Launch', $at)]);
+        $router->get('/events', static fn (): array => [new Event('Launch', $at)]);
         $router->post('/events', static fn (Event $input): Event => $input);
 
         self::assertSame('{"title":"Launch","at":"2026-01-31T12:00:00+00:00","reminders":["2026-01-30T12:00:00+00:00"]}', $this->body($router, new Request('GET', '/event')));
@@ -270,24 +267,6 @@ final class TypedHandlerTest extends TestCase
         $invalid = $router->handle($this->json('PATCH', '/users/x', ['tags' => ['a', 1]]));
         self::assertSame(['id' => ['must be a whole number'], 'tags.1' => ['must be text']], json_decode((string) $invalid->getBody(), true)['error']['fields']);
         self::assertSame(422, $router->handle(new Request('GET', '/users?page=first'))->getStatusCode());
-
-        $routes = $router->routes();
-        self::assertSame([null, 'query', ['type' => 'integer', 'default' => 1]], [$routes[0]->input, $routes[0]->inputFrom, $routes[0]->fields['properties']['page']]);
-        self::assertSame(['body', ['email', 'name']], [$routes[1]->inputFrom, $routes[1]->fields['required']]);
-        self::assertSame([['id' => 'int'], ['name', 'tags', 'seen']], [$routes[2]->parameters, array_keys($routes[2]->fields['properties'])]);
-
-        $document = (new OpenApi($router, new Validator()))->document('Shop', '1');
-        self::assertSame(['page', 'search', 'plan', 'active'], array_column($document['paths']['/users']['get']['parameters'], 'name'));
-        self::assertSame([
-            'type' => 'object',
-            'properties' => [
-                'email' => ['type' => 'string', 'format' => 'email'],
-                'name' => ['type' => 'string', 'minLength' => 2],
-                'age' => ['type' => ['integer', 'null'], 'default' => null],
-            ],
-            'required' => ['email', 'name'],
-        ], $document['paths']['/users']['post']['requestBody']['content']['application/json']['schema']);
-        self::assertSame(['ValidationError'], array_keys($document['components']['schemas']), 'Loose fields belong to their route and are not listed as a class.');
     }
 
     public function testAMethodOfAClassHandlesARoute(): void
@@ -310,10 +289,6 @@ final class TypedHandlerTest extends TestCase
 
         $routes = $router->routes();
         self::assertSame([UserController::class . '::index', UserController::class . '::show', UserController::class . '::store'], array_column($routes, 'handler'));
-        self::assertSame([User::class, true], [$routes[0]->output, $routes[0]->outputList]);
-        self::assertSame([User::class, CreateUser::class], [$routes[2]->output, $routes[2]->input], 'A "User|Response" return is described as a User.');
-        $paths = (new OpenApi($router, new Validator()))->document('Shop', '1')['paths'];
-        self::assertSame(['$ref' => '#/components/schemas/User'], $paths['/users']['post']['responses']['200']['content']['application/json']['schema']);
 
         $standalone = new Router();
         $standalone->get('/plain', [PlainController::class, 'hello']);
@@ -379,7 +354,6 @@ final class TypedHandlerTest extends TestCase
             'takes the input Crab\Tests\Routing\CreateUser and also the field $force; put every field in the class, or take them all as parameters' => static fn () => $router->post('/a', static fn (CreateUser $input, bool $force = false) => ''),
             'takes $id, which must have one plain type' => static fn () => $router->get('/a/{id}', static fn (int|string $id) => ''),
             'takes $rest, which must have one plain type' => static fn () => $router->get('/a', static fn (string ...$rest) => ''),
-            'has #[ListOf] but does not declare that it returns an array' => static fn () => $router->get('/a', #[ListOf(User::class)] static fn () => []),
             'Ambiguous::$id has a union or intersection type' => static fn () => $router->post('/a', static fn (\Crab\Tests\Routing\Ambiguous $input) => ''),
             'A closure takes $tags, which has #[ListOf] but is not declared as an array' => static fn () => $router->post('/a', static fn (#[ListOf('int')] string $tags) => ''),
             "is an array, which must be a class and the name of its method: [UserController::class, 'show']" => static fn () => $router->get('/a', [UserController::class]),
@@ -399,99 +373,15 @@ final class TypedHandlerTest extends TestCase
         self::assertSame([], $router->routes(), 'A refused route is not half added.');
     }
 
-    public function testTheOpenApiDocumentIsWrittenFromTheSignatures(): void
+    public function testTheApplicationBindsTheValidator(): void
     {
-        $router = new Router(new Container());
-        $router->post('/users', static fn (CreateUser $input): User => new User(1, $input->email, $input->name, $input->plan));
-        $router->get('/users', #[ListOf(User::class)] static fn (ListUsers $query): array => []);
-        $router->get('/users/{id:\d{1,9}}', ShowUser::class);
-        $router->delete('/users/{id}', static function (int $id): void {
-        });
-        $router->get('/health', static fn (): string => 'ok');
-        $router->get('/tags', #[ListOf('string')] static fn (): array => []);
-        $router->get('/count', static fn (): int => 1);
-        $router->get('/page', static fn (): Page => new Page([], 15, 1, false));
-        $router->get('/anything', static fn () => Response::text(''));
-        $router->get('/files/{name}', static fn (string $name): ResponseInterface => Response::text(''));
-        $router->get('/psr', new \Crab\Http\ClosureHandler(static fn () => ''));
-
-        $document = (new OpenApi($router, new Validator()))->document('Shop', '2.1.0');
-        self::assertSame(['3.1.0', ['title' => 'Shop', 'version' => '2.1.0']], [$document['openapi'], $document['info']]);
-        self::assertSame(['/users', '/users/{id}', '/health', '/tags', '/count', '/page', '/anything', '/files/{name}', '/psr'], array_keys($document['paths']));
-        self::assertSame(['post', 'get'], array_keys($document['paths']['/users']));
-        self::assertSame(['get', 'delete'], array_keys($document['paths']['/users/{id}']));
-
-        $invalid = ['description' => 'The request is invalid.', 'content' => ['application/json' => ['schema' => ['$ref' => '#/components/schemas/ValidationError']]]];
-        $user = ['$ref' => '#/components/schemas/User'];
-        self::assertSame([
-            'requestBody' => ['required' => true, 'content' => ['application/json' => ['schema' => ['$ref' => '#/components/schemas/CreateUser']]]],
-            'responses' => ['200' => ['description' => 'OK', 'content' => ['application/json' => ['schema' => $user]]], '422' => $invalid],
-        ], $document['paths']['/users']['post']);
-        self::assertSame([
-            'parameters' => [
-                ['name' => 'page', 'in' => 'query', 'required' => false, 'schema' => ['type' => 'integer', 'minimum' => 1, 'default' => 1]],
-                ['name' => 'search', 'in' => 'query', 'required' => false, 'schema' => ['type' => ['string', 'null'], 'default' => null]],
-            ],
-            'responses' => ['200' => ['description' => 'OK', 'content' => ['application/json' => ['schema' => ['type' => 'array', 'items' => $user]]]], '422' => $invalid],
-        ], $document['paths']['/users']['get']);
-        self::assertSame([
-            'parameters' => [['name' => 'id', 'in' => 'path', 'required' => true, 'schema' => ['type' => 'integer']]],
-            'responses' => ['200' => ['description' => 'OK', 'content' => ['application/json' => ['schema' => $user]]], '422' => $invalid],
-        ], $document['paths']['/users/{id}']['get']);
-        self::assertSame(['204' => ['description' => 'No Content'], '422' => $invalid], $document['paths']['/users/{id}']['delete']['responses']);
-        self::assertSame(['200' => ['description' => 'OK', 'content' => ['text/plain' => ['schema' => ['type' => 'string']]]]], $document['paths']['/health']['get']['responses']);
-        self::assertSame(['type' => 'array', 'items' => ['type' => 'string']], $document['paths']['/tags']['get']['responses']['200']['content']['application/json']['schema']);
-        self::assertSame(['type' => 'integer'], $document['paths']['/count']['get']['responses']['200']['content']['application/json']['schema']);
-        foreach (['/page', '/anything', '/psr'] as $undescribed) {
-            self::assertSame(['responses' => ['200' => ['description' => 'OK']]], $document['paths'][$undescribed]['get']);
-        }
-        self::assertSame([
-            'parameters' => [['name' => 'name', 'in' => 'path', 'required' => true, 'schema' => ['type' => 'string']]],
-            'responses' => ['200' => ['description' => 'OK']],
-        ], $document['paths']['/files/{name}']['get']);
-
-        self::assertSame(['CreateUser', 'User', 'ValidationError'], array_keys($document['components']['schemas']));
-        self::assertSame([
-            'type' => 'object',
-            'properties' => [
-                'email' => ['type' => 'string', 'format' => 'email'],
-                'name' => ['type' => 'string', 'minLength' => 2, 'maxLength' => 50],
-                'plan' => ['type' => 'string', 'enum' => ['free', 'paid']],
-            ],
-            'required' => ['email', 'name'],
-        ], $document['components']['schemas']['CreateUser']);
-        self::assertSame(['id', 'email', 'name', 'plan'], $document['components']['schemas']['User']['required']);
-
-        $other = new Router();
-        $other->post('/a', static fn (CreateUser $input): Event => new Event('a', new \DateTimeImmutable()));
-        $other->post('/b', static fn (\Crab\Tests\Routing\Other\CreateUser $input): array => []);
-        $names = array_keys((new OpenApi($other, new Validator()))->document('A', '1')['components']['schemas']);
-        self::assertSame(['Crab.Tests.Routing.Other.CreateUser', 'CreateUser', 'Event', 'ValidationError'], $names, 'Two classes with one short name are both listed.');
-        self::assertSame('{"openapi":"3.1.0","info":{"title":"Empty","version":"1"},"paths":{}}', json_encode((new OpenApi(new Router(), new Validator()))->document('Empty', '1')));
-    }
-
-    public function testTheApplicationBindsTheValidatorAndPrintsTheDocument(): void
-    {
-        $app = new App(new Config(['app' => ['name' => 'Shop', 'version' => '3.0.0']]));
+        $app = new App(new Config(['app' => ['name' => 'Shop']]));
         self::assertInstanceOf(Validator::class, $app->container->get(ValidatorContract::class));
         self::assertSame($app->container->get(ValidatorContract::class), $app->container->get(Validator::class));
         $app->router->post('/users', static fn (CreateUser $input): User => new User(1, $input->email, $input->name, $input->plan));
 
         $response = $app->handle($this->json('POST', '/users', ['email' => 'x']));
         self::assertSame(422, $response->getStatusCode());
-
-        $out = fopen('php://memory', 'w+');
-        self::assertSame(0, $app->console->run(['openapi'], new \Crab\Console\Output($out, $out)));
-        rewind($out);
-        $document = json_decode(stream_get_contents($out), true);
-        self::assertSame(['Shop', '3.0.0'], [$document['info']['title'], $document['info']['version']]);
-        self::assertSame('#/components/schemas/CreateUser', $document['paths']['/users']['post']['requestBody']['content']['application/json']['schema']['$ref']);
-
-        $file = sys_get_temp_dir() . '/crab-openapi-' . bin2hex(random_bytes(4)) . '.json';
-        self::assertSame(0, $app->console->run(['openapi', "--output={$file}"], new \Crab\Console\Output($out, $out)));
-        self::assertSame($document, json_decode((string) file_get_contents($file), true));
-        unlink($file);
-        self::assertSame(1, $app->console->run(['openapi', '--output=/no/such/folder/openapi.json'], new \Crab\Console\Output($out, $out)));
     }
 
     /**
@@ -513,15 +403,6 @@ final class TypedHandlerTest extends TestCase
 final class Ambiguous
 {
     public function __construct(public int|string $id)
-    {
-    }
-}
-
-namespace Crab\Tests\Routing\Other;
-
-final readonly class CreateUser
-{
-    public function __construct(public string $handle)
     {
     }
 }

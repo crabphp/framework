@@ -152,7 +152,7 @@ final class AppBuilderTest extends TestCase
         // Outermost first: prepended, the framework's, appended. The outermost marks the response last.
         $app = App::configure()
             ->withMiddleware([new Mark('appended'), new Mark('appended too')])
-            ->withMiddleware(prepend: [new Mark('prepended')])
+            ->withMiddleware(prepend: new Mark('prepended'))
             ->withMiddleware(new Mark('one alone'))
             ->create();
         $route();
@@ -166,7 +166,7 @@ final class AppBuilderTest extends TestCase
         self::assertSame([500, 'prepended'], [$failed->getStatusCode(), $failed->getHeaderLine('X-Mark')]);
 
         // Without the framework's: nothing turns a failure into a response here.
-        foreach ([App::configure()->withMiddleware(remove: [ErrorHandler::class]), App::configure()->withMiddleware(only: [])] as $builder) {
+        foreach ([App::configure()->withMiddleware(remove: ErrorHandler::class), App::configure()->withMiddleware(only: [])] as $builder) {
             $bare = $builder->create();
             \Crab\Route::get('/fail', static fn () => throw new \RuntimeException('nothing catches this'));
             try {
@@ -189,6 +189,8 @@ final class AppBuilderTest extends TestCase
             'middleware or their class names, not stdClass' => static fn () => App::configure()->withMiddleware(prepend: [new \stdClass()]),
             'their class names, not null' => static fn () => App::configure()->withMiddleware(only: [null]),
             'withMiddleware(remove:) takes the class names of middleware to leave out, not ' => static fn () => App::configure()->withMiddleware(remove: [new Mark()]),
+            'and ' . Mark::class . ' is not one of them: ' . ErrorHandler::class => static fn () => App::configure()->withMiddleware(remove: [Mark::class]),
+            'was given both only: and remove:' => static fn () => App::configure()->withMiddleware(only: [])->withMiddleware(remove: [ErrorHandler::class]),
         ];
         foreach ($mistakes as $expected => $mistake) {
             try {

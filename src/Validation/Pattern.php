@@ -28,11 +28,6 @@ final readonly class Pattern implements Rule
         return is_string($value) && preg_match($this->delimited(), $value) === 1 ? null : $this->message;
     }
 
-    public function schema(string $type): array
-    {
-        return ['pattern' => $this->expression];
-    }
-
     private function delimited(): string
     {
         return '~' . str_replace('~', '\~', $this->expression) . '~u';

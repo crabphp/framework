@@ -59,11 +59,6 @@ final readonly class Even implements Rule
     {
         return $value % 2 === 0 ? null : 'must be even';
     }
-
-    public function schema(string $type): array
-    {
-        return ['multipleOf' => 2];
-    }
 }
 
 final readonly class Signup
@@ -275,52 +270,16 @@ final class ValidatorTest extends TestCase
         }
     }
 
-    public function testAClassIsDescribedAsJsonSchema(): void
-    {
-        $schema = (new Validator())->schema(Signup::class);
-        self::assertSame(['email', 'name', 'role', 'address'], $schema['required']);
-        $address = [
-            'type' => 'object',
-            'properties' => ['city' => ['type' => 'string'], 'zip' => ['type' => 'string', 'pattern' => '^[0-9]{5}$']],
-            'required' => ['city', 'zip'],
-        ];
-        self::assertSame([
-            'email' => ['type' => 'string', 'format' => 'email'],
-            'name' => ['type' => 'string', 'minLength' => 2, 'maxLength' => 10],
-            'role' => ['type' => 'string', 'enum' => ['admin', 'member']],
-            'address' => $address,
-            'age' => ['type' => ['integer', 'null'], 'minimum' => 0, 'maximum' => 150, 'default' => null],
-            'score' => ['type' => 'number', 'default' => 1.5],
-            'newsletter' => ['type' => 'boolean', 'default' => false],
-            'born' => ['type' => ['string', 'null'], 'format' => 'date-time', 'default' => null],
-            'tags' => [
-                'type' => 'array',
-                'items' => ['type' => 'object', 'properties' => ['name' => ['type' => 'string', 'minLength' => 2]], 'required' => ['name']],
-                'maxItems' => 2,
-            ],
-            'scores' => ['type' => 'array', 'items' => ['type' => 'integer']],
-            'website' => ['type' => ['string', 'null'], 'format' => 'uri', 'default' => null],
-            'theme' => ['type' => 'string', 'enum' => ['light', 'dark'], 'default' => 'light'],
-            'level' => ['type' => 'integer', 'enum' => [1, 2]],
-            'pairs' => ['type' => 'integer', 'multipleOf' => 2, 'default' => 0],
-            'extra' => ['type' => ['array', 'object']],
-            'anything' => ['default' => null],
-            'billing' => ['type' => ['object', 'null']] + $address + ['default' => null],
-        ], $schema['properties']);
-        self::assertSame('{"type":"object","properties":{}}', json_encode((new Validator())->schema(Empty_::class)));
-    }
-
     public function testAClassThatCannotBeValidatedSaysWhy(): void
     {
         $validator = new Validator();
         $refused = [
-            'union or intersection type' => static fn () => $validator->schema(Union::class),
-            'is declared as iterable, which cannot be validated; use int' => static fn () => $validator->schema(Loose::class),
-            'has #[ListOf] but is not declared as an array' => static fn () => $validator->schema(TextList::class),
+            'union or intersection type' => static fn () => $validator->inspect(Union::class),
+            'is declared as iterable, which cannot be validated; use int' => static fn () => $validator->inspect(Loose::class),
+            'has #[ListOf] but is not declared as an array' => static fn () => $validator->inspect(TextList::class),
             'which has no values; give its cases values' => static fn () => $validator->validate(WithUnbacked::class, []),
             'there is no such class' => static fn () => $validator->validate('App\Missing', []),
             'it cannot be constructed' => static fn () => $validator->validate(Shape::class, []),
-            'contains itself' => static fn () => $validator->schema(Node::class),
             'Length needs a min, a max or both' => static fn () => new Length(),
             'Range needs a min, a max or both' => static fn () => new Range(),
             'OneOf needs at least one value' => static fn () => new OneOf(),
@@ -337,8 +296,25 @@ final class ValidatorTest extends TestCase
         $child = $validator->validate(Node::class, ['name' => 'child', 'parent' => ['name' => 'root']]);
         self::assertSame('root', $child->parent->name, 'A class that contains itself can still be validated.');
         self::assertSame('must be a number', (new Range(min: 1))->check('1'));
-        self::assertSame(['minimum' => 1], (new Range(min: 1))->schema('integer'));
-        self::assertSame(['maxLength' => 3], (new Length(max: 3))->schema('string'));
+        // Inspecting reads every class inside, however deep, and one that contains itself only once.
+        $validator->inspect(Node::class);
+        $validator->inspect(Signup::class);
+        try {
+            (new Validator())->inspect(HoldsUnion::class);
+            self::fail('A class that cannot be validated was nested unnoticed.');
+        } catch (\LogicException $error) {
+            self::assertStringContainsString('union or intersection type', $error->getMessage());
+        }
         self::assertNull((new Pattern('^a~b$'))->check('a~b'));
+    }
+}
+
+final readonly class HoldsUnion
+{
+    /**
+     * @param list<Union> $items
+     */
+    public function __construct(#[ListOf(Union::class)] public array $items)
+    {
     }
 }

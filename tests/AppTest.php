@@ -153,7 +153,7 @@ final class AppTest extends TestCase
             self::assertSame($app->config, $app->container->get(Config::class));
             $app->router->get('/fail', static fn() => throw new \RuntimeException('broken'));
             $app->router->get('/wrong', Greeter::class);
-            $app->middleware(new TagMiddleware('inner'));
+            $app->container->get(MiddlewareStack::class)->add(new TagMiddleware('inner'));
             $app->container->get(LoggerInterface::class)->info('below the level');
 
             $response = $app->handle(new Request('GET', '/fail'));
@@ -168,7 +168,7 @@ final class AppTest extends TestCase
             self::assertStringNotContainsString('below the level', $log);
 
             $app->container->instance(ErrorHandler::class, new TagMiddleware('custom'));
-            $app->middleware();
+            $app->container->get(MiddlewareStack::class)->add();
             $missing = $app->handle(new Request('GET', '/missing'));
             self::assertSame([404, ['inner', 'custom']], [$missing->getStatusCode(), $missing->getHeader('X-Trail')]);
         } finally {
@@ -255,6 +255,13 @@ final class AppTest extends TestCase
             self::assertStringContainsString('{"request_id":"trace-43"}', file_get_contents($path));
             self::assertSame('trace-44', $app->handle(new Request('GET', '/missing', ['X-Request-Id' => 'trace-44']))->getHeaderLine('X-Request-Id'));
 
+            // An object made before the workers are forked is the same object in each of them.
+            $made = new RequestId();
+            $pass = new Pipeline($app->router);
+            $one = $made->process(new Request('GET', '/'), $pass)->getHeaderLine('X-Request-Id');
+            $other = (clone $made)->process(new Request('GET', '/'), $pass)->getHeaderLine('X-Request-Id');
+            self::assertNotSame($one, $other, 'Two workers do not give out the same ids.');
+
             $off = new App();
             $off->router->get('/', static fn() => 'home');
             self::assertFalse($off->handle(new Request('GET', '/'))->hasHeader('X-Request-Id'));
@@ -324,20 +331,20 @@ final class AppTest extends TestCase
     {
         $app = new App();
         $app->router->get('/', static fn(ServerRequestInterface $request) => $request->getAttribute('trail'));
-        $app->middleware(new TagMiddleware('outer'), TagMiddleware::class);
+        $app->container->get(MiddlewareStack::class)->add(new TagMiddleware('outer'), TagMiddleware::class);
         $response = $app->handle(new Request('GET', '/'));
         self::assertSame('outer>named>', (string) $response->getBody());
         self::assertSame(['named', 'outer'], $response->getHeader('X-Trail'));
         self::assertSame(['named', 'outer'], $app->handle(new Request('GET', '/missing'))->getHeader('X-Trail'));
 
-        $app->middleware(new TagMiddleware('late'));
+        $app->container->get(MiddlewareStack::class)->add(new TagMiddleware('late'));
         self::assertSame('outer>named>late>', (string) $app->handle(new Request('GET', '/'))->getBody());
 
         $bare = new Pipeline($app->router);
         self::assertSame(404, $bare->handle(new Request('GET', '/missing'))->getStatusCode());
 
         $this->expectException(\LogicException::class);
-        (new App())->middleware(Factory::class)->handle(new Request('GET', '/'));
+        (new App())->container->get(MiddlewareStack::class)->add(Factory::class)->handle(new Request('GET', '/'));
     }
 
     public function testEngineHandlerConvertsBothWays(): void

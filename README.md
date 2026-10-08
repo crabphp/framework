@@ -131,22 +131,7 @@ A request that does not fit is answered with `422` and every problem, by field:
 }}}
 ~~~
 
-A rule of your own is an attribute class that implements `Crab\Contracts\Validation\Rule`: `check()` returns what is wrong or null, and `schema()` says the same for the documentation. To validate outside a route, ask for `Crab\Contracts\Validation\Validator` and call `validate(CreateUser::class, $data)`, which returns the object or throws `Crab\Validation\ValidationException` with `$errors`.
-
-### OpenAPI
-
-~~~sh
-php bin/crab app.php openapi                        # print the document
-php bin/crab app.php openapi --output=openapi.json
-~~~
-
-The OpenAPI 3.1 document is written from the signatures. There is nothing to annotate: it is a by-product of the code, and it says as much as the code declares.
-
-- **What goes in is always described:** path and query parameters, the request body and the `422`.
-- **What comes out is described when the handler declares it:** `: User`, or `: User|Response` for a handler that builds the response around a user. A list says what it holds with `#[ListOf(User::class)]`, since PHP's `array` cannot. Without a return type the route is listed with no response body.
-- **The status is always listed as 200,** or 204 for a handler that returns nothing, because a status set with `Response::created()` is decided in the code and not in the signature.
-
-The title and version are `app.name` and `app.version`.
+A rule of your own is an attribute class that implements `Crab\Contracts\Validation\Rule`: `check()` returns what is wrong or null. To validate outside a route, ask for `Crab\Contracts\Validation\Validator` and call `validate(CreateUser::class, $data)`, which returns the object or throws `Crab\Validation\ValidationException` with `$errors`.
 
 Reading a signature costs nothing per request, because it is read once when the route is added. Calling a closure by its signature adds about 0.05 µs to a request over a PSR-15 handler, and validated input with a typed response about 1 µs over the same checks written by hand (`benchmarks/typed-handler.php`, PHP 8.4 with JIT, Apple M1 Pro).
 
@@ -182,10 +167,17 @@ There are two places to use one, and the same class works in both.
 return App::configure(__DIR__)
     ->withMiddleware([Cors::class])                         // after the framework's
     ->withMiddleware(prepend: [RequestId::class])           // before them, outermost
-    ->withMiddleware(remove: [ErrorHandler::class])         // without one of the framework's
-    ->withMiddleware(only: [MyErrors::class, Cors::class])  // these and no others
     ->create();
 ~~~
+
+To change the framework's own part of the list, use one of these two, not both:
+
+~~~php
+    ->withMiddleware(remove: [ErrorHandler::class])         // without one of the framework's
+    ->withMiddleware(only: [MyErrors::class])               // these in place of the framework's
+~~~
+
+`remove:` takes only classes from `App::MIDDLEWARE`; a name that is not there is refused, so a typing mistake is not silently ignored.
 
 **Around some routes**, on a route or on a group:
 
@@ -207,7 +199,9 @@ request  →  every request's  →  the group's  →  the route's  →  handler
 - **Middleware around every request also runs when no route matches**, which is how a 404 still gets its CORS headers. A route's middleware runs only once its route has matched.
 - **A refusal passes back through everything outside it.** A 401 from a route's middleware is still seen by the middleware around every request.
 - **To hand something to the handler, put it on the request:** `$handler->handle($request->withAttribute('tenant', $tenant))`, read with `$request->getAttribute('tenant')`.
-- **Middleware given by class name is made when a worker starts**, not on the first request, so one that cannot be made stops the server from starting.
+- **Middleware given by class name is made when a worker starts**, not on the first request, so one that cannot be made stops the server from starting. A route that names a class that does not exist, or one that is not middleware, is refused as soon as it is declared, with the route's name.
+- **The same middleware given twice runs once.** `TokenAuth::class` on a group and again on a route inside it is one check, not two. Two objects of one class, `new RequireRole('admin')` and `new RequireRole('billing')`, are two middleware and both run.
+- **`php cua routes` shows the middleware around each route**, its groups' included.
 - **With options, give an object:** `middleware: [new TokenAuth($tokens, $users, 'X-Api-Key', '')]`.
 - **Without the error handler** nothing turns an exception into a response for the client; the engine answers 500 and the failure is logged. Replace it rather than remove it.
 
@@ -612,8 +606,7 @@ Things to know:
 | --- | --- |
 | `serve` | Serves the application; see [Running the server](#running-the-server). |
 | `stop`, `reload`, `restart`, `status` | Control a server running in the background. |
-| `routes` | Lists the registered routes. |
-| `openapi` | Writes the OpenAPI description of the routes. |
+| `routes` | Lists the registered routes, each with its handler and the middleware around it. |
 | `make:middleware` | Writes a new middleware class in `app/Middleware/`. |
 
 The database provider adds `migrate`, `migrate:rollback`, `migrate:status` and `make:migration`, and the token provider `tokens:install`.
@@ -624,7 +617,7 @@ Add your own with `Command::add('mail:send', SendMail::class)`, which is `$app->
 
 ~~~php
 $app->register(Acme\Mailer\MailerProvider::class);   // a class with register(Container $container)
-$app->middleware(Acme\Cors::class);                   // any PSR-15 middleware, around every request
+->withMiddleware([Acme\Cors::class])                 // in app.php: any PSR-15 middleware, around every request
 Route::get('/users/{id}', ShowUser::class);            // a handler class made by the container
 ~~~
 
@@ -651,8 +644,8 @@ A provider that needs something open in every worker, such as a connection or a 
 | `src/Log/` | The PSR-3 logger. |
 | `src/Testing/` | Helpers for testing components. |
 | `src/Server.php` | Runs the server in the foreground, in the background and under a watcher, and controls a running one. |
-| `src/Routing/` | The router, itself a PSR-15 handler, typed handlers and the OpenAPI document. |
-| `src/Validation/` | Builds typed objects from request data, with rules as attributes and JSON Schema. |
+| `src/Routing/` | The router, itself a PSR-15 handler, and typed handlers. |
+| `src/Validation/` | Builds typed objects from request data, with rules as attributes. |
 | `src/Contracts/` | Every interface another package implements or type-hints; they extend the PSR ones where Crab adds methods. |
 | `tests/` | Framework tests beside their components; engine tests in `tests/Engine/`. `tests/EngineBoundaryTest.php` keeps the engine free of framework dependencies. |
 | `benchmarks/` | Engine benchmarks and their recorded results; start at [BENCHMARKS.md](BENCHMARKS.md). |

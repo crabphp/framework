@@ -206,8 +206,8 @@ final class ConsoleTest extends TestCase
         self::assertSame(0, $this->exec($app->console, 'routes'));
         self::assertSame("No routes are registered.\nGET   /            Closure\nPOST  /users/{id}  " . Greet::class . "\n", $this->written($this->out));
         $routes = $app->router->routes();
-        self::assertSame(['GET', '/', 'Closure', []], [$routes[0]->method, $routes[0]->pattern, $routes[0]->handler, $routes[0]->parameters]);
-        self::assertSame(['POST', '/users/{id}', Greet::class, ['id' => 'string']], [$routes[1]->method, $routes[1]->pattern, $routes[1]->handler, $routes[1]->parameters]);
+        self::assertSame(['GET', '/', 'Closure', []], [$routes[0]->method, $routes[0]->pattern, $routes[0]->handler, $routes[0]->middleware]);
+        self::assertSame(['POST', '/users/{id}', Greet::class], [$routes[1]->method, $routes[1]->pattern, $routes[1]->handler]);
 
         $app->console->add('hello', static function (Input $input, Output $output): int {
             $output->line('hello');

@@ -31,9 +31,4 @@ final readonly class OneOf implements Rule
     {
         return in_array($value, $this->values, true) ? null : 'must be one of: ' . implode(', ', $this->values);
     }
-
-    public function schema(string $type): array
-    {
-        return ['enum' => $this->values];
-    }
 }

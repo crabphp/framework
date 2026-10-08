@@ -6,10 +6,9 @@ namespace Crab\Validation;
 
 /**
  * Says what a list holds, which PHP's array type cannot: on a constructor
- * parameter, #[ListOf(Tag::class)] public array $tags; on a route handler
- * that returns an array, what each item of the response is.
+ * parameter, #[ListOf(Tag::class)] public array $tags.
  */
-#[\Attribute(\Attribute::TARGET_PARAMETER | \Attribute::TARGET_PROPERTY | \Attribute::TARGET_FUNCTION | \Attribute::TARGET_METHOD)]
+#[\Attribute(\Attribute::TARGET_PARAMETER | \Attribute::TARGET_PROPERTY)]
 final readonly class ListOf
 {
     /**

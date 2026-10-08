@@ -51,9 +51,10 @@ final class Validator implements ValidatorContract
         return $object;
     }
 
-    public function schema(string $class): array
+    public function inspect(string $class): void
     {
-        return $this->objectSchema($class, []);
+        $seen = [$class => true];
+        $this->inspectAll($this->properties($class), $seen);
     }
 
     public function validateParameters(\ReflectionFunctionAbstract $function, array $names, array $data, bool $coerce = false): array
@@ -66,9 +67,10 @@ final class Validator implements ValidatorContract
         return $values;
     }
 
-    public function parametersSchema(\ReflectionFunctionAbstract $function, array $names): array
+    public function inspectParameters(\ReflectionFunctionAbstract $function, array $names): void
     {
-        return $this->propertiesSchema($this->parameters($function, $names), []);
+        $seen = [];
+        $this->inspectAll($this->parameters($function, $names), $seen);
     }
 
     /**
@@ -262,81 +264,23 @@ final class Validator implements ValidatorContract
     }
 
     /**
-     * @param class-string $class
-     * @param list<class-string> $inside The classes this one is nested in, to refuse one that contains itself.
-     * @return array<string, mixed>
+     * Reads the class of every nested object, however deep.
+     *
+     * @param iterable<Property> $properties
+     * @param array<class-string, true> $seen Classes already read, since a class may contain itself.
      */
-    private function objectSchema(string $class, array $inside): array
+    private function inspectAll(iterable $properties, array &$seen): void
     {
-        if (in_array($class, $inside, true)) {
-            throw new \LogicException("{$class} contains itself, which cannot be written as one JSON Schema.");
-        }
-        $inside[] = $class;
-        return $this->propertiesSchema($this->properties($class), $inside);
-    }
-
-    /**
-     * @param iterable<Property> $fields
-     * @param list<class-string> $inside
-     * @return array<string, mixed>
-     */
-    private function propertiesSchema(iterable $fields, array $inside): array
-    {
-        $properties = [];
-        $required = [];
-        foreach ($fields as $property) {
-            $properties[$property->name] = $this->propertySchema($property, $inside);
-            if ($property->required) {
-                $required[] = $property->name;
+        foreach ($properties as $property) {
+            // A list is inspected as what it holds.
+            while ($property->items !== null) {
+                $property = $property->items;
+            }
+            if ($property->type === Property::OBJECT && !isset($seen[$property->class])) {
+                $seen[$property->class] = true;
+                $this->inspectAll($this->properties($property->class), $seen);
             }
         }
-        $schema = ['type' => 'object', 'properties' => $properties === [] ? new \stdClass() : $properties];
-        if ($required !== []) {
-            $schema['required'] = $required;
-        }
-        return $schema;
-    }
-
-    /**
-     * @param list<class-string> $inside
-     * @return array<string, mixed>
-     */
-    private function propertySchema(Property $property, array $inside): array
-    {
-        $schema = match ($property->type) {
-            Property::INT => ['type' => 'integer'],
-            Property::FLOAT => ['type' => 'number'],
-            Property::STRING => ['type' => 'string'],
-            Property::BOOL => ['type' => 'boolean'],
-            Property::MIXED => [],
-            Property::DATE => ['type' => 'string', 'format' => 'date-time'],
-            Property::ENUM => $this->enumSchema($property->class),
-            Property::OBJECT => $this->objectSchema($property->class, $inside),
-            Property::ARRAY => $property->items === null
-                ? ['type' => ['array', 'object']]
-                : ['type' => 'array', 'items' => $this->propertySchema($property->items, $inside)],
-        };
-        $type = $schema['type'] ?? '';
-        foreach ($property->rules as $rule) {
-            $schema = [...$schema, ...$rule->schema(is_string($type) ? $type : 'array')];
-        }
-        if ($property->nullable && $type !== '') {
-            $schema['type'] = [...(array) $type, 'null'];
-        }
-        if ($property->hasDefault && (is_scalar($property->default) || $property->default === null)) {
-            $schema['default'] = $property->default;
-        }
-        return $schema;
-    }
-
-    /**
-     * @param class-string<\BackedEnum> $class
-     * @return array<string, mixed>
-     */
-    private function enumSchema(string $class): array
-    {
-        $values = array_column($class::cases(), 'value');
-        return ['type' => is_int($values[0] ?? '') ? 'integer' : 'string', 'enum' => $values];
     }
 
     /**

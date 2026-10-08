@@ -16,10 +16,4 @@ interface Rule
      * @return string|null What is wrong, worded to follow the field's name ("must be ..."), or null when nothing is.
      */
     public function check(mixed $value): ?string;
-
-    /**
-     * @param string $type The value's JSON Schema type: string, integer, number, boolean, array or object.
-     * @return array<string, mixed> The JSON Schema keywords that say the same as check().
-     */
-    public function schema(string $type): array;
 }

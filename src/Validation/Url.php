@@ -17,9 +17,4 @@ final readonly class Url implements Rule
         $valid = is_string($value) && filter_var($value, FILTER_VALIDATE_URL) !== false && preg_match('~^https?://~i', $value) === 1;
         return $valid ? null : 'must be a web address starting with http:// or https://';
     }
-
-    public function schema(string $type): array
-    {
-        return ['format' => 'uri'];
-    }
 }

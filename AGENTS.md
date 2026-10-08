@@ -58,12 +58,12 @@
 - Take a few flat fields as parameters. Use an input class when there are many, when they nest, or when several routes share them. An input class is a final readonly class whose constructor declares every field with one type.
 - A handler is a closure, `[Controller::class, 'method']`, or a class with `__invoke()`. A controller is a plain class: there is no base class and no helper to inherit.
 - A handler returns data, which is sent as JSON with 200, or a response when the status, a header or the body needs saying. Status and headers are set in code with the `Response` factories and nowhere else, so nothing has to be kept in step. Do not add an attribute for something code can say.
-- The OpenAPI document is a by-product: it describes what signatures declare and is never a reason to make application code longer. A route is never refused or warned about for being under-described.
+- Crab writes no description of the API (OpenAPI, JSON Schema). It was built and removed: keeping a document true cost every later feature a second thing to maintain, and a document that is partly true misleads. The signatures are the description. Do not add one back, or keep data on a route or a rule for one, until the owner asks.
 - Attributes are for what PHP cannot say in a type: validation rules, and `#[ListOf]` for what an array holds.
 - A signature is read when the route is added, never on a request, and one that cannot be honoured throws there, naming the route and saying what to do instead.
 - Data that does not fit is a 422 built by `Http\ErrorResponse` with every problem by field, returned and not thrown. JSON is taken as it is; only text sources (query string, route parameters) are converted to numbers and booleans. Fields a handler does not declare are ignored and never reach it.
-- `Validation` knows nothing of HTTP or routing. A rule is an attribute implementing `Contracts\Validation\Rule`, which checks a value and describes itself as JSON Schema, so the document cannot disagree with the check.
-- A new rule or supported type is added to validation and to its JSON Schema together, with a test of both.
+- `Validation` knows nothing of HTTP or routing. A rule is an attribute implementing `Contracts\Validation\Rule`, which checks a value and says what is wrong with it.
+- A handler's input class, and every class inside it, is read when the route is added (`Validator::inspect()`), so one that cannot be validated stops startup.
 
 ## Running the server
 
@@ -86,7 +86,11 @@
 - The framework's own middleware around every request is the list `App::MIDDLEWARE`. An application can put its own before or after it, leave one out, or replace the list; do not hard-wire a middleware into `App` so that it cannot be moved or removed.
 - A feature that runs around requests is middleware an application adds, not a configuration switch: one place says what runs around a request. `RequestId` ships and is not in the default list.
 - A middleware is told its options through its constructor and given as an object. Do not parse options out of a string such as `'throttle:60,1'`.
-- All middleware is made when a worker starts, the application's and every route's, never on the first request.
+- All middleware is made when a worker starts, the application's and every route's, never on the first request. A route's or a group's middleware that could never run, a name that is no class or a class that is no middleware, is refused where it is declared, naming the route.
+- The same name or the same object given again to a route, by its groups or itself, runs once, at the later place. Two objects of one class both run: each has its own options, and dropping one could drop a check the application asked for. Do not remove middleware by class.
+- A route records the middleware around it in `RouteInfo`, and `routes` lists it, so what guards a route can be read without opening the routes file.
+- A middleware object may be made before the workers are forked, so it chooses nothing per worker in its constructor (`RequestId` picks its prefix on the first request).
+- An application sets the middleware around every request with `withMiddleware()` and a provider adds to it through the `MiddlewareStack` contract. `App` has no method of its own for it.
 - A way of doing something for some routes, such as authenticating, is a middleware. Do not add a contract and a wrapper middleware around it where PSR-15 already says the same.
 
 ## Generality

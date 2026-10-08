@@ -103,10 +103,10 @@ flowchart LR
 
 - A handler takes the request's data as typed parameters, one per field, or as one input class when there are many. It returns data, or a response when it needs to set the status, a header or the body. It extends nothing and builds no response in the common case, so it can be called and tested as an ordinary function.
 - The signature is read once, in the parent, when the route is added. A handler the router cannot call, or a field that cannot be validated, stops the application from starting.
-- `Validation` builds values from request data by the declared types and rules, and writes the same description as JSON Schema; it knows nothing of HTTP. `Routing` turns a mismatch into a 422 through `Http\ErrorResponse`, as an ordinary response, so it passes back through middleware.
+- `Validation` builds values from request data by the declared types and rules; it knows nothing of HTTP. `Routing` turns a mismatch into a 422 through `Http\ErrorResponse`, as an ordinary response, so it passes back through middleware.
 - Services are never handler parameters. A handler class takes them in its constructor, which keeps "what the request sends" and "what the application provides" apart.
 - Status and headers are set in code, with the `Response` factories. There is no second place that states them, so nothing can fall out of step.
-- The OpenAPI document is a by-product of the signatures. Inputs are always described; a response body when the handler declares a return type; the status only as 200 or 204. PHP has no generics and no inference of a type from a value, so a design that documented more would need either a second declaration or analysis of the source, and both were turned down for simplicity.
+- There is no generated description of the API. An OpenAPI document written from the signatures was built and then removed: PHP has no generics and no inference of a type from a value, so it could say what goes in but not the status or much of what comes out, and keeping it true was a cost on every later feature.
 
 ## Lifecycle and where state lives
 
@@ -186,7 +186,8 @@ flowchart LR
 - **The framework's own middleware is a list anyone can read,** `App::MIDDLEWARE`, and an application says how its own relate to it: before, after, without one of them, or in place of them all. Nothing the framework runs around a request is fixed.
 - **The same class works in either place.** Where it runs is decided where it is used, never by the class.
 - **Features are middleware, not switches.** Request ids and authentication are things an application adds to a list, so what runs around a request is all in two places: `app.php` and the routes file.
-- **All of it is made when a worker starts,** the application's and every route's, so a middleware that cannot be made stops the server from starting.
+- **All of it is made when a worker starts,** the application's and every route's, so a middleware that cannot be made stops the server from starting. A route naming a middleware that does not exist is refused sooner, when the route is declared.
+- **A repeat runs once.** The same name or object given by a group and again by its route runs once; two objects of one class are two middleware and both run.
 
 ## Running the server *(today)*
 
@@ -263,7 +264,7 @@ A PSR implementation should also pass that PSR's public conformance suite where 
 4. **Small PSR components:** clock (PSR-20), events (PSR-14), cache (PSR-16). *The clock is done.*
 5. **Database.** *Connection pool, the thin query layer, the query builder, the schema builder and migrations are done, tested on SQLite and MySQL.* Next: models with relationships.
 6. **Queue**, then **Scheduling**, each as its own worker group.
-7. **Validation, Session, Auth.** *Validation is done, ahead of the steps before it, together with typed route handlers and the OpenAPI document written from them. Authentication is done: a way of authenticating is middleware that puts the user on the request, a handler takes the user as a parameter, and tokens in the database are one such way, opt-in, with a migration the application owns.* Roles and permissions, and sessions, are not built; sessions matter less for an API.
+7. **Validation, Session, Auth.** *Validation is done, ahead of the steps before it, together with typed route handlers. Authentication is done: a way of authenticating is middleware that puts the user on the request, a handler takes the user as a parameter, and tokens in the database are one such way, opt-in, with a migration the application owns.* Roles and permissions, and sessions, are not built; sessions matter less for an API.
 8. **Application skeleton** (`crabphp/crab`) and the `make:*` commands. *The skeleton exists, kept minimal; it grows a folder when a component arrives. `make:migration` is the first `make:*` command.*
 9. **Per-component packages**, CI and the first tagged release.
 

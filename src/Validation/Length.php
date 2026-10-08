@@ -40,17 +40,4 @@ final readonly class Length implements Rule
         }
         return null;
     }
-
-    public function schema(string $type): array
-    {
-        $names = $type === 'array' ? ['minItems', 'maxItems'] : ['minLength', 'maxLength'];
-        $schema = [];
-        if ($this->min !== null) {
-            $schema[$names[0]] = $this->min;
-        }
-        if ($this->max !== null) {
-            $schema[$names[1]] = $this->max;
-        }
-        return $schema;
-    }
 }

@@ -23,20 +23,18 @@ final class RequestId implements Middleware
     public const ATTRIBUTE = 'request_id';
 
     /**
-     * Distinguishes this worker's ids from every other worker's.
+     * Distinguishes this worker's ids from every other worker's. It is
+     * chosen on the first request and not when the object is made, which
+     * may be before the workers are forked.
      */
-    private readonly string $prefix;
+    private ?string $prefix = null;
     private int $count = 0;
-
-    public function __construct()
-    {
-        $this->prefix = bin2hex(random_bytes(6));
-    }
 
     public function process(ServerRequestInterface $request, RequestHandlerInterface $handler): ResponseInterface
     {
         $id = $request->getHeaderLine('X-Request-Id');
         if ($id === '' || strlen($id) > 128 || preg_match('/^[A-Za-z0-9._-]+$/D', $id) !== 1) {
+            $this->prefix ??= bin2hex(random_bytes(6));
             $id = $this->prefix . '-' . dechex(++$this->count);
         }
         return $handler->handle($request->withAttribute(self::ATTRIBUTE, $id))->withHeader('X-Request-Id', $id);

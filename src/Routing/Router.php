@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Crab\Routing;
 
+use Crab\Contracts\Http\Middleware;
 use Crab\Contracts\Routing\RouteInfo;
 use Crab\Contracts\Routing\Router as RouterContract;
 use Crab\Contracts\Validation\Validator as ValidatorContract;
@@ -85,7 +86,7 @@ final class Router implements RouterContract
      */
     public function add(string $method, string $pattern, RequestHandlerInterface|\Closure|string|array $handler, array $middleware = []): static
     {
-        $own = self::middleware($middleware, 'A route');
+        $own = $this->middleware($middleware, "Route {$method} {$pattern}");
         $middleware = [];
         $prefix = '';
         foreach ($this->groups as [$groupPrefix, $groupMiddleware]) {
@@ -93,7 +94,7 @@ final class Router implements RouterContract
             $middleware = [...$middleware, ...$groupMiddleware];
         }
         // A route's own middleware is inside its groups'.
-        $middleware = [...$middleware, ...$own];
+        $middleware = self::once([...$middleware, ...$own]);
         if ($prefix !== '') {
             // "/" inside a group is the group's own path.
             $pattern = $pattern === '/' ? $prefix : $prefix . $pattern;
@@ -103,17 +104,22 @@ final class Router implements RouterContract
         if (isset($this->routes[$key])) {
             throw new \LogicException("Route {$method} {$pattern} is already defined.");
         }
+        // The middleware as the route list names it: by class.
+        $described = [];
+        foreach ($middleware as $layer) {
+            $described[] = is_string($layer) ? $layer : $layer::class;
+        }
         if ($handler instanceof \Closure || is_array($handler) || (is_string($handler) && method_exists($handler, '__invoke'))) {
             $handler = new TypedHandler($method, $pattern, $names, $handler, $this->validator, $this->container);
-            $this->routes[$key] = $handler->route;
+            $this->routes[$key] = new RouteInfo($method, $pattern, $handler->name, $described);
         } elseif (is_string($handler)) {
             if ($this->container === null) {
                 throw new \LogicException("Route {$method} {$pattern} names its handler, which needs a router with a container.");
             }
-            $this->routes[$key] = new RouteInfo($method, $pattern, $handler, array_fill_keys($names, 'string'));
+            $this->routes[$key] = new RouteInfo($method, $pattern, $handler, $described);
             $handler = new ContainerHandler($this->container, $handler);
         } else {
-            $this->routes[$key] = new RouteInfo($method, $pattern, $handler::class, array_fill_keys($names, 'string'));
+            $this->routes[$key] = new RouteInfo($method, $pattern, $handler::class, $described);
         }
         if ($middleware !== []) {
             $stack = new MiddlewareStack($handler, $this->container);
@@ -135,7 +141,7 @@ final class Router implements RouterContract
         if ($prefix !== '' && ($prefix[0] !== '/' || str_ends_with($prefix, '/'))) {
             throw new \InvalidArgumentException("A group's prefix starts with \"/\" and does not end with one: \"/admin\", not \"{$prefix}\".");
         }
-        $this->groups[] = [$prefix, self::middleware($middleware, 'A group')];
+        $this->groups[] = [$prefix, $this->middleware($middleware, $prefix === '' ? 'A group' : "The group {$prefix}")];
         try {
             $routes($this);
         } finally {
@@ -145,14 +151,53 @@ final class Router implements RouterContract
     }
 
     /**
-     * @param array<mixed> $middleware
+     * Each middleware once: where the same name or the same object is
+     * given again, by a group inside another or by the route itself, it
+     * runs once, at the later place. Two objects of one class are two
+     * middleware and both run, since each was given its own options:
+     * leaving one out could drop a check the application asked for.
+     *
+     * @param list<MiddlewareInterface|string> $middleware
      * @return list<MiddlewareInterface|string>
      */
-    private static function middleware(array $middleware, string $of): array
+    private static function once(array $middleware): array
+    {
+        $unique = [];
+        foreach ($middleware as $layer) {
+            $key = is_string($layer) ? 'name ' . $layer : 'object ' . spl_object_id($layer);
+            // Taken out first, so that it is put back at the later place.
+            unset($unique[$key]);
+            $unique[$key] = $layer;
+        }
+        return array_values($unique);
+    }
+
+    /**
+     * Refuses, where it is declared, middleware that could never run: a
+     * value that is not one, and a name that is neither a middleware
+     * class nor an entry of the container.
+     *
+     * @param array<mixed> $middleware
+     * @param string $of What it was given to, to say so: "Route GET /me".
+     * @return list<MiddlewareInterface|string>
+     */
+    private function middleware(array $middleware, string $of): array
     {
         foreach ($middleware as $layer) {
-            if (!is_string($layer) && !$layer instanceof MiddlewareInterface) {
-                throw new \InvalidArgumentException("{$of}'s middleware is PSR-15 middleware or their class names, not " . get_debug_type($layer) . '.');
+            if ($layer instanceof MiddlewareInterface) {
+                continue;
+            }
+            if (!is_string($layer)) {
+                throw new \InvalidArgumentException("{$of} takes PSR-15 middleware or their class names as its middleware, not " . get_debug_type($layer) . '.');
+            }
+            if (class_exists($layer) || interface_exists($layer)) {
+                if (!is_a($layer, MiddlewareInterface::class, true)) {
+                    throw new \InvalidArgumentException("{$of} names {$layer} as middleware, and it is not one. Make it implement " . Middleware::class . '.');
+                }
+                continue;
+            }
+            if ($this->container === null || !$this->container->has($layer)) {
+                throw new \InvalidArgumentException("{$of} names {$layer} as middleware, and there is no such class. Check the name and its namespace.");
             }
         }
         return array_values($middleware);
