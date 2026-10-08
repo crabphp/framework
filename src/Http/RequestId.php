@@ -4,17 +4,21 @@ declare(strict_types=1);
 
 namespace Crab\Http;
 
+use Crab\Contracts\Http\Middleware;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface;
-use Psr\Http\Server\MiddlewareInterface;
 use Psr\Http\Server\RequestHandlerInterface;
 
 /**
  * Gives every request an id: the X-Request-Id it arrived with when that is
  * a plain token, otherwise a new one. The id is the request's "request_id"
  * attribute and is returned in the response's X-Request-Id.
+ *
+ * It is not among the application's middleware until it is put there. Put
+ * it first, outside the error handler, so that the record of a failure
+ * carries the id too: withMiddleware(prepend: [RequestId::class]).
  */
-final class RequestId implements MiddlewareInterface
+final class RequestId implements Middleware
 {
     public const ATTRIBUTE = 'request_id';
 

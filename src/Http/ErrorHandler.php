@@ -4,10 +4,10 @@ declare(strict_types=1);
 
 namespace Crab\Http;
 
+use Crab\Contracts\Http\Middleware;
 use Crab\Engine\Async\CancelledException;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface;
-use Psr\Http\Server\MiddlewareInterface;
 use Psr\Http\Server\RequestHandlerInterface;
 use Psr\Log\LoggerInterface;
 
@@ -17,7 +17,7 @@ use Psr\Log\LoggerInterface;
  * HttpException below 500 is an answer, not a failure. Details of a failure
  * are shown only in debug mode.
  */
-final readonly class ErrorHandler implements MiddlewareInterface
+final readonly class ErrorHandler implements Middleware
 {
     public function __construct(private LoggerInterface $logger, private bool $debug = false)
     {

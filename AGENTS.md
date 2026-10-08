@@ -25,12 +25,12 @@
 
 ## Contracts
 
-- A package depends on `Crab\Contracts` and PSR interfaces only, never on a component's class. So everything a package touches has a contract in `Crab\Contracts\<Component>`, never inside the component, including where no PSR exists: `Config`, `Router`, `Console`, `Container`, `Database`, `Connection`, `Query`, `Schema`, `Table`, `Column`, `Migration`, `Migrator`, `Validator`, `Rule`, `Clock`, `Logger`, `Factory`, `Identity`, `Authenticator`, `IdentityResolver`, `TokenStore`, `PasswordHasher`, `MiddlewareStack`, `Provider`, `WorkerProvider`, and the console's `Command`, `Input` and `Output`.
+- A package depends on `Crab\Contracts` and PSR interfaces only, never on a component's class. So everything a package touches has a contract in `Crab\Contracts\<Component>`, never inside the component, including where no PSR exists: `Config`, `Router`, `Console`, `Container`, `Database`, `Connection`, `Query`, `Schema`, `Table`, `Column`, `Migration`, `Migrator`, `Validator`, `Rule`, `Clock`, `Logger`, `Factory`, `Middleware`, `Identity`, `IdentityResolver`, `TokenStore`, `PasswordHasher`, `MiddlewareStack`, `Provider`, `WorkerProvider`, and the console's `Command`, `Input` and `Output`.
 - Anything an application can do through `App`, a provider can do through a contract in the container. When `App` gains a way to extend the application, the contract comes with it.
 - Exceptions and immutable value objects are the exception to that: `HttpException`, `DatabaseException`, `ValidationException`, `Cookie`, the `Response` factories and the validation attributes (`Email`, `Length`, `ListOf`, ...) are named by class, because there is no behaviour behind them to swap.
 - A value object that a contract returns lives beside it in `Crab\Contracts`, as a final readonly class with no I/O (`Contracts\Database\Page`), since a contract may not name a component's class.
 - `App` binds each contract in the container, and binds the concrete class to the same object so that asking by class cannot autowire a second one. The glue type-hints contracts too.
-- Every service has a contract of Crab's own, including where a PSR interface covers it completely: the contract then extends the PSR interface and may add nothing (`Contracts\Log\Logger`, `Contracts\Clock\Clock`, `Contracts\Http\Factory`). It is the name applications ask for and the place a method is added when Crab needs one. `App` binds the contract and binds the PSR interface to the same object, so code written against the standard gets it too. What an application implements rather than asks for, such as PSR-15 middleware, needs no contract.
+- Every service has a contract of Crab's own, including where a PSR interface covers it completely: the contract then extends the PSR interface and may add nothing (`Contracts\Log\Logger`, `Contracts\Clock\Clock`, `Contracts\Http\Factory`). It is the name applications ask for and the place a method is added when Crab needs one. `App` binds the contract and binds the PSR interface to the same object, so code written against the standard gets it too. What an application implements has one too where it is something Crab runs: `Contracts\Http\Middleware` is PSR-15's middleware under Crab's name.
 - A contract references only PSR interfaces, other contracts and engine types, never a component's class. The component's class implements the contract and shares its short name (`Crab\Http\Request` implements `Crab\Contracts\Http\Request`).
 - Signatures accept the PSR type wherever PSR methods suffice, so third-party implementations plug in; ask for a Crab contract only where its extra methods are used.
 
@@ -41,7 +41,7 @@
 - A provider declares its settings and their defaults once with `Config::defaults()`; code reads them with no default argument. The container has no per-request scope: `singleton()` is one per worker, `bind()` is new on every `get()`.
 - Every error response is built by `Http\ErrorResponse`, for the error handler and for the router's 404 and 405 alike. Expected answers such as an unmatched route are returned as responses, not thrown, so they pass back through middleware.
 - Inside a worker, PHP warnings and notices are thrown as `ErrorException`; code must not rely on a warning being ignored, and uses `@` only where a failure is then checked by return value.
-- Anything that adds work to every request and is not needed to answer it, such as the request id, is off by default and switched on by one configuration key, with its measured cost documented.
+- Anything that adds work to every request and is not needed to answer it, such as the request id, is off by default: it is middleware an application adds, with its measured cost documented.
 - Nothing fails silently outside a request: `App` sends everything the engine catches in a worker (a failed task, a failure escaping a timer, a failing `stop()`, a request failure that escaped the error handler) to the logger through the engine group's `onFailure()`, and the worker keeps running. A new entry point (queue job, scheduled job) gets the same treatment.
 - `App` assembles its middleware, the error handler included, in each worker as the worker starts, never in the parent and never lazily on a request, so a misconfiguration stops startup with its cause printed.
 - A binding's closure and a constructor the container calls must not suspend: the container is shared by every fiber in the worker and guards against circular dependencies by entry name, so a second request asking for an entry that is still being made is refused.
@@ -80,13 +80,28 @@
 - A process started with `proc_open` inherits every descriptor its parent has open, and PHP cannot close them by number. So only a process that opens almost nothing, the keeper, may start a long-lived one; a server process must never start its own successor.
 - Process control that is not about HTTP (`Keeper`, `Generation`, `Daemon`, `PidFile`, `FileWatcher`, `Runtime::onReady()` and `onSignal()`) lives in `Engine\Process` and is tested there with real processes; what needs `App` lives in `Server`, tested by driving a real application in `tests/ServerTest.php`. Run both on Linux (`composer test:linux`) before changing either.
 
+## Middleware
+
+- There is one kind of middleware, PSR-15's, used through `Contracts\Http\Middleware`, and two places it goes: around every request, with `withMiddleware()` in `app.php`, and around some routes, with `middleware:` on a route or a group. The same class works in both; nothing about a class says where it may be used.
+- The framework's own middleware around every request is the list `App::MIDDLEWARE`. An application can put its own before or after it, leave one out, or replace the list; do not hard-wire a middleware into `App` so that it cannot be moved or removed.
+- A feature that runs around requests is middleware an application adds, not a configuration switch: one place says what runs around a request. `RequestId` ships and is not in the default list.
+- A middleware is told its options through its constructor and given as an object. Do not parse options out of a string such as `'throttle:60,1'`.
+- All middleware is made when a worker starts, the application's and every route's, never on the first request.
+- A way of doing something for some routes, such as authenticating, is a middleware. Do not add a contract and a wrapper middleware around it where PSR-15 already says the same.
+
+## Generality
+
+- Crab is a framework: a component ships the general mechanism, and leaves an application's decisions to the application. It names no header, table, column or storage as the only one.
+- A concrete way of doing something is opt-in, behind a provider of its own (`TokenAuthProvider` beside `AuthProvider`), so that an application doing it another way never loads it.
+- A component ships no migration of its own. A table it needs is written into the application's migrations by a command (`tokens:install`), so that the application owns the file and all its tables are in one place.
+- Where a choice has a standard default, the default is an argument's default value (`Authorization: Bearer`), and anything else is that argument, never another class.
+
 ## Authentication
 
-- Who makes a request is request state. It travels as the request's `user` attribute and reaches a handler as a parameter whose class implements `Contracts\Auth\Identity`. There is no static accessor for it and none may be added.
-- A way of authenticating is an `Authenticator`, and `Authenticate` is the one middleware that applies one. Do not add a middleware per scheme; add an authenticator.
-- Crab does not know an application's users. It asks the application's `IdentityResolver` for one by id and keeps no user table of its own.
+- Who makes a request is request state. Middleware puts the user on the request's `user` attribute, and it reaches a handler as a parameter whose class implements `Contracts\Auth\Identity`. There is no static accessor for it and none may be added.
+- A way of authenticating is a middleware and nothing more. Core `Auth` is `Identity`, that convention, and the `PasswordHasher`; it decides no scheme.
+- Tokens are one way, opt-in through `TokenAuthProvider`: the `TokenAuth` middleware, the `TokenStore` and the `IdentityResolver` an application binds so that a user can be found from the id a token belongs to. Crab keeps no user table of its own.
 - A secret is never stored as it is: a token is kept as its SHA-256 hash and a password through `PasswordHasher`. Neither appears in a log or an exception's message.
-- Middleware for some routes is given to `Route::group()`. A route's middleware is made when the worker starts, like the application's, never on the first request.
 
 ## Database
 

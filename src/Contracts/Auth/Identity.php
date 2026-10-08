@@ -13,8 +13,10 @@ namespace Crab\Contracts\Auth;
  *         public function __construct(public int $id, public string $email) {}
  *     }
  *
- * A route handler that takes a parameter of such a class receives the
- * logged-in user, and a request without one is answered with 401.
+ * Middleware that knows who makes a request puts that user on the
+ * request's "user" attribute. A route handler that takes a parameter of
+ * such a class receives it, and a request without one is answered with
+ * 401.
  */
 interface Identity
 {

@@ -5,32 +5,39 @@ declare(strict_types=1);
 namespace Crab\Tests\Auth;
 
 use Crab\App;
-use Crab\Auth\ApiKey;
-use Crab\Auth\Authenticate;
 use Crab\Auth\AuthProvider;
-use Crab\Auth\BearerToken;
+use Crab\Auth\Commands\InstallTokens;
 use Crab\Auth\DatabaseTokenStore;
 use Crab\Auth\PasswordHasher;
+use Crab\Auth\TokenAuth;
+use Crab\Auth\TokenAuthProvider;
 use Crab\Config\Config;
-use Crab\Contracts\Auth\Authenticator;
+use Crab\Console\Input;
+use Crab\Console\Output;
 use Crab\Contracts\Auth\Identity;
 use Crab\Contracts\Auth\IdentityResolver;
 use Crab\Contracts\Auth\PasswordHasher as PasswordHasherContract;
 use Crab\Contracts\Auth\TokenStore;
 use Crab\Contracts\Database\Database as DatabaseContract;
+use Crab\Contracts\Http\Middleware;
 use Crab\Contracts\Database\Migrator;
 use Crab\Contracts\Routing\Router as RouterContract;
 use Crab\Database\Database;
 use Crab\Database\DatabaseProvider;
 use Crab\Database\Migrator as DatabaseMigrator;
+use Crab\Http\ErrorResponse;
 use Crab\Http\Request;
+use Crab\Http\Response;
 use Crab\Route;
 use Crab\Routing\OpenApi;
 use Crab\Testing\FrozenClock;
 use Crab\Validation\Validator;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
+use Psr\Clock\ClockInterface;
+use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface;
+use Psr\Http\Server\RequestHandlerInterface;
 
 final readonly class Member implements Identity
 {
@@ -63,23 +70,34 @@ final class Members implements IdentityResolver
 }
 
 /**
- * A way of the application's own: whoever the X-Member header names.
+ * A way of authenticating of the application's own, written as any
+ * middleware is: whoever the X-Member header names.
  */
-final readonly class TrustedHeader implements Authenticator
+final readonly class TrustedHeader implements Middleware
 {
     public function __construct(private Members $members)
     {
     }
 
-    public function authenticate(ServerRequestInterface $request): ?Identity
+    public function process(ServerRequestInterface $request, RequestHandlerInterface $handler): ResponseInterface
     {
-        $id = $request->getHeaderLine('X-Member');
-        return $id === '' ? null : $this->members->resolve((int) $id);
+        $user = $this->members->resolve((int) $request->getHeaderLine('X-Member'));
+        if ($user === null) {
+            return ErrorResponse::make($request, 401, 'Say who you are in X-Member.');
+        }
+        return $handler->handle($request->withAttribute('user', $user));
     }
+}
 
-    public function challenge(): string
+/**
+ * What stands behind the middleware in a test: answers with who got through.
+ */
+final class Reached implements RequestHandlerInterface
+{
+    public function handle(ServerRequestInterface $request): ResponseInterface
     {
-        return 'Member';
+        $user = $request->getAttribute(Identity::ATTRIBUTE);
+        return Response::text($user instanceof Identity ? "user {$user->id}" : 'nobody');
     }
 }
 
@@ -90,15 +108,24 @@ final readonly class TrustedHeader implements Authenticator
 final class AuthTest extends TestCase
 {
     private string $file;
+    /**
+     * The application's own migrations folder.
+     */
+    private string $migrations;
 
     protected function setUp(): void
     {
         $this->file = sys_get_temp_dir() . '/crab-auth-' . bin2hex(random_bytes(6)) . '.sqlite';
+        $this->migrations = sys_get_temp_dir() . '/crab-auth-migrations-' . bin2hex(random_bytes(6));
     }
 
     protected function tearDown(): void
     {
         @unlink($this->file);
+        foreach (glob($this->migrations . '/*.php') ?: [] as $migration) {
+            unlink($migration);
+        }
+        @rmdir($this->migrations);
         if (getenv('CRAB_TEST_MYSQL_DSN') !== false) {
             $this->pdo('mysql')->exec('drop table if exists auth_tokens, migrations');
         }
@@ -160,53 +187,84 @@ final class AuthTest extends TestCase
         self::assertTrue((new PasswordHasher(['cost' => 5]))->needsRehash($hash), 'A hash made with other settings should be replaced.');
     }
 
-    public function testEachWayOfAuthenticatingReadsItsOwnPartOfTheRequest(): void
+    public function testTheTokenMiddlewareReadsTheHeaderItIsToldTo(): void
     {
         $tokens = new DatabaseTokenStore($this->database('sqlite'));
         $members = new Members();
         $members->known[7] = new Member(7, 'Ada');
         $token = $tokens->issue(7);
         $orphan = $tokens->issue(99);
+        $through = static function (TokenAuth $auth, array $headers): array {
+            $response = $auth->process(new Request('GET', '/', $headers), new Reached());
+            return [$response->getStatusCode(), trim((string) $response->getBody()), $response->getHeaderLine('WWW-Authenticate')];
+        };
 
-        $bearer = new BearerToken($tokens, $members);
-        self::assertSame('Bearer', $bearer->challenge());
-        self::assertSame($members->known[7], $bearer->authenticate(new Request('GET', '/', ['Authorization' => "Bearer {$token}"])));
-        self::assertSame($members->known[7], $bearer->authenticate(new Request('GET', '/', ['Authorization' => "bearer   {$token} "])));
+        $bearer = new TokenAuth($tokens, $members);
+        self::assertSame([200, 'user 7', ''], $through($bearer, ['Authorization' => "Bearer {$token}"]));
+        self::assertSame([200, 'user 7', ''], $through($bearer, ['Authorization' => "bearer   {$token} "]));
         foreach (['', 'Bearer', 'Bearer ', "Basic {$token}", "Bearer {$token}x", "Bearer {$orphan}", $token] as $header) {
-            self::assertNull($bearer->authenticate(new Request('GET', '/', $header === '' ? [] : ['Authorization' => $header])), "\"{$header}\" was accepted.");
+            $refused = $through($bearer, $header === '' ? [] : ['Authorization' => $header]);
+            self::assertSame([401, '401 Authentication is required.', 'Bearer'], $refused, "\"{$header}\" was accepted.");
         }
 
-        $key = new ApiKey($tokens, $members);
-        self::assertSame('ApiKey header="X-Api-Key"', $key->challenge());
-        self::assertSame($members->known[7], $key->authenticate(new Request('GET', '/', ['X-Api-Key' => $token])));
-        self::assertNull($key->authenticate(new Request('GET', '/', ['Authorization' => "Bearer {$token}"])));
-        self::assertNull($key->authenticate(new Request('GET', '/', ['X-Api-Key' => 'wrong'])));
-        $named = new ApiKey($tokens, $members, 'X-Service-Key');
-        self::assertSame($members->known[7], $named->authenticate(new Request('GET', '/', ['X-Service-Key' => $token])));
-        self::assertNull($named->authenticate(new Request('GET', '/', ['X-Api-Key' => $token])));
+        // Another header, holding the token alone.
+        $key = new TokenAuth($tokens, $members, 'X-Service-Key', '');
+        self::assertSame([200, 'user 7', ''], $through($key, ['X-Service-Key' => " {$token} "]));
+        self::assertSame([401, 'X-Service-Key'], array_values(array_diff_key($through($key, ['Authorization' => "Bearer {$token}"]), [1 => 0])));
+        self::assertSame(401, $through($key, ['X-Service-Key' => 'wrong'])[0]);
+        self::assertSame(401, $through($key, ['X-Service-Key' => ''])[0]);
+
+        // Another word before the token.
+        $scheme = new TokenAuth($tokens, $members, scheme: 'Token');
+        self::assertSame([200, 'user 7', ''], $through($scheme, ['Authorization' => "Token {$token}"]));
+        self::assertSame([401, 'Token'], array_values(array_diff_key($through($scheme, ['Authorization' => "Bearer {$token}"]), [1 => 0])));
+
+        // Not required: with a token the user is known, without one the request goes on with nobody.
+        $optional = new TokenAuth($tokens, $members, required: false);
+        self::assertSame([200, 'user 7', ''], $through($optional, ['Authorization' => "Bearer {$token}"]));
+        self::assertSame([200, 'nobody', ''], $through($optional, []));
+        self::assertSame([200, 'nobody', ''], $through($optional, ['Authorization' => 'Bearer wrong']));
     }
 
     public function testRoutesAreProtectedAndHandlersReceiveTheUserByType(): void
     {
-        $app = new App(new Config(['database' => ['dsn' => 'sqlite:' . $this->file]]));
-        $app->register(DatabaseProvider::class, AuthProvider::class);
+        $app = new App(new Config(['database' => ['dsn' => 'sqlite:' . $this->file, 'migrations' => $this->migrations]]));
+        // In either order: nothing is needed from the database until a token is.
+        $app->register(AuthProvider::class, TokenAuthProvider::class, DatabaseProvider::class);
+        $app->container->instance(ClockInterface::class, new FrozenClock('2026-01-31 12:00:00'));
         $members = new Members();
         $members->known[7] = new Member(7, 'Ada');
         $members->known['deploy-bot'] = new Robot('deploy-bot');
         $app->container->instance(IdentityResolver::class, $members);
         $app->container->instance(Members::class, $members);
-        self::assertSame(['2026_01_01_000000_create_auth_tokens_table'], $app->container->get(Migrator::class)->run(), 'The provider brings the migration for its table.');
+
+        // The table's migration is written into the application's own folder, once.
+        self::assertSame([], $app->container->get(Migrator::class)->status(), 'The provider adds no migration of its own.');
+        $out = fopen('php://memory', 'w+');
+        self::assertSame(0, $app->console->run(['tokens:install'], new Output($out, $out)));
+        $written = $this->migrations . '/2026_01_31_120000_create_auth_tokens_table.php';
+        self::assertFileExists($written);
+        self::assertStringContainsString("\$schema->create('auth_tokens'", (string) file_get_contents($written));
+        self::assertSame(0, $app->console->run(['tokens:install'], new Output($out, $out)));
+        rewind($out);
+        self::assertSame(
+            "Created {$written}\nRun `migrate` to create the table.\nYour migrations already have 2026_01_31_120000_create_auth_tokens_table; nothing was written.\n",
+            stream_get_contents($out),
+        );
+        self::assertCount(1, glob($this->migrations . '/*.php'));
+        self::assertSame(['2026_01_31_120000_create_auth_tokens_table'], $app->container->get(Migrator::class)->run());
 
         Route::get('/public', static fn (): string => 'anyone');
         Route::get('/maybe', static fn (?Member $user = null): array => ['name' => $user?->name]);
         Route::get('/unprotected', static fn (Member $user): array => ['name' => $user->name]);
-        Route::group(middleware: [Authenticate::class], routes: static function (): void {
+        Route::get('/alone', static fn (Member $user): array => ['alone' => $user->id], middleware: [TokenAuth::class]);
+        Route::group(middleware: [TokenAuth::class], routes: static function (): void {
             Route::get('/me', static fn (Member $user): Member => $user);
             Route::get('/whoami', static fn (Identity $user, ServerRequestInterface $request): array => [$user->id, $request->getAttribute('user') === $user]);
             Route::post('/notes/{id}', static fn (int $id, Member $user, string $text): array => [$id, $user->id, $text]);
             Route::get('/members-only', static fn (Member $user): string => 'members');
         });
-        Route::group(prefix: '/internal', middleware: [new Authenticate(new TrustedHeader($members))], routes: static function (): void {
+        Route::group(prefix: '/internal', middleware: [new TrustedHeader($members)], routes: static function (): void {
             Route::get('/me', static fn (Member $user): array => ['via' => 'header', 'id' => $user->id]);
         });
 
@@ -216,6 +274,8 @@ final class AuthTest extends TestCase
 
         self::assertSame('anyone', (string) $app->handle(new Request('GET', '/public'))->getBody());
         self::assertSame('{"id":7,"name":"Ada"}', (string) $app->handle(new Request('GET', '/me', $ada))->getBody());
+        self::assertSame('{"alone":7}', (string) $app->handle(new Request('GET', '/alone', $ada))->getBody(), 'Middleware on one route.');
+        self::assertSame(401, $app->handle(new Request('GET', '/alone'))->getStatusCode());
         self::assertSame('[7,true]', (string) $app->handle(new Request('GET', '/whoami', $ada))->getBody());
         self::assertSame('["deploy-bot",true]', (string) $app->handle(new Request('GET', '/whoami', $robot))->getBody(), 'A handler may take any user by the contract.');
         $note = new Request('POST', '/notes/3', $ada + ['Content-Type' => 'application/json'], '{"text":"hi"}');
@@ -231,8 +291,8 @@ final class AuthTest extends TestCase
 
         $internal = $app->handle(new Request('GET', '/internal/me', ['X-Member' => '7']));
         self::assertSame('{"via":"header","id":7}', (string) $internal->getBody());
-        $challenge = $app->handle(new Request('GET', '/internal/me', $ada));
-        self::assertSame([401, 'Member'], [$challenge->getStatusCode(), $challenge->getHeaderLine('WWW-Authenticate')], 'Each group authenticates its own way.');
+        $other = $app->handle(new Request('GET', '/internal/me', $ada + ['Accept' => 'application/json']));
+        self::assertSame([401, 'Say who you are in X-Member.'], [$other->getStatusCode(), json_decode((string) $other->getBody(), true)['error']['message']], 'Each group authenticates its own way.');
 
         $tokens->revokeAll(7);
         self::assertSame(401, $app->handle(new Request('GET', '/me', $ada))->getStatusCode(), 'A revoked token stops working at once.');
@@ -240,7 +300,7 @@ final class AuthTest extends TestCase
         self::assertSame(401, $app->handle(new Request('GET', '/whoami', $robot))->getStatusCode(), 'So does the token of a user who is gone.');
 
         self::assertInstanceOf(PasswordHasher::class, $app->container->get(PasswordHasherContract::class));
-        self::assertInstanceOf(BearerToken::class, $app->container->get(Authenticator::class));
+        self::assertInstanceOf(TokenAuth::class, $app->container->get(TokenAuth::class));
         $paths = (new OpenApi($app->container->get(RouterContract::class), new Validator()))->document('A', '1')['paths'];
         self::assertSame(['description' => 'Authentication is required.'], $paths['/me']['get']['responses']['401']);
         self::assertArrayNotHasKey('401', $paths['/maybe']['get']['responses']);
@@ -250,19 +310,28 @@ final class AuthTest extends TestCase
 
     public function testWhatIsMissingIsNamed(): void
     {
+        // The general part needs nothing: no database, no tokens, no way of finding a user.
+        $general = new App();
+        $general->register(AuthProvider::class);
+        self::assertInstanceOf(PasswordHasher::class, $general->container->get(PasswordHasherContract::class));
+        self::assertFalse($general->console->has('tokens:install'));
+        self::assertFalse($general->container->has(TokenStore::class));
+
         $bare = new App();
+        $bare->register(TokenAuthProvider::class);
+        self::assertTrue($bare->console->has('tokens:install'));
         try {
-            $bare->register(AuthProvider::class);
-            self::fail('AuthProvider registered without a database.');
+            $bare->container->get(TokenStore::class);
+            self::fail('Tokens were offered without a database to keep them in.');
         } catch (\LogicException $error) {
-            self::assertStringContainsString('register the database provider, DatabaseProvider, before it', $error->getMessage());
+            self::assertStringContainsString('register the database provider, DatabaseProvider, as well as TokenAuthProvider', $error->getMessage());
         }
 
         $app = new App(new Config(['database' => ['dsn' => 'sqlite:' . $this->file]]));
-        $app->register(DatabaseProvider::class, AuthProvider::class);
+        $app->register(DatabaseProvider::class, TokenAuthProvider::class);
         try {
-            $app->container->get(Authenticate::class);
-            self::fail('Authentication was set up with no way to find a user.');
+            $app->container->get(TokenAuth::class);
+            self::fail('Token authentication was set up with no way to find a user.');
         } catch (\LogicException $error) {
             self::assertStringContainsString('bind Crab\Contracts\Auth\IdentityResolver in a provider of your own: it finds one of your users by id', $error->getMessage());
         }
@@ -273,8 +342,11 @@ final class AuthTest extends TestCase
         $db = new Database(fn (): \PDO => $this->pdo($driver), 1);
         $db->execute('drop table if exists auth_tokens');
         $db->execute('drop table if exists migrations');
-        $migrator = new DatabaseMigrator($db, dirname(__DIR__, 2) . '/src/Auth/migrations');
-        $migrator->run();
+        // As an application gets the table: the command writes the migration, and it is run.
+        $migrator = new DatabaseMigrator($db, $this->migrations);
+        $out = fopen('php://memory', 'w+');
+        (new InstallTokens($migrator))->handle(new Input(), new Output($out, $out));
+        self::assertCount(1, $migrator->run());
         return $db;
     }
 

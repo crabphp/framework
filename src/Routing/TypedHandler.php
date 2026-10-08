@@ -23,7 +23,7 @@ use Psr\Http\Server\RequestHandlerInterface;
  *
  *     the request          typed as a PSR-7 server request, or not typed at all
  *     the user             typed as a class that implements Identity: whoever
- *                          the Authenticate middleware found the request is made by
+ *                          middleware put on the request's "user" attribute
  *     a route parameter    named as in the pattern: string, int, float or bool
  *     a field              any other int, float, string, bool, array, enum or
  *                          date: one value of the request's data, by its name

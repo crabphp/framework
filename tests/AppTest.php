@@ -21,6 +21,7 @@ use Crab\Http\ErrorHandler;
 use Crab\Http\Factory;
 use Crab\Http\Pipeline;
 use Crab\Http\Request;
+use Crab\Http\RequestId;
 use Crab\Http\Response;
 use Crab\Routing\Router;
 use PHPUnit\Framework\TestCase;
@@ -230,11 +231,12 @@ final class AppTest extends TestCase
         self::assertSame('default inner', config('tags.inner'));
     }
 
-    public function testRequestIdsWhenSwitchedOn(): void
+    public function testRequestIdsWhenTheirMiddlewareIsAdded(): void
     {
         $path = sys_get_temp_dir() . '/crab-app-' . bin2hex(random_bytes(6)) . '.log';
         try {
-            $app = new App(new Config(['app' => ['request_id' => true], 'log' => ['path' => $path]]));
+            // Outside the error handler, so that the record of a failure carries the id too.
+            $app = new App(new Config(['log' => ['path' => $path]]), middleware: [RequestId::class, ErrorHandler::class]);
             $app->router->get('/', static fn(ServerRequestInterface $request) => $request->getAttribute('request_id'))
                 ->get('/fail', static fn() => throw new \RuntimeException('broken'));
 

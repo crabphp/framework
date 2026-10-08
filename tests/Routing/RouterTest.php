@@ -172,11 +172,17 @@ final class RouterTest extends TestCase
             });
         });
         $router->group(middleware: [$mark('only')], routes: static fn (Router $router) => $router->get('/after', static fn (): string => 'after'));
+        // On one route, and on one route inside a group: the route's own is innermost.
+        $router->get('/alone', static fn (): string => 'alone', middleware: [$mark('route'), 'named']);
+        $router->group(prefix: '/both', middleware: [$mark('group')], routes: static function (Router $router) use ($mark): void {
+            $router->post('/', static fn (): string => 'both', [$mark('route')]);
+            $router->add('OPTIONS', '/', static fn (): string => 'options', middleware: [$mark('added')]);
+        });
         self::assertSame($router, $returned);
         $router->assemble();
 
         $answers = [];
-        foreach ([['GET', '/'], ['GET', '/admin'], ['GET', '/admin/users/7'], ['GET', '/admin/reports/2026/sales'], ['POST', '/admin/plain'], ['GET', '/after']] as [$method, $path]) {
+        foreach ([['GET', '/'], ['GET', '/admin'], ['GET', '/admin/users/7'], ['GET', '/admin/reports/2026/sales'], ['POST', '/admin/plain'], ['GET', '/after'], ['GET', '/alone'], ['POST', '/both'], ['OPTIONS', '/both']] as [$method, $path]) {
             $response = $router->handle(new Request($method, $path));
             $answers[] = [(string) $response->getBody(), $response->getHeaderLine('X-Mark')];
         }
@@ -187,8 +193,11 @@ final class RouterTest extends TestCase
             ['{"year":2026}', 'inner, named, outer'],
             ['no prefix of its own', 'named, outer'],
             ['after', 'only'],
+            ['alone', 'named, route'],
+            ['both', 'route, group'],
+            ['options', 'added, group'],
         ], $answers, 'The first middleware given is outermost, and a group\'s end is the end of its prefix and middleware.');
-        self::assertSame(['/', '/admin', '/admin/users/{id}', '/admin/reports/{year}/sales', '/admin/plain', '/after'], array_column($router->routes(), 'pattern'));
+        self::assertSame(['/', '/admin', '/admin/users/{id}', '/admin/reports/{year}/sales', '/admin/plain', '/after', '/alone', '/both', '/both'], array_column($router->routes(), 'pattern'));
         self::assertSame(404, $router->handle(new Request('GET', '/users/7'))->getStatusCode());
         self::assertSame(422, $router->handle(new Request('GET', '/admin/users/x'))->getStatusCode());
         self::assertSame('named, outer', $router->handle(new Request('GET', '/admin/users/x'))->getHeaderLine('X-Mark'), 'A refusal passes back through the middleware.');
@@ -197,6 +206,7 @@ final class RouterTest extends TestCase
             'starts with "/" and does not end with one' => static fn () => $router->group(static fn () => null, 'admin'),
             'does not end with one: "/admin", not "/admin/"' => static fn () => $router->group(static fn () => null, '/admin/'),
             'PSR-15 middleware or their class names, not int' => static fn () => $router->group(static fn () => null, middleware: [1]),
+            "A route's middleware is PSR-15 middleware or their class names, not float" => static fn () => $router->get('/bad', static fn (): string => '', middleware: [1.5]),
         ];
         foreach ($mistakes as $expected => $mistake) {
             try {

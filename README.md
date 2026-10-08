@@ -71,13 +71,13 @@ A handler is a closure, a class and the name of its method, or the name of a cla
 Routes that share a path prefix, middleware, or both are declared in a group:
 
 ~~~php
-Route::group(prefix: '/admin', middleware: [Authenticate::class], routes: function () {
+Route::group(prefix: '/admin', middleware: [TokenAuth::class], routes: function () {
     Route::get('/users', [AdminController::class, 'users']);          // GET /admin/users
     Route::get('/users/{id}', [AdminController::class, 'user']);
 });
 ~~~
 
-Either may be left out, and groups may be nested. The first middleware given is outermost. Middleware given by class name is made by the container in each worker as it starts, so one that cannot be made stops the worker then.
+Either may be left out, and groups may be nested. See [Middleware](#middleware) for what goes in `middleware:`.
 
 ### What a handler takes
 
@@ -150,12 +150,72 @@ The title and version are `app.name` and `app.version`.
 
 Reading a signature costs nothing per request, because it is read once when the route is added. Calling a closure by its signature adds about 0.05 µs to a request over a PSR-15 handler, and validated input with a typed response about 1 µs over the same checks written by hand (`benchmarks/typed-handler.php`, PHP 8.4 with JIT, Apple M1 Pro).
 
-## Authentication
+## Middleware
+
+Middleware is code that runs around a request: before it reaches the route, after the route has answered, or instead of the route.
 
 ~~~php
-// app.php
-->withProviders([DatabaseProvider::class, AuthProvider::class, AppProvider::class])
+use Crab\Contracts\Http\Middleware;
+
+final readonly class RequireJson implements Middleware
+{
+    public function process(ServerRequestInterface $request, RequestHandlerInterface $handler): ResponseInterface
+    {
+        if (!str_contains($request->getHeaderLine('Content-Type'), 'json')) {
+            return ErrorResponse::make($request, 415);          // answer here, and the route is never reached
+        }
+
+        $response = $handler->handle($request);                 // let it through
+
+        return $response->withHeader('X-Api-Version', '2');     // and add to what comes back
+    }
+}
 ~~~
+
+`php cua make:middleware RequireJson` writes that class for you, in `app/Middleware/`. `Middleware` is PSR-15's `MiddlewareInterface` under Crab's name, so middleware from any PSR-15 library works too. A middleware class is made by the container, once per worker, so its constructor can ask for services; like them, it must not keep anything about one request.
+
+There are two places to use one, and the same class works in both.
+
+**Around every request**, in `app.php`. The framework starts the list with its own, `App::MIDDLEWARE`, which today is the error handler, and you say how yours relate to it:
+
+~~~php
+return App::configure(__DIR__)
+    ->withMiddleware([Cors::class])                         // after the framework's
+    ->withMiddleware(prepend: [RequestId::class])           // before them, outermost
+    ->withMiddleware(remove: [ErrorHandler::class])         // without one of the framework's
+    ->withMiddleware(only: [MyErrors::class, Cors::class])  // these and no others
+    ->create();
+~~~
+
+**Around some routes**, on a route or on a group:
+
+~~~php
+Route::get('/me', [UserController::class, 'me'], middleware: [TokenAuth::class]);
+
+Route::group(prefix: '/admin', middleware: [TokenAuth::class, RequireAdmin::class], routes: function () {
+    Route::get('/users', [AdminController::class, 'users']);
+});
+~~~
+
+They run from the outside in, and the response travels back out the same way:
+
+~~~text
+request  →  every request's  →  the group's  →  the route's  →  handler
+~~~
+
+- **In each list the first is outermost.** So `prepend:` is what a request meets first and what sees the response last.
+- **Middleware around every request also runs when no route matches**, which is how a 404 still gets its CORS headers. A route's middleware runs only once its route has matched.
+- **A refusal passes back through everything outside it.** A 401 from a route's middleware is still seen by the middleware around every request.
+- **To hand something to the handler, put it on the request:** `$handler->handle($request->withAttribute('tenant', $tenant))`, read with `$request->getAttribute('tenant')`.
+- **Middleware given by class name is made when a worker starts**, not on the first request, so one that cannot be made stops the server from starting.
+- **With options, give an object:** `middleware: [new TokenAuth($tokens, $users, 'X-Api-Key', '')]`.
+- **Without the error handler** nothing turns an exception into a response for the client; the engine answers 500 and the failure is logged. Replace it rather than remove it.
+
+`Http\RequestId` is a middleware that ships but is not on by default. It gives each request an id: the `X-Request-Id` it arrived with when that is a plain token, otherwise a new one. The id is the request's `request_id` attribute, is returned in `X-Request-Id`, and is added to the log record of a failure. Add it with `prepend:` so that it is outside the error handler. It costs about 2 µs per request, measured in process, where a routed request otherwise costs about 3.
+
+## Authentication
+
+Who makes a request is decided by middleware. Whatever the way, it ends the same: the middleware puts your user on the request, and a handler takes that user as a parameter.
 
 ~~~php
 use Crab\Contracts\Auth\Identity;
@@ -169,10 +229,29 @@ final readonly class User implements Identity          // your user: anything wi
 
 Route::post('/login', [AuthController::class, 'login']);                  // open to all
 
-Route::group(middleware: [Authenticate::class], routes: function () {
+Route::group(middleware: [TokenAuth::class], routes: function () {
     Route::get('/me', static fn (User $user): User => $user);            // the logged-in user, by type
     Route::post('/posts', [PostController::class, 'store']);
 });
+~~~
+
+- **The user reaches a handler by type.** A parameter whose class implements `Identity` receives the user that middleware put on the request's `user` attribute; a request with none is answered with `401`. Make the parameter nullable for a route that works either way.
+- **There is no `Auth::user()`.** A worker serves requests that overlap, so the user travels with the request and nowhere else.
+- **Any middleware can be a way of authenticating.** It finds the user, and either calls `$handler->handle($request->withAttribute('user', $user))` or answers `401`. A session cookie, a signed address, a JWT, a header a proxy sets: each is a few lines of middleware of your own, and needs nothing more from Crab.
+- **`AuthProvider`** binds what every way shares, the `PasswordHasher`: `hash()`, `verify()` and `needsRehash()`, over PHP's own password hashing.
+
+### Tokens
+
+One way ships, because nearly every API starts with it: a token in a header, kept in your database.
+
+~~~php
+// app.php
+->withProviders([DatabaseProvider::class, AuthProvider::class, TokenAuthProvider::class, AppProvider::class])
+~~~
+
+~~~sh
+php cua tokens:install       # writes the tokens table's migration into your own migrations
+php cua migrate
 ~~~
 
 ~~~php
@@ -197,35 +276,21 @@ final readonly class AuthController
 }
 ~~~
 
-The client then sends `Authorization: Bearer <token>`.
+The client then sends `Authorization: Bearer <token>`, and `TokenAuth` is the middleware that reads it.
 
-- **The user reaches a handler by type.** A parameter whose class implements `Identity` receives whoever the `Authenticate` middleware found; a request with no such user is answered with `401`. Make the parameter nullable for a route that works either way. There is no `Auth::user()`: a worker serves requests that overlap, so the user travels with the request and nowhere else. It is also the request's `user` attribute.
-- **You say how a user is found.** Bind `Contracts\Auth\IdentityResolver` in your own provider; its `resolve($id)` returns your user or null.
-- **Tokens** are kept in the `auth_tokens` table, which `php cua migrate` creates. `TokenStore` has `issue($user, $name, $expiresAt)`, `owner($token)`, `revoke($token)` and `revokeAll($user)`. A token is 64 random characters, shown once; only its hash is stored. Checking one is one query, and a revoked token stops working at once.
-- **Passwords:** `PasswordHasher` has `hash()`, `verify()` and `needsRehash()`, over PHP's own password hashing.
-
-### Other ways to authenticate
-
-A bearer token is the default, not the only way. Each way is an `Authenticator`: it reads the request and returns the user or null.
-
-| Authenticator | Reads |
-| --- | --- |
-| `Auth\BearerToken` | `Authorization: Bearer <token>` |
-| `Auth\ApiKey` | A header of its own, `X-Api-Key` unless another is named |
-| Your own | A session cookie, a signed address, a JWT, a header a proxy sets |
+- **You say how a user is found.** A token records whose it is, not who that is, so bind `Contracts\Auth\IdentityResolver` in your own provider; its `resolve($id)` returns your user or null.
+- **The table is yours.** `tokens:install` writes the migration for `auth_tokens` into your migrations folder, where you can read and change it; the framework ships no migration of its own.
+- **`TokenStore`** has `issue($user, $name, $expiresAt)`, `owner($token)`, `revoke($token)` and `revokeAll($user)`. A token is 64 random characters, shown once; only its hash is stored. Checking one is one query, and a revoked token stops working at once.
+- **Another header, or another word before the token,** is an argument, given as an object:
 
 ~~~php
-final readonly class TrustedProxy implements Authenticator
-{
-    public function authenticate(ServerRequestInterface $request): ?Identity { ... }
-
-    public function challenge(): string { return 'Proxy'; }             // the WWW-Authenticate of a 401
-}
-
-Route::group(prefix: '/internal', middleware: [new Authenticate($trustedProxy)], routes: function () { ... });
+new TokenAuth($tokens, $users);                          // Authorization: Bearer <token>
+new TokenAuth($tokens, $users, 'X-Api-Key', '');         // X-Api-Key: <token>
+new TokenAuth($tokens, $users, scheme: 'Token');         // Authorization: Token <token>
+new TokenAuth($tokens, $users, required: false);         // lets a request without a token through, with no user
 ~~~
 
-`Authenticate::class` uses whichever `Authenticator` is bound in the container; bind your own after `AuthProvider` to change the default. `new Authenticate($other)` protects one group another way. Roles and permissions, and sessions with cookies, are not built.
+Roles and permissions, and sessions with cookies, are not built.
 
 ## Requests and responses
 
@@ -269,7 +334,7 @@ return App::configure(__DIR__)
         DatabaseProvider::class,
         AppProvider::class,
     ])
-    ->withMiddleware(Cors::class)
+    ->withMiddleware([Cors::class])
     ->withRouting(
         routes: 'routes/web.php',
         commands: 'routes/console.php',
@@ -279,7 +344,7 @@ return App::configure(__DIR__)
 
 - **The base path** is the directory given to `configure()`. Its `.env` file and `config` folder are loaded by default, because `App::configure()` begins the chain with `withEnv('.env')` and `withConfig('config', required: false)`; call either again to name another. Nothing else is found by convention.
 - **Paths may be relative** to the base path, and `$app->path('storage/app.log')` gives one in full anywhere else.
-- **Providers and middleware** are given one by one or as a list; `routes:` and `commands:` each take one file or a list of files.
+- **Providers** are given one by one or as a list; `routes:` and `commands:` each take one file or a list of files. `withMiddleware()` is described under [Middleware](#middleware).
 - **Each step is optional and they may come in any order:** `create()` loads the environment, then the configuration, makes the application, registers the providers and middleware, and then includes the route and command files, which declare with `Route::` and `Command::`.
 
 `Config::load()` reads every PHP file of a directory, keyed by file name:
@@ -289,21 +354,18 @@ return App::configure(__DIR__)
 return ['level' => env('LOG_LEVEL', 'info')];
 ~~~
 
-Anywhere after the application is created, `config('log.level')` reads that value, and `config('log.level', 'debug')` supplies a default. `env('NAME', $default)` reads an environment variable, where the real environment wins over `.env`; the words `true`, `false` and `null` become those values. The two helpers are global functions over `Env::get()` and `$app->config->get()`. The application itself reads five keys:
+Anywhere after the application is created, `config('log.level')` reads that value, and `config('log.level', 'debug')` supplies a default. `env('NAME', $default)` reads an environment variable, where the real environment wins over `.env`; the words `true`, `false` and `null` become those values. The two helpers are global functions over `Env::get()` and `$app->config->get()`. The application itself reads four keys:
 
 | Key | Meaning | Default |
 | --- | --- | --- |
 | `app.name` | The application's name, shown above the command list | none |
 | `app.debug` | Show failure details to clients | `false` |
-| `app.request_id` | Give every request an id | `false` |
 | `log.path` | Where the default logger writes | standard error |
 | `log.level` | The least severe level written | `debug` |
 
 Anything thrown while handling a request is caught by `Http\ErrorHandler`, logged with its trace and answered with a 500, as JSON when the client accepts it and plain text otherwise. Throw `Http\HttpException` to answer with a chosen status and message, for example `throw new HttpException(404, 'No such user')`; below 500 it is not logged. The logger is the container's `Psr\Log\LoggerInterface` entry.
 
 Inside a worker, a PHP warning or notice is thrown as an `ErrorException`, so it is logged and answered like any other failure instead of being printed and ignored. Code silenced with `@` is left alone. A deprecation is logged once per place and execution continues.
-
-With `app.request_id` on, each request gets an id: the `X-Request-Id` it arrived with when that is a plain token, otherwise a new one. It is the request's `request_id` attribute, is returned in `X-Request-Id`, and is added to the log record of a failure. It is off by default because it costs about 2 µs per request, measured in process, where a routed request otherwise costs about 3.
 
 ## Database
 
@@ -552,8 +614,9 @@ Things to know:
 | `stop`, `reload`, `restart`, `status` | Control a server running in the background. |
 | `routes` | Lists the registered routes. |
 | `openapi` | Writes the OpenAPI description of the routes. |
+| `make:middleware` | Writes a new middleware class in `app/Middleware/`. |
 
-The database provider adds `migrate`, `migrate:rollback`, `migrate:status` and `make:migration`.
+The database provider adds `migrate`, `migrate:rollback`, `migrate:status` and `make:migration`, and the token provider `tokens:install`.
 
 Add your own with `Command::add('mail:send', SendMail::class)`, which is `$app->console->add()` under a shorter name. A command is a class implementing `Contracts\Console\Command` (`description()` and `handle(Input $input, Output $output): int`), made by the container when it runs, or a closure taking the input and output. `Input` gives positional arguments and `--name=value` or `--flag` options. A provider adds commands through the container's `Contracts\Console\Console` entry.
 
@@ -561,7 +624,7 @@ Add your own with `Command::add('mail:send', SendMail::class)`, which is `$app->
 
 ~~~php
 $app->register(Acme\Mailer\MailerProvider::class);   // a class with register(Container $container)
-$app->middleware(Acme\Cors::class);                   // any PSR-15 middleware
+$app->middleware(Acme\Cors::class);                   // any PSR-15 middleware, around every request
 Route::get('/users/{id}', ShowUser::class);            // a handler class made by the container
 ~~~
 
@@ -581,7 +644,7 @@ A provider that needs something open in every worker, such as a connection or a 
 | `src/Console/` | The command runner, with its input and output. |
 | `src/Commands/` | The application's built-in commands. |
 | `src/Container/` | The PSR-11 container. |
-| `src/Auth/` | Authentication: the middleware, bearer tokens and API keys, tokens in the database, password hashing. |
+| `src/Auth/` | Authentication: the user a middleware puts on the request, password hashing, and tokens in the database with the middleware that reads them. |
 | `src/Clock/` | The PSR-20 clock. |
 | `src/Database/` | Pooled PDO connections, the query layer, the query builder, the schema builder and migrations. |
 | `src/Config/` | Configuration files and environment variables. |

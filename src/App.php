@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Crab;
 
 use Crab\Clock\SystemClock;
+use Crab\Commands\MakeMiddleware;
 use Crab\Commands\OpenApi;
 use Crab\Commands\Reload;
 use Crab\Commands\Restart;
@@ -33,7 +34,6 @@ use Crab\Http\EngineHandler;
 use Crab\Http\ErrorHandler;
 use Crab\Http\Factory;
 use Crab\Http\MiddlewareStack;
-use Crab\Http\RequestId;
 use Crab\Log\Logger;
 use Crab\Routing\Router;
 use Crab\Validation\Validator;
@@ -53,11 +53,10 @@ use Psr\Log\LoggerInterface;
  * An application: configuration, a container, routes, the middleware in
  * front of them, console commands and the engine runtime that serves them.
  *
- * It reads five configuration keys: "app.name" heads the command list,
- * "app.debug" shows failure details to clients, "app.request_id" gives
- * every request an id when true,
- * "log.path" is where the default logger writes (standard error when
- * unset) and "log.level" is the least severe level it writes.
+ * It reads four configuration keys: "app.name" heads the command list,
+ * "app.debug" shows failure details to clients, "log.path" is where the
+ * default logger writes (standard error when unset) and "log.level" is
+ * the least severe level it writes.
  */
 final class App implements RequestHandlerInterface
 {
@@ -82,12 +81,21 @@ final class App implements RequestHandlerInterface
     private readonly Router $routes;
 
     /**
+     * The middleware around every request unless an application says
+     * otherwise: the error handler, which turns whatever is thrown beneath
+     * it into a response.
+     */
+    public const MIDDLEWARE = [ErrorHandler::class];
+
+    /**
      * @param string|null $basePath The application's own directory, which path() resolves against.
+     * @param list<MiddlewareInterface|class-string<MiddlewareInterface>> $middleware The middleware around every request, the first outermost; middleware() adds inside it.
      */
     public function __construct(
         public readonly ConfigContract $config = new Config(),
         public readonly ContainerContract $container = new Container(),
         public readonly ?string $basePath = null,
+        array $middleware = self::MIDDLEWARE,
     ) {
         self::$current = $this;
         $container->instance(self::class, $this);
@@ -127,11 +135,7 @@ final class App implements RequestHandlerInterface
         // The error handler is the entry bound as ErrorHandler; rebinding it to
         // another PSR-15 middleware replaces how failures are answered.
         $this->stack = new MiddlewareStack($this->router, $container);
-        if ($config->get('app.request_id', false)) {
-            // Outside the error handler, so that failures carry the id too.
-            $this->stack->add(RequestId::class);
-        }
-        $this->stack->add(ErrorHandler::class);
+        $this->stack->add(...$middleware);
         $container->instance(MiddlewareStackContract::class, $this->stack);
         $container->instance(MiddlewareStack::class, $this->stack);
         $this->console = new Console($container, (string) $config->get('app.name', ''));
@@ -142,6 +146,7 @@ final class App implements RequestHandlerInterface
         $this->console->add('status', Status::class);
         $this->console->add('routes', Routes::class);
         $this->console->add('openapi', OpenApi::class);
+        $this->console->add('make:middleware', MakeMiddleware::class);
         $container->instance(ConsoleContract::class, $this->console);
         $container->instance(Console::class, $this->console);
     }

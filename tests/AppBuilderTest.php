@@ -7,6 +7,7 @@ namespace Crab\Tests;
 use Crab\App;
 use Crab\Contracts\Container\Container;
 use Crab\Contracts\Provider;
+use Crab\Http\ErrorHandler;
 use Crab\Http\Request;
 use PHPUnit\Framework\TestCase;
 use Psr\Http\Message\ResponseInterface;
@@ -138,6 +139,107 @@ final class AppBuilderTest extends TestCase
             }
         }
         self::assertSame('/x', (new App())->path('/x'), 'An absolute path needs no base path.');
+    }
+
+    public function testTheGlobalMiddlewareIsAddedToRemovedFromOrReplaced(): void
+    {
+        $marks = static function (App $app, string $path = '/'): string {
+            return $app->handle(new Request('GET', $path))->getHeaderLine('X-Mark');
+        };
+        $route = static fn () => \Crab\Route::get('/', static fn (): string => 'home');
+        self::assertSame([ErrorHandler::class], App::MIDDLEWARE, 'What the framework puts around every request can be read.');
+
+        // Outermost first: prepended, the framework's, appended. The outermost marks the response last.
+        $app = App::configure()
+            ->withMiddleware([new Mark('appended'), new Mark('appended too')])
+            ->withMiddleware(prepend: [new Mark('prepended')])
+            ->withMiddleware(new Mark('one alone'))
+            ->create();
+        $route();
+        self::assertSame('one alone, appended too, appended, prepended', $marks($app));
+        self::assertSame('one alone, appended too, appended, prepended', $marks($app, '/missing'), 'It runs for a request no route matches, too.');
+
+        // A failure beneath the framework's error handler is answered by it, inside what was prepended.
+        \Crab\Route::get('/fail', static fn () => throw new \RuntimeException('broken'));
+        $app->container->instance(\Psr\Log\LoggerInterface::class, new \Psr\Log\NullLogger());
+        $failed = $app->handle(new Request('GET', '/fail'));
+        self::assertSame([500, 'prepended'], [$failed->getStatusCode(), $failed->getHeaderLine('X-Mark')]);
+
+        // Without the framework's: nothing turns a failure into a response here.
+        foreach ([App::configure()->withMiddleware(remove: [ErrorHandler::class]), App::configure()->withMiddleware(only: [])] as $builder) {
+            $bare = $builder->create();
+            \Crab\Route::get('/fail', static fn () => throw new \RuntimeException('nothing catches this'));
+            try {
+                $bare->handle(new Request('GET', '/fail'));
+                self::fail('The error handler was still there.');
+            } catch (\RuntimeException $error) {
+                self::assertSame('nothing catches this', $error->getMessage());
+            }
+        }
+
+        // The whole list in place of the framework's, with the others still around it.
+        $own = App::configure()
+            ->withMiddleware(only: [new Mark('mine'), ErrorHandler::class], prepend: [new Mark('first')], append: [new Mark('last')])
+            ->create();
+        $route();
+        self::assertSame('last, mine, first', $marks($own));
+
+        $mistakes = [
+            'takes PSR-15 middleware or their class names, not int' => static fn () => App::configure()->withMiddleware([1]),
+            'middleware or their class names, not stdClass' => static fn () => App::configure()->withMiddleware(prepend: [new \stdClass()]),
+            'their class names, not null' => static fn () => App::configure()->withMiddleware(only: [null]),
+            'withMiddleware(remove:) takes the class names of middleware to leave out, not ' => static fn () => App::configure()->withMiddleware(remove: [new Mark()]),
+        ];
+        foreach ($mistakes as $expected => $mistake) {
+            try {
+                $mistake();
+                self::fail("Not refused: {$expected}");
+            } catch (\LogicException $error) {
+                self::assertStringContainsString($expected, $error->getMessage());
+            }
+        }
+    }
+
+    public function testAMiddlewareClassIsWrittenWhereItIsAskedFor(): void
+    {
+        $app = App::configure($this->directory)->create();
+        $out = fopen('php://memory', 'w+');
+        $run = static function (string ...$arguments) use ($app, $out): array {
+            ftruncate($out, 0);
+            rewind($out);
+            $status = $app->console->run(['make:middleware', ...$arguments], new \Crab\Console\Output($out, $out));
+            rewind($out);
+            return [$status, stream_get_contents($out)];
+        };
+        $file = $this->directory . '/app/Middleware/RequireAdmin.php';
+        [$status, $said] = $run('RequireAdmin');
+        self::assertSame(0, $status, $said);
+        self::assertStringStartsWith("Created {$file}\n", $said);
+        $source = (string) file_get_contents($file);
+        self::assertStringContainsString("namespace App\\Middleware;\n", $source);
+        self::assertStringContainsString('final readonly class RequireAdmin implements Middleware', $source);
+
+        // What was written is middleware that works: it lets the request through.
+        require $file;
+        $made = new \App\Middleware\RequireAdmin();
+        self::assertInstanceOf(\Crab\Contracts\Http\Middleware::class, $made);
+        self::assertInstanceOf(MiddlewareInterface::class, $made);
+        $router = new \Crab\Routing\Router();
+        $router->get('/', static fn (): string => 'through', middleware: [$made]);
+        self::assertSame('through', (string) $router->handle(new Request('GET', '/'))->getBody());
+
+        self::assertSame([1, "{$file} already exists.\n"], $run('RequireAdmin'));
+        self::assertSame(1, $run()[0]);
+        self::assertSame(1, $run('not a class')[0]);
+        [$status] = $run('Cors', '--path=src/Http/Middleware', '--namespace=Shop\\Http\\Middleware');
+        self::assertSame(0, $status);
+        self::assertStringContainsString("namespace Shop\\Http\\Middleware;\n", (string) file_get_contents($this->directory . '/src/Http/Middleware/Cors.php'));
+
+        unlink($file);
+        unlink($this->directory . '/src/Http/Middleware/Cors.php');
+        foreach (['/app/Middleware', '/app', '/src/Http/Middleware', '/src/Http', '/src'] as $folder) {
+            rmdir($this->directory . $folder);
+        }
     }
 
     public function testEveryStepIsOptional(): void

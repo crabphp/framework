@@ -63,7 +63,9 @@ A contract exists for everything a package touches, including where no PSR exist
 | `Validation\Validator`, `Validation\Rule` | none | today |
 | `Console\Console` | none | today |
 | `Clock\Clock` | PSR-20 `ClockInterface` | today |
-| `Auth\Identity`, `Auth\Authenticator`, `Auth\IdentityResolver`, `Auth\TokenStore`, `Auth\PasswordHasher` | none | today |
+| `Http\Middleware` | PSR-15 `MiddlewareInterface` | today |
+| `Auth\Identity`, `Auth\PasswordHasher` | none | today |
+| `Auth\TokenStore`, `Auth\IdentityResolver` | none | today, for authentication by token |
 | `Log\Logger` | PSR-3 `LoggerInterface` | today |
 | `Http\Factory` | the five PSR-17 factory interfaces | today |
 | Cache, events, HTTP client | PSR-16, 14, 18, each behind a Crab contract | not built |
@@ -129,7 +131,7 @@ All four phases exist today. A provider that implements `WorkerProvider` gets `s
 
 Consequences worth stating plainly:
 
-- The logged-in user is request scope like everything else about a request: the `Authenticate` middleware puts it on the request and a handler takes it as a parameter.
+- The logged-in user is request scope like everything else about a request: middleware puts it on the request and a handler takes it as a parameter.
 - There is no `request()` or `auth()` global helper. Global helpers and static names are for process-scope things only (`config()`, `env()`, `Route::get()`, `Command::add()`). Request data is read from the request the handler was given.
 - A container entry is worker-scoped by default. Anything per-request is passed as an argument.
 - `env()` is called only inside config files. Everything else reads `config()`, so configuration has one source and can later be cached.
@@ -162,6 +164,29 @@ Components take every async tool from the engine's own types (`EventLoop`, `Susp
 - **Isolation by worker group.** HTTP, queue consumers and the scheduler run as separate engine worker groups, so a slow job cannot starve request handling.
 - **Bounded everything.** The engine already bounds connections, tasks, buffers and body size per worker; framework components that queue or buffer take an explicit limit too.
 - **Graceful change.** SIGTERM drains, and a connection that looks idle is read a moment longer, since a request may already be on its way to it. New code needs a new process, because everything defined in phase 1 lives in the server's parent: `reload` has the server's keeper start a new server process on the socket it holds, and retire the old one only once the new one accepts connections. If the new one cannot start, the old one is left serving. SIGUSR1 still replaces the workers of one server process one at a time, with the code it already has.
+
+## Middleware *(today)*
+
+There is one kind of middleware, PSR-15's, and two places to put it.
+
+| | Around every request | Around some routes |
+| --- | --- | --- |
+| Declared | `withMiddleware()` in `app.php` | `middleware:` on a route or a group |
+| Runs when no route matches | Yes | No |
+| For | Errors, request ids, CORS, logging | Authentication, limits, permissions |
+
+~~~mermaid
+flowchart LR
+    R[Request] --> G["Every request's<br/>(prepended, the framework's, appended)"]
+    G --> RT[Router]
+    RT -->|no route| NF[404, back out through the first box]
+    RT --> GR["The groups'"] --> RO["The route's"] --> H[Handler]
+~~~
+
+- **The framework's own middleware is a list anyone can read,** `App::MIDDLEWARE`, and an application says how its own relate to it: before, after, without one of them, or in place of them all. Nothing the framework runs around a request is fixed.
+- **The same class works in either place.** Where it runs is decided where it is used, never by the class.
+- **Features are middleware, not switches.** Request ids and authentication are things an application adds to a list, so what runs around a request is all in two places: `app.php` and the routes file.
+- **All of it is made when a worker starts,** the application's and every route's, so a middleware that cannot be made stops the server from starting.
 
 ## Running the server *(today)*
 
@@ -196,14 +221,13 @@ flowchart TD
 
 ## Extension points
 
-Small and explicit; there are six, and no others are planned.
+Small and explicit; there are five, and no others are planned.
 
 | Point | How | Status |
 | --- | --- | --- |
 | Services | `Provider::register(Container)` | today |
 | Per-worker work | `WorkerProvider::start(Worker)` / `stop(Worker)` | today |
-| Around requests | PSR-15 middleware via `$app->middleware()`, or the `MiddlewareStack` contract from a provider; around some routes, `Route::group(middleware:)` | today |
-| Who makes a request | An `Authenticator` given to the `Authenticate` middleware | today |
+| Around requests | Middleware. Around every request: `withMiddleware()` in `app.php`, or the `MiddlewareStack` contract from a provider. Around some: `middleware:` on a route or a group. | today |
 | Commands | `Console` contract, `add()` | today |
 | Reacting to events | PSR-14 dispatcher | proposed, when the first component needs it |
 
@@ -214,7 +238,7 @@ No auto-discovery, no `boot()` phase, no global container accessor. `Route::get(
 - **One error path per entry point.** HTTP requests go through `ErrorHandler` *(today)*. Console commands report through `Console::run()` *(today)*. A task spawned on a worker that fails, a failure that escapes a timer, and a provider that fails to stop are written to the application's logger, and the worker keeps running *(today)*. Queue jobs and scheduled jobs get the same guarantee when those components are built.
 - **The engine drops nothing.** Whatever it catches goes to the group's failure callbacks, and so to the application's logger, or to standard error when there are none *(today)*.
 - **Fail at startup, not at first use.** Misconfiguration stops `serve` with its cause *(today for middleware and logger)*.
-- **Request ids** *(today, opt-in)*. With `app.request_id` on, the outermost middleware assigns an id, stores it as the `request_id` attribute, returns it in `X-Request-Id` and the error handler adds it to the failure's log record. It is opt-in because it costs about 2 µs per request. The logger is shared by overlapping requests, so it cannot add the id by itself; code that logs passes it in the context.
+- **Request ids** *(today, opt-in)*. `Http\RequestId` is middleware an application adds with `withMiddleware(prepend: [RequestId::class])`; it assigns an id, stores it as the `request_id` attribute, returns it in `X-Request-Id` and the error handler adds it to the failure's log record. It is opt-in because it costs about 2 µs per request. The logger is shared by overlapping requests, so it cannot add the id by itself; code that logs passes it in the context.
 - **Health and metrics** *(proposed)*. A built-in health route, and `Worker::stats()` exposed through a command or route.
 - **Warnings are errors** *(today, in workers)*. Inside a worker, PHP warnings and notices are thrown as `ErrorException` so they reach the same error path; deprecations are logged once per place. Console commands other than `serve` run without this.
 - **One error renderer** *(today)*. `Http\ErrorResponse` builds every error response, for the error handler and for the router's 404 and 405, so they look the same and unmatched routes still pass back through middleware as ordinary responses.
@@ -239,7 +263,7 @@ A PSR implementation should also pass that PSR's public conformance suite where 
 4. **Small PSR components:** clock (PSR-20), events (PSR-14), cache (PSR-16). *The clock is done.*
 5. **Database.** *Connection pool, the thin query layer, the query builder, the schema builder and migrations are done, tested on SQLite and MySQL.* Next: models with relationships.
 6. **Queue**, then **Scheduling**, each as its own worker group.
-7. **Validation, Session, Auth.** *Validation is done, ahead of the steps before it, together with typed route handlers and the OpenAPI document written from them. Authentication is done: pluggable authenticators, tokens in the database, the user as a handler parameter.* Roles and permissions, and sessions, are not built; sessions matter less for an API.
+7. **Validation, Session, Auth.** *Validation is done, ahead of the steps before it, together with typed route handlers and the OpenAPI document written from them. Authentication is done: a way of authenticating is middleware that puts the user on the request, a handler takes the user as a parameter, and tokens in the database are one such way, opt-in, with a migration the application owns.* Roles and permissions, and sessions, are not built; sessions matter less for an API.
 8. **Application skeleton** (`crabphp/crab`) and the `make:*` commands. *The skeleton exists, kept minimal; it grows a folder when a component arrives. `make:migration` is the first `make:*` command.*
 9. **Per-component packages**, CI and the first tagged release.
 

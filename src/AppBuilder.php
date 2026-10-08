@@ -14,6 +14,7 @@ use Psr\Http\Server\MiddlewareInterface;
  *
  *     return App::configure(__DIR__)
  *         ->withProviders(AppProvider::class)
+ *         ->withMiddleware([Cors::class])
  *         ->withRouting(routes: 'routes/web.php', commands: 'routes/console.php')
  *         ->create();
  *
@@ -38,9 +39,27 @@ final class AppBuilder
      */
     private array $providers = [];
     /**
+     * Middleware to put after the framework's, and before it.
+     *
      * @var list<MiddlewareInterface|string>
      */
-    private array $middleware = [];
+    private array $append = [];
+    /**
+     * @var list<MiddlewareInterface|string>
+     */
+    private array $prepend = [];
+    /**
+     * Classes of the framework's middleware to leave out.
+     *
+     * @var list<string>
+     */
+    private array $remove = [];
+    /**
+     * The whole list in place of the framework's, when given.
+     *
+     * @var list<MiddlewareInterface|string>|null
+     */
+    private ?array $only = null;
     /**
      * Files that declare routes and commands, in the order given.
      *
@@ -100,18 +119,40 @@ final class AppBuilder
     }
 
     /**
-     * PSR-15 middleware around every route, the first given outermost.
-     * They may be given one by one or as a list.
+     * The middleware around every request. The application starts with
+     * the framework's, App::MIDDLEWARE, and this says how its own relate
+     * to them:
      *
-     * @param MiddlewareInterface|class-string<MiddlewareInterface>|list<MiddlewareInterface|class-string<MiddlewareInterface>> ...$middleware
+     *     ->withMiddleware([Cors::class])                         after the framework's
+     *     ->withMiddleware(prepend: [RequestId::class])           before them, outermost
+     *     ->withMiddleware(remove: [ErrorHandler::class])         without one of the framework's
+     *     ->withMiddleware(only: [MyErrors::class, Cors::class])  these and no others
+     *
+     * Within each list the first is outermost. Called again, it adds to
+     * what was said before. Middleware for some routes only belongs on
+     * the route or its group.
+     *
+     * @param MiddlewareInterface|class-string<MiddlewareInterface>|list<MiddlewareInterface|class-string<MiddlewareInterface>> $append
+     * @param list<MiddlewareInterface|class-string<MiddlewareInterface>> $prepend
+     * @param list<class-string<MiddlewareInterface>> $remove Classes of the framework's middleware to leave out.
+     * @param list<MiddlewareInterface|class-string<MiddlewareInterface>>|null $only The whole list in place of the framework's.
      */
-    public function withMiddleware(MiddlewareInterface|string|array ...$middleware): static
-    {
-        foreach (self::flat($middleware) as $layer) {
-            if (!is_string($layer) && !$layer instanceof MiddlewareInterface) {
-                throw new \LogicException('withMiddleware() takes PSR-15 middleware or their class names, not ' . get_debug_type($layer) . '.');
+    public function withMiddleware(
+        MiddlewareInterface|string|array $append = [],
+        array $prepend = [],
+        array $remove = [],
+        ?array $only = null,
+    ): static {
+        $this->append = [...$this->append, ...self::middleware(is_array($append) ? $append : [$append])];
+        $this->prepend = [...$this->prepend, ...self::middleware($prepend)];
+        foreach ($remove as $class) {
+            if (!is_string($class)) {
+                throw new \LogicException('withMiddleware(remove:) takes the class names of middleware to leave out, not ' . get_debug_type($class) . '.');
             }
-            $this->middleware[] = $layer;
+            $this->remove[] = $class;
+        }
+        if ($only !== null) {
+            $this->only = self::middleware($only);
         }
         return $this;
     }
@@ -149,13 +190,47 @@ final class AppBuilder
             // Before the configuration, whose files read it with env().
             Env::load($this->path($this->env));
         }
-        $app = new App($this->config(), basePath: $this->basePath);
+        $app = new App($this->config(), basePath: $this->basePath, middleware: $this->globalMiddleware());
         $app->register(...$this->providers);
-        $app->middleware(...$this->middleware);
         foreach ($files as $file) {
             self::load($file);
         }
         return $app;
+    }
+
+    /**
+     * The middleware around every request, outermost first: what was
+     * prepended, then the framework's or what replaces it, then what was
+     * appended.
+     *
+     * @return list<MiddlewareInterface|string>
+     */
+    private function globalMiddleware(): array
+    {
+        $middle = $this->only;
+        if ($middle === null) {
+            $middle = [];
+            foreach (App::MIDDLEWARE as $class) {
+                if (!in_array($class, $this->remove, true)) {
+                    $middle[] = $class;
+                }
+            }
+        }
+        return [...$this->prepend, ...$middle, ...$this->append];
+    }
+
+    /**
+     * @param array<mixed> $list
+     * @return list<MiddlewareInterface|string>
+     */
+    private static function middleware(array $list): array
+    {
+        foreach ($list as $layer) {
+            if (!is_string($layer) && !$layer instanceof MiddlewareInterface) {
+                throw new \LogicException('withMiddleware() takes PSR-15 middleware or their class names, not ' . get_debug_type($layer) . '.');
+            }
+        }
+        return array_values($list);
     }
 
     private function config(): Config

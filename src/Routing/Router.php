@@ -83,14 +83,17 @@ final class Router implements RouterContract
      * A parameter matches one path segment unless its expression says
      * otherwise.
      */
-    public function add(string $method, string $pattern, RequestHandlerInterface|\Closure|string|array $handler): static
+    public function add(string $method, string $pattern, RequestHandlerInterface|\Closure|string|array $handler, array $middleware = []): static
     {
+        $own = self::middleware($middleware, 'A route');
         $middleware = [];
         $prefix = '';
         foreach ($this->groups as [$groupPrefix, $groupMiddleware]) {
             $prefix .= $groupPrefix;
             $middleware = [...$middleware, ...$groupMiddleware];
         }
+        // A route's own middleware is inside its groups'.
+        $middleware = [...$middleware, ...$own];
         if ($prefix !== '') {
             // "/" inside a group is the group's own path.
             $pattern = $pattern === '/' ? $prefix : $prefix . $pattern;
@@ -132,12 +135,7 @@ final class Router implements RouterContract
         if ($prefix !== '' && ($prefix[0] !== '/' || str_ends_with($prefix, '/'))) {
             throw new \InvalidArgumentException("A group's prefix starts with \"/\" and does not end with one: \"/admin\", not \"{$prefix}\".");
         }
-        foreach ($middleware as $layer) {
-            if (!is_string($layer) && !$layer instanceof MiddlewareInterface) {
-                throw new \InvalidArgumentException("A group's middleware is PSR-15 middleware or their class names, not " . get_debug_type($layer) . '.');
-            }
-        }
-        $this->groups[] = [$prefix, array_values($middleware)];
+        $this->groups[] = [$prefix, self::middleware($middleware, 'A group')];
         try {
             $routes($this);
         } finally {
@@ -147,7 +145,21 @@ final class Router implements RouterContract
     }
 
     /**
-     * Makes the middleware of every group now. A worker calls it as it
+     * @param array<mixed> $middleware
+     * @return list<MiddlewareInterface|string>
+     */
+    private static function middleware(array $middleware, string $of): array
+    {
+        foreach ($middleware as $layer) {
+            if (!is_string($layer) && !$layer instanceof MiddlewareInterface) {
+                throw new \InvalidArgumentException("{$of}'s middleware is PSR-15 middleware or their class names, not " . get_debug_type($layer) . '.');
+            }
+        }
+        return array_values($middleware);
+    }
+
+    /**
+     * Makes the middleware of every route and group now. A worker calls it as it
      * starts, so that middleware that cannot be made stops it then and
      * not on the first request to one route.
      */
@@ -158,29 +170,29 @@ final class Router implements RouterContract
         }
     }
 
-    public function get(string $pattern, RequestHandlerInterface|\Closure|string|array $handler): static
+    public function get(string $pattern, RequestHandlerInterface|\Closure|string|array $handler, array $middleware = []): static
     {
-        return $this->add('GET', $pattern, $handler);
+        return $this->add('GET', $pattern, $handler, $middleware);
     }
 
-    public function post(string $pattern, RequestHandlerInterface|\Closure|string|array $handler): static
+    public function post(string $pattern, RequestHandlerInterface|\Closure|string|array $handler, array $middleware = []): static
     {
-        return $this->add('POST', $pattern, $handler);
+        return $this->add('POST', $pattern, $handler, $middleware);
     }
 
-    public function put(string $pattern, RequestHandlerInterface|\Closure|string|array $handler): static
+    public function put(string $pattern, RequestHandlerInterface|\Closure|string|array $handler, array $middleware = []): static
     {
-        return $this->add('PUT', $pattern, $handler);
+        return $this->add('PUT', $pattern, $handler, $middleware);
     }
 
-    public function patch(string $pattern, RequestHandlerInterface|\Closure|string|array $handler): static
+    public function patch(string $pattern, RequestHandlerInterface|\Closure|string|array $handler, array $middleware = []): static
     {
-        return $this->add('PATCH', $pattern, $handler);
+        return $this->add('PATCH', $pattern, $handler, $middleware);
     }
 
-    public function delete(string $pattern, RequestHandlerInterface|\Closure|string|array $handler): static
+    public function delete(string $pattern, RequestHandlerInterface|\Closure|string|array $handler, array $middleware = []): static
     {
-        return $this->add('DELETE', $pattern, $handler);
+        return $this->add('DELETE', $pattern, $handler, $middleware);
     }
 
     public function routes(): array
