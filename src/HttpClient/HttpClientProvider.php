@@ -38,6 +38,10 @@ final class HttpClientProvider implements WorkerProvider
             'tls' => [],
             // A proxy every request goes through: "http://proxy.example:8080", with "user:password@" before the host when it asks.
             'proxy' => null,
+            // How many more times a request is tried when it could not be made or the server asked for it later.
+            'retries' => 0,
+            // Whether HTTP/2 is used with servers that offer it.
+            'http2' => true,
         ]);
         $container->singleton(ClientContract::class, static function (Container $container): Client {
             $config = $container->get(Config::class);
@@ -50,6 +54,8 @@ final class HttpClientProvider implements WorkerProvider
                 (int) $config->get('http_client.connections'),
                 (array) $config->get('http_client.tls'),
                 $config->get('http_client.proxy'),
+                retries: (int) $config->get('http_client.retries'),
+                http2: (bool) $config->get('http_client.http2'),
             );
         });
         // The same object for code written against the standard, and by class.

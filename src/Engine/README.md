@@ -122,7 +122,7 @@ $runtime->group('jobs', maxTasks: 128)->onStart(
 
 Use the worker's loop for timers: `$worker->loop->delay($seconds, $callback)`, `repeat()`, and `cancel($id)`. It is a `Crab\Engine\EventLoop`; `EventLoop::current()` returns the same one where no worker is at hand. `Async\Pool` is a bounded set of reusable resources such as client connections: `acquire()` makes one on demand up to the limit and otherwise waits, first come first served, until `release()`, a timeout or cancellation; `discard()` replaces a broken one and `run()` lends one for a callback. `Async\ConnectionStream` gives one coroutine reader and one writer exclusive ownership of a TCP connection, with demand-driven reads and bounded writes. It must not share ownership with a protocol parser or raw data handler.
 
-Fibers provide concurrency within a worker. Worker processes provide CPU parallelism. Blocking database clients, ordinary filesystem calls, DNS lookups, or CPU loops still block their worker; arbitrary PHP functions do not become asynchronous.
+Fibers provide concurrency within a worker. Worker processes provide CPU parallelism. Blocking database clients, ordinary filesystem calls, DNS lookups made with PHP's own functions, or CPU loops still block their worker; arbitrary PHP functions do not become asynchronous.
 
 ## Failures
 
@@ -148,7 +148,7 @@ An individually oversized write throws `LengthException`. `onDrain()` signals a 
 
 `onClose()` runs after socket cleanup. `onSettled()` additionally waits for service activity to finish, including asynchronous `finally` cleanup. HTTP owns these activity scopes automatically. Custom protocol owners can use `beginActivity()` and call its returned release closure in `finally`; a closed connection remains in worker admission accounting until all activities release it.
 
-`Worker::connect()` establishes outbound TCP connections with cancellation, timeouts, admission accounting and exactly-once completion. It accepts numeric IPv4/IPv6 endpoints; asynchronous DNS resolution is not included.
+`Worker::connect()` establishes outbound TCP connections with cancellation, timeouts, admission accounting and exactly-once completion. It accepts numeric IPv4/IPv6 endpoints. `Network\DnsResolver::resolve($loop, $host)` finds a name's addresses first, without holding the worker: it reads the hosts file, keeps answers for as long as they hold, asks the system's name servers over UDP, and only when they give nothing falls back on the system's blocking resolver.
 
 ## Bounds and scope
 
@@ -156,7 +156,7 @@ Defaults include 512 owned TCP connections/pending connects (including closed co
 
 The select backend has platform descriptor limits and scanning costs. Linux/macOS CLI are the intended targets; this change was exercised on macOS. Single-process operation does not require process extensions, but cannot forcibly interrupt blocked PHP code. Optional backends are selected through `new Runtime(loopFactory: ...)`, and a loop of your own is any class that extends `Crab\Engine\EventLoop`.
 
-TLS, async DNS, HTTP/2, HTTP/3, generic framed-protocol helpers, a cross-process job pool, and the later web framework are outside this implementation. HTTP and WebSocket are protocol servers without routing, middleware containers, ORM, templates or agent-specific features.
+TLS, HTTP/2, HTTP/3, generic framed-protocol helpers, a cross-process job pool, and the later web framework are outside this implementation. HTTP and WebSocket are protocol servers without routing, middleware containers, ORM, templates or agent-specific features.
 
 This replaces the experimental `Crab::run()/Server::listen()` API. The sibling application scaffold is a separate future layer.
 

@@ -9,15 +9,15 @@ use Crab\Engine\Async\CancelledException;
 use Crab\Engine\Async\Pool;
 use Crab\Engine\Async\PoolExhaustedException;
 use Crab\Engine\EventLoop;
+use Crab\Engine\Network\DnsResolver;
 use Psr\Http\Message\RequestInterface;
 
 /**
  * Carries requests over the network, on connections it keeps and uses
  * again, straight to the server or through a proxy.
  *
- * Finding a server's address by its name is the one step that holds the
- * worker, for as long as the system's resolver takes; an address found is
- * remembered for a minute.
+ * A server's address is found by its name without holding the worker;
+ * see the engine's DnsResolver.
  *
  * @internal
  */
@@ -32,10 +32,6 @@ final class Network implements Transport
      * How long a kept connection is trusted without being used, in seconds.
      */
     private const IDLE = 30.0;
-    /**
-     * How long an address found for a name is remembered, in seconds.
-     */
-    private const REMEMBER = 60.0;
 
     /**
      * The kept connections to each server, by scheme, host and port.
@@ -44,11 +40,11 @@ final class Network implements Transport
      */
     private array $pools = [];
     /**
-     * Addresses found for names, and until when each is remembered.
+     * The HTTP/2 connection to each server that speaks it, which carries every request to that server at once.
      *
-     * @var array<string, array{list<string>, float}>
+     * @var array<string, Http2Session>
      */
-    private array $addresses = [];
+    private array $sessions = [];
     /**
      * The proxy's host, port and, when it asks who is calling, the header that says so.
      *
@@ -65,6 +61,8 @@ final class Network implements Transport
         private readonly int $connections = 8,
         private readonly array $tls = [],
         ?string $proxy = null,
+        private readonly bool $http2 = true,
+        private readonly DnsResolver $resolver = new DnsResolver(),
     ) {
         if ($proxy === null || $proxy === '') {
             $this->proxy = null;
@@ -93,18 +91,43 @@ final class Network implements Transport
             throw new RequestException("{$what} cannot be sent: https needs PHP's openssl extension.", $request);
         }
         $port = $uri->getPort() ?? ($scheme === 'https' ? 443 : 80);
+        $origin = "{$scheme}://{$host}:{$port}";
         $pool = $this->pool($scheme, $host, $port);
         $body = $request->getBody();
-        $repeatable = in_array($request->getMethod(), self::REPEATABLE, true) && ($body->getSize() === 0 || $body->isSeekable());
+        $resendable = $body->getSize() === 0 || $body->isSeekable();
+        $repeatable = in_array($request->getMethod(), self::REPEATABLE, true) && $resendable;
         for ($attempt = 1; ; ++$attempt) {
+            $session = $this->sessions[$origin] ?? null;
+            if ($session !== null && !$session->accepts()) {
+                $session = null;
+            }
             try {
-                $connection = $this->connection($pool, $deadline, $cancellation);
+                $connection = $session === null ? $this->connection($pool, $deadline, $cancellation) : null;
+                if ($connection !== null && $connection->protocol === 'h2') {
+                    $session = $this->session($origin, $pool, $connection, $deadline);
+                }
             } catch (CancelledException $cancelled) {
                 throw $cancelled;
             } catch (PoolExhaustedException | TimedOut $error) {
-                throw new NetworkException("{$what} failed: it took more than {$timeout} seconds, and every one of the {$this->connections} connections to {$host} was still busy.", $request, $error);
+                throw new NetworkException("{$what} failed: it took more than {$timeout} seconds, and every one of the {$this->connections} connections to {$host} was still busy.", $request, $error, unsent: true);
             } catch (\RuntimeException $error) {
-                throw new NetworkException("{$what} failed: {$error->getMessage()}.", $request, $error);
+                throw new NetworkException("{$what} failed: {$error->getMessage()}.", $request, $error, unsent: true);
+            }
+            if ($session !== null) {
+                try {
+                    return $session->exchange($request, $deadline, $cancellation);
+                } catch (CancelledException $cancelled) {
+                    throw $cancelled;
+                } catch (Unprocessed $error) {
+                    // The server says it did not act on the request, so it may be made again, whatever it is.
+                    if ($resendable && $attempt < 3) {
+                        continue;
+                    }
+                    throw new NetworkException("{$what} failed: {$error->getMessage()}.", $request, $error, unsent: true);
+                } catch (\RuntimeException $error) {
+                    $why = $error instanceof TimedOut ? "it took more than {$timeout} seconds, and was {$error->doing} when given up" : $error->getMessage();
+                    throw new NetworkException("{$what} failed: {$why}.", $request, $error);
+                }
             }
             $exchange = new Exchange($connection, $deadline, $cancellation);
             try {
@@ -137,11 +160,45 @@ final class Network implements Transport
      */
     public function close(): void
     {
+        $sessions = $this->sessions;
+        $this->sessions = [];
+        foreach ($sessions as $session) {
+            $session->close();
+        }
         $pools = $this->pools;
         $this->pools = [];
         foreach ($pools as $pool) {
             $pool->close();
         }
+    }
+
+    /**
+     * The HTTP/2 conversation on a connection just made, or the one
+     * another request made to the same server a moment earlier, which is
+     * then the one to use.
+     */
+    private function session(string $origin, Pool $pool, Connection $connection, float $deadline): Http2Session
+    {
+        $existing = $this->sessions[$origin] ?? null;
+        if ($existing !== null && $existing->accepts()) {
+            $pool->discard($connection);
+            return $existing;
+        }
+        $session = new Http2Session($connection, EventLoop::current(), function () use ($origin, $pool, $connection, &$session): void {
+            if (($this->sessions[$origin] ?? null) === $session) {
+                unset($this->sessions[$origin]);
+            }
+            // The connection stays lent to its session for as long as the session lasts.
+            $pool->discard($connection);
+        });
+        $this->sessions[$origin] = $session;
+        try {
+            $session->start($deadline);
+        } catch (\Throwable $error) {
+            $session->close($error);
+            throw $error instanceof TimedOut ? $error : new \RuntimeException('the connection was lost while sending', previous: $error);
+        }
+        return $session;
     }
 
     /**
@@ -197,16 +254,18 @@ final class Network implements Transport
     {
         $deadline = hrtime(true) / 1_000_000_000 + $this->connectTimeout;
         $tlsHost = $scheme === 'https' ? $host : null;
+        // HTTP/2 is offered first to a server that may speak it; which one is spoken is settled as encryption is.
+        $tls = ['alpn_protocols' => $this->http2 ? 'h2,http/1.1' : 'http/1.1', ...$this->tls];
         $loop = EventLoop::current();
         // Through a proxy, the connection is made to the proxy.
         [$toHost, $toPort] = $this->proxy ?? [$host, $port];
         $failure = null;
-        foreach ($this->resolve($toHost) as $address) {
+        foreach ($this->resolver->resolve($loop, $toHost) as $address) {
             try {
                 if ($this->proxy === null) {
-                    return Connection::open($loop, $address, $port, $tlsHost, $this->tls, $deadline);
+                    return Connection::open($loop, $address, $port, $tlsHost, $tls, $deadline);
                 }
-                $connection = Connection::open($loop, $address, $toPort, $tlsHost, $this->tls, $deadline, encrypt: false);
+                $connection = Connection::open($loop, $address, $toPort, $tlsHost, $tls, $deadline, encrypt: false);
                 if ($tlsHost === null) {
                     // What is not encrypted is handed to the proxy to pass on.
                     $connection->forwarded = true;
@@ -222,9 +281,10 @@ final class Network implements Transport
                 }
                 return $connection;
             } catch (TimedOut $error) {
-                $failure = new \RuntimeException("connecting to {$toHost} took more than {$this->connectTimeout} seconds", previous: $error);
+                $failure ??= new \RuntimeException("connecting to {$toHost} took more than {$this->connectTimeout} seconds", previous: $error);
             } catch (\RuntimeException $error) {
-                $failure = new \RuntimeException("{$toHost} could not be reached: {$error->getMessage()}", previous: $error);
+                // The first address's failure is the one told: a later address is often one the server does not listen on.
+                $failure ??= new \RuntimeException("{$toHost} could not be reached: {$error->getMessage()}", previous: $error);
             }
         }
         throw $failure;
@@ -252,30 +312,5 @@ final class Network implements Transport
         if (preg_match('~^HTTP/1\.[01] 2\d\d~', $answer) !== 1) {
             throw new \RuntimeException('the proxy would not connect to ' . $host . ': it answered "' . trim((string) strtok($answer, "\r\n")) . '"');
         }
-    }
-
-    /**
-     * The numeric addresses of a host. Looking a name up holds the worker
-     * while the system answers, so what is found is remembered a while.
-     *
-     * @return non-empty-list<string>
-     */
-    private function resolve(string $host): array
-    {
-        $literal = trim($host, '[]');
-        if (filter_var($literal, FILTER_VALIDATE_IP) !== false) {
-            return [$literal];
-        }
-        $now = hrtime(true) / 1_000_000_000;
-        if (isset($this->addresses[$host]) && $this->addresses[$host][1] > $now) {
-            return $this->addresses[$host][0];
-        }
-        $found = @gethostbynamel($host);
-        if ($found === false || $found === []) {
-            unset($this->addresses[$host]);
-            throw new \RuntimeException("no address was found for the name {$host}");
-        }
-        $this->addresses[$host] = [$found, $now + self::REMEMBER];
-        return $found;
     }
 }

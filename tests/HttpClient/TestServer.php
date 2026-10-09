@@ -146,6 +146,21 @@ final class TestServer
         return $head . "\r\n" . $body;
     }
 
+    /**
+     * A certificate signed by itself, with its key, in one file. Whoever asks for it removes the file.
+     */
+    public static function certificate(string $name): string
+    {
+        $key = openssl_pkey_new(['private_key_bits' => 2048, 'private_key_type' => OPENSSL_KEYTYPE_RSA]);
+        $request = openssl_csr_new(['commonName' => $name], $key, ['digest_alg' => 'sha256']);
+        $signed = openssl_csr_sign($request, null, $key, 1, ['digest_alg' => 'sha256']);
+        openssl_x509_export($signed, $certificate);
+        openssl_pkey_export($key, $private);
+        $file = sys_get_temp_dir() . '/crab-cert-' . bin2hex(random_bytes(6)) . '.pem';
+        file_put_contents($file, $certificate . $private);
+        return $file;
+    }
+
     private function drop(int $number): void
     {
         if (isset($this->open[$number])) {

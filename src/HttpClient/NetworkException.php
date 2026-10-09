@@ -14,7 +14,10 @@ use Psr\Http\Message\RequestInterface;
  */
 final class NetworkException extends ClientException implements NetworkExceptionInterface
 {
-    public function __construct(string $message, private readonly RequestInterface $request, ?\Throwable $previous = null)
+    /**
+     * @param bool $unsent Whether it failed before any of the request was sent, so that sending it again cannot do it twice.
+     */
+    public function __construct(string $message, private readonly RequestInterface $request, ?\Throwable $previous = null, public readonly bool $unsent = false)
     {
         parent::__construct($message, 0, $previous);
     }

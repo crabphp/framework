@@ -17,6 +17,7 @@ use Psr\Http\Message\UploadedFileInterface;
  *     $user = $http->get('https://api.example.com/users/7')->json();
  *     $made = $http->post('https://api.example.com/users', json: ['name' => 'Ada'])->throw();
  *     $fast = $http->timeout(2.0)->get('https://api.example.com/status');
+ *     $sure = $http->retry(3)->get('https://api.example.com/report');
  *
  * It is PSR-18's client under Crab's name, with shorter ways to say the
  * usual requests. An answer with an error status, 404 or 500, is an
@@ -87,6 +88,21 @@ interface Client extends ClientInterface
      * This client is left as it was.
      */
     public function timeout(float $seconds): static;
+
+    /**
+     * A client that tries a request again, up to this many more times,
+     * when it could not be made or the server asked for it to be made
+     * later, and is otherwise this one. This client is left as it was.
+     *
+     * A request that may safely be made twice (GET, HEAD, OPTIONS, PUT,
+     * DELETE) is tried again when it got no answer, or 429, 502, 503 or
+     * 504. Any other, a POST or a PATCH, only when none of it was sent,
+     * or when it was answered 429 or 503, with which a server says it
+     * did not act on it.
+     *
+     * @param float $delay Seconds to wait before the second try; each later wait is twice the one before. A Retry-After the server sent is waited instead when it is longer.
+     */
+    public function retry(int $times, float $delay = 0.2): static;
 
     /**
      * A client that keeps and sends cookies with this jar, and is

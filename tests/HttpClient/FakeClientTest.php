@@ -101,6 +101,95 @@ final class FakeClientTest extends TestCase
         self::assertMatchesRegularExpression('~^multipart/form-data; boundary=crab-[0-9a-f]{24}$~', $http->sent('POST https://shop.example/upload')[0]->getHeaderLine('Content-Type'));
     }
 
+    public function testARequestIsTriedAgainOnlyWhenThatCannotDoItTwice(): void
+    {
+        // Each path answers from a list, one reply a try; the last is repeated.
+        $script = [
+            '/busy' => [503, 429, 'done'],
+            '/gateway' => [502, 504, 'done'],
+            '/broken' => [500, 'never reached'],
+            '/down' => ['lost', 'lost', 'done'],
+            '/unreachable' => ['unsent', 'done'],
+            '/always' => [503],
+        ];
+        $tries = [];
+        $http = new FakeClient(['*' => static function (RequestInterface $request) use ($script, &$tries): mixed {
+            $path = $request->getUri()->getPath();
+            $reply = $script[$path][min($tries[$path] ?? 0, count($script[$path]) - 1)];
+            $tries[$path] = ($tries[$path] ?? 0) + 1;
+            return match ($reply) {
+                'lost' => new NetworkException("{$request->getMethod()} {$path} failed: the connection was lost.", $request),
+                'unsent' => new NetworkException("{$request->getMethod()} {$path} failed: it could not be reached.", $request, unsent: true),
+                default => $reply,
+            };
+        }], 'https://api.example.com');
+        $thrice = $http->retry(3);
+        $outcome = static function (\Closure $request) use (&$tries): array {
+            $tries = [];
+            try {
+                $answer = $request();
+                return [$answer->getStatusCode(), array_sum($tries)];
+            } catch (NetworkException) {
+                return ['no answer', array_sum($tries)];
+            }
+        };
+
+        // A request that may safely be made twice.
+        self::assertSame([200, 3], $outcome(fn () => $thrice->get('/busy')));
+        self::assertSame([200, 3], $outcome(fn () => $thrice->put('/gateway', json: ['a' => 1])));
+        self::assertSame([200, 3], $outcome(fn () => $thrice->delete('/down')));
+        self::assertSame([500, 1], $outcome(fn () => $thrice->get('/broken')), 'A server that failed is not asked again: it may fail the same way.');
+        self::assertSame([503, 4], $outcome(fn () => $thrice->get('/always')), 'After the last try the answer is the answer.');
+        self::assertSame([503, 2], $outcome(fn () => $http->retry(1)->get('/always')));
+
+        // One that may not.
+        self::assertSame([200, 3], $outcome(fn () => $thrice->post('/busy', json: ['pay' => 5])), 'Told to come back later, it was not acted on.');
+        self::assertSame([502, 1], $outcome(fn () => $thrice->post('/gateway', json: ['pay' => 5])), 'Something behind the gateway may have acted on it.');
+        self::assertSame(['no answer', 1], $outcome(fn () => $thrice->post('/down', json: ['pay' => 5])), 'Lost on the way, it may have arrived.');
+        self::assertSame([200, 2], $outcome(fn () => $thrice->patch('/unreachable', json: ['pay' => 5])), 'Never sent, it cannot have.');
+
+        // Nor one whose body can be read only once.
+        $pipe = popen(escapeshellarg(PHP_BINARY) . ' -r ' . escapeshellarg('echo "once";'), 'r');
+        self::assertSame([503, 1], $outcome(fn () => $thrice->request('PUT', '/busy', body: new \Crab\Http\Stream($pipe))));
+
+        // By itself a client tries once.
+        self::assertSame([503, 1], $outcome(fn () => $http->get('/busy')));
+        $made = new FakeClient(['*' => static function () use (&$tries): mixed {
+            $tries['x'] = ($tries['x'] ?? 0) + 1;
+            return $tries['x'] < 3 ? 503 : 'done';
+        }], retries: 2);
+        self::assertSame([200, 3], $outcome(static fn () => $made->get('https://api.example.com/x')), 'Or as many times as it was made to.');
+
+        $this->expectExceptionMessage('retry() takes a number of times and a delay in seconds');
+        $http->retry(-1);
+    }
+
+    public function testTheServersOwnWaitIsKeptWhenItIsLongerAndNotWhenItIsTooLong(): void
+    {
+        $tries = 0;
+        $reply = static function (string $after) use (&$tries): \Closure {
+            return static function () use ($after, &$tries): mixed {
+                return ++$tries === 1 ? FakeClient::response(429, 'slow down', ['Retry-After' => $after]) : 'done';
+            };
+        };
+        $client = static fn (string $after, float $timeout = 30.0): \Crab\HttpClient\Client => (new \Crab\HttpClient\Client(timeout: $timeout, retries: 2, retryDelay: 0.01, transport: new FakeClient(['*' => $reply($after)])));
+
+        $started = hrtime(true);
+        self::assertSame('done', (string) $client('1')->get('https://api.example.com/')->getBody());
+        self::assertGreaterThan(0.95, (hrtime(true) - $started) / 1e9, 'A second, as the server asked, not the hundredth it would have waited.');
+
+        $tries = 0;
+        $started = hrtime(true);
+        self::assertSame(429, $client('120', 2.0)->get('https://api.example.com/')->getStatusCode(), 'Asked to wait longer than a request may take, it is not waited for.');
+        self::assertLessThan(0.5, (hrtime(true) - $started) / 1e9);
+
+        $tries = 0;
+        $started = hrtime(true);
+        self::assertSame('done', (string) $client(gmdate('D, d M Y H:i:s', time() + 1) . ' GMT')->get('https://api.example.com/')->getBody(), 'A time to come back at is read too.');
+        self::assertLessThan(1.6, (hrtime(true) - $started) / 1e9);
+        \Crab\Engine\EventLoop::current()->run();
+    }
+
     public function testAFakeFailureOfTheNetworkIsThrownAsOne(): void
     {
         $http = new FakeClient(['*' => static fn (RequestInterface $request) => new NetworkException('GET https://x.example/ failed: it took more than 5 seconds.', $request)]);

@@ -560,18 +560,8 @@ final class ClientTest extends TestCase
         return $this->clients[] = new Client(...$options);
     }
 
-    /**
-     * A certificate signed by itself, with its key, in one file.
-     */
     private function certificate(string $name): string
     {
-        $key = openssl_pkey_new(['private_key_bits' => 2048, 'private_key_type' => OPENSSL_KEYTYPE_RSA]);
-        $request = openssl_csr_new(['commonName' => $name], $key, ['digest_alg' => 'sha256']);
-        $signed = openssl_csr_sign($request, null, $key, 1, ['digest_alg' => 'sha256']);
-        openssl_x509_export($signed, $certificate);
-        openssl_pkey_export($key, $private);
-        $file = sys_get_temp_dir() . '/crab-cert-' . bin2hex(random_bytes(6)) . '.pem';
-        file_put_contents($file, $certificate . $private);
-        return $this->files[] = $file;
+        return $this->files[] = TestServer::certificate($name);
     }
 }

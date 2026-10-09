@@ -362,7 +362,7 @@ final readonly class ShowWeather
 }
 ~~~
 
-While a request waits for its answer the worker serves other requests, which a call with `file_get_contents()` or cURL does not allow: either holds the whole worker until the other server answers.
+While a request waits for its answer the worker serves other requests, which a call with `file_get_contents()` or cURL does not allow: either holds the whole worker until the other server answers. That holds for every step: finding the server's address, connecting, agreeing on encryption, sending and waiting.
 
 ~~~php
 $http->get($url, query: ['page' => 2], headers: ['Accept' => 'application/json']);
@@ -376,7 +376,7 @@ $http->request('PUT', $url, body: $csv, headers: ['Content-Type' => 'text/csv'])
 - **The answer** is a PSR-7 response with `ok()`, whether the status is 200 to 299, and `json()`, the body decoded.
 - **An error status is an answer.** A 404 or a 500 is returned like any other, unless you ask otherwise: `$http->get($url)->throw()->json()` throws `HttpClient\ResponseException`, which names the request and the status and holds the answer in `$error->response`.
 - **No answer always throws:** `HttpClient\NetworkException` when the server could not be reached or took too long, `HttpClient\RequestException` when the request itself cannot be sent. All three are a `Psr\Http\Client\ClientExceptionInterface`, and no message holds the query string or a header.
-- **Connections are kept and used again,** up to 8 requests on their way to one server at once; another waits its turn.
+- **HTTP/2 is spoken with every server that offers it** over `https`, which is most: all the requests to one server then share one connection and run at once, as many as the server allows. With the others it is HTTP/1.1, on connections that are kept and used again, up to 8 to one server; a request beyond that waits its turn.
 - **Redirects are followed,** up to 5, as a browser follows them, and what proves who is asking is not sent on to another server.
 - **An answer compressed with gzip or deflate** is handed over as what it says. Brotli is not asked for.
 - **It is PSR-18's client** under the contract `Contracts\HttpClient\Client`; `sendRequest()` takes any PSR-7 request, and a library that asks for `Psr\Http\Client\ClientInterface` is given the same object.
@@ -388,6 +388,22 @@ $http->timeout(2.0)->get($url);
 ~~~
 
 `timeout()` gives a client that allows each exchange that many seconds, redirects and waiting for a free connection included, and is otherwise the same: it uses the same connections. The client it was asked of is left as it was, which matters because every request a worker serves shares it.
+
+### Trying again
+
+~~~php
+$http->retry(3)->get($url);                 // up to three more times
+$http->retry(3, delay: 0.5)->get($url);     // waiting 0.5 s, then 1 s, then 2 s
+~~~
+
+A request is tried again only when that cannot do it twice:
+
+| Request | Tried again when |
+| --- | --- |
+| `GET`, `HEAD`, `OPTIONS`, `PUT`, `DELETE` | It got no answer, or 429, 502, 503 or 504 |
+| `POST`, `PATCH` | None of it was sent, or it was answered 429 or 503, with which a server says it did not act on it |
+
+A server's `Retry-After` is waited when it is longer than the delay, and when it is longer than the client's timeout the answer is returned as it is. A 500 is never tried again: a server that failed may fail the same way. `http_client.retries` sets it for the default client, which by itself tries once.
 
 ### Sending files
 
@@ -460,9 +476,13 @@ self::assertSame('{"amount":500}', (string) $http->requests[0]->getBody());
 | `http_client.connections` | `8` | Requests on their way to one server at once |
 | `http_client.base_url`, `http_client.headers` | none | Added to every request of the default client |
 | `http_client.proxy` | none | `http://host:port`, with `user:password@` when it asks |
+| `http_client.retries` | `0` | More tries for a request that may be tried again |
+| `http_client.http2` | `true` | `false` to speak HTTP/1.1 with every server |
 | `http_client.tls` | `[]` | PHP's `ssl` context options, such as `['cafile' => '/path/ca.pem']` |
 
-What it does not do: HTTP/2, and looking a name up without holding the worker. Finding a server's address takes as long as the system's resolver does, usually a millisecond or two, and the address is then remembered for a minute. `https` needs PHP's `openssl` extension, and a compressed answer its `zlib`.
+A server's address is found by its name without holding the worker: the name servers are asked over UDP on the event loop, after the hosts file, and an answer is kept for as long as it says it holds. Only when they give nothing is the system's own resolver asked, which does hold the worker, since it knows names they may not, such as those of the local network. `https` needs PHP's `openssl` extension, and a compressed answer its `zlib`.
+
+What it does not do: HTTP/3, HTTP/2 without encryption, and server push.
 
 ## Configuration, errors and logging
 
@@ -802,7 +822,7 @@ A provider that needs something open in every worker, such as a connection or a 
 | `src/Testing/` | Helpers for testing components. |
 | `src/Server.php` | Runs the server in the foreground, in the background and under a watcher, and controls a running one. |
 | `src/Routing/` | The router, itself a PSR-15 handler, and typed handlers. |
-| `src/HttpClient/` | The HTTP client: PSR-18, on the event loop, with kept connections. |
+| `src/HttpClient/` | The HTTP client: PSR-18, on the event loop, HTTP/2 and HTTP/1.1. |
 | `src/Validation/` | Builds typed objects from request data, with rules as attributes. |
 | `src/Contracts/` | Every interface another package implements or type-hints; they extend the PSR ones where Crab adds methods. |
 | `tests/` | Framework tests beside their components; engine tests in `tests/Engine/`. `tests/EngineBoundaryTest.php` keeps the engine free of framework dependencies. |

@@ -8,7 +8,9 @@ use Crab\Contracts\HttpClient\Client as ClientContract;
 use Crab\Contracts\HttpClient\CookieJar as CookieJarContract;
 use Crab\Contracts\HttpClient\File;
 use Crab\Contracts\HttpClient\Response as ResponseContract;
+use Crab\Engine\Async\Async;
 use Crab\Engine\Async\Cancellation;
+use Crab\Engine\EventLoop;
 use Crab\Http\Request;
 use Crab\Http\Stream;
 use Crab\Http\Uri;
@@ -19,8 +21,10 @@ use Psr\Http\Message\UploadedFileInterface;
 use Psr\Http\Message\UriInterface;
 
 /**
- * An HTTP/1.1 client that does not hold the worker up: while a request
- * waits for its answer, the worker serves other requests.
+ * An HTTP client that does not hold the worker up: while a request waits
+ * for its answer, the worker serves other requests. It speaks HTTP/2
+ * with servers that offer it over an encrypted connection, and HTTP/1.1
+ * with the rest.
  *
  *     $http = new Client();
  *     $user = $http->get('https://api.example.com/users/7')->throw()->json();
@@ -28,16 +32,24 @@ use Psr\Http\Message\UriInterface;
  *     $stripe = new Client('https://api.stripe.com/v1', headers: ['Authorization' => "Bearer {$key}"]);
  *     $charge = $stripe->timeout(5.0)->post('/charges', json: ['amount' => 500]);
  *
- * Connections are kept and used again, up to a number per server; a
- * request beyond that waits for one. Redirects are followed, and a
- * compressed answer is handed over as what it says.
+ * Connections are kept and used again: one for all the requests to an
+ * HTTP/2 server, up to a number per server otherwise, where a request
+ * beyond that waits for one. Redirects are followed, and a compressed
+ * answer is handed over as what it says.
  *
  * In a test, FakeClient is this client with replies written in advance
  * in place of the network.
  */
 class Client implements ClientContract
 {
+    /**
+     * Methods that may be made twice without doing anything twice.
+     */
+    private const REPEATABLE = ['GET', 'HEAD', 'OPTIONS', 'PUT', 'DELETE'];
+
     private float $timeout;
+    private int $retries;
+    private float $retryDelay;
     private ?CookieJarContract $jar;
     private readonly Transport $transport;
 
@@ -51,6 +63,9 @@ class Client implements ClientContract
      * @param array<string, mixed> $tls PHP's "ssl" context options for encrypted connections, such as ['cafile' => '/path/ca.pem']. The server's certificate is verified unless this says not to.
      * @param string|null $proxy A proxy every request goes through: "http://proxy.example:8080", with "user:password@" before the host when it asks.
      * @param CookieJarContract|null $cookies Keeps the cookies servers set and sends them back. None unless given, since one jar would be shared by everyone the client works for.
+     * @param int $retries How many more times a request is tried when it could not be made or the server asked for it later; see retry().
+     * @param float $retryDelay Seconds waited before the second try, doubled before each one after.
+     * @param bool $http2 Whether HTTP/2 is used with servers that offer it over an encrypted connection.
      * @param Transport|null $transport @internal What carries the requests; the network when left out.
      */
     public function __construct(
@@ -63,14 +78,19 @@ class Client implements ClientContract
         array $tls = [],
         ?string $proxy = null,
         ?CookieJarContract $cookies = null,
+        int $retries = 0,
+        float $retryDelay = 0.2,
+        bool $http2 = true,
         ?Transport $transport = null,
     ) {
-        if ($timeout <= 0 || $connectTimeout <= 0 || $redirects < 0 || $connections < 1) {
-            throw new \LogicException('An HTTP client needs timeouts above zero, at least one connection per server and a number of redirects that is not negative.');
+        if ($timeout <= 0 || $connectTimeout <= 0 || $redirects < 0 || $connections < 1 || $retries < 0 || $retryDelay < 0) {
+            throw new \LogicException('An HTTP client needs timeouts above zero, at least one connection per server, and numbers of redirects and retries that are not negative.');
         }
         $this->timeout = $timeout;
+        $this->retries = $retries;
+        $this->retryDelay = $retryDelay;
         $this->jar = $cookies;
-        $this->transport = $transport ?? new Network($connectTimeout, $connections, $tls, $proxy);
+        $this->transport = $transport ?? new Network($connectTimeout, $connections, $tls, $proxy, $http2);
     }
 
     public function timeout(float $seconds): static
@@ -81,6 +101,17 @@ class Client implements ClientContract
         // The copy carries its requests the same way, over the same connections.
         $new = clone $this;
         $new->timeout = $seconds;
+        return $new;
+    }
+
+    public function retry(int $times, float $delay = 0.2): static
+    {
+        if ($times < 0 || $delay < 0) {
+            throw new \LogicException('retry() takes a number of times and a delay in seconds, neither below zero.');
+        }
+        $new = clone $this;
+        $new->retries = $times;
+        $new->retryDelay = $delay;
         return $new;
     }
 
@@ -185,10 +216,55 @@ class Client implements ClientContract
     }
 
     /**
-     * Sends a request and follows where its answer redirects to, keeping
-     * and sending cookies on the way when there is a jar.
+     * Sends a request, again when it is to be retried and may be.
      */
     private function send(RequestInterface $request, ?Cancellation $cancellation): Response
+    {
+        $body = $request->getBody();
+        $resendable = $body->getSize() === 0 || $body->isSeekable();
+        $safe = in_array($request->getMethod(), self::REPEATABLE, true);
+        for ($tried = 0; ; ++$tried) {
+            $response = null;
+            try {
+                $response = $this->once($request, $cancellation);
+                $again = in_array($response->getStatusCode(), $safe ? [429, 502, 503, 504] : [429, 503], true);
+            } catch (NetworkException $error) {
+                $again = $safe || $error->unsent;
+            }
+            $wait = $again && $resendable && $tried < $this->retries ? $this->wait($tried, $response) : null;
+            if ($wait === null) {
+                return $response ?? throw $error;
+            }
+            Async::sleep(EventLoop::current(), $wait, $cancellation);
+        }
+    }
+
+    /**
+     * How many seconds to wait before trying again, or null when the
+     * server asks for longer than a request is allowed to take: the
+     * answer is then the answer.
+     */
+    private function wait(int $tried, ?Response $response): ?float
+    {
+        // Doubled each time, and a little less by chance so that many callers do not come back at one moment.
+        $wait = $this->retryDelay * (2 ** $tried) * (mt_rand(75, 100) / 100);
+        $after = trim($response?->getHeaderLine('Retry-After') ?? '');
+        if ($after === '') {
+            return $wait;
+        }
+        // A number of seconds, or the time to come back at.
+        $asked = preg_match('/^\d+$/D', $after) === 1 ? (float) $after : (float) ((int) strtotime($after) - time());
+        if ($asked > $this->timeout) {
+            return null;
+        }
+        return max($wait, $asked);
+    }
+
+    /**
+     * Sends a request once and follows where its answer redirects to,
+     * keeping and sending cookies on the way when there is a jar.
+     */
+    private function once(RequestInterface $request, ?Cancellation $cancellation): Response
     {
         $deadline = hrtime(true) / 1_000_000_000 + $this->timeout;
         for ($followed = 0; ; ++$followed) {

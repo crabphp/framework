@@ -157,4 +157,4 @@ Select retains platform descriptor limits and scanning costs; application files 
 
 Tests cover TCP partial writes/half-close; connector refusal/cancellation; UDP boundaries/accounting; coroutine exclusion/cancellation/cleanup; HTTP framing/order/pressure/deadlines/upgrade; WebSocket handshake/fragments/malformed input/pressure/close; worker admission/bootstrap rollback/restart/blocked-child termination/reaping; and all four servers sharing one runtime.
 
-Separate work: TLS, async DNS, generic line/length framing helpers, live uploads, a cross-process job pool, HTTP/2 or HTTP/3, long-duration distributed-load qualification, and the web/agent framework. These are not hidden dependencies or advertised implemented features.
+Separate work: TLS, generic line/length framing helpers, live uploads, a cross-process job pool, HTTP/2 or HTTP/3, long-duration distributed-load qualification, and the web/agent framework. These are not hidden dependencies or advertised implemented features.

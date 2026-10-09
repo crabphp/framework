@@ -23,11 +23,6 @@ final class Exchange
      */
     private const MAX_HEAD = 65536;
     /**
-     * How much of an answer's body is held in memory before it goes to disk.
-     */
-    private const IN_MEMORY = 1048576;
-
-    /**
      * Bytes that have arrived and are not yet read.
      */
     private string $buffer = '';
@@ -73,58 +68,34 @@ final class Exchange
         $method = $request->getMethod();
         $encoding = strtolower(implode(',', $headers['transfer-encoding'] ?? []));
         $length = $headers['content-length'][0] ?? null;
-        $storage = fopen('php://temp/maxmemory:' . self::IN_MEMORY, 'w+b');
-        if ($storage === false) {
-            throw new \RuntimeException('there is no room to keep the answer');
-        }
-        $coding = strtolower(trim($headers['content-encoding'][0] ?? ''));
-        $compressed = ($coding === 'gzip' || $coding === 'deflate') && function_exists('inflate_init');
+        $bodiless = $method === 'HEAD' || $status === 204 || $status === 304 || $status < 200;
+        // These have no body, whatever their headers say.
+        $sink = new BodySink($bodiless ? '' : ($headers['content-encoding'][0] ?? ''));
+        $store = $sink->write(...);
         $delimited = true;
-        if ($method === 'HEAD' || $status === 204 || $status === 304 || $status < 200) {
-            // These have no body, whatever their headers say.
-            $compressed = false;
-        } else {
-            $inflate = null;
-            $store = static function (string $bytes) use ($storage, $compressed, $coding, &$inflate): void {
-                if ($compressed) {
-                    // "deflate" is sent both with and without its two-byte header; the first bytes tell which.
-                    $inflate ??= inflate_init(match (true) {
-                        $coding === 'gzip' => ZLIB_ENCODING_GZIP,
-                        strlen($bytes) > 1 && (ord($bytes[0]) & 0x0F) === 8 && ((ord($bytes[0]) << 8) | ord($bytes[1])) % 31 === 0 => ZLIB_ENCODING_DEFLATE,
-                        default => ZLIB_ENCODING_RAW,
-                    });
-                    $bytes = @inflate_add($inflate, $bytes);
-                    if ($bytes === false) {
-                        throw new \RuntimeException('the answer says it is compressed and is not');
-                    }
-                }
-                if ($bytes !== '' && fwrite($storage, $bytes) !== strlen($bytes)) {
-                    throw new \RuntimeException('there is no room to keep the answer');
-                }
-            };
-            if (str_contains($encoding, 'chunked')) {
-                $this->chunks($store);
-            } elseif ($length !== null) {
-                if (preg_match('/^\d{1,18}$/D', $length) !== 1) {
-                    throw new \RuntimeException('the answer\'s length is not a number');
-                }
-                $this->exactly((int) $length, $store);
-            } else {
-                // Neither a length nor chunks: the body ends when the server closes the connection.
-                $delimited = false;
-                $this->untilClosed($store);
+        if ($bodiless) {
+            // Nothing to read.
+        } elseif (str_contains($encoding, 'chunked')) {
+            $this->chunks($store);
+        } elseif ($length !== null) {
+            if (preg_match('/^\d{1,18}$/D', $length) !== 1) {
+                throw new \RuntimeException('the answer\'s length is not a number');
             }
+            $this->exactly((int) $length, $store);
+        } else {
+            // Neither a length nor chunks: the body ends when the server closes the connection.
+            $delimited = false;
+            $this->untilClosed($store);
         }
-        if ($compressed) {
+        if ($sink->decoding) {
             // The body is handed on as what it says, so what described its compressed form no longer holds.
             unset($headers['content-encoding'], $headers['content-length']);
         }
-        rewind($storage);
         $closing = static fn (array $values): bool => str_contains(strtolower(implode(',', $values)), 'close');
         $this->reusable = $unsent === null && $delimited && $version === '1.1' && $status !== 101 && $this->buffer === ''
             && !$closing($headers['connection'] ?? []) && !$closing($request->getHeader('Connection'));
         try {
-            return new Response($status, $headers, new Stream($storage), $reason, $version, self::describe($request));
+            return new Response($status, $headers, new Stream($sink->stream()), $reason, $version, self::describe($request));
         } catch (\InvalidArgumentException $error) {
             throw new \RuntimeException('the answer is not valid HTTP: ' . $error->getMessage(), previous: $error);
         }

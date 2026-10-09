@@ -26,6 +26,10 @@ final class Connection
      */
     public float $idleSince = 0.0;
     /**
+     * What the two ends agreed to speak when they agreed on encryption: "h2" for HTTP/2.
+     */
+    public string $protocol = 'http/1.1';
+    /**
      * Whether it leads to a proxy that forwards requests, which must then name the whole URL.
      */
     public bool $forwarded = false;
@@ -37,6 +41,13 @@ final class Connection
      * @var resource|null
      */
     private mixed $stream;
+    /**
+     * The waits on the socket that are under way: the watcher of each and what ends it.
+     *
+     * @var array<int, array{string, \Closure}>
+     */
+    private array $waits = [];
+    private int $nextWait = 0;
 
     /**
      * @param resource $stream
@@ -66,7 +77,7 @@ final class Connection
                 'SNI_enabled' => true,
                 'verify_peer' => true,
                 'verify_peer_name' => true,
-                // This client speaks HTTP/1.1 and must not be offered anything else.
+                // What is offered to the server to speak; HTTP/1.1 alone unless the caller says more.
                 'alpn_protocols' => 'http/1.1',
                 ...$tls,
             ];
@@ -97,17 +108,17 @@ final class Connection
      * Some bytes, as many as have arrived, or null when the server has
      * closed the connection.
      */
-    public function read(float $deadline, ?Cancellation $cancellation = null): ?string
+    public function read(float $deadline, ?Cancellation $cancellation = null, bool $background = false): ?string
     {
         while (true) {
             $bytes = @fread($this->stream(), 65536);
             if ($bytes !== false && $bytes !== '') {
                 return $bytes;
             }
-            if ($bytes === false || feof($this->stream)) {
+            if ($bytes === false || $this->stream === null || feof($this->stream)) {
                 return null;
             }
-            $this->wait(false, $deadline, $cancellation, 'waiting for the answer');
+            $this->wait(false, $deadline, $cancellation, 'waiting for the answer', $background);
         }
     }
 
@@ -143,12 +154,23 @@ final class Connection
         return $bytes === '' && !feof($this->stream);
     }
 
+    /**
+     * Closes the socket. Whoever is waiting on it is resumed with a failure.
+     */
     public function close(): void
     {
-        if ($this->stream !== null) {
-            @fclose($this->stream);
-            $this->stream = null;
+        if ($this->stream === null) {
+            return;
         }
+        $waits = $this->waits;
+        $this->waits = [];
+        foreach ($waits as [$watcher, $end]) {
+            // Before the socket goes: a loop must not be left watching one that is closed.
+            $this->loop->cancel($watcher);
+            $end(new \RuntimeException('the connection was closed'));
+        }
+        @fclose($this->stream);
+        $this->stream = null;
     }
 
     /**
@@ -168,6 +190,7 @@ final class Connection
             error_clear_last();
             $done = @stream_socket_enable_crypto($this->stream(), true, STREAM_CRYPTO_METHOD_TLS_CLIENT);
             if ($done === true) {
+                $this->protocol = (string) (stream_get_meta_data($this->stream())['crypto']['alpn_protocol'] ?? 'http/1.1');
                 return;
             }
             if ($done === false) {
@@ -184,12 +207,15 @@ final class Connection
     /**
      * Suspends until the socket can be read or written, the deadline
      * passes or the wait is cancelled.
+     *
+     * @param float $deadline INF to wait for as long as it takes.
+     * @param bool $background Whether the wait is one nobody is waiting on, which must not keep an idle process alive: a connection listening for what the server may say unasked.
      */
-    private function wait(bool $writable, float $deadline, ?Cancellation $cancellation, string $doing): void
+    private function wait(bool $writable, float $deadline, ?Cancellation $cancellation, string $doing, bool $background = false): void
     {
         $cancellation?->throwIfCancelled();
-        $left = $deadline - hrtime(true) / 1_000_000_000;
-        if ($left <= 0) {
+        $left = is_infinite($deadline) ? null : $deadline - hrtime(true) / 1_000_000_000;
+        if ($left !== null && $left <= 0) {
             throw new TimedOut($doing);
         }
         $loop = $this->loop;
@@ -210,14 +236,22 @@ final class Connection
         $watcher = $writable
             ? $loop->onWritable($stream, static fn () => $finish())
             : $loop->onReadable($stream, static fn () => $finish());
-        $timer = $loop->delay($left, static fn () => $finish(new TimedOut($doing)));
+        if ($background) {
+            $loop->unreference($watcher);
+        }
+        $wait = $this->nextWait++;
+        $this->waits[$wait] = [$watcher, $finish];
+        $timer = $left === null ? null : $loop->delay($left, static fn () => $finish(new TimedOut($doing)));
         $unsubscribe = $cancellation?->subscribe(static fn (CancelledException $error) => $finish($error));
         try {
             $suspension->suspend();
         } finally {
             $settled = true;
+            unset($this->waits[$wait]);
             $loop->cancel($watcher);
-            $loop->cancel($timer);
+            if ($timer !== null) {
+                $loop->cancel($timer);
+            }
             $unsubscribe?->__invoke();
         }
     }

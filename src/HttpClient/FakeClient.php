@@ -62,8 +62,18 @@ final class FakeClient extends Client implements Transport
         array $headers = [],
         int $redirects = 5,
         ?CookieJarContract $cookies = null,
+        int $retries = 0,
     ) {
-        parent::__construct($baseUrl, $headers, redirects: $redirects, cookies: $cookies, transport: $this);
+        // Retries wait no time in a test.
+        parent::__construct($baseUrl, $headers, redirects: $redirects, cookies: $cookies, retries: $retries, retryDelay: 0.0, transport: $this);
+    }
+
+    /**
+     * As the real client's, but without the wait between tries: a test has nobody to be patient with.
+     */
+    public function retry(int $times, float $delay = 0.2): static
+    {
+        return parent::retry($times, 0.0);
     }
 
     /**
