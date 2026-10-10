@@ -159,7 +159,7 @@ final readonly class RequireJson implements Middleware
 }
 ~~~
 
-`php cua make:middleware RequireJson` writes that class for you, in `app/Middleware/`. `Middleware` is PSR-15's `MiddlewareInterface` under Crab's name, so middleware from any PSR-15 library works too. A middleware class is made by the container, once per worker, so its constructor can ask for services; like them, it must not keep anything about one request.
+`php cua make:middleware RequireJson` writes that class for you, in `app/Http/`. `Middleware` is PSR-15's `MiddlewareInterface` under Crab's name, so middleware from any PSR-15 library works too. A middleware class is made by the container, once per worker, so its constructor can ask for services; like them, it must not keep anything about one request.
 
 There are two places to use one, and the same class works in both.
 
@@ -827,7 +827,7 @@ php cua schedule:work        # runs each task when it is due, until stopped
 php cua schedule:list        # the tasks, and when each runs next
 ~~~
 
-Keep one `schedule:work` running and no cron entry is needed. `everySeconds()` runs a task by an interval, down to a hundredth of a second, counted from when the scheduler starts. A task that fails is logged and runs again when next due; one still running is not started twice. `->onOneServer()` lets one of several machines run a task, agreed through a shared cache. `schedule.timezone` is the zone the times are in. See [docs/scheduling.md](docs/scheduling.md).
+Keep one `schedule:work` running and no cron entry is needed. Switched on in `server.with`, as in production, the scheduler and the queue's workers are run by `php cua serve` itself, beside HTTP, and reloaded with the server. `everySeconds()` runs a task by an interval, down to a hundredth of a second, counted from when the scheduler starts. A task that fails is logged and runs again when next due; one still running is not started twice. `->onOneServer()` lets one of several machines run a task, agreed through a shared cache. `schedule.timezone` is the zone the times are in. See [docs/scheduling.md](docs/scheduling.md).
 
 ## Running the server
 
@@ -894,7 +894,7 @@ Things to know:
 | `serve` | Serves the application; see [Running the server](#running-the-server). |
 | `stop`, `reload`, `restart`, `status` | Control a server running in the background. |
 | `route:list` | Lists the registered routes, each with its action and the middleware around it. |
-| `make:middleware` | Writes a new middleware class in `app/Middleware/`. |
+| `make:middleware` | Writes a new middleware class in `app/Http/`. |
 
 Providers add theirs:
 

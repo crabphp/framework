@@ -107,6 +107,22 @@ final class MemoryStore implements Store
         return count($this->waiting($queue));
     }
 
+    public function counts(string $queue, int $now): array
+    {
+        $counts = ['pending' => 0, 'delayed' => 0, 'processing' => 0, 'oldest' => null];
+        foreach ($this->jobs as $job) {
+            if ($job['queue'] !== $queue || $job['failed'] !== null) {
+                continue;
+            }
+            $state = $job['reserved'] !== null ? 'processing' : ($job['available'] > $now ? 'delayed' : 'pending');
+            ++$counts[$state];
+            if ($state === 'pending') {
+                $counts['oldest'] = min($counts['oldest'] ?? $job['available'], $job['available']);
+            }
+        }
+        return $counts;
+    }
+
     /**
      * The jobs that have not been done or given up on, in the order they
      * were pushed; those of one queue when it is named.

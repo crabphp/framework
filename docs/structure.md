@@ -20,7 +20,7 @@ routes/
   console.php       your own commands
 
 app/
-  Actions/         actions as classes
+  Actions/          what the application does: classes with handle()
   Providers/        where your services are bound
 
 config/
@@ -79,10 +79,10 @@ The framework does not look for folders, so these are suggestions that keep appl
 | --- | --- | --- |
 | A route | `routes/web.php` | Nothing; it is loaded by `app.php` |
 | An action class | `app/Actions/` | Name it in the route |
-| Middleware | `app/Middleware/` | Name it on a route, a group or in `app.php` |
-| A command | `routes/console.php`, or a class in `app/Commands/` | `php cua <name>` |
-| A queue job | `app/Jobs/` | Push it with the queue |
-| An event and its listeners | `app/Events/`, `app/Listeners/` | Add the listener in `AppProvider` |
+| Middleware | `app/Http/` | Name it on a route, a group or in `app.php` |
+| A command | `routes/console.php`, or a class in `app/Console/` | `php cua <name>` |
+| A queue job | `app/Actions/` | Push it with the queue |
+| An event and its listeners | `app/Events/`, and the listeners in `app/Actions/` | Add the listener in `AppProvider` |
 | A scheduled task | `app/Providers/AppProvider.php` | Declare it on the schedule |
 | A setting | A file in `config/`, read from `.env` | `config('file.key')` |
 | A table | `php cua make:migration create_posts_table` | `php cua migrate` |

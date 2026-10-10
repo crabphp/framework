@@ -9,7 +9,6 @@ use Crab\Contracts\Console\Command;
 use Crab\Contracts\Console\Input;
 use Crab\Contracts\Console\Output;
 use Crab\Contracts\Runner;
-use Crab\Contracts\Workers;
 use Crab\Engine\Async\Cancellation;
 use Crab\Engine\Process\Worker;
 use Crab\Queue\Consumer;
@@ -69,7 +68,7 @@ final readonly class Work implements Command
                 $tasks = [];
                 foreach ($supervisors as $supervisor) {
                     $tasks[] = $worker->spawn(function () use ($worker, $cancellation, $supervisor, $drain, &$ran): void {
-                        $ran += $this->consume($worker, $cancellation, $supervisor, $drain);
+                        $ran += $supervisor->consume($this->consumer, $worker, $cancellation, $drain);
                     });
                 }
                 foreach ($tasks as $task) {
@@ -77,16 +76,7 @@ final readonly class Work implements Command
                 }
             }, shutdownTimeout: $grace, single: true);
         } else {
-            $groups = [];
-            foreach ($supervisors as $supervisor) {
-                $groups[] = new Workers(
-                    count($supervisors) > 1 ? "queue:{$supervisor->name}" : 'queue',
-                    function (Worker $worker, Cancellation $cancellation) use ($supervisor): void {
-                        $this->consume($worker, $cancellation, $supervisor, false);
-                    },
-                    $supervisor->workers,
-                );
-            }
+            $groups = Supervisor::groups($supervisors, $this->consumer);
             $this->runner->runAll($groups, $grace);
         }
         if ($drain) {
@@ -126,29 +116,5 @@ final readonly class Work implements Command
             $described['queues'] = array_values(array_filter(explode(',', $described['queues'])));
         }
         return [Supervisor::from($this->config, 'queue', $described)];
-    }
-
-    /**
-     * Runs a supervisor's jobs in one worker, as many at a time as its
-     * concurrency says, until the cancellation fires or, when draining,
-     * until none is waiting.
-     *
-     * @return int How many jobs were run.
-     */
-    private function consume(Worker $worker, Cancellation $cancellation, Supervisor $supervisor, bool $drain): int
-    {
-        $consumer = $this->consumer->within($supervisor);
-        $ran = 0;
-        $others = [];
-        for ($extra = 1; $extra < $supervisor->concurrency; ++$extra) {
-            $others[] = $worker->spawn(static function () use ($consumer, $worker, $cancellation, $supervisor, $drain, &$ran): void {
-                $ran += $consumer->work($worker->loop, $cancellation, $supervisor->queues, $supervisor->sleep, $drain);
-            });
-        }
-        $ran += $consumer->work($worker->loop, $cancellation, $supervisor->queues, $supervisor->sleep, $drain);
-        foreach ($others as $other) {
-            $other->await();
-        }
-        return $ran;
     }
 }

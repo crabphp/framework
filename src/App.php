@@ -25,10 +25,13 @@ use Crab\Contracts\Log\Logger as LoggerContract;
 use Crab\Contracts\Provider;
 use Crab\Contracts\Routing\Router as RouterContract;
 use Crab\Contracts\Runner;
+use Crab\Contracts\Servers as ServersContract;
 use Crab\Contracts\Validation\Validator as ValidatorContract;
 use Crab\Contracts\WorkerProvider;
 use Crab\Contracts\Workers;
+use Crab\Engine\Async\Async;
 use Crab\Engine\Async\Cancellation;
+use Crab\Engine\Async\CancelledException;
 use Crab\Engine\Process\Worker;
 use Crab\Engine\Runtime;
 use Crab\Engine\Server\HttpServer;
@@ -69,6 +72,10 @@ final class App implements RequestHandlerInterface, Runner
 
     public readonly RouterContract $router;
     public readonly ConsoleContract $console;
+    /**
+     * The servers `serve` can run beside HTTP, as providers have registered them.
+     */
+    public readonly Servers $servers;
     private readonly MiddlewareStack $stack;
     /**
      * Places a deprecation has already been logged from, in this worker.
@@ -93,6 +100,11 @@ final class App implements RequestHandlerInterface, Runner
     public const MIDDLEWARE = [ErrorHandler::class];
 
     /**
+     * Seconds a program run beside the server is given to finish when the server stops.
+     */
+    private const PROCESS_GRACE = 30.0;
+
+    /**
      * @param string|null $basePath The application's own directory, which path() resolves against.
      * @param list<MiddlewareInterface|class-string<MiddlewareInterface>> $middleware The middleware around every request, the first outermost. A provider adds inside it through the MiddlewareStack contract.
      */
@@ -106,6 +118,9 @@ final class App implements RequestHandlerInterface, Runner
         $container->instance(self::class, $this);
         // What runs workers that serve no requests, for a provider's commands.
         $container->instance(Runner::class, $this);
+        $this->servers = new Servers();
+        $container->instance(ServersContract::class, $this->servers);
+        $container->instance(Servers::class, $this->servers);
         $container->instance(ConfigContract::class, $config);
         // Asking by class must not autowire a second, empty one.
         $container->instance($config::class, $config);
@@ -236,10 +251,19 @@ final class App implements RequestHandlerInterface, Runner
      * worker is logged.
      *
      * @param resource|null $socket A socket that already listens on the address, inherited from the server this one takes over from.
+     * @param bool $servers Whether the servers "server.with" names are run beside HTTP; false to serve in one process.
      */
-    public function runtime(string $address = 'tcp://127.0.0.1:8080', int $workers = 1, mixed $socket = null): Runtime
+    public function runtime(string $address = 'tcp://127.0.0.1:8080', int $workers = 1, mixed $socket = null, bool $servers = true): Runtime
     {
-        $runtime = new Runtime();
+        // Beside HTTP, the servers "server.with" switches on: none unless it says so. In one
+        // process there is room for HTTP alone.
+        $with = $servers ? $this->with() : [];
+        $groups = $this->alongside($with);
+        // Long enough for the slowest of them to finish what it has in hand.
+        $runtime = new Runtime(shutdownTimeout: max(5.0, $this->servers->grace($with)));
+        foreach ($groups as $group) {
+            $this->group($runtime, $group, background: $socket !== null);
+        }
         $runtime->group('http', $workers)
             ->listen($address, new HttpServer(
                 new EngineHandler($this->stack),
@@ -250,6 +274,224 @@ final class App implements RequestHandlerInterface, Runner
             ->onStop($this->stop(...))
             ->onFailure($this->report(...));
         return $runtime;
+    }
+
+    /**
+     * The ids of the servers `serve` runs with HTTP, as "server.with"
+     * says: each id with whether it is on, usually from the environment,
+     *
+     *     'with' => ['queue' => env('SERVER_QUEUE', false), 'schedule' => env('SERVER_SCHEDULE', false)],
+     *
+     * or a plain list of ids, or ids with commas between.
+     *
+     * @return list<string>
+     */
+    public function with(): array
+    {
+        $setting = $this->config->get('server.with', []);
+        if ($setting === null || $setting === false || $setting === '') {
+            return [];
+        }
+        $ids = [];
+        foreach (is_array($setting) ? $setting : explode(',', (string) $setting) as $key => $value) {
+            if (is_int($key)) {
+                // In a list, a server named is a server on.
+                $ids[] = trim((string) $value);
+            } elseif ((is_array($value) ? ($value['enabled'] ?? false) : $value) === true) {
+                $ids[] = $key;
+            }
+        }
+        $ids = array_values(array_unique(array_filter($ids, static fn (string $id): bool => $id !== '')));
+        foreach ($ids as $id) {
+            if (!$this->servers->has($id)) {
+                $known = $this->servers->ids() === [] ? 'none is registered' : 'the servers registered are ' . implode(', ', $this->servers->ids());
+                throw new \LogicException("\"server.with\" switches on \"{$id}\", and {$known}.");
+            }
+        }
+        return $ids;
+    }
+
+    /**
+     * The groups of workers that run some servers beside HTTP. One
+     * registered with its own workers joins the server; a command or a
+     * program is run in a process a worker starts and looks after.
+     *
+     * @param list<string> $ids
+     * @return list<Workers>
+     */
+    public function alongside(array $ids): array
+    {
+        $groups = [];
+        foreach ($ids as $id) {
+            $kind = $this->servers->kind($id);
+            if ($kind === 'groups') {
+                array_push($groups, ...$this->servers->groups($id));
+                continue;
+            }
+            $line = $this->servers->line($id);
+            if ($kind === 'process') {
+                $groups[] = new Workers($id, self::process($id, ['/bin/sh', '-c', $line]));
+                continue;
+            }
+            $words = self::words($line);
+            if ($words === [] || $words[0] === 'serve' || !$this->console->has($words[0])) {
+                throw new \LogicException("The server \"{$id}\" runs `{$line}`, and " . (($words[0] ?? '') === 'serve' ? 'the server cannot run itself.' : 'there is no command "' . ($words[0] ?? '') . '". Run `list` to see the commands.'));
+            }
+            $groups[] = new Workers($id, self::process($id, [PHP_BINARY, ...$this->invocation(), ...$words]));
+        }
+        return $groups;
+    }
+
+    /**
+     * How this application's command line was run, less the command and
+     * what followed it: the script, and before the command whatever it
+     * was given, as in `bin/crab app.php serve`. A command run beside
+     * the server is run the same way.
+     *
+     * @return list<string>
+     */
+    private function invocation(): array
+    {
+        $invocation = [];
+        foreach (array_values((array) ($_SERVER['argv'] ?? [])) as $index => $argument) {
+            $argument = (string) $argument;
+            if ($index > 0 && $this->console->has($argument)) {
+                break;
+            }
+            $path = realpath($argument);
+            $invocation[] = $path !== false && is_file($path) ? $path : $argument;
+        }
+        return $invocation;
+    }
+
+    /**
+     * A command line as its words, as a shell would split it: quotes
+     * keep what is inside them together, and a backslash the character
+     * after it.
+     *
+     * @return list<string>
+     */
+    private static function words(string $line): array
+    {
+        $words = [];
+        $word = null;
+        $quote = null;
+        $length = strlen($line);
+        for ($i = 0; $i < $length; ++$i) {
+            $character = $line[$i];
+            if ($quote !== null) {
+                if ($character === $quote) {
+                    $quote = null;
+                } elseif ($character === '\\' && $quote === '"' && $i + 1 < $length) {
+                    $word .= $line[++$i];
+                } else {
+                    $word .= $character;
+                }
+            } elseif ($character === '"' || $character === "'") {
+                $quote = $character;
+                $word ??= '';
+            } elseif ($character === '\\' && $i + 1 < $length) {
+                $word = ($word ?? '') . $line[++$i];
+            } elseif (ctype_space($character)) {
+                if ($word !== null) {
+                    $words[] = $word;
+                    $word = null;
+                }
+            } else {
+                $word = ($word ?? '') . $character;
+            }
+        }
+        if ($word !== null) {
+            $words[] = $word;
+        }
+        return $words;
+    }
+
+    /**
+     * Work that keeps a program running in a process of its own: started
+     * with the worker, told to stop (SIGTERM) when the worker stops, and
+     * given time to finish. What it prints is passed on line by line
+     * with its id in front, so that several can be told apart. The
+     * worker ends when the program does, and is then started again, as
+     * any worker is.
+     *
+     * The program is started as the leader of a group of processes of
+     * its own, and it is the group that is signalled: what it started in
+     * turn, as `npm run dev` starts node, stops with it.
+     *
+     * @param list<string> $command The program and its arguments.
+     * @return \Closure(Worker, Cancellation): void
+     */
+    private static function process(string $id, array $command): \Closure
+    {
+        return static function (Worker $worker, Cancellation $cancellation) use ($id, $command): void {
+            // A small step in between: it makes itself the leader of a new group, then becomes the program.
+            $launcher = [PHP_BINARY, '-r', 'posix_setsid(); pcntl_exec($argv[1], array_slice($argv, 2)); fwrite(STDERR, "could not run {$argv[1]}\n"); exit(127);', '--', ...$command];
+            $process = proc_open($launcher, [['file', '/dev/null', 'r'], ['pipe', 'w'], ['pipe', 'w']], $pipes);
+            if ($process === false) {
+                throw new \RuntimeException("Could not start the server \"{$id}\".");
+            }
+            $group = (int) proc_get_status($process)['pid'];
+            // Each line it prints, as it comes, under its id.
+            $watchers = [];
+            $pending = ['', ''];
+            $pass = static function (int $which, bool $all = false) use ($id, $pipes, $worker, &$pending, &$watchers): void {
+                $pending[$which] .= (string) stream_get_contents($pipes[$which + 1]);
+                while (($break = strpos($pending[$which], "\n")) !== false || ($all && $pending[$which] !== '')) {
+                    $line = $break === false ? $pending[$which] : substr($pending[$which], 0, $break);
+                    $pending[$which] = $break === false ? '' : substr($pending[$which], $break + 1);
+                    fwrite($which === 0 ? STDOUT : STDERR, "[{$id}] " . rtrim($line, "\r") . "\n");
+                }
+                // Closed at the other end: it stays "readable" for ever, so it is no longer watched.
+                if (feof($pipes[$which + 1]) && isset($watchers[$which])) {
+                    $worker->loop->cancel($watchers[$which]);
+                    unset($watchers[$which]);
+                }
+            };
+            foreach ([0, 1] as $which) {
+                stream_set_blocking($pipes[$which + 1], false);
+                $watchers[$which] = $worker->loop->onReadable($pipes[$which + 1], static function () use ($pass, $which): void {
+                    $pass($which);
+                });
+            }
+            $signal = static function (int $number) use ($group): void {
+                // To the whole group; to the leader alone where groups cannot be signalled.
+                if (!function_exists('posix_kill') || !@posix_kill(-$group, $number)) {
+                    @posix_kill($group, $number);
+                }
+            };
+            $started = microtime(true);
+            try {
+                while (proc_get_status($process)['running']) {
+                    Async::sleep($worker->loop, 0.2, $cancellation);
+                }
+                // It ended by itself. Not at once again, if it cannot stay up.
+                if (microtime(true) - $started < 2.0) {
+                    Async::sleep($worker->loop, 2.0, $cancellation);
+                }
+            } catch (CancelledException) {
+                // The loop is stopping, so this waits the plain way, still passing on what the
+                // program says: one that cannot finish writing cannot finish.
+                $signal(15);
+                $until = microtime(true) + self::PROCESS_GRACE;
+                while (proc_get_status($process)['running'] && microtime(true) < $until) {
+                    $pass(0);
+                    $pass(1);
+                    usleep(20_000);
+                }
+            } finally {
+                // Whatever of the group is left, the program or what it started.
+                $signal(9);
+                foreach ($watchers as $watcher) {
+                    $worker->loop->cancel($watcher);
+                }
+                foreach ([0, 1] as $which) {
+                    $pass($which, true);
+                    fclose($pipes[$which + 1]);
+                }
+                proc_close($process);
+            }
+        };
     }
 
     /**
@@ -282,12 +524,25 @@ final class App implements RequestHandlerInterface, Runner
     /**
      * Adds a group of workers that serve no requests to a runtime.
      */
-    private function group(Runtime $runtime, Workers $workers): void
+    private function group(Runtime $runtime, Workers $workers, bool $background = false): void
     {
         $work = $workers->work;
-        $runtime->group($workers->group, $workers->workers)
+        $group = $runtime->group($workers->group, $workers->workers);
+        if ($workers->setup !== null) {
+            ($workers->setup)($group);
+            if ($background && ($group->listeners() !== [] || $group->datagrams() !== [])) {
+                // The keeper hands the HTTP socket alone from one server process to the next. Another
+                // listener would be bound afresh by each, and the new one refused while the old holds it.
+                throw new \LogicException("The server \"{$workers->group}\" listens on an address of its own, which a server in the background cannot yet hand over when it reloads. Run `serve` in the foreground, under systemd or a container, or run this server on its own.");
+            }
+        }
+        $group
             ->onStart(function (Worker $worker) use ($work): void {
                 $this->start($worker);
+                if ($work === null) {
+                    // It serves what its setup had it listen for, as the HTTP workers do.
+                    return;
+                }
                 $worker->spawn(static function (Cancellation $cancellation) use ($worker, $work): void {
                     try {
                         $work($worker, $cancellation);

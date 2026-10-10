@@ -168,7 +168,9 @@ Where clocks change in spring and autumn, a task set for an hour that is skipped
 php cua schedule:work
 ```
 
-Keep exactly one running wherever the application is deployed, as you keep `queue:work` running. With systemd:
+To have `php cua serve` run the scheduler itself, in a worker of its own beside the HTTP workers, switch it on in `server.with`, with `SERVER_SCHEDULE=true` in `.env`; see [Deployment](deployment.md#the-other-processes).
+
+However it is run, keep exactly one wherever the application is deployed. With systemd:
 
 ```text
 [Service]

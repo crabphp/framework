@@ -4,6 +4,7 @@
 - [Types are rules](#types-are-rules)
 - [Rule attributes](#rule-attributes)
 - [Nested objects and lists](#nested-objects-and-lists)
+- [Describing fields](#describing-fields)
 - [The error response](#the-error-response)
 - [Writing a rule](#writing-a-rule)
 - [Validating by hand](#validating-by-hand)
@@ -93,6 +94,34 @@ final readonly class CreateOrder
 A problem inside is reported by its path: `shipTo.country`, `lines.0.quantity`.
 
 Every class is read when the route is added, so one that cannot be validated, such as a constructor parameter with no type, stops the server from starting.
+
+## Describing fields
+
+`#[Fields]` describes data where it is used, in place of a class written for it; see [Actions](actions.md#described-fields). Each field's name comes with one of these:
+
+| Description | Accepts |
+| --- | --- |
+| `'int'` | A type: `int`, `float`, `string`, `bool`, `array`, `mixed`, an enum's class or `DateTimeImmutable::class` |
+| `'?int'` | The same, and it may be left out or null |
+| `['int', new Range(min: 1)]` | A type, then rules for it |
+| `['street' => 'string', 'city' => 'string']` | An object with these fields |
+| `[['street' => 'string']]` | A list of those objects |
+| `[['int']]` | A list of ints |
+| `[[...], new Length(min: 1)]` | A list, then rules for the list |
+
+A name ending in `?`, as in `'shipTo?' => [...]`, is a field that may be left out, whatever it is.
+
+```php
+#[Fields([
+    'email' => ['string', new Email()],
+    'plan' => Plan::class,
+    'shipTo?' => ['street' => 'string', 'country' => ['string', new Length(min: 2, max: 2)]],
+    'tags' => [['string'], new Length(max: 5)],
+])]
+Data $signup,
+```
+
+What is described arrives as `Crab\Validation\Data`: read-only, its fields read as properties, an object inside it another `Data`. The rules are the same attribute classes, written with `new`.
 
 ## The error response
 

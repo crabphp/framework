@@ -47,7 +47,7 @@ final readonly class Restart implements Command
             $output->error($error->getMessage());
             return 1;
         }
-        Serve::announceBackground($output, $this->app, $address);
+        Serve::announceBackground($output, $this->app, $address, $workers);
         return 0;
     }
 }

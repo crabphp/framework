@@ -80,6 +80,7 @@ A contract exists for everything a package touches, including where no PSR exist
 | `Schedule\Schedule`, `Schedule\Task` | none | today |
 | `Queue\JobRan`, `Schedule\TaskRan` | none; events dispatched through PSR-14 after each try of a job and each run of a task | today |
 | `Runner`, `Workers` | none; runs worker processes that serve no requests, as one group or several | today |
+| `Servers` | none; what `serve` can run beside HTTP, registered by providers under an id | today |
 
 Contracts are the stable surface. Once there is a release, a contract changes only in a major version; component classes may change freely behind it.
 
@@ -243,6 +244,7 @@ Small and explicit; there are six, and no others are planned.
 | Commands | `Console` contract, `add()` | today |
 | Reacting to events | The `Events\Dispatcher` contract, PSR-14: `listen()` in a provider's `register()` | today, opt-in with `EventsProvider` |
 | Worker processes | The `Runner` contract: `run($group, $work, $workers)` from a command, or `runAll()` for several groups under one parent | today |
+| Servers beside HTTP | The `Servers` contract: `add('chat', fn () => [new Workers(...)])` joins `serve` as its own workers, `command()` and `process()` run in a process of their own; `server.with` switches each on | today |
 
 No auto-discovery, no `boot()` phase, no global container accessor. `Route::get()` and `Command::add()` are static names for `$app->router` and `$app->console`, for declaring routes and commands before workers start; they are the only ones, and there is none for anything a request or a worker owns.
 
@@ -277,7 +279,7 @@ A PSR implementation should also pass that PSR's public conformance suite where 
 3. **Finish Http:** response cookies, multipart uploads, JSON bodies, bodies for router 404 and 405, request id middleware, warnings to exceptions. *Done.* A multipart body is read where the engine stored it, and an uploaded file is never held in memory. Still open: `getBody()` copies a body from the engine's storage when it is asked for.
 4. **Small PSR components:** clock (PSR-20), events (PSR-14), cache (PSR-16), HTTP client (PSR-18). *Done.* The client speaks HTTP/2 and HTTP/1.1 on the event loop, with TLS through PHP's streams, an HTTP proxy, a cookie jar, retries and a fake for tests, and finds addresses with the engine's `DnsResolver`. The cache keeps its entries in files, in a database table or in memory, behind a `Store` contract that a Redis store can later implement.
 5. **Database.** *Connection pool, the thin query layer, the query builder, the schema builder and migrations are done, tested on SQLite and MySQL.* Models with relationships are not planned; see the decisions. Next: a MySQL driver that waits on the event loop, behind the `Connection` contract as it is, so that a worker serves other requests while a query runs.
-6. **Queue**, then **Scheduling**, each as its own worker group. *Done.* Jobs are kept in a database table and run by `queue:work`; scheduled tasks are run by `schedule:work`, with no cron entry. Next: letting `serve` start both beside the HTTP workers, under the keeper, so that one command and one reload cover all three.
+6. **Queue**, then **Scheduling**, each as its own worker group. *Done.* Jobs are kept in a database table and run by `queue:work`; scheduled tasks are run by `schedule:work`, with no cron entry. `serve` starts both beside the HTTP workers when `server.with` switches them on, under the keeper, through the `Servers` contract, so that one command and one reload cover all three; a provider offers a server of its own the same way.
 7. **Validation, Auth.** *Validation is done, together with typed actions. Authentication is done: a way of authenticating is middleware that puts the user on the request, an action takes the user as a parameter, and tokens in the database are one such way, opt-in, with a migration the application owns.* Roles and permissions, and sessions, are not planned; see the decisions.
 8. **Application skeleton** (`crabphp/crab`) and the `make:*` commands. *The skeleton exists, kept minimal; it grows a folder when a component arrives. `make:migration` and `make:middleware` are the `make:*` commands so far.*
 9. **Per-component packages**, CI and the first tagged release. Nothing above needs to be finished first: what exists is a usable API framework, and use will say what is missing.

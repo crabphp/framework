@@ -13,7 +13,7 @@
 
 Crab's database layer is thin and explicit: pooled connections, SQL with bound values, a [query builder](queries.md) for the common statements, and [migrations](migrations.md) for the tables. Rows are plain arrays.
 
-MySQL and SQLite are supported. SQLite needs no server and suits development, tests and small services; the skeleton uses it until you set a MySQL address. PostgreSQL is not supported.
+MySQL and SQLite are supported. SQLite needs no server and suits development, tests and small services; the skeleton uses it until you set a MySQL address. PostgreSQL is not supported. A SQLite file is shared by every process of the application, so it is opened with a write-ahead log and a transaction takes the write lock when it starts: writers wait their turn, for up to five seconds, where they would otherwise be refused with "database is locked".
 
 ## Configuration
 

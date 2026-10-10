@@ -138,8 +138,10 @@ final class QueueTest extends TestCase
             unlink($file);
         }
         @rmdir($this->directory . '/migrations');
-        @unlink($this->directory . '/app.sqlite');
-        @unlink($this->directory . '/app.log');
+        // The database, and beside it the write-ahead log SQLite keeps while a connection is open.
+        foreach (glob($this->directory . '/app.*') ?: [] as $file) {
+            unlink($file);
+        }
         rmdir($this->directory);
     }
 
@@ -181,6 +183,27 @@ final class QueueTest extends TestCase
 
         $queue->later(600, GreetJob::class, name: 'seconds');
         $queue->later(new \DateInterval('PT1H'), GreetJob::class, name: 'interval');
+        $queue->push(GreetJob::class, name: 'now');
+
+        // Where each job stands: one may run, two wait for their time, and one taken by a worker is being run.
+        $now = $this->clock->now()->getTimestamp();
+        $counts = static function (string $queue, int $at) use ($store): array {
+            $counts = $store->counts($queue, $at);
+            return [$counts['pending'], $counts['delayed'], $counts['processing'], $counts['oldest']];
+        };
+        // Pending since it was pushed: how far behind the workers are.
+        self::assertSame([1, 2, 0, $now], $counts('default', $now));
+        self::assertNotNull($store->reserve(['default'], $now, 90));
+        self::assertSame([0, 2, 1, null], $counts('default', $now));
+        // Ten minutes on, the first delayed one may run, and has waited since its time came.
+        self::assertSame([1, 1, 1, $now + 600], $counts('default', $now + 900));
+        self::assertSame(3, $store->size('default'));
+        self::assertSame([0, 0, 0, null], $counts('other', $now));
+        // Its worker gone, it is given out again after a while and run with the others.
+        $this->clock->advance('+2 minutes');
+        self::assertTrue($consumer->runNext());
+        Ledger::$lines = [];
+        $this->clock->advance('-2 minutes');
 
         self::assertFalse($consumer->runNext());
         $this->clock->advance('+10 minutes');
@@ -425,6 +448,11 @@ final class QueueTest extends TestCase
             public function size(string $queue): int
             {
                 return 0;
+            }
+
+            public function counts(string $queue, int $now): array
+            {
+                return ['pending' => 0, 'delayed' => 0, 'processing' => 0, 'oldest' => null];
             }
         };
         $consumer = new Consumer($broken, null, $this->log);

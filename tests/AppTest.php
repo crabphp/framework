@@ -404,4 +404,140 @@ final class AppTest extends TestCase
             self::assertSame($service, $app->container->get($class), "{$class} is another object than {$contract}.");
         }
     }
+
+    public function testServeRunsTheServersNamedForItBesideHttp(): void
+    {
+        $app = new App(new Config(['queue' => ['store' => 'memory', 'supervisors' => [
+            'mail' => ['queues' => ['mail'], 'workers' => 2],
+            'rest' => ['queues' => ['default']],
+        ]]]));
+        $app->register(\Crab\Queue\QueueProvider::class, \Crab\Schedule\ScheduleProvider::class);
+        $app->console->add('users:sync', static fn (): int => 0);
+        $servers = $app->container->get(\Crab\Contracts\Servers::class);
+        // A server of the application's own that joins: no loop of work, only somewhere to listen.
+        $servers->add('chat', static fn (): array => [
+            new \Crab\Contracts\Workers('chat', workers: 3, setup: static function (\Crab\Engine\WorkerGroup $group): void {
+                $group->listen('tcp://127.0.0.1:0', static fn () => null);
+            }),
+        ], 12.0, 'chat:serve');
+        // One of the application's commands, and any program at all.
+        $servers->command('sync', 'users:sync --all');
+        $servers->process('vite', 'npm run dev');
+
+        self::assertSame(['queue', 'schedule', 'chat', 'sync', 'vite'], $servers->ids());
+        $named = static fn (array $ids): array => array_map(
+            static fn (\Crab\Contracts\Workers $workers): string => "{$workers->group} x{$workers->workers}",
+            $app->alongside($ids),
+        );
+        // One with workers of its own joins the server as its groups; a command or a program is one worker that looks after a process.
+        self::assertSame(['queue:mail x2', 'queue:rest x1'], $named(['queue']));
+        self::assertSame(['chat x3', 'schedule x1', 'sync x1', 'vite x1'], $named(['chat', 'schedule', 'sync', 'vite']));
+        self::assertSame([30.0, 12.0], [$app->servers->grace(['queue', 'chat']), $app->servers->grace(['chat'])]);
+
+        // Nothing is named, so the server is HTTP alone.
+        self::assertSame([], $app->with());
+        self::assertInstanceOf(\Crab\Engine\WorkerGroup::class, $app->runtime('tcp://127.0.0.1:0')->group('queue:mail'));
+
+        // Each id with whether it is on, as a configuration file reads it from the environment.
+        $switched = new App(new Config(['server' => ['with' => ['queue' => true, 'schedule' => false, 'vite' => ['enabled' => true], 'chat' => ['enabled' => false], 'sync' => 'yes']]]));
+        foreach (['queue', 'schedule', 'vite', 'chat', 'sync'] as $id) {
+            $switched->servers->process($id, 'true');
+        }
+        self::assertSame(['queue', 'vite'], $switched->with());
+
+        // Or a plain list, or ids with commas between. Switched on, they are part of the runtime.
+        $app->config->defaults('server', ['with' => ' queue, schedule ,vite,']);
+        self::assertSame(['queue', 'schedule', 'vite'], $app->with());
+        $runtime = $app->runtime('tcp://127.0.0.1:0');
+        self::assertSame(30.0, $runtime->shutdownTimeout);
+        try {
+            $runtime->group('queue:mail');
+            self::fail('The queue\'s workers were not part of the runtime.');
+        } catch (\LogicException $error) {
+            self::assertStringContainsString('unique', $error->getMessage());
+        }
+        // In one process there is room for HTTP alone.
+        self::assertInstanceOf(\Crab\Engine\WorkerGroup::class, $app->runtime('tcp://127.0.0.1:0', servers: false)->group('queue:mail'));
+
+        // A server in the background hands only the HTTP socket to the one that replaces it, so one that
+        // listens on an address of its own is refused there, in words, and not left to fail at its first reload.
+        $listening = new App(new Config(['server' => ['with' => ['chat' => true]]]));
+        $listening->servers->add('chat', static fn (): array => [
+            new \Crab\Contracts\Workers('chat', setup: static function (\Crab\Engine\WorkerGroup $group): void {
+                $group->listen('tcp://127.0.0.1:0', static fn () => null);
+            }),
+        ]);
+        self::assertInstanceOf(\Crab\Engine\Runtime::class, $listening->runtime('tcp://127.0.0.1:0'));
+        $inherited = stream_socket_server('tcp://127.0.0.1:0');
+        try {
+            $listening->runtime('tcp://127.0.0.1:0', socket: $inherited);
+            self::fail('A server with a listener of its own was accepted in the background.');
+        } catch (\LogicException $error) {
+            self::assertStringContainsString('"chat" listens on an address of its own', $error->getMessage());
+        } finally {
+            fclose($inherited);
+        }
+
+        // What `serve` says as it comes up: every server by its id, the ones not named shown as off.
+        $stream = fopen('php://memory', 'w+');
+        \Crab\Commands\Serve::announceBackground(new \Crab\Console\Output($stream, $stream), $app, 'tcp://127.0.0.1:8080', 4);
+        rewind($stream);
+        self::assertSame(<<<'TEXT'
+            Crab server running on http://127.0.0.1:8080
+
+              Server    Workers  Runs
+              --------  -------  ----------------------------
+              http      4        http://127.0.0.1:8080
+              queue     3        queue:work: mail x2, rest x1
+              schedule  1        schedule:work
+              vite      1        npm run dev
+              chat      off      chat:serve
+              sync      off      php cua users:sync --all
+
+              A server that is off is switched on in "server.with", or run on its own when needed.
+
+
+            TEXT, stream_get_contents($stream));
+
+        // Registered again, an id runs what was said last: the application's word over the framework's.
+        $servers->command('queue', 'users:sync --queue');
+        self::assertSame(['queue x1'], $named(['queue']));
+        self::assertSame(['queue', 'schedule', 'chat', 'sync', 'vite'], $servers->ids());
+
+        foreach ([
+            'switches on "mail", and the servers registered are queue, schedule, chat, sync, vite' => static function () use ($app): void {
+                $fresh = new Config(['server' => ['with' => 'mail']]);
+                $other = new App($fresh);
+                foreach (['queue', 'schedule', 'chat', 'sync', 'vite'] as $id) {
+                    $other->servers->process($id, 'true');
+                }
+                $other->with();
+            },
+            'there is no command "mail:work"' => static function () use ($app): void {
+                $app->servers->command('mailer', 'mail:work');
+                $app->alongside(['mailer']);
+            },
+            'the server cannot run itself' => static function () use ($app): void {
+                $app->servers->command('again', 'serve --daemon');
+                $app->alongside(['again']);
+            },
+            '"http" is the server\'s own' => static fn () => $servers->process('http', 'true'),
+            'cannot be a server\'s id' => static fn () => $servers->process('queue:work', 'true'),
+            'no command to run' => static fn () => $servers->process('empty', '  '),
+            'must give a list of' => static function () use ($app): void {
+                $app->servers->add('wrong', static fn (): array => ['not workers']);
+                $app->alongside(['wrong']);
+            },
+        ] as $says => $mistake) {
+            try {
+                $mistake();
+                self::fail("A mistake that should say \"{$says}\" was accepted.");
+            } catch (\LogicException $error) {
+                self::assertStringContainsString($says, $error->getMessage());
+            }
+        }
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('has nothing to do');
+        new \Crab\Contracts\Workers('idle');
+    }
 }

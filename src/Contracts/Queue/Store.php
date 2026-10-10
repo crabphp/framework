@@ -70,4 +70,15 @@ interface Store
      * @return int How many jobs wait in a queue or are being run, the failed ones not counted.
      */
     public function size(string $queue): int;
+
+    /**
+     * A queue's jobs by where they stand now: "pending" may be taken by a
+     * worker, "delayed" wait for their time, and "processing" have been
+     * taken and not yet reported on. Together they are size(). "oldest"
+     * is since when the pending job that has waited longest could have
+     * run, null when none is pending: how far behind the workers are.
+     *
+     * @return array{pending: int, delayed: int, processing: int, oldest: int|null}
+     */
+    public function counts(string $queue, int $now): array;
 }

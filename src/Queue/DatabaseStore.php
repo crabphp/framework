@@ -128,6 +128,18 @@ final readonly class DatabaseStore implements Store
         return $this->connection->table($this->table)->where('queue', $queue)->whereNull('failed_at')->count();
     }
 
+    public function counts(string $queue, int $now): array
+    {
+        $jobs = fn (): Query => $this->connection->table($this->table)->where('queue', $queue)->whereNull('failed_at');
+        $oldest = $jobs()->whereNull('reserved_at')->where('available_at', '<=', $now)->min('available_at');
+        return [
+            'oldest' => $oldest === null ? null : (int) $oldest,
+            'pending' => $jobs()->whereNull('reserved_at')->where('available_at', '<=', $now)->count(),
+            'delayed' => $jobs()->whereNull('reserved_at')->where('available_at', '>', $now)->count(),
+            'processing' => $jobs()->whereNotNull('reserved_at')->count(),
+        ];
+    }
+
     private function failedRows(int|string|null $id): Query
     {
         $query = $this->connection->table($this->table)->whereNotNull('failed_at');

@@ -108,6 +108,11 @@ final class DatabaseManager
             if ($sqlite) {
                 // SQLite checks foreign keys only on a connection that asks it to.
                 $pdo->exec('pragma foreign_keys = on');
+                // Several processes share the file: the workers, the queue, the scheduler. With a
+                // write-ahead log readers and a writer do not hold each other up, and a writer
+                // that finds another at work waits a few seconds for it before giving up.
+                $pdo->exec('pragma journal_mode = wal');
+                $pdo->exec('pragma busy_timeout = 5000');
             }
             return $pdo;
         };

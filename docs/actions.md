@@ -8,6 +8,7 @@
 - [What an action takes](#what-an-action-takes)
     - [Fields as parameters](#fields-as-parameters)
     - [An input class](#an-input-class)
+    - [Described fields](#described-fields)
     - [The request itself](#the-request-itself)
     - [The logged-in user](#the-logged-in-user)
     - [Services](#services)
@@ -127,7 +128,7 @@ A parameter with a default or a nullable type may be left out of the request. Fi
 Use a class when there are many fields, when they nest, or when several routes take the same ones. Its constructor declares every field:
 
 ```php
-// app/Inputs/CreateOrder.php
+// app/Http/CreateOrder.php
 use Crab\Validation\Length;
 use Crab\Validation\ListOf;
 use Crab\Validation\Range;
@@ -147,7 +148,44 @@ final readonly class CreateOrder
 }
 ```
 
-An action takes either separate fields or one input class, never both. [Validation](validation.md) lists the types and rules.
+An action takes either separate fields or one input, never both. [Validation](validation.md) lists the types and rules.
+
+### Described fields
+
+When the data nests and you would rather not write a class for it, describe its fields on the parameter with `#[Fields]`. The parameter is typed `Data`, and receives the whole of the request's data, checked:
+
+```php
+use Crab\Validation\Data;
+use Crab\Validation\Fields;
+use Crab\Validation\Length;
+use Crab\Validation\Range;
+
+public function handle(
+    User $user,
+    #[Fields([
+        'note' => '?string',
+        'shipTo' => ['street' => 'string', 'country' => ['string', new Length(min: 2, max: 2)]],
+        'lines' => [['productId' => 'int', 'quantity' => ['int', new Range(min: 1, max: 20)]], new Length(min: 1)],
+    ])]
+    Data $order,
+): Response {
+    $order->shipTo->country;                 // "GB"
+    foreach ($order->lines as $line) {
+        $line->productId;                    // 5
+    }
+    $order->note;                            // null when it was left out
+}
+```
+
+It is validated before the action runs, as an input class is, and a problem is reported the same way: `lines.0.quantity`. A description that makes no sense stops the server from starting. Reading a field you did not describe throws, so a slip of the hand shows in the first test. `$order->toArray()` gives plain arrays.
+
+For a list of objects among other fields, `#[ListOf]` takes the same description:
+
+```php
+public function handle(string $name, #[ListOf(['productId' => 'int', 'quantity' => '?int'])] array $lines): array
+```
+
+Use an [input class](#an-input-class) when several routes take the same data, or when you want your editor to know the fields. [Validation](validation.md#describing-fields) lists how a field is described.
 
 ### The request itself
 

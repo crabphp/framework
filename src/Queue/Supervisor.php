@@ -5,6 +5,9 @@ declare(strict_types=1);
 namespace Crab\Queue;
 
 use Crab\Contracts\Config\Config;
+use Crab\Contracts\Workers;
+use Crab\Engine\Async\Cancellation;
+use Crab\Engine\Process\Worker;
 
 /**
  * One named set of queue workers: the queues they take from and the
@@ -54,6 +57,54 @@ final readonly class Supervisor
                 throw new \LogicException("The queue supervisor \"{$name}\" has \"{$setting}\" set to {$value}; it must be 1 or more.");
             }
         }
+    }
+
+    /**
+     * Runs this supervisor's jobs in one worker, as many at a time as its
+     * concurrency says, until the cancellation fires or, when draining,
+     * until none is waiting.
+     *
+     * @return int How many jobs were run.
+     */
+    public function consume(Consumer $consumer, Worker $worker, Cancellation $cancellation, bool $drain = false): int
+    {
+        $consumer = $consumer->within($this);
+        $ran = 0;
+        $others = [];
+        for ($extra = 1; $extra < $this->concurrency; ++$extra) {
+            $others[] = $worker->spawn(function () use ($consumer, $worker, $cancellation, $drain, &$ran): void {
+                $ran += $consumer->work($worker->loop, $cancellation, $this->queues, $this->sleep, $drain);
+            });
+        }
+        $ran += $consumer->work($worker->loop, $cancellation, $this->queues, $this->sleep, $drain);
+        foreach ($others as $other) {
+            $other->await();
+        }
+        return $ran;
+    }
+
+    /**
+     * The groups of workers to run for some supervisors, each named
+     * after its supervisor, "queue:<name>", however many are run, so that
+     * whoever watches them knows which is which. The one made of the
+     * queue's own settings, which has no name of its own, is "queue".
+     *
+     * @param list<self> $supervisors
+     * @return list<Workers>
+     */
+    public static function groups(array $supervisors, Consumer $consumer): array
+    {
+        $groups = [];
+        foreach ($supervisors as $supervisor) {
+            $groups[] = new Workers(
+                $supervisor->name === 'queue' ? 'queue' : "queue:{$supervisor->name}",
+                static function (Worker $worker, Cancellation $cancellation) use ($supervisor, $consumer): void {
+                    $supervisor->consume($consumer, $worker, $cancellation);
+                },
+                $supervisor->workers,
+            );
+        }
+        return $groups;
     }
 
     /**

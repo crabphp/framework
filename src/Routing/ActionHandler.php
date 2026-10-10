@@ -8,6 +8,7 @@ use Crab\Contracts\Auth\Identity;
 use Crab\Contracts\Validation\Validator;
 use Crab\Http\ErrorResponse;
 use Crab\Http\Response;
+use Crab\Validation\Data;
 use Crab\Validation\ValidationException;
 use Psr\Container\ContainerInterface;
 use Psr\Http\Message\ResponseInterface;
@@ -119,7 +120,9 @@ final class ActionHandler implements RequestHandlerInterface
         }
         try {
             // Read now, so that a field or class that cannot be validated is reported at startup.
-            if ($this->input !== null) {
+            if ($this->input !== null && $this->input[1] === Data::class) {
+                $validator->inspectParameters($this->signature, [$this->input[0]]);
+            } elseif ($this->input !== null) {
                 $validator->inspect($this->input[1]);
             } elseif ($this->fields !== []) {
                 $validator->inspectParameters($this->signature, $this->fields);
@@ -157,7 +160,9 @@ final class ActionHandler implements RequestHandlerInterface
                 $data = [];
             }
             try {
-                if ($this->input !== null) {
+                if ($this->input !== null && $this->input[1] === Data::class) {
+                    $arguments += $this->described($data);
+                } elseif ($this->input !== null) {
                     $arguments[$this->input[0]] = $this->validator->validate($this->input[1], $data, $this->fromQuery);
                 } else {
                     $arguments += $this->validator->validateParameters($this->signature, $this->fields, $data, $this->fromQuery);
@@ -181,6 +186,28 @@ final class ActionHandler implements RequestHandlerInterface
             return Response::noContent();
         }
         return Response::json($result);
+    }
+
+    /**
+     * The request's data as the Data its parameter describes. The data
+     * as a whole stands for that one parameter, so a problem is reported
+     * by the field's own name, "lines.0.quantity", without the parameter's.
+     *
+     * @param array<mixed> $data
+     * @return array<string, Data>
+     */
+    private function described(array $data): array
+    {
+        $name = $this->input[0];
+        try {
+            return $this->validator->validateParameters($this->signature, [$name], [$name => $data], $this->fromQuery);
+        } catch (ValidationException $invalid) {
+            $errors = [];
+            foreach ($invalid->errors as $field => $problems) {
+                $errors[str_starts_with($field, $name . '.') ? substr($field, strlen($name) + 1) : $field] = $problems;
+            }
+            throw new ValidationException($errors);
+        }
     }
 
     /**
@@ -208,6 +235,12 @@ final class ActionHandler implements RequestHandlerInterface
             $this->users[$name] = [$typeName, $type->allowsNull()];
         } elseif (self::isField($typeName)) {
             $this->fields[] = $name;
+        } elseif ($typeName === Data::class) {
+            // The whole of the request's data, described on the parameter with #[Fields].
+            if ($this->input !== null) {
+                throw new \LogicException("The action of {$route} takes two inputs, {$this->input[1]} and {$typeName}; describe their fields in one.");
+            }
+            $this->input = [$name, $typeName];
         } elseif (class_exists($typeName)) {
             if ($this->input !== null) {
                 throw new \LogicException("The action of {$route} takes two inputs, {$this->input[1]} and {$typeName}; put their fields in one class.");

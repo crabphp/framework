@@ -61,7 +61,7 @@ final class Server
      */
     public function serve(string $address, int $workers, bool $single = false): void
     {
-        $this->app->runtime($address, $workers)->run(singleProcess: $single);
+        $this->app->runtime($address, $workers, servers: !$single)->run(singleProcess: $single);
     }
 
     /**

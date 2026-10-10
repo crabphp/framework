@@ -157,6 +157,14 @@ final class Validator implements ValidatorContract
         switch ($property->type) {
             case Property::MIXED:
                 return $value;
+            case Property::FIELDS:
+                if (!is_array($value) || ($value !== [] && array_is_list($value))) {
+                    $errors[$field][] = 'must be an object';
+                    return null;
+                }
+                $found = count($errors);
+                $values = $this->values($property->fields ?? [], $value, $coerce, $field . '.', $errors);
+                return count($errors) > $found ? null : new Data($values);
             case Property::STRING:
                 if (is_string($value)) {
                     return $value;
@@ -276,6 +284,9 @@ final class Validator implements ValidatorContract
             while ($property->items !== null) {
                 $property = $property->items;
             }
+            if ($property->type === Property::FIELDS) {
+                $this->inspectAll($property->fields ?? [], $seen);
+            }
             if ($property->type === Property::OBJECT && !isset($seen[$property->class])) {
                 $seen[$property->class] = true;
                 $this->inspectAll($this->properties($property->class), $seen);
@@ -343,8 +354,10 @@ final class Validator implements ValidatorContract
         if ($parameter->isVariadic()) {
             throw new \LogicException("{$where} is variadic; declare an array with #[ListOf(...)] instead.");
         }
-        [$type, $typeClass] = self::type($declared?->getName() ?? 'mixed', $where);
+        $described = $declared?->getName() === Data::class;
+        [$type, $typeClass] = $described ? [Property::FIELDS, null] : self::type($declared?->getName() ?? 'mixed', $where);
         $items = null;
+        $fields = null;
         $rules = [];
         foreach ($parameter->getAttributes() as $attribute) {
             $attributeClass = $attribute->getName();
@@ -353,11 +366,24 @@ final class Validator implements ValidatorContract
                     throw new \LogicException("{$where} has #[ListOf] but is not declared as an array.");
                 }
                 $of = $attribute->newInstance()->type;
-                [$itemType, $itemClass] = self::type($of, "{$where}, by its #[ListOf]");
-                $items = new Property($name, $itemType, $itemClass);
+                if (is_array($of)) {
+                    // The fields of each item, described in place of a class.
+                    $items = new Property($name, Property::FIELDS, fields: self::described($of, "{$where}, by its #[ListOf]"));
+                } else {
+                    [$itemType, $itemClass] = self::type($of, "{$where}, by its #[ListOf]");
+                    $items = new Property($name, $itemType, $itemClass);
+                }
+            } elseif ($attributeClass === Fields::class) {
+                if (!$described) {
+                    throw new \LogicException("{$where} has #[Fields] but is not declared as " . Data::class . ', which is what the described data arrives as.');
+                }
+                $fields = self::described($attribute->newInstance()->fields, "{$where}, by its #[Fields]");
             } elseif (is_a($attributeClass, Rule::class, true)) {
                 $rules[] = $attribute->newInstance();
             }
+        }
+        if ($described && $fields === null) {
+            throw new \LogicException("{$where} is declared as " . Data::class . ' and has no #[Fields] to say what its fields are.');
         }
         $hasDefault = $parameter->isDefaultValueAvailable();
         $nullable = $declared === null || $declared->allowsNull();
@@ -371,7 +397,64 @@ final class Validator implements ValidatorContract
             $hasDefault ? $parameter->getDefaultValue() : null,
             $rules,
             $items,
+            $fields,
         );
+    }
+
+    /**
+     * The fields a #[Fields] or a #[ListOf] describes, as properties.
+     *
+     * @param array<mixed> $description Each field's name with its description; see Fields.
+     * @return list<Property>
+     */
+    private static function described(array $description, string $where): array
+    {
+        if ($description === [] || array_is_list($description)) {
+            throw new \LogicException("{$where} must name each field with its description, as in ['id' => 'int'].");
+        }
+        $fields = [];
+        foreach ($description as $name => $spec) {
+            $name = (string) $name;
+            // A name ending in "?" is a field that may be left out.
+            $optional = str_ends_with($name, '?');
+            $name = $optional ? substr($name, 0, -1) : $name;
+            $fields[] = self::field($name, $spec, $optional, "{$where} describes \"{$name}\", which");
+        }
+        return $fields;
+    }
+
+    /**
+     * One described field: a type, a type with rules, an object or a list.
+     */
+    private static function field(string $name, mixed $spec, bool $optional, string $where): Property
+    {
+        if (is_string($spec)) {
+            $spec = [$spec];
+        }
+        if (!is_array($spec) || $spec === []) {
+            throw new \LogicException("{$where} must be a type such as 'int', a type with rules, or the fields of an object.");
+        }
+        if (!array_is_list($spec)) {
+            // Names with descriptions: an object.
+            return new Property($name, Property::FIELDS, nullable: $optional, required: !$optional, fields: self::described($spec, $where));
+        }
+        $rules = array_slice($spec, 1);
+        foreach ($rules as $rule) {
+            if (!$rule instanceof Rule) {
+                throw new \LogicException("{$where} is followed by " . get_debug_type($rule) . ', where only rules such as new Range(min: 1) may follow.');
+            }
+        }
+        if (is_array($spec[0])) {
+            // A description inside a list: a list of that, and the rules are the list's.
+            $items = self::field($name, $spec[0], false, "{$where}, in each item,");
+            return new Property($name, Property::ARRAY, nullable: $optional, required: !$optional, rules: $rules, items: $items);
+        }
+        if (!is_string($spec[0])) {
+            throw new \LogicException("{$where} must start with a type such as 'int'.");
+        }
+        $nullable = str_starts_with($spec[0], '?');
+        [$type, $class] = self::type(ltrim($spec[0], '?'), $where);
+        return new Property($name, $type, $class, $nullable || $optional, !$nullable && !$optional, rules: $rules);
     }
 
     /**

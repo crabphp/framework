@@ -23,10 +23,10 @@ There is one kind, PSR-15's, so middleware from any PSR-15 library works. There 
 php cua make:middleware RequireJson
 ```
 
-writes `app/Middleware/RequireJson.php`:
+writes `app/Http/RequireJson.php`:
 
 ```php
-namespace App\Middleware;
+namespace App\Http;
 
 use Crab\Contracts\Http\Middleware;
 use Crab\Http\ErrorResponse;

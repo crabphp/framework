@@ -135,9 +135,16 @@ final class PdoConnection implements Connection
 
     private function begin(): void
     {
-        $this->depth === 0
-            ? $this->attempt(fn () => $this->pdo()->beginTransaction(), 'BEGIN')
-            : $this->attempt(fn () => $this->pdo()->exec('SAVEPOINT crab_' . $this->depth), 'SAVEPOINT');
+        if ($this->depth > 0) {
+            $this->attempt(fn () => $this->pdo()->exec('SAVEPOINT crab_' . $this->depth), 'SAVEPOINT');
+        } elseif ($this->driver() === 'sqlite') {
+            // SQLite's own BEGIN waits to lock until the first write, and a transaction that has
+            // read and then finds another writer is refused at once, "database is locked",
+            // however long it would wait. Taking the write lock at the start makes it queue.
+            $this->attempt(fn () => $this->pdo()->exec('BEGIN IMMEDIATE'), 'BEGIN IMMEDIATE');
+        } else {
+            $this->attempt(fn () => $this->pdo()->beginTransaction(), 'BEGIN');
+        }
         ++$this->depth;
     }
 

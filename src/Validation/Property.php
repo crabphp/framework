@@ -21,6 +21,10 @@ final readonly class Property
     public const ENUM = 'enum';
     public const DATE = 'date';
     public const OBJECT = 'object';
+    /**
+     * An object described field by field with #[Fields], which becomes a Data.
+     */
+    public const FIELDS = 'fields';
 
     /**
      * @param string $type One of the constants above.
@@ -29,6 +33,7 @@ final readonly class Property
      * @param bool $hasDefault Whether the constructor supplies a value when it is absent.
      * @param list<Rule> $rules
      * @param Property|null $items What each element of a list is, when the parameter says so with ListOf.
+     * @param list<Property>|null $fields The fields of an object described with Fields.
      */
     public function __construct(
         public string $name,
@@ -40,6 +45,7 @@ final readonly class Property
         public mixed $default = null,
         public array $rules = [],
         public ?Property $items = null,
+        public ?array $fields = null,
     ) {
     }
 }

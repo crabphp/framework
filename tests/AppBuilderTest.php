@@ -214,17 +214,17 @@ final class AppBuilderTest extends TestCase
             rewind($out);
             return [$status, stream_get_contents($out)];
         };
-        $file = $this->directory . '/app/Middleware/RequireAdmin.php';
+        $file = $this->directory . '/app/Http/RequireAdmin.php';
         [$status, $said] = $run('RequireAdmin');
         self::assertSame(0, $status, $said);
         self::assertStringStartsWith("Created {$file}\n", $said);
         $source = (string) file_get_contents($file);
-        self::assertStringContainsString("namespace App\\Middleware;\n", $source);
+        self::assertStringContainsString("namespace App\\Http;\n", $source);
         self::assertStringContainsString('final readonly class RequireAdmin implements Middleware', $source);
 
         // What was written is middleware that works: it lets the request through.
         require $file;
-        $made = new \App\Middleware\RequireAdmin();
+        $made = new \App\Http\RequireAdmin();
         self::assertInstanceOf(\Crab\Contracts\Http\Middleware::class, $made);
         self::assertInstanceOf(MiddlewareInterface::class, $made);
         $router = new \Crab\Routing\Router();
@@ -240,7 +240,7 @@ final class AppBuilderTest extends TestCase
 
         unlink($file);
         unlink($this->directory . '/src/Http/Middleware/Cors.php');
-        foreach (['/app/Middleware', '/app', '/src/Http/Middleware', '/src/Http', '/src'] as $folder) {
+        foreach (['/app/Http', '/app', '/src/Http/Middleware', '/src/Http', '/src'] as $folder) {
             rmdir($this->directory . $folder);
         }
     }

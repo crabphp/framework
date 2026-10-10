@@ -13,7 +13,9 @@ use Crab\Contracts\Validation\Validator as ValidatorContract;
 use Crab\Http\Request;
 use Crab\Http\Response;
 use Crab\Routing\Router;
+use Crab\Validation\Data;
 use Crab\Validation\Email;
+use Crab\Validation\Fields;
 use Crab\Validation\Length;
 use Crab\Validation\ListOf;
 use Crab\Validation\Range;
@@ -134,6 +136,111 @@ final class PlainController
 
 final class ActionHandlerTest extends TestCase
 {
+    public function testTheFieldsOfARequestCanBeDescribedWhereTheyAreUsedInPlaceOfAClass(): void
+    {
+        $router = new Router();
+        $router->post('/shops/{shop}/big', static fn (
+            int $shop,
+            #[Fields([
+                'email' => ['string', new Email()],
+                'plan' => Plan::class,
+                'note' => '?string',
+                'address?' => ['street' => 'string', 'country' => ['string', new Length(min: 2, max: 2)]],
+                'lines' => [['productId' => 'int', 'quantity' => ['int', new Range(min: 1, max: 20)]], new Length(min: 1)],
+                'tags?' => [['string']],
+            ])]
+            Data $order,
+        ): array => [
+            'shop' => $shop,
+            'email' => $order->email,
+            'plan' => $order->plan,
+            'note' => $order->note,
+            'country' => $order->address?->country,
+            'second' => $order->lines[1]->productId * $order->lines[1]->quantity,
+            'tags' => $order->tags,
+            'all' => $order,
+        ], );
+        $router->add('POST', '/shops/{shop}/orders', static fn (int $shop, #[Fields(['id' => 'int'])] Data $order): array => [$shop, $order->id]);
+        // A list of described objects is a field like any other, beside other fields.
+        $router->post('/baskets', static fn (
+            string $name,
+            #[ListOf(['productId' => 'int', 'quantity' => '?int']), Length(min: 1)]
+            array $lines,
+        ): array => [$name, array_map(static fn (Data $line): array => [$line->productId, $line->quantity], $lines)]);
+        $router->get('/search', static fn (#[Fields(['q' => 'string', 'page' => '?int'])] Data $query): array => [$query->q, $query->page]);
+
+        $whole = ['email' => 'ada@example.com', 'plan' => 'paid', 'note' => 'ring twice', 'address' => ['street' => '1 Main St', 'country' => 'GB'],
+            'lines' => [['productId' => 5, 'quantity' => 2], ['productId' => 7, 'quantity' => 3]], 'tags' => ['gift'], 'unknown' => 'ignored'];
+        $answer = json_decode($this->body($router, $this->json('POST', '/shops/4/big', $whole)), true);
+        self::assertSame([4, 'ada@example.com', 'paid', 'ring twice', 'GB', 21, ['gift']], [$answer['shop'], $answer['email'], $answer['plan'], $answer['note'], $answer['country'], $answer['second'], $answer['tags']]);
+        // What was not described is not taken; an enum is the enum, and returned as its value.
+        self::assertSame(['email', 'plan', 'note', 'address', 'lines', 'tags'], array_keys($answer['all']));
+        // Left out, what may be is null.
+        $less = json_decode($this->body($router, $this->json('POST', '/shops/4/big', ['email' => 'a@b.co', 'plan' => 'free', 'lines' => [['productId' => 1, 'quantity' => 1], ['productId' => 2, 'quantity' => 2]]])), true);
+        self::assertSame([null, null, null], [$less['note'], $less['country'], $less['tags']]);
+
+        self::assertSame('[3,9]', $this->body($router, $this->json('POST', '/shops/3/orders', ['id' => 9])));
+        self::assertSame('["weekly",[[5,2],[7,null]]]', $this->body($router, $this->json('POST', '/baskets', ['name' => 'weekly', 'lines' => [['productId' => 5, 'quantity' => 2], ['productId' => 7]]])));
+        // A query string is text, and is read as the types described.
+        self::assertSame('["mug",3]', $this->body($router, new Request('GET', '/search?q=mug&page=3')));
+        self::assertSame('["mug",null]', $this->body($router, new Request('GET', '/search?q=mug')));
+
+        // Every problem at once, each by the field's own path.
+        $bad = $router->handle($this->json('POST', '/shops/3/orders', []));
+        self::assertSame(['id' => ['is required']], json_decode((string) $bad->getBody(), true)['error']['fields']);
+        $router->post('/checkout', static fn (#[Fields([
+            'email' => ['string', new Email()],
+            'address?' => ['street' => 'string', 'country' => ['string', new Length(min: 2, max: 2)]],
+            'lines' => [['productId' => 'int', 'quantity' => ['int', new Range(min: 1, max: 20)]], new Length(min: 1)],
+        ])] Data $order): Data => $order);
+        $bad = $router->handle($this->json('POST', '/checkout', ['email' => 'nope', 'address' => ['street' => 5, 'country' => 'GBR'], 'lines' => [['productId' => 5, 'quantity' => 99], ['quantity' => 1], 'x']]));
+        self::assertSame(422, $bad->getStatusCode());
+        self::assertSame([
+            'email' => ['must be an email address'],
+            'address.street' => ['must be text'],
+            'address.country' => ['must be at most 2 character(s)'],
+            'lines.0.quantity' => ['must be at most 20'],
+            'lines.1.productId' => ['is required'],
+            'lines.2' => ['must be an object'],
+        ], json_decode((string) $bad->getBody(), true)['error']['fields']);
+        self::assertSame(['lines' => ['must have at least 1 item(s)']], json_decode((string) $router->handle($this->json('POST', '/checkout', ['email' => 'a@b.co', 'lines' => []]))->getBody(), true)['error']['fields']);
+
+        // Returned, it is its fields; what was left out is null, and what was not described is not there.
+        $good = ['email' => 'ada@example.com', 'lines' => [['productId' => 5, 'quantity' => 2]], 'extra' => true];
+        self::assertSame('{"email":"ada@example.com","address":null,"lines":[{"productId":5,"quantity":2}]}', $this->body($router, $this->json('POST', '/checkout', $good)));
+
+        $data = new Data(['id' => 7, 'inner' => new Data(['ok' => true]), 'list' => [new Data(['n' => 1])]]);
+        self::assertSame(['id' => 7, 'inner' => ['ok' => true], 'list' => [['n' => 1]]], $data->toArray());
+        self::assertSame([true, false], [isset($data->id), isset($data->missing)]);
+        try {
+            $data->missing;
+            self::fail('A field that was not described was read.');
+        } catch (\LogicException $error) {
+            self::assertStringContainsString('has no field "missing"; it has id, inner, list', $error->getMessage());
+        }
+
+        // A description that cannot be is refused when the route is added.
+        $mistakes = [
+            'has no #[Fields] to say what its fields are' => static fn (Data $order) => '',
+            'has #[Fields] but is not declared as' => static fn (#[Fields(['id' => 'int'])] array $order) => '',
+            "must name each field with its description" => static fn (#[Fields(['int'])] Data $order) => '',
+            'describes "id", which is declared as integer' => static fn (#[Fields(['id' => 'integer'])] Data $order) => '',
+            'where only rules such as' => static fn (#[Fields(['id' => ['int', 'required']])] Data $order) => '',
+            'describes "lines", which, in each item, describes "n", which is declared as number' => static fn (#[Fields(['lines' => [['n' => 'number']]])] Data $order) => '',
+            'takes two inputs' => static fn (#[Fields(['a' => 'int'])] Data $one, #[Fields(['b' => 'int'])] Data $two) => '',
+            'and also the field $name' => static fn (string $name, #[Fields(['a' => 'int'])] Data $order) => '',
+        ];
+        $n = 0;
+        foreach ($mistakes as $says => $action) {
+            try {
+                $router->post('/mistake/' . ++$n, $action);
+                self::fail("A description that should say \"{$says}\" was accepted.");
+            } catch (\LogicException $error) {
+                self::assertStringContainsString($says, $error->getMessage());
+            }
+        }
+    }
+
     public function testAHandlerReceivesWhatItsSignatureAsksFor(): void
     {
         $router = new Router();

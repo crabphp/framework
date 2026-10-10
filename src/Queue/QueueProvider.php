@@ -11,6 +11,7 @@ use Crab\Contracts\Database\Database;
 use Crab\Contracts\Provider;
 use Crab\Contracts\Queue\Queue as QueueContract;
 use Crab\Contracts\Queue\Store;
+use Crab\Contracts\Servers;
 use Crab\Queue\Commands\FailedJobs;
 use Crab\Queue\Commands\ForgetJobs;
 use Crab\Queue\Commands\InstallQueue;
@@ -94,6 +95,15 @@ final class QueueProvider implements Provider
                 $container->has(EventDispatcherInterface::class) ? $container->get(EventDispatcherInterface::class) : null,
             );
         });
+        if ($container->has(Servers::class)) {
+            // Named in "server.with", the queue's workers are run by `serve` itself, beside HTTP: every
+            // supervisor declared, or one made of the queue's own settings.
+            $container->get(Servers::class)->add('queue', static function () use ($container): array {
+                $config = $container->get(Config::class);
+                $supervisors = array_values(Supervisor::all($config));
+                return Supervisor::groups($supervisors === [] ? [Supervisor::from($config, 'queue')] : $supervisors, $container->get(Consumer::class));
+            }, (float) $container->get(Config::class)->get('queue.grace'), 'queue:work');
+        }
         if ($container->has(Console::class)) {
             $console = $container->get(Console::class);
             $console->add('queue:work', Work::class);

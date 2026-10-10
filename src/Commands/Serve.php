@@ -68,7 +68,7 @@ final readonly class Serve implements Command
                 $output->error($error->getMessage());
                 return 1;
             }
-            self::announceBackground($output, $this->app, $address);
+            self::announceBackground($output, $this->app, $address, $workers);
             return 0;
         }
         $paths = $this->watched($input);
@@ -77,7 +77,7 @@ final readonly class Serve implements Command
             return $server->watch([...self::withoutWatch($_SERVER['argv'] ?? []), '--no-watch'], $paths, $output->line(...));
         }
         if (!$input->flag('quiet')) {
-            $this->announce($output, $address);
+            $this->announce($output, $address, $workers, $single);
         }
         $server->serve($address, $workers, $single);
         return 0;
@@ -85,21 +85,72 @@ final readonly class Serve implements Command
 
     /**
      * What a developer wants to know when the server comes up: where to
-     * open it, and how to stop it.
+     * open it, what runs with it, and how to stop it.
      */
-    private function announce(Output $output, string $address): void
+    private function announce(Output $output, string $address, int $workers, bool $single = false): void
     {
         $output->line(self::name($this->app) . ' server running on ' . Server::describe($address));
+        if ($single) {
+            $left = $this->app->with();
+            if ($left !== []) {
+                // One process has room for HTTP alone.
+                $output->line('  --single serves HTTP alone; not started: ' . implode(', ', $left));
+            }
+        } else {
+            self::announceServers($output, $this->app, $address, $workers);
+        }
         $output->line('Press Ctrl+C to stop');
     }
 
     /**
-     * One line for a server that was put in the background: it is up, and
-     * where. `status`, `reload` and `stop` say the rest when asked.
+     * For a server that was put in the background: it is up, where, and
+     * what runs with it. `status`, `reload` and `stop` say the rest when asked.
      */
-    public static function announceBackground(Output $output, App $app, string $address): void
+    public static function announceBackground(Output $output, App $app, string $address, int $workers = 1): void
     {
         $output->line(self::name($app) . ' server running on ' . Server::describe($address));
+        self::announceServers($output, $app, $address, $workers);
+    }
+
+    /**
+     * The servers running under this one, each by its id: "http", then
+     * every server registered, such as "queue" and "schedule", with the
+     * ones "server.with" does not name shown as off. Nothing is drawn
+     * for a server that is HTTP alone and could be nothing else.
+     */
+    private static function announceServers(Output $output, App $app, string $address, int $workers): void
+    {
+        $servers = $app->servers;
+        if ($servers->ids() === []) {
+            return;
+        }
+        $with = $app->with();
+        $rows = [['Server', 'Workers', 'Runs'], ['http', (string) $workers, Server::describe($address)]];
+        foreach ($with as $id) {
+            $groups = $app->alongside([$id]);
+            $runs = $servers->label($id);
+            if ($servers->kind($id) === 'groups' && count($groups) > 1) {
+                // Which groups of workers it brought: "queue:mail" is "mail".
+                $runs .= ($runs === '' ? '' : ': ') . implode(', ', array_map(static fn ($group): string => preg_replace('/^[^:]+:/', '', $group->group) . ' x' . $group->workers, $groups));
+            }
+            $rows[] = [$id, (string) array_sum(array_map(static fn ($group): int => $group->workers, $groups)), $runs];
+        }
+        foreach (array_diff($servers->ids(), $with) as $id) {
+            $rows[] = [$id, 'off', $servers->label($id)];
+        }
+        // A rule under the heading, as wide as each column.
+        $rule = [];
+        foreach ($rows[0] as $column => $heading) {
+            $rule[] = str_repeat('-', max(array_map(static fn (array $row): int => strlen($row[$column]), $rows)));
+        }
+        array_splice($rows, 1, 0, [$rule]);
+        $output->line();
+        $output->table($rows, '  ');
+        if (count($with) < count($servers->ids())) {
+            $output->line();
+            $output->line('  A server that is off is switched on in "server.with", or run on its own when needed.');
+        }
+        $output->line();
     }
 
     private static function name(App $app): string

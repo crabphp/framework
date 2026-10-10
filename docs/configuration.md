@@ -148,6 +148,7 @@ It says that this worker answers, and asks nothing of the database. That is deli
 | `log.level` | `debug` | The least severe level written |
 | `server.address` | `tcp://127.0.0.1:8080` | Where the server listens |
 | `server.workers` | `1` | Worker processes |
+| `server.with` | `[]` | The servers `serve` runs beside HTTP, each id with whether it is on: `['queue' => env('SERVER_QUEUE', false)]`. A plain list of ids, or ids with commas between, also works |
 | `server.watch` | `app`, `config`, `routes`, `.env` | What `serve` watches; `false` to watch nothing |
 | `server.max_body` | `1048576` | The largest request body taken, in bytes |
 | `server.body_timeout` | `30` | Seconds a client has to send a body |

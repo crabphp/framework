@@ -85,8 +85,8 @@ return [
 A job is a class with `handle()`. Its constructor takes the services it needs; `handle()` takes the job's data as typed parameters:
 
 ```php
-// app/Jobs/SendWelcomeEmail.php
-namespace App\Jobs;
+// app/Actions/SendWelcomeEmail.php
+namespace App\Actions;
 
 use Crab\Contracts\Database\Database;
 
@@ -120,7 +120,7 @@ The container makes a job class once per worker and keeps it. Like any service, 
 Ask for the queue, and give the job's data by parameter name:
 
 ```php
-use App\Jobs\SendWelcomeEmail;
+use App\Actions\SendWelcomeEmail;
 use Crab\Contracts\Queue\Queue;
 
 final readonly class RegisterUser
@@ -190,7 +190,9 @@ The job then loads the record when it runs, and so sees it as it is then, not as
 php cua queue:work
 ```
 
-It runs jobs until you stop it with Ctrl+C. While you develop, keep it running in a second terminal beside `php cua serve`.
+It runs jobs until you stop it with Ctrl+C.
+
+While you develop, start it in a second terminal when you are working on jobs. To have `php cua serve` start the queue's workers itself, beside the HTTP workers, and stop and reload them with the server, switch it on in `server.with`, with `SERVER_QUEUE=true` in `.env`; see [Deployment](deployment.md#the-other-processes).
 
 | Option | |
 | --- | --- |

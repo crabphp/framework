@@ -24,8 +24,8 @@ final readonly class MakeMiddleware implements Command
               name   The class: RequireAdmin, or AddApiVersion
 
             Options:
-              --path=app/Middleware         The folder to write it in
-              --namespace=App\Middleware    The namespace of that folder
+              --path=app/Http               The folder to write it in
+              --namespace=App\Http          The namespace of that folder
             TEXT;
     }
 
@@ -36,8 +36,8 @@ final readonly class MakeMiddleware implements Command
             $output->error('Give the middleware a class name: make:middleware RequireAdmin');
             return 1;
         }
-        $namespace = trim((string) $input->option('namespace', 'App\\Middleware'), '\\');
-        $directory = $this->app->path((string) $input->option('path', 'app/Middleware'));
+        $namespace = trim((string) $input->option('namespace', 'App\\Http'), '\\');
+        $directory = $this->app->path((string) $input->option('path', 'app/Http'));
         $file = "{$directory}/{$name}.php";
         if (is_file($file)) {
             $output->error("{$file} already exists.");

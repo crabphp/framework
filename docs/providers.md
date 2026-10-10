@@ -192,6 +192,59 @@ final readonly class ConsumeEvents implements Command
 
 Each worker is started and stopped as an HTTP worker is, with every `WorkerProvider` around it and every failure logged. To run several groups under one parent process, as `queue:work` does for its supervisors, give `runAll()` a list of `Crab\Contracts\Workers`, each a group name, its work and its number of workers. The cancellation fires when the process is told to stop; finish what is in hand and return. The worker only hears it while your code waits through the engine, as `Async::sleep()` does, so a loop that never waits never stops.
 
+### A server of your own beside HTTP
+
+`serve` runs HTTP, and beside it the servers that are registered and switched on. The queue registers `queue` and the scheduler `schedule`. Register your own through `Crab\Contracts\Servers`, each under an id:
+
+```php
+use Crab\Contracts\Servers;
+use Crab\Contracts\Workers;
+use Crab\Engine\Server\WebSocketServer;
+use Crab\Engine\WorkerGroup;
+
+public function register(Container $container): void
+{
+    $servers = $container->get(Servers::class);
+
+    // One of your commands, run in a process of its own.
+    $servers->command('prices', 'prices:stream --exchange=nyse');
+
+    // Any program.
+    $servers->process('vite', 'npm run dev');
+
+    // Workers of the server's own, here listening for WebSocket connections.
+    $servers->add('chat', static fn (): array => [
+        new Workers('chat', workers: 2, setup: static function (WorkerGroup $group) use ($container): void {
+            $group->listen('tcp://0.0.0.0:8081', new WebSocketServer($container->get(ChatRoom::class)));
+        }),
+    ], runs: 'WebSocket on :8081');
+}
+```
+
+Then switch each on where it should run:
+
+```php
+// config/server.php
+'with' => [
+    'queue' => env('SERVER_QUEUE', false),
+    'chat' => env('SERVER_CHAT', true),
+    'vite' => env('APP_DEBUG', false),
+],
+```
+
+| Method | Runs | When the server stops or reloads |
+| --- | --- | --- |
+| `command($id, 'prices:stream --exchange=nyse')` | That command of yours, as if typed after `php cua`, in a process of its own | It is sent SIGTERM, given time to finish, and started afresh |
+| `process($id, 'any program')` | The program, through the shell | The same |
+| `add($id, fn () => [new Workers(...)])` | Groups of workers inside the server itself | They finish what they have and are replaced, as the HTTP workers are |
+
+What a command or a program prints appears in the server's output with its id in front, `[vite] ready in 300 ms`. One that ends is started again. Registering an id a second time takes the place of the first, so your provider, which comes after the framework's, can say what `queue` runs.
+
+> [!WARNING]
+> A server that listens on an address of its own cannot yet be run under `serve --daemon`: on `reload` only the HTTP socket is handed from the old server to the new. `serve` refuses to start it there and says so. Run `serve` in the foreground, kept alive by systemd or a container, where a restart replaces the whole process.
+
+A group given to `add()` has a `setup`, which has it listen on an address of its own, or `work`, a loop that runs until it is told to stop, or both. The closure that returns the groups runs when the server starts, so it may read the configuration and what later providers bound.
+
 ## Rules for a service
 
 - **No request state.** One object serves overlapping requests. Pass what belongs to a request as an argument. `final readonly class` enforces it.

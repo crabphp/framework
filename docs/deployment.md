@@ -140,17 +140,61 @@ Keep the server on `127.0.0.1` so that only the proxy reaches it. Match the prox
 
 ## The other processes
 
-An application that uses the queue or the scheduler has more to keep running:
+An application that uses the queue or the scheduler has more to keep running than the HTTP server. There are two ways to run them.
+
+**On their own,** each with a command, which is how they run unless you say otherwise:
 
 | Process | Command | How many |
 | --- | --- | --- |
 | The HTTP server | `php cua serve --daemon` | One per machine |
-| Queue workers | `php cua queue:work --workers=4` | One command per machine, or one per queue |
+| Queue workers | `php cua queue:work` | One command per machine, or one per supervisor |
 | The scheduler | `php cua schedule:work` | Exactly one, or mark tasks `onOneServer()` |
 
-To see all of it on one page, requests, the queue, scheduled tasks, workers and exceptions, install the `crabphp/watch` package, a dashboard served by the application itself.
+`queue:work` and `schedule:work` run in the foreground and have no `reload`: keep them alive with systemd, Supervisor or a container each, and restart them after a deploy. While you develop, you start them only when you are working on jobs or scheduled tasks.
 
-`queue:work` and `schedule:work` run in the foreground: keep them alive with systemd, Supervisor or a container each. Unlike the HTTP server they have no `reload`; restart them after a deploy. Each finishes what it has in hand before it stops. See [Queues](queues.md#in-production) and [Task scheduling](scheduling.md#running-the-scheduler).
+**With the server,** by switching them on in `server.with`, each from `.env`:
+
+```php
+// config/server.php
+'with' => [
+    'queue' => env('SERVER_QUEUE', false),
+    'schedule' => env('SERVER_SCHEDULE', false),
+],
+```
+
+```text
+# .env, in production
+SERVER_QUEUE=true
+SERVER_SCHEDULE=true
+```
+
+```text
+$ php cua serve
+Shop server running on http://127.0.0.1:8080
+
+  Server    Workers  Runs
+  --------  -------  -------------------------------
+  http      2        http://127.0.0.1:8080
+  queue     3        queue:work: mail x1, default x2
+  schedule  1        schedule:work
+
+Press Ctrl+C to stop
+```
+
+Each server running under `serve` has an id: `http`, `queue`, `schedule`. They are started, stopped and reloaded together: `reload` after a deploy gives every one of them the new code, each finishing what it has in hand first. Each has processes of its own, so a slow job never holds up a request. A server that is registered and switched off is listed as `off`, so that no one waits for a job that nothing will run.
+
+| On | Switch on | Why |
+| --- | --- | --- |
+| Your own machine | nothing, most days | HTTP alone starts fastest and runs no job behind your back |
+| One server | `queue` and `schedule` | One command, one reload |
+| Several web servers | `queue`, and `schedule` on one of them | The schedule must run in one place, or mark its tasks `onOneServer()` |
+| Web and workers apart | nothing on the web servers | The workers' machines run `queue:work` and `schedule:work` |
+
+`--single` serves HTTP alone whatever is switched on, as one process has room for nothing else. To add a server of your own to the list, a WebSocket server, a command of yours, or a program such as `npm run dev`, see [Service providers](providers.md#a-server-of-your-own-beside-http).
+
+To see all of it on one page, requests, the queue, scheduled tasks, workers and exceptions, install the `crabphp/clockwerk` package, a dashboard served by the application itself at `/clockwerk`.
+
+See [Queues](queues.md#in-production) and [Task scheduling](scheduling.md#running-the-scheduler).
 
 ## A deploy, start to finish
 

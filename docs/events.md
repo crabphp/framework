@@ -63,7 +63,7 @@ Listeners are added in a provider's `register()`. That is the one place, so a re
 ```php
 // app/Providers/AppProvider.php
 use App\Events\UserRegistered;
-use App\Listeners\SendWelcomeEmail;
+use App\Actions\SendWelcomeEmail;
 use Crab\Contracts\Events\Dispatcher;
 
 public function register(Container $container): void
@@ -82,8 +82,8 @@ public function register(Container $container): void
 A class with `handle()` that takes the event. Its constructor takes services, and the container makes it when its first event arrives:
 
 ```php
-// app/Listeners/SendWelcomeEmail.php
-namespace App\Listeners;
+// app/Actions/SendWelcomeEmail.php
+namespace App\Actions;
 
 use App\Events\UserRegistered;
 

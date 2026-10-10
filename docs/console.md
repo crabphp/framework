@@ -54,8 +54,8 @@ The third argument is the description shown in the command list.
 Use a class when the command needs services. The container makes it when it runs:
 
 ```php
-// app/Commands/PruneUsers.php
-namespace App\Commands;
+// app/Console/PruneUsers.php
+namespace App\Console;
 
 use Crab\Contracts\Console\Command;
 use Crab\Contracts\Console\Input;
@@ -156,7 +156,7 @@ Print results with `line()` and problems with `error()`, so that a script can pi
 | `serve` | Serves the application; see [Deployment](deployment.md) |
 | `stop`, `reload`, `restart`, `status` | Control a server running in the background |
 | `route:list` | Lists the routes, each with its action and middleware |
-| `make:middleware` | Writes a middleware class in `app/Middleware/` |
+| `make:middleware` | Writes a middleware class in `app/Http/` |
 
 Providers add theirs when you register them:
 
