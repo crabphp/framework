@@ -67,7 +67,7 @@ final class MemoryStore implements Store
         }
     }
 
-    public function failed(): array
+    public function failed(?int $latest = null): array
     {
         $failed = [];
         foreach ($this->jobs as $id => $job) {
@@ -75,7 +75,7 @@ final class MemoryStore implements Store
                 $failed[] = $this->message($id);
             }
         }
-        return $failed;
+        return $latest === null ? $failed : array_slice($failed, -max(0, $latest), max(0, $latest));
     }
 
     public function retry(int|string|null $id, int $now): int

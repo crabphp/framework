@@ -49,7 +49,7 @@ return [
 
 | Setting | Default | |
 | --- | --- | --- |
-| `cache.store` | `file` | Where entries are kept: `file`, `database` or `array` |
+| `cache.store` | `file` | Where entries are kept: `file`, `database` or `array`, or `redis` with the `crabphp/redis` package |
 | `cache.directory` | the system's temporary folder | The file store's folder |
 | `cache.table` | `cache` | The database store's table |
 | `cache.database` | `null` | The name of the database the table is in; the default one when null |
@@ -183,7 +183,7 @@ Always give the lock a time to live, longer than the work takes: if the process 
 
 ## A store of your own
 
-To keep entries somewhere else, such as Redis, implement `Crab\Contracts\Cache\Store` and bind it after the cache provider:
+For Redis, install the `crabphp/redis` package, register its `RedisProvider` after `CacheProvider` and set `cache.store` to `redis`. To keep entries somewhere else again, implement `Crab\Contracts\Cache\Store` and bind it after the cache provider:
 
 ```php
 // app/Providers/AppProvider.php

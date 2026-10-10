@@ -799,6 +799,7 @@ $queue->on('emails')->push(SendWelcomeEmail::class, userId: 7);          // on a
 - **The data is JSON:** numbers, text, booleans, null and arrays. Pass an id, not the record.
 - **A job runs at least once.** One that throws is tried again, `queue.tries` times in all (3), after `queue.backoff` seconds (10, then 60); then it is kept as failed. `queue:failed` lists those, `queue:retry <id|all>` puts them back and `queue:forget <id|all>` deletes them.
 - **Workers are processes of their own**, so a slow job never holds up a request. Each is started and stopped as an HTTP worker is, and every failure reaches the log.
+- **Supervisors keep kinds of work apart.** `queue.supervisors` names sets of workers, each with its own queues, number of workers and retries, and `queue:work` runs them all: `'mail' => ['queues' => ['mail'], 'workers' => 2]`. A flood of one kind of job then cannot take the workers of another.
 - **`queue.retry_after`** (90) is how long a job may take before it is taken to have died with its worker and is given to another. Set it above your longest job.
 
 See [docs/queues.md](docs/queues.md).

@@ -234,6 +234,30 @@ final class CacheTest extends TestCase
         self::assertFileExists($this->directory . '/keep.txt');
     }
 
+    public function testReadingAnExpiredFileEntryNeverTakesAwayTheOneWrittenInItsPlace(): void
+    {
+        $store = new FileStore($this->directory);
+        $other = new FileStore($this->directory);
+
+        $store->set('lock', 'old', 100);
+        // One worker finds it expired; another then takes the key; the first reads again with the time it had.
+        self::assertNull($store->get('lock', 200));
+        self::assertTrue($other->add('lock', 'new', 300, 200));
+        self::assertNull($store->get('lock', 300));
+        self::assertSame('new', $other->get('lock', 250));
+        // Still taken: the read of the expired entry deleted nothing.
+        self::assertFalse($store->add('lock', 'third', 300, 250));
+
+        // Deleted and cleared entries can be written again, by whichever object.
+        $store->delete('lock');
+        self::assertNull($other->get('lock', 250));
+        self::assertTrue($other->add('lock', 'fourth', 300, 250));
+        $store->clear();
+        self::assertTrue($store->add('lock', 'fifth', null, 250));
+        $other->set('lock', 'sixth', null);
+        self::assertSame('sixth', $store->get('lock', 10_000));
+    }
+
     public function testAFileStoreThatCannotWriteSaysWhere(): void
     {
         file_put_contents($this->directory . '/blocked', '');

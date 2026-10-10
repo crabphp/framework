@@ -40,4 +40,9 @@ interface Schedule
      * @param mixed ...$data The parameters of the job's handle(), by name.
      */
     public function job(string $job, mixed ...$data): Task;
+
+    /**
+     * @return list<Task> Every task declared so far, in the order declared.
+     */
+    public function tasks(): array;
 }

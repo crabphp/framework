@@ -10,6 +10,7 @@
     - [What a job may carry](#what-a-job-may-carry)
 - [Running the worker](#running-the-worker)
     - [Workers and concurrency](#workers-and-concurrency)
+    - [Supervisors](#supervisors)
     - [In production](#in-production)
 - [When a job fails](#when-a-job-fails)
     - [Tries and backoff](#tries-and-backoff)
@@ -66,7 +67,7 @@ return [
 
 | Setting | Default | |
 | --- | --- | --- |
-| `queue.store` | `database` | Where jobs are kept: `database`, or `memory` for tests |
+| `queue.store` | `database` | Where jobs are kept: `database`, `memory` for tests, or `redis` with the `crabphp/redis` package |
 | `queue.table` | `jobs` | The table |
 | `queue.database` | `null` | The name of the database it is in; the default one when null |
 | `queue.queue` | `default` | The queue jobs are pushed to and taken from when none is named |
@@ -77,6 +78,7 @@ return [
 | `queue.concurrency` | `1` | Jobs one worker runs at a time |
 | `queue.sleep` | `1.0` | Seconds a worker waits before looking again when no job was due |
 | `queue.grace` | `30.0` | Seconds a worker is given to finish its job when it is told to stop |
+| `queue.supervisors` | none | Named sets of workers, each with its own queues and limits; see [Supervisors](#supervisors) |
 
 ## Writing a job
 
@@ -192,6 +194,7 @@ It runs jobs until you stop it with Ctrl+C. While you develop, keep it running i
 
 | Option | |
 | --- | --- |
+| `--supervisor=mail` | Run one of the [supervisors](#supervisors), not all of them |
 | `--queue=emails,default` | The queues to take from, the most urgent first |
 | `--workers=4` | Worker processes; the default is `queue.workers` |
 | `--concurrency=5` | Jobs one worker runs at a time; the default is `queue.concurrency` |
@@ -209,6 +212,43 @@ Two settings decide how many jobs run at once, and they suit different work:
 - **`--concurrency`** is jobs inside one process. It helps only jobs that spend their time waiting through Crab, such as calls made with the [HTTP client](http-client.md). Ten jobs that each wait two seconds for an API then take two seconds together, in one process.
 
 When in doubt, raise `--workers` and leave concurrency at 1.
+
+### Supervisors
+
+One set of workers is enough while every job is alike. When they are not, a flood of one kind holds up the rest: ten thousand newsletter emails ahead of one password reset. A supervisor is a named set of workers with its own queues and its own limits, and `queue:work` runs all of them at once, each as a group of processes of its own:
+
+```php
+// config/queue.php
+return [
+    'supervisors' => [
+        'mail' => ['queues' => ['mail'], 'workers' => 2, 'tries' => 5, 'backoff' => [30, 300]],
+        'default' => ['queues' => ['high', 'default'], 'workers' => 4],
+        'webhooks' => ['queues' => ['webhooks'], 'workers' => 1, 'concurrency' => 20],
+    ],
+];
+```
+
+```text
+$ php cua queue:work
+mail: running jobs from mail with 2 workers
+default: running jobs from high, default with 4 workers
+webhooks: running jobs from webhooks
+```
+
+| Key | |
+| --- | --- |
+| `queues` | The queues it takes from, the most urgent first. Required |
+| `workers` | Worker processes |
+| `concurrency` | Jobs one worker runs at a time |
+| `tries`, `backoff`, `retry_after` | As the settings of the same name, for this supervisor's jobs |
+| `sleep` | Seconds a worker waits before looking again when no job was due |
+
+What a supervisor leaves out is taken from the setting of the same name, such as `queue.workers`. A key that is not in this table is refused when `queue:work` starts.
+
+A queue no supervisor names is run by nobody, so list every queue you push to. To run supervisors on different machines, start each with `php cua queue:work --supervisor=mail`. Giving `--queue`, `--workers` or `--concurrency` runs one set of workers as the command line describes, in place of the supervisors.
+
+> [!NOTE]
+> The number of workers is fixed while the command runs. Supervisors do not yet grow and shrink with the load.
 
 ### In production
 
@@ -295,7 +335,7 @@ A job cannot be interrupted from outside. Give slow calls a timeout of their own
 
 ## A store of your own
 
-To keep jobs somewhere else, implement `Crab\Contracts\Queue\Store` and bind it after the queue provider:
+For Redis, which suits more workers than a database table hands jobs to comfortably, install the `crabphp/redis` package, register its `RedisProvider` after `QueueProvider` and set `queue.store` to `redis`. To keep jobs somewhere else again, implement `Crab\Contracts\Queue\Store` and bind it after the queue provider:
 
 ```php
 use Crab\Contracts\Queue\Store;

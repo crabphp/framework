@@ -153,7 +153,8 @@
 
 - An event is a plain object and a listener a closure or a class with `handle()`. Listeners are added in a provider's `register()`, never in a worker and never by a naming convention or an attribute.
 - Listeners run in the fiber that dispatched, in the order added, and what one throws reaches the dispatcher's caller. Work that should outlive the request or be retried is a job a listener pushes; do not add queued listeners.
-- The framework's own components dispatch no events today. Before one does, agree which events and what they carry: they become part of its contract.
+- Before a component dispatches a new event, agree which and what it carries: it becomes part of its contract. An event is dispatched after the store knows what it reports, so that a listener finds things as the event says they are.
+- The framework's own events are plain objects beside the contract they concern (`Contracts\Queue\JobRan`, `Contracts\Schedule\TaskRan`), dispatched through PSR-14's `EventDispatcherInterface` when the container has one and skipped when it has none. What a listener for one throws is logged and never changes the outcome of the work it reports. Do not dispatch one on the path of every HTTP request; what watches requests is middleware.
 
 ## Queue
 
@@ -162,7 +163,9 @@
 - A store hands a job to one worker at a time by changing its row, not by holding a lock or a transaction while the job runs. `Queue\DatabaseStore` uses the query builder only, so that the same statements serve MySQL and SQLite.
 - A job that was taken and never reported back is given out again after `queue.retry_after` seconds. Its attempt was already counted, so a job whose worker dies under it every time is given up on like any other.
 - What a job throws is logged with its trace, as a warning while tries remain and as an error when it is given up on. The consumer's loop catches a failure of the store too, logs it and goes on.
-- Retries are settings of the consumer (`queue.tries`, `queue.backoff`), the same for every job. Do not add per-job options until the owner asks.
+- Retries are settings of the consumer (`queue.tries`, `queue.backoff`), the same for every job a supervisor runs; a supervisor may set its own. Do not add per-job options until the owner asks.
+
+- A queue supervisor is a named set of workers with its queues and limits, declared under `queue.supervisors` and read by `Queue\Supervisor`. `queue:work` runs every one as an engine worker group of its own through `Runner::runAll()`. A setting a supervisor accepts must change what its workers do today: do not accept a key ahead of the feature behind it.
 
 ## Scheduling
 

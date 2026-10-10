@@ -17,6 +17,7 @@ use Crab\Queue\Commands\InstallQueue;
 use Crab\Queue\Commands\RetryJobs;
 use Crab\Queue\Commands\Work;
 use Psr\Clock\ClockInterface;
+use Psr\EventDispatcher\EventDispatcherInterface;
 use Psr\Log\LoggerInterface;
 
 /**
@@ -35,6 +36,7 @@ use Psr\Log\LoggerInterface;
  *     concurrency   jobs one worker runs at a time; 1
  *     sleep         seconds a worker waits before looking again when no job was due; 1
  *     grace         seconds a worker is given to finish its job when it is told to stop; 30
+ *     supervisors   named sets of workers, each with its queues and limits; see Supervisor. None unless set
  *
  * To keep jobs somewhere else, bind Contracts\Queue\Store to a store of
  * your own after registering this provider.
@@ -55,6 +57,7 @@ final class QueueProvider implements Provider
             'concurrency' => 1,
             'sleep' => 1.0,
             'grace' => 30.0,
+            'supervisors' => [],
         ]);
         $container->singleton(Store::class, static function (Container $container): Store {
             $config = $container->get(Config::class);
@@ -88,6 +91,7 @@ final class QueueProvider implements Provider
                 (int) $config->get('queue.tries'),
                 array_map(intval(...), array_values((array) $config->get('queue.backoff'))),
                 (int) $config->get('queue.retry_after'),
+                $container->has(EventDispatcherInterface::class) ? $container->get(EventDispatcherInterface::class) : null,
             );
         });
         if ($container->has(Console::class)) {

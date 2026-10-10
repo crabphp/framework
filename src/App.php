@@ -27,6 +27,7 @@ use Crab\Contracts\Routing\Router as RouterContract;
 use Crab\Contracts\Runner;
 use Crab\Contracts\Validation\Validator as ValidatorContract;
 use Crab\Contracts\WorkerProvider;
+use Crab\Contracts\Workers;
 use Crab\Engine\Async\Cancellation;
 use Crab\Engine\Process\Worker;
 use Crab\Engine\Runtime;
@@ -262,7 +263,29 @@ final class App implements RequestHandlerInterface, Runner
             throw new \InvalidArgumentException('Work that runs in this one process has one worker.');
         }
         $runtime = new Runtime(shutdownTimeout: $shutdownTimeout);
-        $runtime->group($group, $workers)
+        $this->group($runtime, new Workers($group, $work, $workers));
+        $runtime->run(singleProcess: $single);
+    }
+
+    public function runAll(array $groups, float $shutdownTimeout = 30.0): void
+    {
+        if ($groups === []) {
+            throw new \InvalidArgumentException('There is no group of workers to run.');
+        }
+        $runtime = new Runtime(shutdownTimeout: $shutdownTimeout);
+        foreach ($groups as $workers) {
+            $this->group($runtime, $workers);
+        }
+        $runtime->run();
+    }
+
+    /**
+     * Adds a group of workers that serve no requests to a runtime.
+     */
+    private function group(Runtime $runtime, Workers $workers): void
+    {
+        $work = $workers->work;
+        $runtime->group($workers->group, $workers->workers)
             ->onStart(function (Worker $worker) use ($work): void {
                 $this->start($worker);
                 $worker->spawn(static function (Cancellation $cancellation) use ($worker, $work): void {
@@ -276,7 +299,6 @@ final class App implements RequestHandlerInterface, Runner
             })
             ->onStop($this->stop(...))
             ->onFailure($this->report(...));
-        $runtime->run(singleProcess: $single);
     }
 
     private function start(Worker $worker): void

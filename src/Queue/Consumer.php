@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Crab\Queue;
 
+use Crab\Contracts\Queue\JobRan;
 use Crab\Contracts\Queue\Message;
 use Crab\Contracts\Queue\Store;
 use Crab\Engine\Async\Async;
@@ -12,6 +13,7 @@ use Crab\Engine\Async\CancelledException;
 use Crab\Engine\EventLoop;
 use Psr\Clock\ClockInterface;
 use Psr\Container\ContainerInterface;
+use Psr\EventDispatcher\EventDispatcherInterface;
 use Psr\Log\LoggerInterface;
 
 /**
@@ -30,6 +32,7 @@ final readonly class Consumer
      * @param int $tries How many times a job is started before it is given up on.
      * @param list<int> $backoff Seconds to wait before the second try, the third, and so on; the last is used for every later one.
      * @param int $retryAfter Seconds after which a job that was taken and neither finished nor failed is given to another worker. Longer than the longest job takes.
+     * @param EventDispatcherInterface|null $events Told of each try of a job, with a JobRan.
      */
     public function __construct(
         private Store $store,
@@ -39,10 +42,20 @@ final readonly class Consumer
         private int $tries = 3,
         private array $backoff = [10, 60],
         private int $retryAfter = 90,
+        private ?EventDispatcherInterface $events = null,
     ) {
         if ($tries < 1 || $retryAfter < 1) {
             throw new \InvalidArgumentException('A queue consumer needs at least one try for a job and a positive number of seconds to retry after.');
         }
+    }
+
+    /**
+     * A consumer of the same store that works within a supervisor's
+     * limits in place of this one's.
+     */
+    public function within(Supervisor $supervisor): self
+    {
+        return new self($this->store, $this->container, $this->logger, $this->clock, $supervisor->tries, $supervisor->backoff, $supervisor->retryAfter, $this->events);
     }
 
     /**
@@ -62,11 +75,14 @@ final readonly class Consumer
             $this->giveUp($message, new \RuntimeException("The job was started {$this->tries} times and never finished; the worker running it stopped or took longer than {$this->retryAfter} seconds."));
             return true;
         }
+        $started = hrtime(true);
         try {
             $job = $this->container?->has($message->job) ? $this->container->get($message->job) : self::make($message->job);
             $job->handle(...$message->data);
         } catch (\Throwable $error) {
-            if ($message->attempts >= $this->tries) {
+            $seconds = (hrtime(true) - $started) / 1e9;
+            $gaveUp = $message->attempts >= $this->tries;
+            if ($gaveUp) {
                 $this->giveUp($message, $error);
             } else {
                 $wait = $this->backoff === [] ? 0 : $this->backoff[min($message->attempts, count($this->backoff)) - 1];
@@ -77,10 +93,26 @@ final readonly class Consumer
                     'message' => $error->getMessage(), 'exception' => $error,
                 ]);
             }
+            // After the store knows: a listener that looks for the failed job finds it.
+            $this->tell(new JobRan($message, $seconds, $error, $gaveUp));
             return true;
         }
         $this->store->complete($message);
+        $this->tell(new JobRan($message, (hrtime(true) - $started) / 1e9));
         return true;
+    }
+
+    /**
+     * Tells the application's listeners of a try. What a listener throws
+     * is logged and goes no further: a job's fate is not theirs to change.
+     */
+    private function tell(JobRan $event): void
+    {
+        try {
+            $this->events?->dispatch($event);
+        } catch (\Throwable $error) {
+            $this->logger?->error('A listener for {event} failed: {message}', ['event' => JobRan::class, 'message' => $error->getMessage(), 'exception' => $error]);
+        }
     }
 
     /**

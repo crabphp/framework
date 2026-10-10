@@ -11,6 +11,7 @@
 - [How listeners run](#how-listeners-run)
     - [Slow listeners](#slow-listeners)
     - [Stopping an event](#stopping-an-event)
+- [Events the framework dispatches](#events-the-framework-dispatches)
 - [In tests](#in-tests)
 
 ## Introduction
@@ -197,6 +198,27 @@ final class PriceRequested implements StoppableEventInterface
     }
 }
 ```
+
+## Events the framework dispatches
+
+With `EventsProvider` registered, the queue and the scheduler tell you what they ran. Listen for these to measure, alert or keep a record of your own:
+
+| Event | Dispatched | Carries |
+| --- | --- | --- |
+| `Crab\Contracts\Queue\JobRan` | After each try of a job | `message` (the job, its queue, data and attempts), `seconds`, `error` (what it threw, or null), `gaveUp` (whether it is now kept as failed) |
+| `Crab\Contracts\Schedule\TaskRan` | After each run of a scheduled task | `task` (its name), `seconds`, `error` |
+
+```php
+use Crab\Contracts\Queue\JobRan;
+
+$events->listen(JobRan::class, static function (JobRan $event) use ($alerts): void {
+    if ($event->gaveUp) {
+        $alerts->send("{$event->message->job} failed for good: {$event->error?->getMessage()}");
+    }
+});
+```
+
+They are dispatched in the worker that did the work: a queue worker or the scheduler, not a worker serving HTTP. A listener here that throws is logged and changes nothing for the job or the task. Register `EventsProvider` before `QueueProvider` and `ScheduleProvider`.
 
 ## In tests
 

@@ -60,6 +60,8 @@ final readonly class DatabaseStore implements Store
                 $taken = $this->connection->table($this->table)
                     ->where('id', $id)
                     ->whereNull('failed_at')
+                    // Again here: another worker may have taken it, failed it and put it back for later since it was listed.
+                    ->where('available_at', '<=', $now)
                     ->where($free)
                     ->increment('attempts', 1, ['reserved_at' => $now]);
                 if ($taken === 1) {
@@ -96,10 +98,13 @@ final readonly class DatabaseStore implements Store
         ]);
     }
 
-    public function failed(): array
+    public function failed(?int $latest = null): array
     {
-        $rows = $this->connection->table($this->table)->whereNotNull('failed_at')->orderBy('id')->get();
-        return array_map(self::message(...), $rows);
+        $query = $this->connection->table($this->table)->whereNotNull('failed_at');
+        if ($latest === null) {
+            return array_map(self::message(...), $query->orderBy('id')->get());
+        }
+        return array_map(self::message(...), array_reverse($query->orderByDesc('id')->limit(max(0, $latest))->get()));
     }
 
     public function retry(int|string|null $id, int $now): int

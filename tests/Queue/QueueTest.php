@@ -9,6 +9,7 @@ use Crab\Config\Config;
 use Crab\Console\Output;
 use Crab\Container\Container;
 use Crab\Contracts\Database\Table;
+use Crab\Contracts\Queue\JobRan;
 use Crab\Contracts\Queue\Queue as QueueContract;
 use Crab\Contracts\Queue\Store;
 use Crab\Database\Database;
@@ -17,11 +18,13 @@ use Crab\Database\Schema;
 use Crab\Engine\Async\Async;
 use Crab\Engine\Async\Cancellation;
 use Crab\Engine\Process\Worker;
+use Crab\Events\Dispatcher;
 use Crab\Queue\Consumer;
 use Crab\Queue\DatabaseStore;
 use Crab\Queue\MemoryStore;
 use Crab\Queue\Queue;
 use Crab\Queue\QueueProvider;
+use Crab\Queue\Supervisor;
 use Crab\Testing\FrozenClock;
 use Crab\Testing\WorkerHarness;
 use PHPUnit\Framework\Attributes\DataProvider;
@@ -59,6 +62,20 @@ final readonly class GreetJob
     public function handle(string $name, int $times = 1, array $tags = []): void
     {
         Ledger::$lines[] = str_repeat("{$this->greeter->greeting}, {$name}!", $times) . ($tags === [] ? '' : ' ' . json_encode($tags));
+    }
+}
+
+final class TypedJob
+{
+    public function handle(int $id, float $ratio, ?string $note = null, string|int $key = '', array $tags = [], mixed $anything = null): void
+    {
+    }
+}
+
+final class DatedJob
+{
+    public function handle(\DateTimeImmutable $when): void
+    {
     }
 }
 
@@ -220,6 +237,10 @@ final class QueueTest extends TestCase
         self::assertSame([FlakyJob::class, ['id' => 1], 2], [$failed[0]->job, $failed[0]->data, $failed[0]->attempts]);
         self::assertSame('RuntimeException: mail server refused 1', $failed[0]->error);
         self::assertSame($this->clock->now()->getTimestamp(), $failed[0]->failedAt);
+        // The latest so many, still oldest first, for a list that has grown long.
+        self::assertSame([['id' => 2]], array_column($store->failed(1), 'data'));
+        self::assertCount(2, $store->failed(5));
+        self::assertSame([], $store->failed(0));
         self::assertSame(0, $store->size('default'));
         self::assertSame(['warning', 'error', 'warning', 'error'], array_column($this->log->records, 0));
         // A failed job is not taken again by itself.
@@ -298,6 +319,35 @@ final class QueueTest extends TestCase
         }
     }
 
+    public function testAValueIsCheckedAgainstTheTypeItsParameterTakes(): void
+    {
+        $store = new MemoryStore();
+        $queue = new Queue($store, 'default', $this->clock);
+
+        // What handle() would take: a whole number for a float, null where it may be, any of a union.
+        $queue->push(TypedJob::class, id: 7, ratio: 2, note: null, key: 'a', tags: ['x']);
+        $queue->push(TypedJob::class, id: 7, ratio: 0.5, note: 'hi', key: 3, anything: ['free' => true]);
+        self::assertSame(2, $store->size('default'));
+
+        $mistakes = [
+            'array as "id", which its handle() takes as int' => static fn () => $queue->push(TypedJob::class, id: ['wrong'], ratio: 1.0),
+            'string as "id"' => static fn () => $queue->push(TypedJob::class, id: '7', ratio: 1.0),
+            'string as "ratio", which its handle() takes as float' => static fn () => $queue->push(TypedJob::class, id: 7, ratio: 'half'),
+            'float as "key", which its handle() takes as string|int' => static fn () => $queue->push(TypedJob::class, id: 7, ratio: 1.0, key: 1.5),
+            'null as "tags"' => static fn () => $queue->push(TypedJob::class, id: 7, ratio: 1.0, tags: null),
+            'takes $when as DateTimeImmutable' => static fn () => $queue->push(DatedJob::class, when: '2026-01-01'),
+        ];
+        foreach ($mistakes as $says => $mistake) {
+            try {
+                $mistake();
+                self::fail("A push that should say \"{$says}\" was accepted.");
+            } catch (\LogicException $error) {
+                self::assertStringContainsString($says, $error->getMessage());
+            }
+        }
+        self::assertSame(2, $store->size('default'));
+    }
+
     public function testAJobWhoseClassIsGoneFailsLikeAnyOther(): void
     {
         $store = new MemoryStore();
@@ -357,7 +407,7 @@ final class QueueTest extends TestCase
             {
             }
 
-            public function failed(): array
+            public function failed(?int $latest = null): array
             {
                 return [];
             }
@@ -431,6 +481,119 @@ final class QueueTest extends TestCase
         self::assertSame(0, $app->console->run(['queue:failed'], $output));
         self::assertSame("No job has failed.\n", $read());
         self::assertSame(0, $app->console->run(['queue:forget', 'all'], $this->quiet()));
+    }
+
+    public function testSupervisorsAreReadFromTheConfigurationWithTheQueuesOwnSettingsForWhatTheyLeaveOut(): void
+    {
+        $config = new Config(['queue' => [
+            'queue' => 'default', 'workers' => 2, 'concurrency' => 1, 'tries' => 3, 'backoff' => [10, 60], 'retry_after' => 90, 'sleep' => 1.0,
+            'supervisors' => [
+                'mail' => ['queues' => ['mail'], 'workers' => 4, 'tries' => 5, 'backoff' => [1], 'retry_after' => 30, 'sleep' => 0.2],
+                'rest' => ['queues' => ['high', 'default'], 'concurrency' => 10],
+            ],
+        ]]);
+
+        $supervisors = Supervisor::all($config);
+
+        self::assertSame(['mail', 'rest'], array_keys($supervisors));
+        $mail = $supervisors['mail'];
+        self::assertSame([['mail'], 4, 1, 5, [1], 30, 0.2], [$mail->queues, $mail->workers, $mail->concurrency, $mail->tries, $mail->backoff, $mail->retryAfter, $mail->sleep]);
+        $rest = $supervisors['rest'];
+        self::assertSame([['high', 'default'], 2, 10, 3, [10, 60], 90, 1.0], [$rest->queues, $rest->workers, $rest->concurrency, $rest->tries, $rest->backoff, $rest->retryAfter, $rest->sleep]);
+        self::assertSame([], Supervisor::all(new Config(['queue' => ['supervisors' => []]])));
+
+        $mistakes = [
+            'has the setting "max", which is not one of queues, workers' => ['mail' => ['queues' => ['mail'], 'max' => 4]],
+            'names no queue' => ['mail' => ['queues' => []]],
+            '"workers" set to 0' => ['mail' => ['queues' => ['mail'], 'workers' => 0]],
+            'by name' => [['queues' => ['mail']]],
+        ];
+        foreach ($mistakes as $says => $declared) {
+            try {
+                Supervisor::all(new Config(['queue' => ['supervisors' => $declared] + $config->get('queue')]));
+                self::fail("A supervisor that {$says} was accepted.");
+            } catch (\LogicException $error) {
+                self::assertStringContainsString($says, $error->getMessage());
+            }
+        }
+    }
+
+    public function testEachSupervisorRunsItsOwnQueuesWithinItsOwnLimits(): void
+    {
+        $app = new App(new Config([
+            'queue' => ['store' => 'memory', 'backoff' => [0], 'supervisors' => [
+                'mail' => ['queues' => ['mail'], 'tries' => 1],
+                'rest' => ['queues' => ['default'], 'tries' => 2],
+            ]],
+            'log' => ['path' => $this->directory . '/app.log'],
+        ]));
+        $app->register(QueueProvider::class);
+        $queue = $app->container->get(QueueContract::class);
+        $queue->on('mail')->push(FlakyJob::class, id: 1);
+        $queue->push(GreetJob::class, name: 'rest');
+        $queue->on('reports')->push(GreetJob::class, name: 'nobody');
+        Ledger::$failures = 1;
+
+        // One supervisor alone leaves the others' queues as they are.
+        [$output, $read] = $this->captured();
+        self::assertSame(0, $app->console->run(['queue:work', '--supervisor=rest', '--stop-when-empty'], $output));
+        self::assertSame("Ran 1 job.\n", $read());
+        self::assertSame(['Hello, rest!'], Ledger::$lines);
+
+        // All of them: mail gives its job one try, and no supervisor takes from "reports".
+        $queue->push(FlakyJob::class, id: 2);
+        Ledger::$failures = 2;
+        [$output, $read] = $this->captured();
+        self::assertSame(0, $app->console->run(['queue:work', '--stop-when-empty'], $output));
+        self::assertSame("Ran 3 jobs.\n", $read());
+        $log = (string) file_get_contents($this->directory . '/app.log');
+        self::assertStringContainsString('failed for good after 1 tries: mail server refused 1', $log);
+        self::assertStringNotContainsString('failed for good after 2 tries', $log);
+        self::assertSame(['Hello, rest!', 'sent 2'], Ledger::$lines);
+        $store = $app->container->get(Store::class);
+        self::assertSame([0, 0, 1], [$store->size('mail'), $store->size('default'), $store->size('reports')]);
+
+        // The command line describes one set of workers in place of the supervisors.
+        self::assertSame(0, $app->console->run(['queue:work', '--queue=reports', '--stop-when-empty'], $this->quiet()));
+        self::assertSame('Hello, nobody!', Ledger::$lines[2]);
+
+        foreach (['The supervisors are mail, rest' => ['--supervisor=reports'], 'leave out --queue' => ['--supervisor=mail', '--queue=mail']] as $says => $words) {
+            [$output, $read] = $this->captured();
+            self::assertSame(1, $app->console->run(['queue:work', '--stop-when-empty', ...$words], $output));
+            self::assertStringContainsString($says, $read());
+        }
+    }
+
+    public function testEachTryOfAJobIsToldToTheApplicationsListeners(): void
+    {
+        $store = new MemoryStore();
+        $queue = new Queue($store, 'default', $this->clock);
+        $events = new Dispatcher();
+        $heard = [];
+        $events->listen(JobRan::class, static function (JobRan $event) use (&$heard, $store): void {
+            $heard[] = [$event->message->job, $event->message->attempts, $event->error?->getMessage(), $event->gaveUp, $event->seconds >= 0.0];
+            // What the store held as failed at the moment the listener was told.
+            $heard[array_key_last($heard)][] = count($store->failed());
+        });
+        // A listener that fails changes nothing for the job, and is logged.
+        $events->listen(JobRan::class, static fn () => throw new \LogicException('the dashboard is down'));
+        $consumer = new Consumer($store, new Container(), $this->log, $this->clock, tries: 2, backoff: [0], events: $events);
+
+        $queue->push(GreetJob::class, name: 'Ada');
+        $queue->push(FlakyJob::class, id: 5);
+        Ledger::$failures = 2;
+        while ($consumer->runNext()) {
+        }
+
+        self::assertSame([
+            [GreetJob::class, 1, null, false, true, 0],
+            [FlakyJob::class, 1, 'mail server refused 5', false, true, 0],
+            // Told after the store knows: the job given up on is already there to be found.
+            [FlakyJob::class, 2, 'mail server refused 5', true, true, 1],
+        ], $heard);
+        self::assertCount(1, $store->failed());
+        self::assertSame(['Hello, Ada!'], Ledger::$lines);
+        self::assertStringContainsString('the dashboard is down', implode("\n", array_column($this->log->records, 1)));
     }
 
     public function testAMisconfiguredStoreSaysWhatToDo(): void

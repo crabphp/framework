@@ -68,7 +68,7 @@ final class Queue implements QueueContract
      */
     private static function check(string $job, array $data): void
     {
-        [$names, $required] = self::$signatures[$job] ??= self::signature($job);
+        [$names, $required, $types] = self::$signatures[$job] ??= self::signature($job);
         foreach ($data as $name => $value) {
             if (is_int($name)) {
                 throw new \LogicException("The data of {$job} was given by position. Give each value by the name of the parameter it is for, as in push({$job}::class, " . ($names[0] ?? 'name') . ': ...), so that it still reaches the right one after the job changes.');
@@ -78,6 +78,9 @@ final class Queue implements QueueContract
                 throw new \LogicException("{$job} was pushed with \"{$name}\", which its handle() has no parameter for; it {$takes}.");
             }
             self::assertPlain($job, $name, $value);
+            if ($types[$name] !== null && !self::fits($value, $types[$name])) {
+                throw new \LogicException("{$job} was pushed with " . get_debug_type($value) . " as \"{$name}\", which its handle() takes as " . implode('|', $types[$name]) . '.');
+            }
         }
         $missing = array_diff($required, array_keys($data));
         if ($missing !== []) {
@@ -86,7 +89,7 @@ final class Queue implements QueueContract
     }
 
     /**
-     * @return array{list<string>, list<string>}
+     * @return array{list<string>, list<string>, array<string, list<string>|null>} The parameters' names, the required ones, and the types each takes, null for any.
      */
     private static function signature(string $job): array
     {
@@ -98,6 +101,7 @@ final class Queue implements QueueContract
         }
         $names = [];
         $required = [];
+        $types = [];
         foreach ((new \ReflectionMethod($job, 'handle'))->getParameters() as $parameter) {
             if ($parameter->isVariadic()) {
                 throw new \LogicException("{$job}::handle() takes a variable number of arguments (...\${$parameter->getName()}). Name each value a job takes, so that what is pushed can be checked.");
@@ -106,8 +110,67 @@ final class Queue implements QueueContract
             if (!$parameter->isOptional()) {
                 $required[] = $parameter->getName();
             }
+            $types[$parameter->getName()] = self::types($job, $parameter);
         }
-        return [$names, $required];
+        return [$names, $required, $types];
+    }
+
+    /**
+     * The plain types a parameter takes, or null when it takes anything.
+     * A job's data comes back from JSON, so a parameter typed as a class
+     * could never be given its value.
+     *
+     * @return list<string>|null
+     */
+    private static function types(string $job, \ReflectionParameter $parameter): ?array
+    {
+        $type = $parameter->getType();
+        if ($type === null) {
+            return null;
+        }
+        $types = [];
+        foreach ($type instanceof \ReflectionNamedType ? [$type] : ($type instanceof \ReflectionUnionType ? $type->getTypes() : []) as $one) {
+            $name = $one instanceof \ReflectionNamedType ? $one->getName() : '';
+            if ($name === 'mixed') {
+                return null;
+            }
+            if (!in_array($name, ['int', 'float', 'string', 'bool', 'array', 'null', 'true', 'false', 'iterable'], true)) {
+                throw new \LogicException("{$job}::handle() takes \${$parameter->getName()} as {$type}. A job's data is stored as JSON, so a parameter is int, float, string, bool or array: take the id of a record and not the record.");
+            }
+            $types[] = $name;
+        }
+        if ($type->allowsNull() && !in_array('null', $types, true)) {
+            $types[] = 'null';
+        }
+        return $types;
+    }
+
+    /**
+     * Whether a value is one of the types, as PHP itself will judge when
+     * the worker calls handle(): a whole number is taken for a float, and
+     * nothing else is converted.
+     *
+     * @param list<string> $types
+     */
+    private static function fits(mixed $value, array $types): bool
+    {
+        foreach ($types as $type) {
+            $fits = match ($type) {
+                'int' => is_int($value),
+                'float' => is_int($value) || is_float($value),
+                'string' => is_string($value),
+                'bool' => is_bool($value),
+                'array', 'iterable' => is_array($value),
+                'null' => $value === null,
+                'true' => $value === true,
+                'false' => $value === false,
+                default => false,
+            };
+            if ($fits) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /**

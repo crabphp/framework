@@ -190,7 +190,7 @@ final readonly class ConsumeEvents implements Command
 }
 ```
 
-Each worker is started and stopped as an HTTP worker is, with every `WorkerProvider` around it and every failure logged. The cancellation fires when the process is told to stop; finish what is in hand and return. The worker only hears it while your code waits through the engine, as `Async::sleep()` does, so a loop that never waits never stops.
+Each worker is started and stopped as an HTTP worker is, with every `WorkerProvider` around it and every failure logged. To run several groups under one parent process, as `queue:work` does for its supervisors, give `runAll()` a list of `Crab\Contracts\Workers`, each a group name, its work and its number of workers. The cancellation fires when the process is told to stop; finish what is in hand and return. The worker only hears it while your code waits through the engine, as `Async::sleep()` does, so a loop that never waits never stops.
 
 ## Rules for a service
 

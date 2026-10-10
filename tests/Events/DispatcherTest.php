@@ -174,4 +174,24 @@ final class DispatcherTest extends TestCase
         self::assertSame($dispatcher, $container->get(EventDispatcherInterface::class));
         self::assertSame($dispatcher, $container->get(Dispatcher::class));
     }
+
+    public function testListenersRunInTheOrderAddedWhateverTheyListenFor(): void
+    {
+        $dispatcher = new Dispatcher();
+        $order = [];
+        // For the interface, then the class, then the interface again.
+        $dispatcher->listen(Audited::class, static function () use (&$order): void {
+            $order[] = 'first, for the interface';
+        });
+        $dispatcher->listen(UserRegistered::class, static function () use (&$order): void {
+            $order[] = 'second, for the class';
+        });
+        $dispatcher->listen(Audited::class, static function () use (&$order): void {
+            $order[] = 'third, for the interface';
+        });
+
+        $dispatcher->dispatch(new UserRegistered(7));
+
+        self::assertSame(['first, for the interface', 'second, for the class', 'third, for the interface'], $order);
+    }
 }

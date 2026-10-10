@@ -24,42 +24,42 @@ final readonly class FileStore implements Store
 
     public function get(string $key, int $now): ?string
     {
-        $file = $this->file($key);
-        $contents = @file_get_contents($file);
-        if ($contents === false) {
+        $handle = @fopen($this->file($key), 'r');
+        if ($handle === false) {
+            return null;
+        }
+        try {
+            // Shared with other readers; a writer has it alone, so half an entry is never read.
+            flock($handle, LOCK_SH);
+            $contents = (string) stream_get_contents($handle);
+        } finally {
+            flock($handle, LOCK_UN);
+            fclose($handle);
+        }
+        if ($contents === '') {
             return null;
         }
         [$expiresAt, $value] = self::parse($contents);
-        if ($expiresAt !== null && $expiresAt <= $now) {
-            @unlink($file);
-            return null;
-        }
-        return $value;
+        // An expired entry is left where it is: deleting it here could delete the one
+        // another worker has just written in its place. The next write takes its place.
+        return $expiresAt !== null && $expiresAt <= $now ? null : $value;
     }
 
     public function set(string $key, string $value, ?int $expiresAt): void
     {
-        $file = $this->file($key);
-        $this->prepare($file);
-        // Written beside it and moved into place, so that a reader sees the old entry or the new one, never half of one.
-        $temporary = $file . '.' . bin2hex(random_bytes(4));
-        if (@file_put_contents($temporary, ($expiresAt ?? 0) . "\n" . $value) === false || !@rename($temporary, $file)) {
-            @unlink($temporary);
-            throw new \RuntimeException("The cache could not write to {$this->directory}. Check that the directory can be written to.");
+        $handle = $this->lock($this->file($key));
+        try {
+            self::write($handle, $value, $expiresAt);
+        } finally {
+            flock($handle, LOCK_UN);
+            fclose($handle);
         }
     }
 
     public function add(string $key, string $value, ?int $expiresAt, int $now): bool
     {
-        $file = $this->file($key);
-        $this->prepare($file);
-        $handle = @fopen($file, 'c+');
-        if ($handle === false) {
-            throw new \RuntimeException("The cache could not write to {$this->directory}. Check that the directory can be written to.");
-        }
+        $handle = $this->lock($this->file($key));
         try {
-            // Held while reading and writing, so that of several callers one sees it empty.
-            flock($handle, LOCK_EX);
             $contents = (string) stream_get_contents($handle);
             if ($contents !== '') {
                 [$existing] = self::parse($contents);
@@ -67,9 +67,7 @@ final readonly class FileStore implements Store
                     return false;
                 }
             }
-            ftruncate($handle, 0);
-            rewind($handle);
-            fwrite($handle, ($expiresAt ?? 0) . "\n" . $value);
+            self::write($handle, $value, $expiresAt);
             return true;
         } finally {
             flock($handle, LOCK_UN);
@@ -97,6 +95,44 @@ final readonly class FileStore implements Store
     {
         $hash = sha1($key);
         return $this->directory . '/' . substr($hash, 0, 2) . '/' . $hash;
+    }
+
+    /**
+     * Opens an entry's file for writing and holds it alone. Whoever reads
+     * or writes the entry waits for the same lock, so of several callers
+     * of add() one finds it empty.
+     *
+     * @return resource
+     */
+    private function lock(string $file): mixed
+    {
+        $this->prepare($file);
+        for ($try = 0; $try < 5; ++$try) {
+            $handle = @fopen($file, 'c+');
+            if ($handle === false) {
+                break;
+            }
+            flock($handle, LOCK_EX);
+            clearstatcache(true, $file);
+            // Deleted or cleared while this waited: the lock is on a file no one else will open. Start again.
+            if ((fstat($handle)['ino'] ?? null) === (@stat($file)['ino'] ?? false)) {
+                return $handle;
+            }
+            flock($handle, LOCK_UN);
+            fclose($handle);
+        }
+        throw new \RuntimeException("The cache could not write to {$this->directory}. Check that the directory can be written to.");
+    }
+
+    /**
+     * @param resource $handle The entry's file, locked.
+     */
+    private static function write(mixed $handle, string $value, ?int $expiresAt): void
+    {
+        ftruncate($handle, 0);
+        rewind($handle);
+        fwrite($handle, ($expiresAt ?? 0) . "\n" . $value);
+        fflush($handle);
     }
 
     private function prepare(string $file): void

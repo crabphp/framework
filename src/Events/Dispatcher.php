@@ -19,9 +19,9 @@ use Psr\EventDispatcher\StoppableEventInterface;
 final class Dispatcher implements DispatcherContract, ListenerProviderInterface
 {
     /**
-     * Listeners by the event class they were added for, in the order added.
+     * Every listener with the event class it was added for, in the order added.
      *
-     * @var array<class-string, list<\Closure|string>>
+     * @var list<array{class-string, \Closure|string}>
      */
     private array $listeners = [];
     /**
@@ -46,7 +46,7 @@ final class Dispatcher implements DispatcherContract, ListenerProviderInterface
         if (is_string($listener) && !method_exists($listener, 'handle')) {
             throw new \LogicException("The listener {$listener} for {$event} is not a class with a handle() method. Give a closure, or a class whose handle() takes the event.");
         }
-        $this->listeners[$event][] = $listener;
+        $this->listeners[] = [$event, $listener];
     }
 
     public function dispatch(object $event): object
@@ -66,11 +66,8 @@ final class Dispatcher implements DispatcherContract, ListenerProviderInterface
      */
     public function getListenersForEvent(object $event): iterable
     {
-        foreach ($this->listeners as $class => $listeners) {
-            if (!$event instanceof $class) {
-                continue;
-            }
-            foreach ($listeners as $listener) {
+        foreach ($this->listeners as [$class, $listener]) {
+            if ($event instanceof $class) {
                 yield $listener instanceof \Closure ? $listener : ($this->made[$listener] ??= $this->make($listener));
             }
         }

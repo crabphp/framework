@@ -13,6 +13,7 @@ use Crab\Contracts\Schedule\Schedule as ScheduleContract;
 use Crab\Schedule\Commands\ListTasks;
 use Crab\Schedule\Commands\Work;
 use Psr\Clock\ClockInterface;
+use Psr\EventDispatcher\EventDispatcherInterface;
 use Psr\Log\LoggerInterface;
 
 /**
@@ -45,6 +46,7 @@ final class ScheduleProvider implements Provider
                 $container->has(ClockInterface::class) ? $container->get(ClockInterface::class) : null,
                 $container->has(Cache::class) ? $container->get(Cache::class) : null,
                 is_string($timezone) && $timezone !== '' ? new \DateTimeZone($timezone) : null,
+                $container->has(EventDispatcherInterface::class) ? $container->get(EventDispatcherInterface::class) : null,
             );
         });
         if ($container->has(Console::class)) {

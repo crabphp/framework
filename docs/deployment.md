@@ -148,6 +148,8 @@ An application that uses the queue or the scheduler has more to keep running:
 | Queue workers | `php cua queue:work --workers=4` | One command per machine, or one per queue |
 | The scheduler | `php cua schedule:work` | Exactly one, or mark tasks `onOneServer()` |
 
+To see all of it on one page, requests, the queue, scheduled tasks, workers and exceptions, install the `crabphp/watch` package, a dashboard served by the application itself.
+
 `queue:work` and `schedule:work` run in the foreground: keep them alive with systemd, Supervisor or a container each. Unlike the HTTP server they have no `reload`; restart them after a deploy. Each finishes what it has in hand before it stops. See [Queues](queues.md#in-production) and [Task scheduling](scheduling.md#running-the-scheduler).
 
 ## A deploy, start to finish

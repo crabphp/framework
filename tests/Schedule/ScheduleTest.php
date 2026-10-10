@@ -15,6 +15,8 @@ use Crab\Contracts\Console\Input;
 use Crab\Contracts\Console\Output as OutputContract;
 use Crab\Contracts\Queue\Store;
 use Crab\Contracts\Schedule\Schedule as ScheduleContract;
+use Crab\Contracts\Schedule\TaskRan;
+use Crab\Events\Dispatcher;
 use Crab\Engine\Async\Async;
 use Crab\Engine\Async\Cancellation;
 use Crab\Engine\Process\Worker;
@@ -411,6 +413,27 @@ final class ScheduleTest extends TestCase
         $clock->advance('+2 seconds');
         self::assertSame([true, false], [$second->run($task, $clock->now()), $first->run($task, $clock->now())]);
         self::assertSame(4, Beat::$count);
+    }
+
+    public function testEachRunOfATaskIsToldToTheApplicationsListeners(): void
+    {
+        $schedule = new Schedule();
+        $schedule->call(Beat::class)->name('beat');
+        $schedule->call(static fn () => throw new \RuntimeException('disk full'))->name('backup');
+        $events = new Dispatcher();
+        $heard = [];
+        $events->listen(TaskRan::class, static function (TaskRan $event) use (&$heard): void {
+            $heard[] = [$event->task, $event->error?->getMessage(), $event->seconds >= 0.0];
+        });
+        $scheduler = new Scheduler($schedule, new Container(), $this->log, events: $events);
+
+        $now = new \DateTimeImmutable('2026-03-10 07:00:00');
+        $results = array_map(static fn ($task): bool => $scheduler->run($task, $now), $schedule->tasks());
+
+        self::assertSame([true, false], $results);
+        self::assertSame([['beat', null, true], ['backup', 'disk full', true]], $heard);
+        // The failure is still logged, once.
+        self::assertCount(1, $this->log->records);
     }
 
     public function testTheProviderBindsTheScheduleAndItsCommandsAndJobs(): void

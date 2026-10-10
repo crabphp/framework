@@ -74,4 +74,29 @@ interface Task
      * it stops.
      */
     public function onOneServer(): static;
+
+    /**
+     * The name it is listed and logged under.
+     */
+    public function named(): string;
+
+    /**
+     * When it runs, as it is listed: its cron expression, or its
+     * interval, as in "every 5 s".
+     */
+    public function expression(): string;
+
+    /**
+     * The seconds between two runs of a task set with everySeconds(), and
+     * null for a task that runs by the minute.
+     */
+    public function interval(): ?float;
+
+    public function runsOnOneServer(): bool;
+
+    /**
+     * The next time it is due after the given one. For a task that runs
+     * by an interval, that is one interval later.
+     */
+    public function next(\DateTimeImmutable $after): \DateTimeImmutable;
 }

@@ -44,9 +44,12 @@ interface Store
     public function fail(Message $message, string $error, int $now): void;
 
     /**
-     * @return list<Message> The jobs that were given up on, oldest first.
+     * The jobs that were given up on, oldest first; only the latest so
+     * many when a number is given, for a list that may have grown long.
+     *
+     * @return list<Message>
      */
-    public function failed(): array;
+    public function failed(?int $latest = null): array;
 
     /**
      * Makes a failed job wait to be run again, as if new; every failed job

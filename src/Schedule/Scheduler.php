@@ -5,12 +5,14 @@ declare(strict_types=1);
 namespace Crab\Schedule;
 
 use Crab\Contracts\Cache\Cache;
+use Crab\Contracts\Schedule\TaskRan;
 use Crab\Engine\Async\Async;
 use Crab\Engine\Async\Cancellation;
 use Crab\Engine\Async\CancelledException;
 use Crab\Engine\Process\Worker;
 use Psr\Clock\ClockInterface;
 use Psr\Container\ContainerInterface;
+use Psr\EventDispatcher\EventDispatcherInterface;
 use Psr\Log\LoggerInterface;
 
 /**
@@ -46,6 +48,7 @@ final class Scheduler
      * @param ClockInterface|null $clock The real time when left out.
      * @param Cache|null $cache Through which servers agree who runs a task marked onOneServer().
      * @param \DateTimeZone|null $timezone The zone the tasks' times are in; the clock's when left out.
+     * @param EventDispatcherInterface|null $events Told of each run of a task, with a TaskRan.
      */
     public function __construct(
         private readonly Schedule $schedule,
@@ -54,6 +57,7 @@ final class Scheduler
         private readonly ?ClockInterface $clock = null,
         private readonly ?Cache $cache = null,
         private readonly ?\DateTimeZone $timezone = null,
+        private readonly ?EventDispatcherInterface $events = null,
     ) {
         $this->owner = bin2hex(random_bytes(8));
     }
@@ -101,7 +105,14 @@ final class Scheduler
             if ($task->runsOnOneServer() && !$this->claim($task, $minute)) {
                 return false;
             }
-            $task->run($this->container);
+            $started = hrtime(true);
+            try {
+                $task->run($this->container);
+            } catch (\Throwable $error) {
+                $this->tell(new TaskRan($name, (hrtime(true) - $started) / 1e9, $error));
+                throw $error;
+            }
+            $this->tell(new TaskRan($name, (hrtime(true) - $started) / 1e9));
             return true;
         } catch (\Throwable $error) {
             $this->logger?->error('Scheduled task {task} failed: {message}', ['task' => $name, 'message' => $error->getMessage(), 'exception' => $error]);
@@ -193,6 +204,19 @@ final class Scheduler
             if ($task->runsOnOneServer() && $this->cache === null) {
                 throw new \LogicException("The scheduled task {$task->named()} is marked onOneServer(), which servers agree on through the cache, and there is none: register the cache provider, CacheProvider, with a store they share.");
             }
+        }
+    }
+
+    /**
+     * Tells the application's listeners of a run. What a listener throws
+     * is logged and goes no further.
+     */
+    private function tell(TaskRan $event): void
+    {
+        try {
+            $this->events?->dispatch($event);
+        } catch (\Throwable $error) {
+            $this->logger?->error('A listener for {event} failed: {message}', ['event' => TaskRan::class, 'message' => $error->getMessage(), 'exception' => $error]);
         }
     }
 

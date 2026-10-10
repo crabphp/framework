@@ -78,7 +78,8 @@ A contract exists for everything a package touches, including where no PSR exist
 | `Queue\Queue`, `Queue\Store` | none | today |
 | `Queue\Message` | none; a value object | today |
 | `Schedule\Schedule`, `Schedule\Task` | none | today |
-| `Runner` | none; runs worker processes that serve no requests | today |
+| `Queue\JobRan`, `Schedule\TaskRan` | none; events dispatched through PSR-14 after each try of a job and each run of a task | today |
+| `Runner`, `Workers` | none; runs worker processes that serve no requests, as one group or several | today |
 
 Contracts are the stable surface. Once there is a release, a contract changes only in a major version; component classes may change freely behind it.
 
@@ -241,7 +242,7 @@ Small and explicit; there are six, and no others are planned.
 | Around requests | Middleware. Around every request: `withMiddleware()` in `app.php`, or the `MiddlewareStack` contract from a provider. Around some: `middleware:` on a route or a group. | today |
 | Commands | `Console` contract, `add()` | today |
 | Reacting to events | The `Events\Dispatcher` contract, PSR-14: `listen()` in a provider's `register()` | today, opt-in with `EventsProvider` |
-| Worker processes | The `Runner` contract: `run($group, $work, $workers)` from a command | today |
+| Worker processes | The `Runner` contract: `run($group, $work, $workers)` from a command, or `runAll()` for several groups under one parent | today |
 
 No auto-discovery, no `boot()` phase, no global container accessor. `Route::get()` and `Command::add()` are static names for `$app->router` and `$app->console`, for declaring routes and commands before workers start; they are the only ones, and there is none for anything a request or a worker owns.
 
