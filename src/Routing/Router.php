@@ -24,9 +24,9 @@ use Psr\Http\Server\RequestHandlerInterface;
  * route's handler as request attributes. A path no route matches is answered
  * with 404, or with 405 and the methods that would match.
  *
- * A closure, the name of a class with __invoke(), or a class and the name
+ * A closure, the name of a class with handle(), or a class and the name
  * of its method is called with what its signature asks for, and its
- * return value becomes the response; see TypedHandler. A PSR-15 handler,
+ * return value becomes the response; see ActionHandler. A PSR-15 handler,
  * or the name of a container entry that is one, receives the request and
  * returns the response itself.
  */
@@ -84,7 +84,7 @@ final class Router implements RouterContract
      * A parameter matches one path segment unless its expression says
      * otherwise.
      */
-    public function add(string $method, string $pattern, RequestHandlerInterface|\Closure|string|array $handler, array $middleware = []): static
+    public function add(string $method, string $pattern, RequestHandlerInterface|\Closure|string|array $action, array $middleware = []): static
     {
         $own = $this->middleware($middleware, "Route {$method} {$pattern}");
         $middleware = [];
@@ -109,17 +109,18 @@ final class Router implements RouterContract
         foreach ($middleware as $layer) {
             $described[] = is_string($layer) ? $layer : $layer::class;
         }
-        if ($handler instanceof \Closure || is_array($handler) || (is_string($handler) && method_exists($handler, '__invoke'))) {
-            $handler = new TypedHandler($method, $pattern, $names, $handler, $this->validator, $this->container);
+        if ($action instanceof \Closure || is_array($action) || self::isActionClass($action)) {
+            $handler = new ActionHandler($method, $pattern, $names, $action, $this->validator, $this->container);
             $this->routes[$key] = new RouteInfo($method, $pattern, $handler->name, $described);
-        } elseif (is_string($handler)) {
+        } elseif (is_string($action)) {
             if ($this->container === null) {
                 throw new \LogicException("Route {$method} {$pattern} names its handler, which needs a router with a container.");
             }
-            $this->routes[$key] = new RouteInfo($method, $pattern, $handler, $described);
-            $handler = new ContainerHandler($this->container, $handler);
+            $this->routes[$key] = new RouteInfo($method, $pattern, $action, $described);
+            $handler = new ContainerHandler($this->container, $action);
         } else {
-            $this->routes[$key] = new RouteInfo($method, $pattern, $handler::class, $described);
+            $this->routes[$key] = new RouteInfo($method, $pattern, $action::class, $described);
+            $handler = $action;
         }
         if ($middleware !== []) {
             $stack = new MiddlewareStack($handler, $this->container);
@@ -215,29 +216,29 @@ final class Router implements RouterContract
         }
     }
 
-    public function get(string $pattern, RequestHandlerInterface|\Closure|string|array $handler, array $middleware = []): static
+    public function get(string $pattern, RequestHandlerInterface|\Closure|string|array $action, array $middleware = []): static
     {
-        return $this->add('GET', $pattern, $handler, $middleware);
+        return $this->add('GET', $pattern, $action, $middleware);
     }
 
-    public function post(string $pattern, RequestHandlerInterface|\Closure|string|array $handler, array $middleware = []): static
+    public function post(string $pattern, RequestHandlerInterface|\Closure|string|array $action, array $middleware = []): static
     {
-        return $this->add('POST', $pattern, $handler, $middleware);
+        return $this->add('POST', $pattern, $action, $middleware);
     }
 
-    public function put(string $pattern, RequestHandlerInterface|\Closure|string|array $handler, array $middleware = []): static
+    public function put(string $pattern, RequestHandlerInterface|\Closure|string|array $action, array $middleware = []): static
     {
-        return $this->add('PUT', $pattern, $handler, $middleware);
+        return $this->add('PUT', $pattern, $action, $middleware);
     }
 
-    public function patch(string $pattern, RequestHandlerInterface|\Closure|string|array $handler, array $middleware = []): static
+    public function patch(string $pattern, RequestHandlerInterface|\Closure|string|array $action, array $middleware = []): static
     {
-        return $this->add('PATCH', $pattern, $handler, $middleware);
+        return $this->add('PATCH', $pattern, $action, $middleware);
     }
 
-    public function delete(string $pattern, RequestHandlerInterface|\Closure|string|array $handler, array $middleware = []): static
+    public function delete(string $pattern, RequestHandlerInterface|\Closure|string|array $action, array $middleware = []): static
     {
-        return $this->add('DELETE', $pattern, $handler, $middleware);
+        return $this->add('DELETE', $pattern, $action, $middleware);
     }
 
     public function routes(): array
@@ -265,6 +266,18 @@ final class Router implements RouterContract
             $request = $request->withAttribute($name, $value);
         }
         return $handler->handle($request);
+    }
+
+    /**
+     * Whether a route was given the name of an action class: one with a
+     * handle() method that is not a PSR-15 handler, whose handle() takes
+     * the request and nothing else.
+     */
+    private static function isActionClass(mixed $action): bool
+    {
+        return is_string($action)
+            && method_exists($action, 'handle')
+            && !is_a($action, RequestHandlerInterface::class, true);
     }
 
     /**

@@ -274,7 +274,7 @@ final class AuthTest extends TestCase
         self::assertSame('{"alone":7}', (string) $app->handle(new Request('GET', '/alone', $ada))->getBody(), 'Middleware on one route.');
         self::assertSame(401, $app->handle(new Request('GET', '/alone'))->getStatusCode());
         self::assertSame('[7,true]', (string) $app->handle(new Request('GET', '/whoami', $ada))->getBody());
-        self::assertSame('["deploy-bot",true]', (string) $app->handle(new Request('GET', '/whoami', $robot))->getBody(), 'A handler may take any user by the contract.');
+        self::assertSame('["deploy-bot",true]', (string) $app->handle(new Request('GET', '/whoami', $robot))->getBody(), 'An action may take any user by the contract.');
         $note = new Request('POST', '/notes/3', $ada + ['Content-Type' => 'application/json'], '{"text":"hi"}');
         self::assertSame('[3,7,"hi"]', (string) $app->handle($note)->getBody());
 
@@ -282,7 +282,7 @@ final class AuthTest extends TestCase
         self::assertSame([401, 'Bearer', '{"error":{"status":401,"message":"Authentication is required."}}'],
             [$refused->getStatusCode(), $refused->getHeaderLine('WWW-Authenticate'), (string) $refused->getBody()]);
         self::assertSame(401, $app->handle(new Request('GET', '/me', ['Authorization' => 'Bearer wrong']))->getStatusCode());
-        self::assertSame(401, $app->handle(new Request('GET', '/members-only', $robot))->getStatusCode(), 'A logged-in user of another class is not the user this handler takes.');
+        self::assertSame(401, $app->handle(new Request('GET', '/members-only', $robot))->getStatusCode(), 'A logged-in user of another class is not the user this action takes.');
         self::assertSame(401, $app->handle(new Request('GET', '/unprotected', $ada))->getStatusCode(), 'Without the middleware nobody is logged in, whatever the request carries.');
         self::assertSame('{"name":null}', (string) $app->handle(new Request('GET', '/maybe', $ada))->getBody(), 'A nullable user is optional.');
 

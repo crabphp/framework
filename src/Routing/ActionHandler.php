@@ -15,9 +15,9 @@ use Psr\Http\Message\ServerRequestInterface;
 use Psr\Http\Server\RequestHandlerInterface;
 
 /**
- * A closure, an invokable class or a method of a class as a route's
- * handler, called with what its signature asks for. Each parameter is one
- * of these:
+ * The PSR-15 handler of a route whose action is a closure, an invokable
+ * class or a method of a class. It calls the action with what its
+ * signature asks for. Each parameter is one of these:
  *
  *     the request          typed as a PSR-7 server request, or not typed at all
  *     the user             typed as a class that implements Identity: whoever
@@ -29,19 +29,19 @@ use Psr\Http\Server\RequestHandlerInterface;
  *
  * The request's data is the JSON body, or the query string for GET, HEAD
  * and DELETE. A request whose data does not fit is answered with 422 and
- * the problems by field, and one with no user where the handler takes one
- * with 401; in neither case is the handler called.
+ * the problems by field, and one with no user where the action takes one
+ * with 401; in neither case is the action called.
  *
- * What the handler returns is the response: a PSR-7 response as it is, a
+ * What the action returns is the response: a PSR-7 response as it is, a
  * string as plain text, nothing as 204, anything else as JSON.
  *
- * The signature is read once, when the route is added, so a handler that
+ * The signature is read once, when the route is added, so an action that
  * asks for something else stops the application from starting.
  */
-final class TypedHandler implements RequestHandlerInterface
+final class ActionHandler implements RequestHandlerInterface
 {
     /**
-     * A name for the handler, for the route list: "Closure", its class, or "Class::method".
+     * A name for the action, for the route list: "Closure", its class, or "Class::method".
      */
     public readonly string $name;
     private readonly \ReflectionFunctionAbstract $signature;
@@ -78,7 +78,7 @@ final class TypedHandler implements RequestHandlerInterface
     private ?array $input = null;
     private readonly bool $fromQuery;
     /**
-     * The handler class and its method, when it is not a closure.
+     * The action's class and its method, when it is not a closure.
      *
      * @var array{class-string, string}|null
      */
@@ -87,27 +87,27 @@ final class TypedHandler implements RequestHandlerInterface
 
     /**
      * @param list<string> $names The pattern's parameter names.
-     * @param \Closure|class-string|array{class-string, string} $handler A closure, a class with __invoke(), or a class and the name of its method. The container makes the class.
+     * @param \Closure|class-string|array{class-string, string} $action A closure, a class with handle(), or a class and the name of its method. The container makes the class.
      */
     public function __construct(
         string $method,
         string $pattern,
         array $names,
-        \Closure|string|array $handler,
+        \Closure|string|array $action,
         private readonly Validator $validator,
         private readonly ?ContainerInterface $container = null,
     ) {
         $route = "{$method} {$pattern}";
-        if ($handler instanceof \Closure) {
-            $this->closure = $handler;
+        if ($action instanceof \Closure) {
+            $this->closure = $action;
             $this->method = null;
-            $this->signature = new \ReflectionFunction($handler);
+            $this->signature = new \ReflectionFunction($action);
             $name = 'Closure';
         } else {
             $this->closure = null;
-            $this->method = self::method($handler, $route);
+            $this->method = self::method($action, $route);
             $this->signature = new \ReflectionMethod(...$this->method);
-            $name = $this->method[1] === '__invoke' ? $this->method[0] : implode('::', $this->method);
+            $name = $this->method[1] === 'handle' ? $this->method[0] : implode('::', $this->method);
         }
         $this->fromQuery = in_array($method, ['GET', 'HEAD', 'DELETE'], true);
 
@@ -115,7 +115,7 @@ final class TypedHandler implements RequestHandlerInterface
             $this->read($parameter, $names, $route);
         }
         if ($this->input !== null && $this->fields !== []) {
-            throw new \LogicException("The handler of {$route} takes the input {$this->input[1]} and also the field \${$this->fields[0]}; put every field in the class, or take them all as parameters.");
+            throw new \LogicException("The action of {$route} takes the input {$this->input[1]} and also the field \${$this->fields[0]}; put every field in the class, or take them all as parameters.");
         }
         try {
             // Read now, so that a field or class that cannot be validated is reported at startup.
@@ -125,7 +125,7 @@ final class TypedHandler implements RequestHandlerInterface
                 $validator->inspectParameters($this->signature, $this->fields);
             }
         } catch (\LogicException $error) {
-            throw new \LogicException("The handler of {$route} cannot take the request's data: {$error->getMessage()} If it is a service, it belongs in the constructor of a handler class.", previous: $error);
+            throw new \LogicException("The action of {$route} cannot take the request's data: {$error->getMessage()} If it is a service, it belongs in the constructor of an action class.", previous: $error);
         }
         $this->name = $name;
     }
@@ -169,7 +169,7 @@ final class TypedHandler implements RequestHandlerInterface
         if ($errors !== []) {
             return ErrorResponse::make($request, 422, 'The request is invalid.', fields: $errors);
         }
-        // By name, so that a field the request leaves out takes the default the handler gives it.
+        // By name, so that a field the request leaves out takes the default the action gives it.
         $result = ($this->closure ??= $this->callable())(...$arguments);
         if ($result instanceof ResponseInterface) {
             return $result;
@@ -184,7 +184,7 @@ final class TypedHandler implements RequestHandlerInterface
     }
 
     /**
-     * Sorts one parameter of the handler into what it receives.
+     * Sorts one parameter of the action into what it receives.
      *
      * @param list<string> $names The pattern's parameter names.
      */
@@ -193,13 +193,13 @@ final class TypedHandler implements RequestHandlerInterface
         $name = $parameter->getName();
         $type = $parameter->getType();
         if ($parameter->isVariadic() || ($type !== null && !$type instanceof \ReflectionNamedType)) {
-            throw new \LogicException("The handler of {$route} takes \${$name}, which must have one plain type.");
+            throw new \LogicException("The action of {$route} takes \${$name}, which must have one plain type.");
         }
         $typeName = $type?->getName();
         if (in_array($name, $names, true)) {
             $typeName ??= 'string';
             if (!in_array($typeName, ['string', 'int', 'float', 'bool'], true)) {
-                throw new \LogicException("The handler of {$route} takes the route parameter \${$name} as {$typeName}; it can be string, int, float or bool.");
+                throw new \LogicException("The action of {$route} takes the route parameter \${$name} as {$typeName}; it can be string, int, float or bool.");
             }
             $this->parameters[$name] = $typeName;
         } elseif ($typeName === null || is_a($typeName, ServerRequestInterface::class, true)) {
@@ -210,11 +210,11 @@ final class TypedHandler implements RequestHandlerInterface
             $this->fields[] = $name;
         } elseif (class_exists($typeName)) {
             if ($this->input !== null) {
-                throw new \LogicException("The handler of {$route} takes two inputs, {$this->input[1]} and {$typeName}; put their fields in one class.");
+                throw new \LogicException("The action of {$route} takes two inputs, {$this->input[1]} and {$typeName}; put their fields in one class.");
             }
             $this->input = [$name, $typeName];
         } else {
-            throw new \LogicException("The handler of {$route} takes {$typeName} \${$name}, which is neither the request, the user, a parameter of the pattern, a field nor an input class. Services belong in the constructor of a handler class.");
+            throw new \LogicException("The action of {$route} takes {$typeName} \${$name}, which is neither the request, the user, a parameter of the pattern, a field nor an input class. Services belong in the constructor of an action class.");
         }
     }
 
@@ -230,32 +230,32 @@ final class TypedHandler implements RequestHandlerInterface
     }
 
     /**
-     * The handler's class and method, checked to be something that can be called.
+     * The action's class and method, checked to be something that can be called.
      *
-     * @param string|array<mixed> $handler
+     * @param string|array<mixed> $action
      * @return array{class-string, string}
      */
-    private static function method(string|array $handler, string $route): array
+    private static function method(string|array $action, string $route): array
     {
-        if (is_string($handler)) {
-            $handler = [$handler, '__invoke'];
+        if (is_string($action)) {
+            $action = [$action, 'handle'];
         }
-        $wellFormed = array_is_list($handler) && count($handler) === 2 && is_string($handler[0]) && is_string($handler[1]);
+        $wellFormed = array_is_list($action) && count($action) === 2 && is_string($action[0]) && is_string($action[1]);
         if (!$wellFormed) {
-            throw new \LogicException("The handler of {$route} is an array, which must be a class and the name of its method: [UserController::class, 'show'].");
+            throw new \LogicException("The action of {$route} is an array, which must be a class and the name of its method: [Users::class, 'show'].");
         }
-        [$class, $method] = $handler;
+        [$class, $method] = $action;
         if (!class_exists($class)) {
-            throw new \LogicException("The handler of {$route} names the class {$class}, which does not exist.");
+            throw new \LogicException("The action of {$route} names the class {$class}, which does not exist.");
         }
         if (!method_exists($class, $method) || !(new \ReflectionMethod($class, $method))->isPublic()) {
-            throw new \LogicException("The handler of {$route} names {$class}::{$method}(), which is not a public method of that class.");
+            throw new \LogicException("The action of {$route} names {$class}::{$method}(), which is not a public method of that class.");
         }
         return [$class, $method];
     }
 
     /**
-     * The handler class's method as a closure, made in the worker on the
+     * The action class's method as a closure, made in the worker on the
      * first request so that its services are the worker's own.
      */
     private function callable(): \Closure
@@ -266,7 +266,7 @@ final class TypedHandler implements RequestHandlerInterface
     }
 
     /**
-     * A route parameter, which arrives as text, as the type the handler asks for.
+     * A route parameter, which arrives as text, as the type the action asks for.
      *
      * @param array<string, list<string>> $errors
      */

@@ -2,7 +2,7 @@
 
 The flow for adding a component to Crab. It turns the design in [ARCHITECTURE.md](ARCHITECTURE.md) and the rules in [AGENTS.md](AGENTS.md) into steps, so that every component is built the same way and the tenth is as easy as the first.
 
-The running example is a cache component. It is an illustration; Cache is not built yet.
+The running example is a cache component, cut down to what shows the flow. The real one is in `src/Cache/`, where the class in front and the stores behind it are separate.
 
 ## 1. Answer five questions first
 
@@ -140,13 +140,14 @@ Run `composer test`. `tests/LayerBoundaryTest.php` fails if the component refere
 
 ## 9. Measure if it is on the request path
 
-A component that runs on every request (middleware, anything the router or the request touches) is measured against the engine alone, with JIT on, in the manner of `benchmarks/request-path.php`. Report the cost per request with the change. A component used only by some handlers needs no measurement.
+A component that runs on every request (middleware, anything the router or the request touches) is measured against the engine alone, with JIT on, in the manner of `benchmarks/request-path.php`. Report the cost per request with the change. A component used only by some actions needs no measurement.
 
 ## 10. Document it
 
 In the same change:
 
-- **README.md:** a short section with the one-line registration, the configuration keys and their defaults, and one usage example.
+- **docs/:** a page for the component, or a section on the page it belongs to, written for someone building an application: what it is for, when to use it, how, with code. Run the `sync-docs` skill, which knows the pages' form and checks them against the code. Add a new page to `docs/documentation.md`.
+- **README.md:** a short section with the one-line registration, the configuration keys and their defaults, one usage example, and a link to the page.
 - **ARCHITECTURE.md:** the contract in the contracts table, and the build-order step marked done.
 - **AGENTS.md:** the component's name in the component list, and any new rule that was decided while building it.
 
@@ -161,7 +162,7 @@ In the same change:
 - [ ] Every entry point outside a request logs its failures.
 - [ ] `composer test` passes, including the boundary tests.
 - [ ] Request-path code is measured and the cost reported.
-- [ ] README, ARCHITECTURE and AGENTS are updated.
+- [ ] docs/, README, ARCHITECTURE and AGENTS are updated.
 
 ## Common mistakes
 

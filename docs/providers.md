@@ -1,0 +1,202 @@
+# Services and providers
+
+- [Introduction](#introduction)
+- [The container](#the-container)
+    - [Asking for a service](#asking-for-a-service)
+    - [Binding a service](#binding-a-service)
+    - [Binding an interface](#binding-an-interface)
+- [Writing a provider](#writing-a-provider)
+    - [Settings with defaults](#settings-with-defaults)
+    - [Reaching the application from a provider](#reaching-the-application-from-a-provider)
+- [Work in each worker](#work-in-each-worker)
+- [Worker processes of your own](#worker-processes-of-your-own)
+- [Rules for a service](#rules-for-a-service)
+
+## Introduction
+
+A service is an object your application shares: a mailer, a payment client, a repository. The container makes services and hands them to the classes that ask for them. A provider is where you tell the container how a service is made.
+
+You rarely call the container yourself. You declare what a class needs in its constructor, and the container supplies it.
+
+## The container
+
+### Asking for a service
+
+Type-hint it in a constructor. This works in actions, middleware, commands, jobs, listeners and other services, because the container makes them all:
+
+```php
+final readonly class SendInvoice
+{
+    public function __construct(private Database $db, private Mailer $mailer)
+    {
+    }
+}
+```
+
+A class with no binding is made from its constructor's types, so most classes need no registration at all.
+
+### Binding a service
+
+Bind when a class needs something the container cannot work out, such as a value from configuration:
+
+```php
+// app/Providers/AppProvider.php
+namespace App\Providers;
+
+use Crab\Contracts\Container\Container;
+use Crab\Contracts\Provider;
+
+final class AppProvider implements Provider
+{
+    public function register(Container $container): void
+    {
+        $container->singleton(SmtpMailer::class, static fn (): SmtpMailer => new SmtpMailer(
+            config('mail.host'),
+            config('mail.port'),
+        ));
+    }
+}
+```
+
+| Method | Gives | Use for |
+| --- | --- | --- |
+| `singleton()` | One object per worker, made on first use | Almost everything |
+| `bind()` | A new object on every request for it | An object that carries the state of one piece of work |
+| `instance()` | An object that already exists | A value made while the application is defined |
+
+The closure runs later, inside a worker, the first time the service is asked for. So `register()` only declares; it opens no connection and reads no file.
+
+### Binding an interface
+
+Depend on an interface, and say once which class stands behind it:
+
+```php
+$container->singleton(Mailer::class, SmtpMailer::class);
+```
+
+An action that asks for `Mailer` now receives the `SmtpMailer`, and a test can bind a fake under the same name.
+
+## Writing a provider
+
+A provider is a class with one method, `register()`. Add it to `app.php`:
+
+```php
+// app.php
+->withProviders([
+    DatabaseProvider::class,
+    AppProvider::class,
+])
+```
+
+Providers are registered in the order given. There is no `boot()` step: because bindings are closures that run on first use, by then every provider has registered, and order rarely matters. It matters only when a provider adds to something another made in `register()`, such as scheduled tasks or event listeners; put the provider that owns the list first.
+
+Start with the one `AppProvider`. Split it when it grows, by area: a `BillingProvider`, a `MailProvider`.
+
+### Settings with defaults
+
+A provider that ships in a package declares its settings and their defaults once. The application's own configuration wins, and `config('mailer.port')` then reads the same value everywhere:
+
+```php
+use Crab\Contracts\Config\Config;
+
+$container->get(Config::class)->defaults('mailer', [
+    'host' => '127.0.0.1',
+    'port' => 25,
+]);
+```
+
+### Reaching the application from a provider
+
+A provider does everything through contracts in the container, so a package never names a framework class:
+
+| To | Ask for | And call |
+| --- | --- | --- |
+| Add routes | `Crab\Contracts\Routing\Router` | `get()`, `post()`, `group()` |
+| Add commands | `Crab\Contracts\Console\Console` | `add()` |
+| Add middleware around every request | `Crab\Contracts\Http\MiddlewareStack` | `add()` |
+| Listen for events | `Crab\Contracts\Events\Dispatcher` | `listen()` |
+| Schedule tasks | `Crab\Contracts\Schedule\Schedule` | `call()`, `command()`, `job()` |
+| Add a folder of migrations | `Crab\Contracts\Database\Migrator` | `path()` |
+
+```php
+public function register(Container $container): void
+{
+    $container->get(Router::class)->get('/billing/status', ShowBillingStatus::class);
+    $container->get(Console::class)->add('billing:sync', SyncBilling::class);
+}
+```
+
+## Work in each worker
+
+A provider that must open something in every worker, such as a connection kept for the worker's life or a timer, implements `WorkerProvider` as well:
+
+```php
+use Crab\Contracts\WorkerProvider;
+use Crab\Engine\Process\Worker;
+
+final class MetricsProvider implements WorkerProvider
+{
+    public function register(Container $container): void
+    {
+        $container->singleton(Metrics::class);
+    }
+
+    public function start(Worker $worker, Container $container): void
+    {
+        $metrics = $container->get(Metrics::class);
+        $worker->loop->repeat(10.0, static fn () => $metrics->flush());       // every ten seconds
+    }
+
+    public function stop(Worker $worker, Container $container): void
+    {
+        $container->get(Metrics::class)->flush();
+    }
+}
+```
+
+`start()` runs in each worker after it is forked and before it takes requests; throwing there stops the server from starting. `stop()` runs after the worker has finished its requests, in reverse order of registration, and must not wait on anything. What a timer throws is logged and the worker keeps running.
+
+> [!WARNING]
+> Never open a connection in `register()` or in a constructor. It would be opened once in the parent process and then shared by every forked worker, which corrupts it. Open on first use, or in `start()`.
+
+## Worker processes of your own
+
+The queue and the scheduler run in processes apart from the ones serving HTTP. A package that needs the same, such as a consumer of another message broker, asks for `Crab\Contracts\Runner` in a command:
+
+```php
+use Crab\Contracts\Runner;
+use Crab\Engine\Async\Async;
+use Crab\Engine\Async\Cancellation;
+use Crab\Engine\Process\Worker;
+
+final readonly class ConsumeEvents implements Command
+{
+    public function __construct(private Runner $runner, private Broker $broker)
+    {
+    }
+
+    public function handle(Input $input, Output $output): int
+    {
+        $broker = $this->broker;
+        $this->runner->run('broker', static function (Worker $worker, Cancellation $cancellation) use ($broker): void {
+            while (!$cancellation->isCancelled()) {
+                $broker->handleNext();
+                Async::sleep($worker->loop, 0.1);       // lets the worker hear that it should stop
+            }
+        }, workers: 2);
+
+        return 0;
+    }
+}
+```
+
+Each worker is started and stopped as an HTTP worker is, with every `WorkerProvider` around it and every failure logged. The cancellation fires when the process is told to stop; finish what is in hand and return. The worker only hears it while your code waits through the engine, as `Async::sleep()` does, so a loop that never waits never stops.
+
+## Rules for a service
+
+- **No request state.** One object serves overlapping requests. Pass what belongs to a request as an argument. `final readonly class` enforces it.
+- **Open nothing in the constructor.** Connect on first use, so the object is safe to make anywhere.
+- **Take values, not `config()`.** Read configuration in the provider and pass it in, so the class works without the framework.
+- **Depend on contracts.** Type-hint `Crab\Contracts\...` and PSR interfaces, never a framework class, so that an implementation can be replaced.
+
+See [Request lifecycle](lifecycle.md) for why.

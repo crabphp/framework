@@ -11,7 +11,7 @@ use Psr\Http\Message\UploadedFileInterface;
 
 /**
  * Sends HTTP requests to other servers. While one waits for its answer
- * the worker serves other requests, so a handler may call another API
+ * the worker serves other requests, so an action may call another API
  * without holding everyone else up.
  *
  *     $user = $http->get('https://api.example.com/users/7')->json();
@@ -35,7 +35,7 @@ interface Client extends ClientInterface
      * @param array<string, mixed> $form Sent as the body, as a form; together with files, as that form's other fields.
      * @param array<string, File|UploadedFileInterface|list<File|UploadedFileInterface>> $files Sent as the body, as a form's file fields (multipart/form-data). An uploaded file received in a request may be passed on as it is.
      * @param string|StreamInterface|null $body Sent as the body as it is; say its Content-Type in the headers.
-     * @param Cancellation|null $cancellation Gives the request up when cancelled: a handler passes its request's cancellation() so that a caller who has gone is not worked for.
+     * @param Cancellation|null $cancellation Gives the request up when cancelled: an action passes its request's cancellation() so that a caller who has gone is not worked for.
      */
     public function request(
         string $method,

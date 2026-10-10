@@ -200,14 +200,14 @@ final class ConsoleTest extends TestCase
         $app = new App();
         self::assertSame($app->console, $app->container->get(ConsoleContract::class));
         self::assertSame($app->console, $app->container->get(Console::class));
-        self::assertTrue($app->console->has('serve') && $app->console->has('routes'));
-        self::assertSame(0, $this->exec($app->console, 'routes'));
-        $app->router->get('/', static fn() => 'home')->post('/users/{id}', Greet::class);
-        self::assertSame(0, $this->exec($app->console, 'routes'));
-        self::assertSame("No routes are registered.\nGET   /            Closure\nPOST  /users/{id}  " . Greet::class . "\n", $this->written($this->out));
+        self::assertTrue($app->console->has('serve') && $app->console->has('route:list'));
+        self::assertSame(0, $this->exec($app->console, 'route:list'));
+        $app->router->get('/', static fn() => 'home')->post('/users/{id}', \Crab\Http\Health::class);
+        self::assertSame(0, $this->exec($app->console, 'route:list'));
+        self::assertSame("No routes are registered.\nGET   /            Closure\nPOST  /users/{id}  " . \Crab\Http\Health::class . "\n", $this->written($this->out));
         $routes = $app->router->routes();
-        self::assertSame(['GET', '/', 'Closure', []], [$routes[0]->method, $routes[0]->pattern, $routes[0]->handler, $routes[0]->middleware]);
-        self::assertSame(['POST', '/users/{id}', Greet::class], [$routes[1]->method, $routes[1]->pattern, $routes[1]->handler]);
+        self::assertSame(['GET', '/', 'Closure', []], [$routes[0]->method, $routes[0]->pattern, $routes[0]->action, $routes[0]->middleware]);
+        self::assertSame(['POST', '/users/{id}', \Crab\Http\Health::class], [$routes[1]->method, $routes[1]->pattern, $routes[1]->action]);
 
         $app->console->add('hello', static function (Input $input, Output $output): int {
             $output->line('hello');

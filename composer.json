@@ -13,7 +13,9 @@
         "psr/container": "^2.0",
         "psr/log": "^3.0",
         "psr/clock": "^1.0",
-        "psr/http-client": "^1.0"
+        "psr/http-client": "^1.0",
+        "psr/event-dispatcher": "^1.0",
+        "psr/simple-cache": "^3.0"
     },
     "replace": {
         "crabphp/engine": "self.version"
@@ -28,7 +30,12 @@
     "scripts": {
         "test": "@php vendor/bin/phpunit",
         "test:linux": "tests/linux/run.sh",
-        "soak": "python3 benchmarks/soak.py"
+        "soak": "python3 benchmarks/soak.py",
+        "docs": [
+            "Composer\\Config::disableProcessTimeout",
+            "@php .claude/skills/sync-docs/scripts/serve.php"
+        ],
+        "docs:check": "@php .claude/skills/sync-docs/scripts/check.php"
     },
     "autoload": {
         "psr-4": {

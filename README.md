@@ -1,6 +1,8 @@
 # Crab Framework
 
-A minimal PHP 8.4 framework for JSON APIs, built on the Crab networking engine. It is written to be read and understood, by people and by AI agents alike: explicit types, no hidden state, one way to do each thing. It is at an early stage: the engine is implemented and measured, and the first framework components serve routed HTTP requests. Components follow the PHP-FIG standards: PSR-7 messages, PSR-17 factories, PSR-15 handlers and middleware, a PSR-11 container and a PSR-3 logger.
+A minimal PHP 8.4 framework for JSON APIs, built on the Crab networking engine. It is written to be read and understood, by people and by AI agents alike: explicit types, no hidden state, one way to do each thing. It is at an early stage and has no release yet: the engine is implemented and measured, and the components an API needs are built on it, from routing and validation to the database, a cache, a queue and a scheduler. Components follow the PHP-FIG standards: PSR-7 messages, PSR-17 factories, PSR-15 handlers and middleware, a PSR-11 container, a PSR-3 logger, a PSR-14 dispatcher, a PSR-16 cache, a PSR-18 client and a PSR-20 clock.
+
+The guide for writing an application is in [docs/](docs/documentation.md); run `composer docs` to read it in a browser.
 
 ## Hello, world
 
@@ -20,9 +22,9 @@ return $app;
 
 Save it as `app.php` and run `php bin/crab app.php serve --single`. `Route::get()` declares a route on the application just created; it is `$app->router->get()` under a shorter name. `{name}` matches one path segment and `{name:expression}` matches a regular expression.
 
-## Handlers
+## Actions
 
-A route's handler says in its signature what it takes, and the framework checks the request against it before the handler runs.
+A route's action says in its signature what it takes, and the framework checks the request against it before the action runs.
 
 ~~~php
 use Crab\Http\Response;
@@ -64,7 +66,7 @@ final readonly class OrderController
 }
 ~~~
 
-A handler is a closure, a class and the name of its method, or the name of a class with `__invoke()`. A class is made by the container, once per worker, and extends nothing.
+An action is a closure, a class and the name of its method, or the name of a class with `handle()`. A class is made by the container, once per worker, and extends nothing.
 
 ### Groups
 
@@ -79,7 +81,7 @@ Route::group(prefix: '/admin', middleware: [TokenAuth::class], routes: function 
 
 Either may be left out, and groups may be nested. See [Middleware](#middleware) for what goes in `middleware:`.
 
-### What a handler takes
+### What an action takes
 
 | Parameter | Is |
 | --- | --- |
@@ -89,11 +91,11 @@ Either may be left out, and groups may be nested. See [Middleware](#middleware) 
 | Typed as a PSR-7 server request, or not typed | The request itself |
 | A class that implements `Contracts\Auth\Identity` | The logged-in user; see [Authentication](#authentication) |
 
-The request's data is the JSON body, or the query string for `GET`, `HEAD` and `DELETE`. Fields the handler does not name are ignored and never reach it; to read them, or the raw body, take the request as well and call `getParsedBody()`.
+The request's data is the JSON body, or the query string for `GET`, `HEAD` and `DELETE`. Fields the action does not name are ignored and never reach it; to read them, or the raw body, take the request as well and call `getParsedBody()`.
 
-Take a few flat fields as parameters. Use a class when there are many, when they nest, or when several routes take the same ones. Services are not parameters; they belong in the constructor of a handler class. Anything else in a signature is refused when the route is added, so a mistake stops the application from starting.
+Take a few flat fields as parameters. Use a class when there are many, when they nest, or when several routes take the same ones. Services are not parameters; they belong in the constructor of an action class. Anything else in a signature is refused when the route is added, so a mistake stops the application from starting.
 
-### What a handler returns
+### What an action returns
 
 ~~~php
 return $user;                                             // an object or array: JSON, 200
@@ -110,7 +112,7 @@ Return the data when 200 is right, and a response when the status, a header or t
 
 ### Validation
 
-The type of a parameter says what is accepted, and attributes add rules. This holds for a handler's own parameters and for the constructor of an input class alike:
+The type of a parameter says what is accepted, and attributes add rules. This holds for an action's own parameters and for the constructor of an input class alike:
 
 | Declaration | Accepts |
 | --- | --- |
@@ -133,7 +135,7 @@ A request that does not fit is answered with `422` and every problem, by field:
 
 A rule of your own is an attribute class that implements `Crab\Contracts\Validation\Rule`: `check()` returns what is wrong or null. To validate outside a route, ask for `Crab\Contracts\Validation\Validator` and call `validate(CreateUser::class, $data)`, which returns the object or throws `Crab\Validation\ValidationException` with `$errors`.
 
-Reading a signature costs nothing per request, because it is read once when the route is added. Calling a closure by its signature adds about 0.05 µs to a request over a PSR-15 handler, and validated input with a typed response about 1 µs over the same checks written by hand (`benchmarks/typed-handler.php`, PHP 8.4 with JIT, Apple M1 Pro).
+Reading a signature costs nothing per request, because it is read once when the route is added. Calling a closure by its signature adds about 0.05 µs to a request over a PSR-15 handler, and validated input with a typed response about 1 µs over the same checks written by hand (`benchmarks/typed-action.php`, PHP 8.4 with JIT, Apple M1 Pro).
 
 ## Middleware
 
@@ -192,16 +194,16 @@ Route::group(prefix: '/admin', middleware: [TokenAuth::class, RequireAdmin::clas
 They run from the outside in, and the response travels back out the same way:
 
 ~~~text
-request  →  every request's  →  the group's  →  the route's  →  handler
+request  →  every request's  →  the group's  →  the route's  →  action
 ~~~
 
 - **In each list the first is outermost.** So `prepend:` is what a request meets first and what sees the response last.
 - **Middleware around every request also runs when no route matches**, which is how a 404 still gets its CORS headers. A route's middleware runs only once its route has matched.
 - **A refusal passes back through everything outside it.** A 401 from a route's middleware is still seen by the middleware around every request.
-- **To hand something to the handler, put it on the request:** `$handler->handle($request->withAttribute('tenant', $tenant))`, read with `$request->getAttribute('tenant')`.
+- **To hand something to the action, put it on the request:** `$handler->handle($request->withAttribute('tenant', $tenant))`, read with `$request->getAttribute('tenant')`.
 - **Middleware given by class name is made when a worker starts**, not on the first request, so one that cannot be made stops the server from starting. A route that names a class that does not exist, or one that is not middleware, is refused as soon as it is declared, with the route's name.
 - **The same middleware given twice runs once.** `TokenAuth::class` on a group and again on a route inside it is one check, not two. Two objects of one class, `new RequireRole('admin')` and `new RequireRole('billing')`, are two middleware and both run.
-- **`php cua routes` shows the middleware around each route**, its groups' included.
+- **`php cua route:list` shows the middleware around each route**, its groups' included.
 - **With options, give an object:** `middleware: [new TokenAuth($tokens, $users, 'X-Api-Key', '')]`.
 - **Without the error handler** nothing turns an exception into a response for the client; the engine answers 500 and the failure is logged. Replace it rather than remove it.
 
@@ -237,7 +239,7 @@ return App::configure(__DIR__)
 
 ## Authentication
 
-Who makes a request is decided by middleware. Whatever the way, it ends the same: the middleware puts your user on the request, and a handler takes that user as a parameter.
+Who makes a request is decided by middleware. Whatever the way, it ends the same: the middleware puts your user on the request, and an action takes that user as a parameter.
 
 ~~~php
 use Crab\Contracts\Auth\Identity;
@@ -257,7 +259,7 @@ Route::group(middleware: [TokenAuth::class], routes: function () {
 });
 ~~~
 
-- **The user reaches a handler by type.** A parameter whose class implements `Identity` receives the user that middleware put on the request's `user` attribute; a request with none is answered with `401`. Make the parameter nullable for a route that works either way.
+- **The user reaches an action by type.** A parameter whose class implements `Identity` receives the user that middleware put on the request's `user` attribute; a request with none is answered with `401`. Make the parameter nullable for a route that works either way.
 - **There is no `Auth::user()`.** A worker serves requests that overlap, so the user travels with the request and nowhere else.
 - **Any middleware can be a way of authenticating.** It finds the user, and either calls `$handler->handle($request->withAttribute('user', $user))` or answers `401`. A session cookie, a signed address, a JWT, a header a proxy sets: each is a few lines of middleware of your own, and needs nothing more from Crab.
 - **`AuthProvider`** binds what every way shares, the `PasswordHasher`: `hash()`, `verify()` and `needsRehash()`, over PHP's own password hashing.
@@ -312,11 +314,11 @@ new TokenAuth($tokens, $users, scheme: 'Token');         // Authorization: Token
 new TokenAuth($tokens, $users, required: false);         // lets a request without a token through, with no user
 ~~~
 
-Roles and permissions, and sessions with cookies, are not built.
+Roles and permissions, and sessions with cookies, are not built and not planned: each is a few lines of middleware over what an application already has.
 
 ## Requests and responses
 
-A handler that asks for the request receives `Contracts\Http\Request`, a PSR-7 server request with four additions. A PSR-15 `RequestHandlerInterface` can be a route's handler too; it receives the request, with the route parameters as attributes.
+An action that asks for the request receives `Contracts\Http\Request`, a PSR-7 server request with four additions. A PSR-15 `RequestHandlerInterface` can be a route's action too; it receives the request, with the route parameters as attributes.
 
 ~~~php
 Route::post('/users/{id}/avatar', static function (Request $request) {
@@ -353,7 +355,7 @@ final readonly class ShowWeather
     {
     }
 
-    public function __invoke(string $city): array
+    public function handle(string $city): array
     {
         $weather = $this->http->get('https://api.weather.example/v1/now', query: ['city' => $city]);
 
@@ -515,7 +517,7 @@ return App::configure(__DIR__)
 - **The base path** is the directory given to `configure()`. Its `.env` file and `config` folder are loaded by default, because `App::configure()` begins the chain with `withEnv('.env')` and `withConfig('config', required: false)`; call either again to name another. Nothing else is found by convention.
 - **Paths may be relative** to the base path, and `$app->path('storage/app.log')` gives one in full anywhere else.
 - **Providers** are given one by one or as a list; `routes:` and `commands:` each take one file or a list of files. `withMiddleware()` is described under [Middleware](#middleware).
-- **`health: '/up'`** makes `GET /up` answer 200 and `{"status":"up"}`, for a load balancer or a deploy script that needs to know the server takes requests. It says that this worker answers and asks nothing of the database, so that a slow store does not take every server out of rotation at once; route the path to a handler of your own to check more.
+- **`health: '/up'`** makes `GET /up` answer 200 and `{"status":"up"}`, for a load balancer or a deploy script that needs to know the server takes requests. It says that this worker answers and asks nothing of the database, so that a slow store does not take every server out of rotation at once; route the path to an action of your own to check more.
 - **Each step is optional and they may come in any order:** `create()` loads the environment, then the configuration, makes the application, registers the providers and middleware, and then includes the route and command files, which declare with `Route::` and `Command::`.
 
 `Config::load()` reads every PHP file of a directory, keyed by file name:
@@ -574,7 +576,7 @@ $db->transaction(function (Connection $tx) use ($from, $to, $amount) {
 - **Failures** throw `Crab\Database\DatabaseException`, whose message and `$sql` hold the SQL but never the bound values.
 - **PDO blocks.** While a statement runs, its worker serves nothing else; run more workers for more concurrent queries.
 
-It works without the framework too: `new Database(fn () => new PDO($dsn, $user, $password))`. MySQL and SQLite are supported: the tests run on SQLite, and on MySQL when `CRAB_TEST_MYSQL_DSN` is set. PostgreSQL is not supported for now. There is no model yet.
+It works without the framework too: `new Database(fn () => new PDO($dsn, $user, $password))`. MySQL and SQLite are supported: the tests run on SQLite, and on MySQL when `CRAB_TEST_MYSQL_DSN` is set. PostgreSQL is not supported for now. There is no model: rows are arrays, and a class of your own gives them a type where you want one.
 
 ### Query builder
 
@@ -719,6 +721,113 @@ return new class implements Migration {
 - **A column's type cannot be changed** in `$schema->table()`; SQLite has no statement for it. Add a column, copy the values and drop the old one.
 - A package adds its own folder through `Crab\Contracts\Database\Migrator::path()`. To build tables outside a migration, ask for `Crab\Contracts\Database\Schema`.
 
+## Cache
+
+~~~php
+->withProviders([CacheProvider::class])
+~~~
+
+~~~php
+use Crab\Contracts\Cache\Cache;
+
+$rates = $cache->remember('rates', 3600, fn () => $this->bank->rates());   // made once an hour
+$cache->set('user.7', $user, 600);
+$cache->get('user.7');
+$cache->add('report.running', true, 300);                                   // true for one caller only: a lock
+~~~
+
+It is PSR-16's cache under the contract `Contracts\Cache\Cache`, which adds `remember()` and `add()`. `cache.store` chooses where entries are kept:
+
+| Store | Kept | For |
+| --- | --- | --- |
+| `file` (default) | Files under `cache.directory` | One machine; every worker on it shares them |
+| `database` | The `cache.table` table; `php cua cache:install` writes its migration | Several machines |
+| `array` | The worker's memory | Tests |
+
+`cache.prefix` keeps two applications apart in one store and `cache.ttl` is the seconds an entry lives when none is given, forever unless set. `php cua cache:clear` empties it. A store of your own implements `Contracts\Cache\Store` and is bound under that name. See [docs/cache.md](docs/cache.md).
+
+## Events
+
+~~~php
+->withProviders([EventsProvider::class, AppProvider::class])
+~~~
+
+~~~php
+use Crab\Contracts\Events\Dispatcher;
+
+// In a provider's register(): who hears what.
+$container->get(Dispatcher::class)->listen(UserRegistered::class, SendWelcomeEmail::class);
+
+// Anywhere a Dispatcher is asked for: say that it happened.
+$this->events->dispatch(new UserRegistered($user->id));
+~~~
+
+An event is any object and a listener is a closure or a class with `handle()`, made by the container when its first event arrives. It is PSR-14's dispatcher under `Contracts\Events\Dispatcher`. Listeners run at once, in the order added, in the fiber that dispatched; a listener with slow work pushes a job. See [docs/events.md](docs/events.md).
+
+## Queue
+
+~~~php
+->withProviders([DatabaseProvider::class, QueueProvider::class])
+~~~
+
+~~~sh
+php cua queue:install        # writes the jobs table's migration into your own migrations
+php cua migrate
+php cua queue:work           # runs jobs until stopped; --workers=4, --queue=emails,default
+~~~
+
+~~~php
+final readonly class SendWelcomeEmail
+{
+    public function __construct(private Mailer $mailer, private Database $db)     // services
+    {
+    }
+
+    public function handle(int $userId): void                                    // the job's data
+    {
+        $user = $this->db->table('users')->find($userId);
+        $this->mailer->send($user['email'], 'Welcome');
+    }
+}
+
+$queue->push(SendWelcomeEmail::class, userId: $user->id);                // as soon as a worker is free
+$queue->later(600, SendReminder::class, orderId: 12);                    // in ten minutes
+$queue->on('emails')->push(SendWelcomeEmail::class, userId: 7);          // on a queue of its own
+~~~
+
+- **A job is a class with `handle()`**, as an action is: services in its constructor, its data as typed parameters, given by name when it is pushed. A wrong name or a missing value is refused by the line that pushed it.
+- **The data is JSON:** numbers, text, booleans, null and arrays. Pass an id, not the record.
+- **A job runs at least once.** One that throws is tried again, `queue.tries` times in all (3), after `queue.backoff` seconds (10, then 60); then it is kept as failed. `queue:failed` lists those, `queue:retry <id|all>` puts them back and `queue:forget <id|all>` deletes them.
+- **Workers are processes of their own**, so a slow job never holds up a request. Each is started and stopped as an HTTP worker is, and every failure reaches the log.
+- **`queue.retry_after`** (90) is how long a job may take before it is taken to have died with its worker and is given to another. Set it above your longest job.
+
+See [docs/queues.md](docs/queues.md).
+
+## Scheduling
+
+~~~php
+->withProviders([QueueProvider::class, ScheduleProvider::class, AppProvider::class])
+~~~
+
+~~~php
+use Crab\Contracts\Schedule\Schedule;
+
+// In a provider's register():
+$schedule = $container->get(Schedule::class);
+$schedule->command('reports:send', '--month=last')->monthly(1, '06:00');
+$schedule->job(PruneTokens::class, olderThanDays: 30)->daily('03:00');
+$schedule->call(Heartbeat::class)->everyMinutes(5);
+$schedule->call(PollGateway::class)->everySeconds(0.5);
+$schedule->call(fn () => $container->get(Cache::class)->delete('rates'))->cron('0 9 * * mon-fri');
+~~~
+
+~~~sh
+php cua schedule:work        # runs each task when it is due, until stopped
+php cua schedule:list        # the tasks, and when each runs next
+~~~
+
+Keep one `schedule:work` running and no cron entry is needed. `everySeconds()` runs a task by an interval, down to a hundredth of a second, counted from when the scheduler starts. A task that fails is logged and runs again when next due; one still running is not started twice. `->onOneServer()` lets one of several machines run a task, agreed through a shared cache. `schedule.timezone` is the zone the times are in. See [docs/scheduling.md](docs/scheduling.md).
+
 ## Running the server
 
 ~~~sh
@@ -783,10 +892,18 @@ Things to know:
 | --- | --- |
 | `serve` | Serves the application; see [Running the server](#running-the-server). |
 | `stop`, `reload`, `restart`, `status` | Control a server running in the background. |
-| `routes` | Lists the registered routes, each with its handler and the middleware around it. |
+| `route:list` | Lists the registered routes, each with its action and the middleware around it. |
 | `make:middleware` | Writes a new middleware class in `app/Middleware/`. |
 
-The database provider adds `migrate`, `migrate:rollback`, `migrate:status` and `make:migration`, and the token provider `tokens:install`.
+Providers add theirs:
+
+| Provider | Commands |
+| --- | --- |
+| `DatabaseProvider` | `migrate`, `migrate:rollback`, `migrate:status`, `make:migration` |
+| `TokenAuthProvider` | `tokens:install` |
+| `CacheProvider` | `cache:clear`, `cache:install` |
+| `QueueProvider` | `queue:work`, `queue:failed`, `queue:retry`, `queue:forget`, `queue:install` |
+| `ScheduleProvider` | `schedule:work`, `schedule:list` |
 
 Add your own with `Command::add('mail:send', SendMail::class)`, which is `$app->console->add()` under a shorter name. A command is a class implementing `Contracts\Console\Command` (`description()` and `handle(Input $input, Output $output): int`), made by the container when it runs, or a closure taking the input and output. `Input` gives positional arguments and `--name=value` or `--flag` options. A provider adds commands through the container's `Contracts\Console\Console` entry.
 
@@ -795,14 +912,14 @@ Add your own with `Command::add('mail:send', SendMail::class)`, which is `$app->
 ~~~php
 $app->register(Acme\Mailer\MailerProvider::class);   // a class with register(Container $container)
 ->withMiddleware([Acme\Tracing::class])              // in app.php: any PSR-15 middleware, around every request
-Route::get('/users/{id}', ShowUser::class);            // a handler class made by the container
+Route::get('/users/{id}', ShowUser::class);            // an action class made by the container
 ~~~
 
-A provider reaches the application through contracts in the container: `Contracts\Routing\Router` to add routes, `Contracts\Console\Console` to add commands, `Contracts\Http\MiddlewareStack` to add middleware, and `Contracts\Config\Config` to declare its settings with `defaults('cache', [...])`, which the application's own configuration overrides.
+A provider reaches the application through contracts in the container: `Contracts\Routing\Router` to add routes, `Contracts\Console\Console` to add commands, `Contracts\Http\MiddlewareStack` to add middleware, `Contracts\Runner` to run worker processes of its own, as the queue and the scheduler do, and `Contracts\Config\Config` to declare its settings with `defaults('cache', [...])`, which the application's own configuration overrides.
 
 A provider that needs something open in every worker, such as a connection or a timer, implements `Contracts\WorkerProvider` too: `start(Worker $worker, Container $container)` runs in each worker after the engine forks and `stop(Worker $worker, Container $container)` after it has drained. A task or timer that fails in a worker is written to the log and the worker keeps running. `Testing\WorkerHarness::run()` runs such a provider through a worker's life inside a test.
 
-`$app->container` autowires constructors by type and keeps one object of each class per worker; use `bind()` for a new one each time, `singleton()` to say how one is made and `instance()` for an existing value. Because those objects are shared by every request a worker serves, they must not hold the state of one request. Middleware given by class name is made inside each worker as it starts, so a misconfigured application fails at startup; a handler given by class name is made when its route is first requested.
+`$app->container` autowires constructors by type and keeps one object of each class per worker; use `bind()` for a new one each time, `singleton()` to say how one is made and `instance()` for an existing value. Because those objects are shared by every request a worker serves, they must not hold the state of one request. Middleware given by class name is made inside each worker as it starts, so a misconfigured application fails at startup; an action given by class name is made when its route is first requested.
 
 ## Layout
 
@@ -815,19 +932,24 @@ A provider that needs something open in every worker, such as a connection or a 
 | `src/Commands/` | The application's built-in commands. |
 | `src/Container/` | The PSR-11 container. |
 | `src/Auth/` | Authentication: the user a middleware puts on the request, password hashing, and tokens in the database with the middleware that reads them. |
+| `src/Cache/` | The PSR-16 cache, with file, database and in-memory stores. |
 | `src/Clock/` | The PSR-20 clock. |
+| `src/Events/` | The PSR-14 event dispatcher. |
+| `src/Queue/` | Jobs: the queue, its stores, and the consumer that runs them in workers of their own. |
+| `src/Schedule/` | Tasks run by the clock: the schedule, cron expressions and the scheduler. |
 | `src/Database/` | Pooled PDO connections, the query layer, the query builder, the schema builder and migrations. |
 | `src/Config/` | Configuration files and environment variables. |
 | `src/Log/` | The PSR-3 logger. |
 | `src/Testing/` | Helpers for testing components. |
 | `src/Server.php` | Runs the server in the foreground, in the background and under a watcher, and controls a running one. |
-| `src/Routing/` | The router, itself a PSR-15 handler, and typed handlers. |
+| `src/Routing/` | The router, itself a PSR-15 handler, and `ActionHandler`, which calls a route's action by its signature. |
 | `src/HttpClient/` | The HTTP client: PSR-18, on the event loop, HTTP/2 and HTTP/1.1. |
 | `src/Validation/` | Builds typed objects from request data, with rules as attributes. |
 | `src/Contracts/` | Every interface another package implements or type-hints; they extend the PSR ones where Crab adds methods. |
 | `tests/` | Framework tests beside their components; engine tests in `tests/Engine/`. `tests/EngineBoundaryTest.php` keeps the engine free of framework dependencies. |
 | `benchmarks/` | Engine benchmarks and their recorded results; start at [BENCHMARKS.md](BENCHMARKS.md). |
 | `examples/` | Runnable engine examples. |
+| `docs/` | The guide for application developers, one page per topic; `composer docs` serves it for reading. |
 
 ## Develop
 

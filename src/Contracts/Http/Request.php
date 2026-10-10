@@ -9,7 +9,7 @@ use Psr\Http\Message\ServerRequestInterface;
 use Psr\Http\Message\UploadedFileInterface;
 
 /**
- * A PSR-7 server request with the few additions Crab's own handlers use.
+ * A PSR-7 server request with the few additions Crab's actions use.
  * Code that needs only PSR-7 methods should ask for ServerRequestInterface.
  */
 interface Request extends ServerRequestInterface

@@ -1,0 +1,196 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Crab documentation</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css" media="(prefers-color-scheme: light)">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css" media="(prefers-color-scheme: dark)">
+<style>
+:root {
+    --bg: #ffffff; --panel: #fafaf9; --text: #1c1917; --muted: #6b645d; --line: #e7e5e4;
+    --accent: #e0532a; --accent-soft: #fdf1ec; --code: #f5f5f4; --warn: #b45309; --warn-soft: #fef6e7;
+}
+@media (prefers-color-scheme: dark) {
+    :root {
+        --bg: #171514; --panel: #1d1b19; --text: #ece8e4; --muted: #a39b93; --line: #2f2b28;
+        --accent: #f47b54; --accent-soft: #2b1d17; --code: #24211f; --warn: #f0b24a; --warn-soft: #2a2114;
+    }
+}
+* { box-sizing: border-box; }
+html { scroll-padding-top: 24px; }
+body { margin: 0; background: var(--bg); color: var(--text); font: 16px/1.7 -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, Roboto, sans-serif; }
+a { color: var(--accent); text-decoration: none; }
+a:hover { text-decoration: underline; }
+.layout { display: grid; grid-template-columns: 270px minmax(0, 1fr); min-height: 100vh; }
+nav { background: var(--panel); border-right: 1px solid var(--line); padding: 28px 22px; position: sticky; top: 0; height: 100vh; overflow-y: auto; }
+nav .brand { font-weight: 700; font-size: 20px; color: var(--text); display: block; margin-bottom: 4px; }
+nav .brand span { color: var(--accent); }
+nav .tag { color: var(--muted); font-size: 13px; margin-bottom: 22px; }
+nav h2 { font-size: 12px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); margin: 22px 0 6px; font-weight: 600; }
+nav ul { list-style: none; margin: 0; padding: 0; }
+nav li a { display: block; padding: 4px 10px; margin: 1px -10px; border-radius: 6px; color: var(--text); font-size: 15px; }
+nav li a:hover { background: var(--accent-soft); text-decoration: none; }
+nav li a.current { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+main { padding: 44px 56px 96px; max-width: 900px; width: 100%; }
+main h1 { font-size: 36px; line-height: 1.2; margin: 0 0 20px; letter-spacing: -.01em; }
+main h2 { font-size: 25px; margin: 52px 0 12px; padding-top: 22px; border-top: 1px solid var(--line); }
+main h3 { font-size: 19px; margin: 34px 0 8px; }
+main h4 { font-size: 16px; margin: 26px 0 6px; }
+main h2 a.anchor, main h3 a.anchor { color: var(--muted); margin-left: 8px; opacity: 0; font-weight: 400; }
+main h2:hover a.anchor, main h3:hover a.anchor { opacity: 1; }
+main p, main li { color: var(--text); }
+main h1 + ul { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 16px 22px 16px 38px; font-size: 15px; }
+main h1 + ul ul { padding-left: 20px; }
+code { font: 14px/1.6 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; background: var(--code); padding: 2px 6px; border-radius: 5px; }
+pre { background: var(--code); border: 1px solid var(--line); border-radius: 10px; padding: 16px 18px; overflow-x: auto; }
+pre code, pre code.hljs { background: transparent; padding: 0; font-size: 13.5px; }
+table { border-collapse: collapse; width: 100%; margin: 18px 0; font-size: 15px; display: block; overflow-x: auto; }
+th, td { text-align: left; padding: 9px 12px; border-bottom: 1px solid var(--line); vertical-align: top; }
+th { color: var(--muted); font-weight: 600; font-size: 13px; text-transform: uppercase; letter-spacing: .04em; }
+blockquote { margin: 20px 0; padding: 12px 18px; border-left: 4px solid var(--accent); background: var(--accent-soft); border-radius: 0 8px 8px 0; }
+blockquote p { margin: 4px 0; }
+blockquote.warning { border-color: var(--warn); background: var(--warn-soft); }
+blockquote .label { font-weight: 700; font-size: 13px; text-transform: uppercase; letter-spacing: .06em; color: var(--accent); }
+blockquote.warning .label { color: var(--warn); }
+.pager { display: flex; justify-content: space-between; margin-top: 64px; padding-top: 22px; border-top: 1px solid var(--line); font-size: 15px; }
+.missing { color: var(--muted); }
+#toggle { display: none; }
+@media (max-width: 860px) {
+    .layout { display: block; }
+    nav { position: static; height: auto; border-right: 0; border-bottom: 1px solid var(--line); padding: 14px 16px; }
+    nav .tag { margin-bottom: 0; }
+    /* On a phone the menu is folded away until asked for, so that the page comes first. */
+    #toggle { display: block; float: right; margin-top: 6px; padding: 6px 14px; font: inherit; font-size: 14px; color: var(--text); background: var(--bg); border: 1px solid var(--line); border-radius: 8px; }
+    nav:not(.open) h2, nav:not(.open) ul { display: none; }
+    nav.open .tag { margin-bottom: 12px; }
+    main { padding: 28px 16px 72px; }
+    main h1 { font-size: 30px; }
+}
+</style>
+</head>
+<body>
+<div class="layout">
+    <nav id="menu">
+        <button id="toggle" type="button" aria-expanded="false">Menu</button>
+        <a class="brand" href="?page=installation">Crab<span>.</span></a>
+        <div class="tag">Documentation</div>
+    </nav>
+    <main id="page"><p class="missing">Loading…</p></main>
+</div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/marked/12.0.2/marked.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+<script>
+// The preview of docs/: the menu is documentation.md, a page is ?page=<name>, and nothing is built.
+const menu = document.getElementById('menu');
+const main = document.getElementById('page');
+const current = new URLSearchParams(location.search).get('page') || 'installation';
+
+// A heading's anchor, made the way scripts/check.php and GitHub make it.
+function anchor(text) {
+    return text.toLowerCase().trim().replace(/[^a-z0-9 _-]/g, '').replace(/ /g, '-');
+}
+
+// Links between pages are written "queues.md#section" so that they also work on GitHub.
+function rewriteLinks(root) {
+    for (const link of root.querySelectorAll('a[href]')) {
+        const match = link.getAttribute('href').match(/^([a-z0-9-]+)\.md(#.*)?$/);
+        if (match) {
+            link.setAttribute('href', '?page=' + match[1] + (match[2] || ''));
+        }
+    }
+}
+
+async function text(file) {
+    const response = await fetch(file, {cache: 'no-store'});
+    if (!response.ok) {
+        throw new Error(file + ' could not be read (' + response.status + ').');
+    }
+    return response.text();
+}
+
+async function showMenu() {
+    const holder = document.createElement('div');
+    holder.innerHTML = marked.parse(await text('documentation.md'));
+    const pages = [];
+    for (const node of [...holder.children]) {
+        if (node.tagName === 'H1') {
+            continue;
+        }
+        if (node.tagName === 'H2' || node.tagName === 'UL') {
+            menu.appendChild(node);
+        }
+    }
+    rewriteLinks(menu);
+    for (const link of menu.querySelectorAll('li a')) {
+        const name = new URLSearchParams(link.getAttribute('href').split('?')[1] || '').get('page');
+        pages.push({name, title: link.textContent});
+        if (name === current) {
+            link.classList.add('current');
+            link.scrollIntoView({block: 'nearest'});
+        }
+    }
+    return pages;
+}
+
+async function showPage(pages) {
+    let markdown;
+    try {
+        markdown = await text(current + '.md');
+    } catch (error) {
+        main.innerHTML = '<h1>Not written yet</h1><p class="missing">There is no <code>docs/' + current + '.md</code>.</p>';
+        return;
+    }
+    main.innerHTML = marked.parse(markdown);
+    for (const heading of main.querySelectorAll('h2, h3, h4')) {
+        heading.id = anchor(heading.textContent);
+        if (heading.tagName !== 'H4') {
+            const mark = document.createElement('a');
+            mark.className = 'anchor';
+            mark.href = '#' + heading.id;
+            mark.textContent = '#';
+            heading.appendChild(mark);
+        }
+    }
+    // "> [!NOTE]" and "> [!WARNING]" become labelled boxes.
+    for (const quote of main.querySelectorAll('blockquote')) {
+        const first = quote.querySelector('p');
+        const match = first && first.innerHTML.match(/^\[!(NOTE|WARNING)\]\s*(<br>)?/);
+        if (match) {
+            first.innerHTML = '<span class="label">' + (match[1] === 'NOTE' ? 'Note' : 'Warning') + '</span><br>' + first.innerHTML.slice(match[0].length);
+            if (match[1] === 'WARNING') {
+                quote.classList.add('warning');
+            }
+        }
+    }
+    rewriteLinks(main);
+    for (const block of main.querySelectorAll('pre code')) {
+        hljs.highlightElement(block);
+    }
+    const title = main.querySelector('h1');
+    document.title = (title ? title.textContent + ' · ' : '') + 'Crab';
+    const position = pages.findIndex((page) => page.name === current);
+    if (position !== -1) {
+        const pager = document.createElement('div');
+        pager.className = 'pager';
+        const before = pages[position - 1];
+        const after = pages[position + 1];
+        pager.innerHTML = (before ? '<a href="?page=' + before.name + '">← ' + before.title + '</a>' : '<span></span>')
+            + (after ? '<a href="?page=' + after.name + '">' + after.title + ' →</a>' : '<span></span>');
+        main.appendChild(pager);
+    }
+    if (location.hash) {
+        document.getElementById(decodeURIComponent(location.hash.slice(1)))?.scrollIntoView();
+    }
+}
+
+document.getElementById('toggle').addEventListener('click', (event) => {
+    event.currentTarget.setAttribute('aria-expanded', String(menu.classList.toggle('open')));
+});
+
+showMenu().then(showPage).catch((error) => {
+    main.innerHTML = '<h1>The docs could not be shown</h1><p class="missing">' + error.message + ' Serve this folder with <code>composer docs</code>; opening the file directly does not work.</p>';
+});
+</script>
+</body>
+</html>

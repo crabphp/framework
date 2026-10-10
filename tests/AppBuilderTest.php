@@ -251,7 +251,7 @@ final class AppBuilderTest extends TestCase
         $up = $app->handle(new Request('GET', '/up'));
         self::assertSame([200, '{"status":"up"}', 'application/json'], [$up->getStatusCode(), (string) $up->getBody(), $up->getHeaderLine('Content-Type')]);
         self::assertSame(405, $app->handle(new Request('POST', '/up'))->getStatusCode());
-        self::assertSame(['GET', '/up', \Crab\Http\Health::class], [$app->router->routes()[0]->method, $app->router->routes()[0]->pattern, $app->router->routes()[0]->handler]);
+        self::assertSame(['GET', '/up', \Crab\Http\Health::class], [$app->router->routes()[0]->method, $app->router->routes()[0]->pattern, $app->router->routes()[0]->action]);
 
         self::assertSame(404, App::configure()->create()->handle(new Request('GET', '/up'))->getStatusCode(), 'Only where it is asked to.');
         self::assertSame(200, App::configure()->withRouting(health: '/up')->withRouting(health: '/healthz')->create()->handle(new Request('GET', '/healthz'))->getStatusCode());

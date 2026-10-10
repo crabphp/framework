@@ -14,7 +14,7 @@ namespace Crab\Contracts\Auth;
  *     }
  *
  * Middleware that knows who makes a request puts that user on the
- * request's "user" attribute. A route handler that takes a parameter of
+ * request's "user" attribute. An action that takes a parameter of
  * such a class receives it, and a request without one is answered with
  * 401.
  */

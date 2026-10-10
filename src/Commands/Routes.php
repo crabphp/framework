@@ -17,7 +17,7 @@ final readonly class Routes implements Command
 
     public function description(): string
     {
-        return 'List the registered routes, each with its handler and the middleware around it';
+        return 'List the registered routes, each with its action and the middleware around it';
     }
 
     public function handle(Input $input, Output $output): int
@@ -29,7 +29,7 @@ final readonly class Routes implements Command
         }
         $rows = [];
         foreach ($routes as $route) {
-            $rows[] = [$route->method, $route->pattern, $route->handler, implode(', ', $route->middleware)];
+            $rows[] = [$route->method, $route->pattern, $route->action, implode(', ', $route->middleware)];
         }
         $output->table($rows);
         return 0;

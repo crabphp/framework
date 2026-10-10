@@ -137,7 +137,7 @@ final class AppTest extends TestCase
 
         try {
             (new Router())->get('/', GreetHandler::class);
-            self::fail('A named handler was accepted without a container.');
+            self::fail('A named action was accepted without a container.');
         } catch (\LogicException) {
         }
         $this->expectException(\LogicException::class);

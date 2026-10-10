@@ -78,7 +78,7 @@ final class Names
 }
 
 /**
- * A handler class: services in the constructor, the request's data in __invoke().
+ * An action class: services in the constructor, the request's data in handle().
  */
 final readonly class ShowUser
 {
@@ -87,7 +87,7 @@ final readonly class ShowUser
         ++$names->made;
     }
 
-    public function __invoke(int $id): User
+    public function handle(int $id): User
     {
         return new User($id, "{$id}@example.com", $this->names->prefix() . $id, Plan::Paid);
     }
@@ -132,7 +132,7 @@ final class PlainController
     }
 }
 
-final class TypedHandlerTest extends TestCase
+final class ActionHandlerTest extends TestCase
 {
     public function testAHandlerReceivesWhatItsSignatureAsksFor(): void
     {
@@ -219,7 +219,7 @@ final class TypedHandlerTest extends TestCase
         $router = new Router($container);
         $router->get('/users/{id}', ShowUser::class);
         $names = $container->get(Names::class);
-        self::assertSame(0, $names->made, 'Adding the route does not make the handler.');
+        self::assertSame(0, $names->made, 'Adding the route does not make the action.');
 
         self::assertSame('{"id":5,"email":"5@example.com","name":"user-5","plan":"paid"}', $this->body($router, new Request('GET', '/users/5')));
         self::assertSame('{"id":6,"email":"6@example.com","name":"user-6","plan":"paid"}', $this->body($router, new Request('GET', '/users/6')));
@@ -227,7 +227,7 @@ final class TypedHandlerTest extends TestCase
         self::assertSame(422, $router->handle(new Request('GET', '/users/x'))->getStatusCode());
 
         $route = $router->routes()[0];
-        self::assertSame(['GET', '/users/{id}', ShowUser::class], [$route->method, $route->pattern, $route->handler]);
+        self::assertSame(['GET', '/users/{id}', ShowUser::class], [$route->method, $route->pattern, $route->action]);
     }
 
     public function testDatesInADeclaredResponseAreWrittenAsText(): void
@@ -288,7 +288,7 @@ final class TypedHandlerTest extends TestCase
         self::assertSame(1, $names->made, 'One controller serves all its routes.');
 
         $routes = $router->routes();
-        self::assertSame([UserController::class . '::index', UserController::class . '::show', UserController::class . '::store'], array_column($routes, 'handler'));
+        self::assertSame([UserController::class . '::index', UserController::class . '::show', UserController::class . '::store'], array_column($routes, 'action'));
 
         $standalone = new Router();
         $standalone->get('/plain', [PlainController::class, 'hello']);
@@ -328,7 +328,7 @@ final class TypedHandlerTest extends TestCase
         unlink($file);
 
         self::assertSame('attachment; filename="notes.txt"; filename*=UTF-8\'\'notes.txt', Response::download(__FILE__, 'notes.txt')->getHeaderLine('Content-Disposition'));
-        self::assertStringContainsString('filename="TypedHandlerTest.php"', Response::download(__FILE__)->getHeaderLine('Content-Disposition'));
+        self::assertStringContainsString('filename="ActionHandlerTest.php"', Response::download(__FILE__)->getHeaderLine('Content-Disposition'));
         self::assertSame('application/octet-stream', Response::download(__FILE__)->getHeaderLine('Content-Type'));
         $refused = 0;
         foreach ([static fn () => Response::redirect('/x', 200), static fn () => Response::download('/no/such/file'), static fn () => Response::download(__DIR__)] as $mistake) {
@@ -346,9 +346,9 @@ final class TypedHandlerTest extends TestCase
         $router = new Router();
         $refused = [
             'takes Crab\Contracts\Validation\Validator $validator, which is neither the request, the user, a parameter of the pattern, a field nor an input class' => static fn () => $router->get('/a', static fn (ValidatorContract $validator) => ''),
-            'Services belong in the constructor of a handler class' => static fn () => $router->get('/a', static fn (ValidatorContract $validator) => ''),
+            'Services belong in the constructor of an action class' => static fn () => $router->get('/a', static fn (ValidatorContract $validator) => ''),
             "cannot take the request's data: Crab\\Database\\Database::\$connect is declared as Closure" => static fn () => $router->get('/a', static fn (\Crab\Database\Database $db) => ''),
-            'If it is a service, it belongs in the constructor of a handler class' => static fn () => $router->get('/a', static fn (\Crab\Database\Database $db) => ''),
+            'If it is a service, it belongs in the constructor of an action class' => static fn () => $router->get('/a', static fn (\Crab\Database\Database $db) => ''),
             'takes the route parameter $id as array; it can be string, int, float or bool' => static fn () => $router->get('/a/{id}', static fn (array $id) => ''),
             'takes two inputs' => static fn () => $router->post('/a', static fn (CreateUser $a, ListUsers $b) => ''),
             'takes the input Crab\Tests\Routing\CreateUser and also the field $force; put every field in the class, or take them all as parameters' => static fn () => $router->post('/a', static fn (CreateUser $input, bool $force = false) => ''),
@@ -356,7 +356,7 @@ final class TypedHandlerTest extends TestCase
             'takes $rest, which must have one plain type' => static fn () => $router->get('/a', static fn (string ...$rest) => ''),
             'Ambiguous::$id has a union or intersection type' => static fn () => $router->post('/a', static fn (\Crab\Tests\Routing\Ambiguous $input) => ''),
             'A closure takes $tags, which has #[ListOf] but is not declared as an array' => static fn () => $router->post('/a', static fn (#[ListOf('int')] string $tags) => ''),
-            "is an array, which must be a class and the name of its method: [UserController::class, 'show']" => static fn () => $router->get('/a', [UserController::class]),
+            "is an array, which must be a class and the name of its method: [Users::class, 'show']" => static fn () => $router->get('/a', [UserController::class]),
             'names the class App\Missing, which does not exist' => static fn () => $router->get('/a', ['App\Missing', 'show']),
             'UserController::missing(), which is not a public method' => static fn () => $router->get('/a', [UserController::class, 'missing']),
             'UserController::secret(), which is not a public method' => static fn () => $router->get('/a', [UserController::class, 'secret']),

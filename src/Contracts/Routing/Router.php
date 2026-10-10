@@ -12,12 +12,12 @@ use Psr\Http\Server\RequestHandlerInterface;
  *
  * A pattern is a path with {name} or {name:expression} parameters.
  *
- * A handler is a closure, the name of a class with __invoke(), or a class
- * and the name of its method, [UserController::class, 'show']. It is
+ * An action is a closure, the name of a class with handle(), or a class
+ * and the name of its method, [Users::class, 'show']. It is
  * called with what its signature asks for: the request, the pattern's
  * parameters by name as string, int, float or bool, and the request's
  * data, either as further typed parameters or as one input class, checked
- * before the handler runs. What it returns is the response: a PSR-7
+ * before the action runs. What it returns is the response: a PSR-7
  * response, a string as text, nothing as 204, and anything else as JSON.
  *
  * A PSR-15 handler, or the name of a container entry that is one, is also
@@ -27,16 +27,16 @@ use Psr\Http\Server\RequestHandlerInterface;
  * middleware of the groups it is declared in. One given by class name is
  * made by the container in each worker as the worker starts.
  *
- * @phpstan-type Handler RequestHandlerInterface|\Closure|string|array{class-string, string}
+ * @phpstan-type Action RequestHandlerInterface|\Closure|string|array{class-string, string}
  */
 interface Router extends RequestHandlerInterface
 {
-    public function add(string $method, string $pattern, RequestHandlerInterface|\Closure|string|array $handler, array $middleware = []): static;
+    public function add(string $method, string $pattern, RequestHandlerInterface|\Closure|string|array $action, array $middleware = []): static;
 
     /**
      * Routes that share a path prefix, middleware, or both. The closure
      * declares them; what it adds gets the prefix in front of its pattern
-     * and the middleware around its handler, the first given outermost:
+     * and the middleware around its action, the first given outermost:
      *
      *     $router->group(prefix: '/admin', middleware: [TokenAuth::class], routes: function () {
      *         Route::get('/users', [AdminController::class, 'users']);     // GET /admin/users
@@ -49,15 +49,15 @@ interface Router extends RequestHandlerInterface
      */
     public function group(\Closure $routes, string $prefix = '', array $middleware = []): static;
 
-    public function get(string $pattern, RequestHandlerInterface|\Closure|string|array $handler, array $middleware = []): static;
+    public function get(string $pattern, RequestHandlerInterface|\Closure|string|array $action, array $middleware = []): static;
 
-    public function post(string $pattern, RequestHandlerInterface|\Closure|string|array $handler, array $middleware = []): static;
+    public function post(string $pattern, RequestHandlerInterface|\Closure|string|array $action, array $middleware = []): static;
 
-    public function put(string $pattern, RequestHandlerInterface|\Closure|string|array $handler, array $middleware = []): static;
+    public function put(string $pattern, RequestHandlerInterface|\Closure|string|array $action, array $middleware = []): static;
 
-    public function patch(string $pattern, RequestHandlerInterface|\Closure|string|array $handler, array $middleware = []): static;
+    public function patch(string $pattern, RequestHandlerInterface|\Closure|string|array $action, array $middleware = []): static;
 
-    public function delete(string $pattern, RequestHandlerInterface|\Closure|string|array $handler, array $middleware = []): static;
+    public function delete(string $pattern, RequestHandlerInterface|\Closure|string|array $action, array $middleware = []): static;
 
     /**
      * @return list<RouteInfo> Every route, in the order added.

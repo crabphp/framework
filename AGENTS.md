@@ -5,6 +5,7 @@
 - Engine tests live in `tests/Engine/`, engine benchmarks in `benchmarks/`.
 - [ARCHITECTURE.md](ARCHITECTURE.md) is the agreed design: layers, lifecycle, scopes, concurrency model and build order. Read it before designing a component and keep it true when the design changes.
 - [COMPONENTS.md](COMPONENTS.md) is the flow for building a component. Follow its steps in order and meet its definition of done; when the flow itself changes, change that file in the same change.
+- [docs/](docs/documentation.md) is the guide for application developers. A change to what an application developer writes, runs or configures changes its page in the same piece of work; the `sync-docs` skill (`.claude/skills/sync-docs/`) says how the pages are written and checks them against the code.
 - When a convention is decided or changed, record it in this file in the same change. Before adding a class, interface or helper, check it against these rules and against how the existing components already do it.
 
 ## Lean and standard
@@ -12,12 +13,12 @@
 - Keep the framework lean. Prefer a small implementation of our own to a third-party dependency; runtime dependencies are Revolt and the PSR interface packages. Ask before adding any other.
 - Everything is used through a `Crab\` type, so that nothing we depend on is outside our control and Crab always has a place to add a method. A third-party library is wrapped behind our own interface in one place, and only that place names it. A PSR interface is extended by a Crab contract, never asked for bare by Crab's own services.
 - Async tools come from `Crab\Engine`: `EventLoop`, `Suspension`, and `Async\Pool`, `Task`, `Async` and `Cancellation`. Only `src/Engine/EventLoop/` may name Revolt; `tests/EngineBoundaryTest.php` enforces it for all of `src/`.
-- Follow PHP-FIG wherever a PSR exists: PSR-7 messages, PSR-17 factories, PSR-15 handlers and middleware, PSR-11 container, PSR-3 logger, and PSR-14, PSR-16, PSR-18 and PSR-20 when those components are built.
+- Follow PHP-FIG wherever a PSR exists: PSR-7 messages, PSR-17 factories, PSR-15 handlers and middleware, PSR-11 container, PSR-3 logger, PSR-14 events, PSR-16 cache, PSR-18 client and PSR-20 clock.
 - Use the multiline docblock rule from the engine conventions in framework code too.
 
 ## Components
 
-- Each component has its own folder and namespace under `src/` (`Http`, `HttpClient`, `Routing`, `Validation`, `Auth`, `Container`, `Config`, `Log`, `Clock`, `Console`, `Database`, `Testing`) and its tests in the matching folder under `tests/`.
+- Each component has its own folder and namespace under `src/` (`Http`, `HttpClient`, `Routing`, `Validation`, `Auth`, `Container`, `Config`, `Log`, `Clock`, `Console`, `Database`, `Cache`, `Events`, `Queue`, `Schedule`, `Testing`) and its tests in the matching folder under `tests/`.
 - Every component has the same shape: it works standalone, has a contract when packages touch it, ships a `<Component>Provider` when it is optional, and is kept able to be published as its own package the way the engine is.
 - A component works on its own, without `App`, the container or a provider. It may depend on `Contracts`, on PSR interfaces and on the engine, and on another component only where that is its purpose. `tests/LayerBoundaryTest.php` enforces this; a new dependency between components is added to its `ALLOWED` list deliberately, never worked around.
 - The root of `src/` is the glue that makes components an application: `App.php`, `AppBuilder.php`, `Server.php`, `Route.php`, `Command.php`, `helpers.php`, and `Commands/` for built-in commands. Code that needs `App` belongs there, not inside a component.
@@ -25,10 +26,10 @@
 
 ## Contracts
 
-- A package depends on `Crab\Contracts` and PSR interfaces only, never on a component's class. So everything a package touches has a contract in `Crab\Contracts\<Component>`, never inside the component, including where no PSR exists: `Config`, `Router`, `Console`, `Container`, `Database`, `Connection`, `Query`, `Schema`, `Table`, `Column`, `Migration`, `Migrator`, `Validator`, `Rule`, `Clock`, `Logger`, `Factory`, `Middleware`, the HTTP client's `Client`, `Response` and `CookieJar`, `Identity`, `IdentityResolver`, `TokenStore`, `PasswordHasher`, `MiddlewareStack`, `Provider`, `WorkerProvider`, and the console's `Command`, `Input` and `Output`.
+- A package depends on `Crab\Contracts` and PSR interfaces only, never on a component's class. So everything a package touches has a contract in `Crab\Contracts\<Component>`, never inside the component, including where no PSR exists: `Config`, `Router`, `Console`, `Container`, `Database`, `Connection`, `Query`, `Schema`, `Table`, `Column`, `Migration`, `Migrator`, `Validator`, `Rule`, `Clock`, `Logger`, `Factory`, `Middleware`, the HTTP client's `Client`, `Response` and `CookieJar`, `Identity`, `IdentityResolver`, `TokenStore`, `PasswordHasher`, `MiddlewareStack`, `Provider`, `WorkerProvider`, `Runner`, the cache's `Cache` and `Store`, the events' `Dispatcher`, the queue's `Queue` and `Store`, the schedule's `Schedule` and `Task`, and the console's `Command`, `Input` and `Output`.
 - Anything an application can do through `App`, a provider can do through a contract in the container. When `App` gains a way to extend the application, the contract comes with it.
 - Exceptions and immutable value objects are the exception to that: `HttpException`, `DatabaseException`, `ValidationException`, `Cookie`, the `Response` factories and the validation attributes (`Email`, `Length`, `ListOf`, ...) are named by class, because there is no behaviour behind them to swap.
-- A value object that a contract returns or takes lives beside it in `Crab\Contracts`, as a final readonly class with no I/O (`Contracts\Database\Page`, `Contracts\HttpClient\File`), since a contract may not name a component's class.
+- A value object that a contract returns or takes lives beside it in `Crab\Contracts`, as a final readonly class with no I/O (`Contracts\Database\Page`, `Contracts\HttpClient\File`, `Contracts\Queue\Message`), since a contract may not name a component's class.
 - `App` binds each contract in the container, and binds the concrete class to the same object so that asking by class cannot autowire a second one. The glue type-hints contracts too.
 - Every service has a contract of Crab's own, including where a PSR interface covers it completely: the contract then extends the PSR interface and may add nothing (`Contracts\Log\Logger`, `Contracts\Clock\Clock`, `Contracts\Http\Factory`). It is the name applications ask for and the place a method is added when Crab needs one. `App` binds the contract and binds the PSR interface to the same object, so code written against the standard gets it too. What an application implements has one too where it is something Crab runs: `Contracts\Http\Middleware` is PSR-15's middleware under Crab's name.
 - A contract references only PSR interfaces, other contracts and engine types, never a component's class. The component's class implements the contract and shares its short name (`Crab\Http\Request` implements `Crab\Contracts\Http\Request`).
@@ -42,29 +43,34 @@
 - Every error response is built by `Http\ErrorResponse`, for the error handler and for the router's 404 and 405 alike. Expected answers such as an unmatched route are returned as responses, not thrown, so they pass back through middleware.
 - Inside a worker, PHP warnings and notices are thrown as `ErrorException`; code must not rely on a warning being ignored, and uses `@` only where a failure is then checked by return value.
 - Anything that adds work to every request and is not needed to answer it, such as the request id or CORS, is off by default: it is middleware an application adds, with its measured cost documented.
-- A route the framework adds, such as the health path, is asked for in `app.php` (`withRouting(health: '/up')`) and shows in `routes` like any other. `App` adds none by itself.
+- A route the framework adds, such as the health path, is asked for in `app.php` (`withRouting(health: '/up')`) and shows in `route:list` like any other. `App` adds none by itself.
+- A command is named `area:action`, with the area in the singular: `route:list`, `schedule:work`, `queue:retry`, `cache:clear`, `make:migration`. The command that lists what a component holds is `<area>:list` (`route:list`, `schedule:list`); a new component that holds a list gets one. A bare name is only for the application itself (`serve`, `stop`, `reload`, `restart`, `status`), for the console's own `list` and `help`, and for `migrate`.
 - Nothing fails silently outside a request: `App` sends everything the engine catches in a worker (a failed task, a failure escaping a timer, a failing `stop()`, a request failure that escaped the error handler) to the logger through the engine group's `onFailure()`, and the worker keeps running. A new entry point (queue job, scheduled job) gets the same treatment.
 - `App` assembles its middleware, the error handler included, in each worker as the worker starts, never in the parent and never lazily on a request, so a misconfiguration stops startup with its cause printed.
 - A binding's closure and a constructor the container calls must not suspend: the container is shared by every fiber in the worker and guards against circular dependencies by entry name, so a second request asking for an entry that is still being made is refused.
 - Objects the container keeps are shared by every request a worker serves: they hold no state of a single request, and anything holding a socket or file is made in the worker on first use, not in the parent.
 - State has three scopes. Process scope (config, routes, provider list) is fixed once the application is defined. Worker scope is the container's kept objects. Request scope travels only on the PSR-7 request and its attributes, never in a service or a static.
-- A component that does I/O (database, cache, queue) exposes a pool in its contract, `acquire()` and `release()`, so code written against it is correct with blocking drivers now and async drivers later. Blocking drivers ship first. The pool is the engine's `Async\Pool`; do not write another. The HTTP client keeps its pools to itself, one per server: a call is one request and its answer, and there is nothing for a caller to hold between two.
+- A component that does I/O (database, cache, queue) exposes a pool in its contract, `acquire()` and `release()`, so code written against it is correct with blocking drivers now and async drivers later. Blocking drivers ship first. The pool is the engine's `Async\Pool`; do not write another. A store that keeps its entries in the database (`Cache\DatabaseStore`, `Queue\DatabaseStore`) takes a `Connection` and so borrows from the database's pool; it has none of its own. A store with a socket of its own, such as one for Redis, will have a pool. The HTTP client keeps its pools to itself, one per server: a call is one request and its answer, and there is nothing for a caller to hold between two.
 - A pooled component resolves the event loop when it is used, not when it is constructed: a worker installs its own loop after the fork, and anything that kept the parent's would wait forever.
 - HTTP, queue consumers and the scheduler run as separate engine worker groups. Workers hold nothing another worker needs; shared state lives in external stores behind contracts.
+- Worker processes that serve no requests are run through `Contracts\Runner`, which `App` implements: each worker starts and stops the worker providers and reports failures as an HTTP worker does. A component's command asks for `Runner`; it never builds an engine `Runtime` itself, and never names `App`.
+- What is declared before the workers start and read in every worker, such as event listeners and scheduled tasks, is held by an object its provider makes in `register()` and binds with `instance()`, so that every later provider can add to it. What such a list names by class is made in the worker, on first use.
 
-## Handlers
+## Actions
 
-- A handler says what it takes in its signature, and the framework validates the request against it before calling it. Do not add a second place to describe a route, such as an annotation or a schema file.
-- A handler's parameters are the request, the pattern's parameters by name, and the request's data: either as further typed parameters, one per field, or as one input class, never both. Services are never handler parameters; a handler class takes them in its constructor.
+- An action says what it takes in its signature, and the framework validates the request against it before calling it. Do not add a second place to describe a route, such as an annotation or a schema file.
+- An action's parameters are the request, the pattern's parameters by name, and the request's data: either as further typed parameters, one per field, or as one input class, never both. Services are never action parameters; an action class takes them in its constructor.
 - Take a few flat fields as parameters. Use an input class when there are many, when they nest, or when several routes share them. An input class is a final readonly class whose constructor declares every field with one type.
-- A handler is a closure, `[Controller::class, 'method']`, or a class with `__invoke()`. A controller is a plain class: there is no base class and no helper to inherit.
-- A handler returns data, which is sent as JSON with 200, or a response when the status, a header or the body needs saying. Status and headers are set in code with the `Response` factories and nowhere else, so nothing has to be kept in step. Do not add an attribute for something code can say.
+- What a route points at is called an action, in the code, the guide and the skeleton (`app/Actions/`). "Handler" is kept for the PSR-15 interface and what implements it: the router, `ActionHandler`, the error handler, the `$handler` a middleware is given.
+- A class the framework calls for the application does its work in `handle()`: an action, a job, a listener, a scheduled class and a command alike. Do not accept `__invoke()` beside it. A route given a class name treats it as an action when it has `handle()` and is not a PSR-15 `RequestHandlerInterface`.
+- An action is a class with `handle()`, named verb first after what it does (`ShowUser`, `CreateOrder`), a closure, or `[SomeClass::class, 'method']`. It is a plain class: there is no base class and no helper to inherit.
+- An action returns data, which is sent as JSON with 200, or a response when the status, a header or the body needs saying. Status and headers are set in code with the `Response` factories and nowhere else, so nothing has to be kept in step. Do not add an attribute for something code can say.
 - Crab writes no description of the API (OpenAPI, JSON Schema). It was built and removed: keeping a document true cost every later feature a second thing to maintain, and a document that is partly true misleads. The signatures are the description. Do not add one back, or keep data on a route or a rule for one, until the owner asks.
 - Attributes are for what PHP cannot say in a type: validation rules, and `#[ListOf]` for what an array holds.
 - A signature is read when the route is added, never on a request, and one that cannot be honoured throws there, naming the route and saying what to do instead.
-- Data that does not fit is a 422 built by `Http\ErrorResponse` with every problem by field, returned and not thrown. JSON is taken as it is; only text sources (query string, route parameters) are converted to numbers and booleans. Fields a handler does not declare are ignored and never reach it.
+- Data that does not fit is a 422 built by `Http\ErrorResponse` with every problem by field, returned and not thrown. JSON is taken as it is; only text sources (query string, route parameters) are converted to numbers and booleans. Fields an action does not declare are ignored and never reach it.
 - `Validation` knows nothing of HTTP or routing. A rule is an attribute implementing `Contracts\Validation\Rule`, which checks a value and says what is wrong with it.
-- A handler's input class, and every class inside it, is read when the route is added (`Validator::inspect()`), so one that cannot be validated stops startup.
+- An action's input class, and every class inside it, is read when the route is added (`Validator::inspect()`), so one that cannot be validated stops startup.
 
 ## Running the server
 
@@ -89,7 +95,7 @@
 - A middleware is told its options through its constructor and given as an object. Do not parse options out of a string such as `'throttle:60,1'`.
 - All middleware is made when a worker starts, the application's and every route's, never on the first request. A route's or a group's middleware that could never run, a name that is no class or a class that is no middleware, is refused where it is declared, naming the route.
 - The same name or the same object given again to a route, by its groups or itself, runs once, at the later place. Two objects of one class both run: each has its own options, and dropping one could drop a check the application asked for. Do not remove middleware by class.
-- A route records the middleware around it in `RouteInfo`, and `routes` lists it, so what guards a route can be read without opening the routes file.
+- A route records the middleware around it in `RouteInfo`, and `route:list` lists it, so what guards a route can be read without opening the routes file.
 - A middleware object may be made before the workers are forked, so it chooses nothing per worker in its constructor (`RequestId` picks its prefix on the first request).
 - An application sets the middleware around every request with `withMiddleware()` and a provider adds to it through the `MiddlewareStack` contract. `App` has no method of its own for it.
 - A way of doing something for some routes, such as authenticating, is a middleware. Do not add a contract and a wrapper middleware around it where PSR-15 already says the same.
@@ -126,10 +132,46 @@
 
 ## Authentication
 
-- Who makes a request is request state. Middleware puts the user on the request's `user` attribute, and it reaches a handler as a parameter whose class implements `Contracts\Auth\Identity`. There is no static accessor for it and none may be added.
+- Who makes a request is request state. Middleware puts the user on the request's `user` attribute, and it reaches an action as a parameter whose class implements `Contracts\Auth\Identity`. There is no static accessor for it and none may be added.
 - A way of authenticating is a middleware and nothing more. Core `Auth` is `Identity`, that convention, and the `PasswordHasher`; it decides no scheme.
 - Tokens are one way, opt-in through `TokenAuthProvider`: the `TokenAuth` middleware, the `TokenStore` and the `IdentityResolver` an application binds so that a user can be found from the id a token belongs to. Crab keeps no user table of its own.
 - A secret is never stored as it is: a token is kept as its SHA-256 hash and a password through `PasswordHasher`. Neither appears in a log or an exception's message.
+
+## Scope
+
+- Crab is a framework for JSON APIs that is long-running by design, not a Laravel on another engine. There is no model layer over the query builder, no session component and no roles or permissions component, and none is to be added without the owner's agreement. Say so plainly where an application developer would look for one.
+- Events, cache, queue and scheduling are Crab's own code. A third-party library may stand behind a contract as a store or a driver, wrapped in one place; it does not replace a component.
+
+## Cache
+
+- `Cache\Cache` is the one class that checks keys, works out expiry and turns values into text; a store only stores, behind `Contracts\Cache\Store`. A new place to keep entries is a new store, never a second cache class.
+- A store's `add()` sets a key only when it is absent, as one step with respect to every other caller of that store. Locks are built on it; a store that cannot do that atomically must not be used for them.
+- Times are passed to a store, never read by it, so that every store can be tested with a frozen clock.
+- A cache is chosen with `cache.store`, and anything else by binding `Contracts\Cache\Store` after the provider. There is one cache per application; do not add named caches until the owner asks.
+
+## Events
+
+- An event is a plain object and a listener a closure or a class with `handle()`. Listeners are added in a provider's `register()`, never in a worker and never by a naming convention or an attribute.
+- Listeners run in the fiber that dispatched, in the order added, and what one throws reaches the dispatcher's caller. Work that should outlive the request or be retried is a job a listener pushes; do not add queued listeners.
+- The framework's own components dispatch no events today. Before one does, agree which events and what they carry: they become part of its contract.
+
+## Queue
+
+- A job is a class with `handle()`: services in its constructor, its data as typed parameters, pushed by name. There is no base class, no interface and no serialized object: the data is JSON, checked against the signature where it is pushed.
+- A job is delivered at least once. Nothing in the queue may assume a job ran only once, and the guide says so wherever a job is described.
+- A store hands a job to one worker at a time by changing its row, not by holding a lock or a transaction while the job runs. `Queue\DatabaseStore` uses the query builder only, so that the same statements serve MySQL and SQLite.
+- A job that was taken and never reported back is given out again after `queue.retry_after` seconds. Its attempt was already counted, so a job whose worker dies under it every time is given up on like any other.
+- What a job throws is logged with its trace, as a warning while tries remain and as an error when it is given up on. The consumer's loop catches a failure of the store too, logs it and goes on.
+- Retries are settings of the consumer (`queue.tries`, `queue.backoff`), the same for every job. Do not add per-job options until the owner asks.
+
+## Scheduling
+
+- Tasks are declared on `Contracts\Schedule\Schedule` in a provider's `register()`. There is no static name for it and no schedule file found by convention.
+- `schedule:work` is the one way to run the schedule: a long-running worker that wakes each minute, and holds a timer for each task set by seconds. Do not add a command for cron to call every minute beside it.
+- A named time (`daily()`, `hourly()`) is a cron expression and nothing more; `Schedule\Cron` is the one place that reads one.
+- `everySeconds()` is the one kind of time that is not a cron expression: an interval, run by a repeating timer of the engine's loop that `Scheduler::repeat()` starts, counted from when the scheduler starts. Do not add seconds to `Cron`, and do not make the scheduler wake every second to look for due tasks.
+- A task due while its last run is still going is skipped and logged, in the worker that runs it. Such a skip is not logged for a task set with `everySeconds()`. Across machines, `onOneServer()` agrees through `Cache::add()`: on a key named after the minute for a cron task, and for an interval task on one entry that the server running it signs again at every run, since servers share no name for such a run. A schedule that asks for it without a cache is refused when `schedule:work` starts.
+- A minute the scheduler was not running in is not made up for.
 
 ## Database
 
@@ -140,7 +182,7 @@
 - `Table` and `Column` collect what a migration says and hold no SQL; `SchemaGrammar` writes it, and a dialect subclass says only where its database differs, as with `Query` and `Grammar`. A new column type is added to `Table`, to both dialects and to the tests of both.
 - A migration runs in a transaction only where the database can roll back a change to its tables; say so wherever that difference reaches the user.
 - An application's databases are configured by name and held by `DatabaseManager`. Asking for the `Database` contract gives the default one, and `Database::connection($name)` another; do not bind a second database in the container under a name of its own. The kind of database is read from its `dsn`, never from a separate setting.
-- The layers are built in order and each works without the one above it: pool, query layer, query builder, schema builder, migrator, model. Do not make a lower layer depend on a higher one.
+- The layers are built in order and each works without the one above it: pool, query layer, query builder, schema builder, migrator. Do not make a lower layer depend on a higher one. There is no model layer; see Scope.
 - The query builder needs only the `Connection` contract. The one place a lower layer names it is `Connection::table()`, a single `new Query($this, $table)`; nothing else in the pool or query layer may know it.
 - `Query` collects what a statement says and holds no SQL; `Grammar` writes it, and a dialect subclass overrides only where its database differs. A new clause is state on `Query` and a method on `Grammar`, never SQL assembled in `Query`.
 - In the builder, values are bound, names are quoted and operators are checked against a fixed list. Only methods ending in `Raw` take SQL as written, and every one of them takes bindings.
@@ -176,8 +218,8 @@
 ## Application skeleton
 
 - The skeleton is the separate repository `crabphp/crab`, beside this one, and reads the framework from `../framework` until there is a release.
-- It stays minimal and readable at a glance: `app.php` describes the application, `cua` is the command line (`php cua serve`), and the folders are `routes/`, `app/Handlers/`, `app/Providers/`, `config/`, `database/migrations/`, `storage/` and `tests/`.
-- `storage/` holds what the application writes while it runs (logs in `storage/logs/`, the SQLite file, later caches and uploads) and is never committed. Nothing the application needs in order to start lives there. A relative `log.path` is inside the application's base path. Add a folder to it only when a component that needs one is built.
+- It stays minimal and readable at a glance: `app.php` describes the application, `cua` is the command line (`php cua serve`), and the folders are `routes/`, `app/Actions/`, `app/Providers/`, `config/`, `database/migrations/`, `storage/` and `tests/`.
+- `storage/` holds what the application writes while it runs (logs in `storage/logs/`, the SQLite file, the file cache when its directory is set there, later uploads) and is never committed. Nothing the application needs in order to start lives there. A relative `log.path` is inside the application's base path. Add a folder to it only when a component that needs one is built.
 - `app.php` is one `App::configure(__DIR__)` chain that names the providers and, in `withRouting(routes:, commands:)`, the route and command files, and ends in `create()`. `AppBuilder` has no defaults of its own and finds nothing by convention: what an application starts with is a chain of ordinary steps in `App::configure()`, today `withEnv('.env')` and `withConfig('config', required: false)`, where anyone can read it. A new default is added to that chain, with the owner's agreement. A step that takes several things takes them one by one or as a list. The route files declare with `Route::` and `Command::`, and no skeleton file uses a variable it did not define.
 - When the framework changes how an application is written, change the skeleton and its README in the same piece of work, and run its tests.
 

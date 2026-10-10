@@ -24,8 +24,10 @@ use Crab\Contracts\Http\MiddlewareStack as MiddlewareStackContract;
 use Crab\Contracts\Log\Logger as LoggerContract;
 use Crab\Contracts\Provider;
 use Crab\Contracts\Routing\Router as RouterContract;
+use Crab\Contracts\Runner;
 use Crab\Contracts\Validation\Validator as ValidatorContract;
 use Crab\Contracts\WorkerProvider;
+use Crab\Engine\Async\Cancellation;
 use Crab\Engine\Process\Worker;
 use Crab\Engine\Runtime;
 use Crab\Engine\Server\HttpServer;
@@ -60,7 +62,7 @@ use Psr\Log\LoggerInterface;
  * (1 MiB unless set), and "server.body_timeout" how many seconds a client
  * has to send one (30).
  */
-final class App implements RequestHandlerInterface
+final class App implements RequestHandlerInterface, Runner
 {
     private static ?self $current = null;
 
@@ -101,6 +103,8 @@ final class App implements RequestHandlerInterface
     ) {
         self::$current = $this;
         $container->instance(self::class, $this);
+        // What runs workers that serve no requests, for a provider's commands.
+        $container->instance(Runner::class, $this);
         $container->instance(ConfigContract::class, $config);
         // Asking by class must not autowire a second, empty one.
         $container->instance($config::class, $config);
@@ -146,7 +150,7 @@ final class App implements RequestHandlerInterface
         $this->console->add('reload', Reload::class);
         $this->console->add('restart', Restart::class);
         $this->console->add('status', Status::class);
-        $this->console->add('routes', Routes::class);
+        $this->console->add('route:list', Routes::class);
         $this->console->add('make:middleware', MakeMiddleware::class);
         $container->instance(ConsoleContract::class, $this->console);
         $container->instance(Console::class, $this->console);
@@ -245,6 +249,34 @@ final class App implements RequestHandlerInterface
             ->onStop($this->stop(...))
             ->onFailure($this->report(...));
         return $runtime;
+    }
+
+    /**
+     * Runs work in worker processes that serve no requests; see
+     * Contracts\Runner. Each worker starts and stops as an HTTP worker
+     * does, and what fails in it is logged.
+     */
+    public function run(string $group, \Closure $work, int $workers = 1, float $shutdownTimeout = 30.0, bool $single = false): void
+    {
+        if ($single && $workers !== 1) {
+            throw new \InvalidArgumentException('Work that runs in this one process has one worker.');
+        }
+        $runtime = new Runtime(shutdownTimeout: $shutdownTimeout);
+        $runtime->group($group, $workers)
+            ->onStart(function (Worker $worker) use ($work): void {
+                $this->start($worker);
+                $worker->spawn(static function (Cancellation $cancellation) use ($worker, $work): void {
+                    try {
+                        $work($worker, $cancellation);
+                    } finally {
+                        // Work that has returned leaves nothing to wait for; under a supervisor the worker is started again.
+                        $worker->loop->defer(static fn () => $worker->stop());
+                    }
+                });
+            })
+            ->onStop($this->stop(...))
+            ->onFailure($this->report(...));
+        $runtime->run(singleProcess: $single);
     }
 
     private function start(Worker $worker): void

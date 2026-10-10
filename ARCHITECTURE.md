@@ -1,6 +1,6 @@
 # Crab framework architecture
 
-Status: **agreed 2026-10-04.** Sections marked *(today)* describe code that exists. Sections marked *(proposed)* are agreed but not built yet. The rules that follow from this document are in [AGENTS.md](AGENTS.md). The engine has its own document, [src/Engine/ARCHITECTURE.md](src/Engine/ARCHITECTURE.md).
+Status: **agreed 2026-10-04, scope narrowed 2026-10-10** (see [Decisions](#decisions)). Sections marked *(today)* describe code that exists. Sections marked *(proposed)* are agreed but not built yet. The rules that follow from this document are in [AGENTS.md](AGENTS.md). The engine has its own document, [src/Engine/ARCHITECTURE.md](src/Engine/ARCHITECTURE.md).
 
 ## Goals
 
@@ -42,7 +42,7 @@ The last row is the rule that keeps the framework replaceable piece by piece: a 
 
 ### Enforcing the layers *(today)*
 
-`tests/LayerBoundaryTest.php` fails when a contract references a component, or when a component references the glue or a component it is not listed as built on. Today the listed pairs are `Routing` on `Http` and `Validation`, `Auth` on `Http`, `HttpClient` on `Http`, and `Testing` on `Container`. `tests/EngineBoundaryTest.php` does the same for the engine. A rule that is only written down drifts.
+`tests/LayerBoundaryTest.php` fails when a contract references a component, or when a component references the glue or a component it is not listed as built on. Today the listed pairs are `Routing` on `Http` and `Validation`, `Auth` on `Http`, `HttpClient` on `Http`, and `Testing` on `Container`. The cache, the queue and the scheduler need none: where one uses the database, the queue or the cache, it asks for that component's contract. `tests/EngineBoundaryTest.php` does the same for the engine. A rule that is only written down drifts.
 
 ## Contracts
 
@@ -72,7 +72,13 @@ A contract exists for everything a package touches, including where no PSR exist
 | `HttpClient\Response` | PSR-7 `ResponseInterface` | today |
 | `HttpClient\CookieJar` | none | today |
 | `HttpClient\File` | none; a value object | today |
-| Cache, events | PSR-16, 14, each behind a Crab contract | not built |
+| `Cache\Cache` | PSR-16 `CacheInterface` | today |
+| `Cache\Store` | none; where a cache keeps its entries | today |
+| `Events\Dispatcher` | PSR-14 `EventDispatcherInterface` | today |
+| `Queue\Queue`, `Queue\Store` | none | today |
+| `Queue\Message` | none; a value object | today |
+| `Schedule\Schedule`, `Schedule\Task` | none | today |
+| `Runner` | none; runs worker processes that serve no requests | today |
 
 Contracts are the stable surface. Once there is a release, a contract changes only in a major version; component classes may change freely behind it.
 
@@ -92,23 +98,23 @@ Every component has the same shape, so the tenth looks like the first.
 
 Publishing components separately is what lets someone use the router or container without the framework. It costs a split step at release time and nothing day to day.
 
-## Handlers *(today)*
+## Actions *(today)*
 
-The primary use is a JSON API, so what goes into a route is the contract with every client. A handler declares it in its signature, and the framework does the HTTP around it:
+The primary use is a JSON API, so what goes into a route is the contract with every client. An action declares it in its signature, and the framework does the HTTP around it:
 
 ~~~mermaid
 flowchart LR
     REQ[Request] --> VAL[Validate against the signature]
     VAL -->|does not fit| E422[422, problems by field]
-    VAL -->|fits| H["Handler: fn (int $id, string $name): User"]
+    VAL -->|fits| H["Action: fn (int $id, string $name): User"]
     H -->|data| JSON[JSON, 200]
     H -->|a response| ASIS[Sent as it is]
 ~~~
 
-- A handler takes the request's data as typed parameters, one per field, or as one input class when there are many. It returns data, or a response when it needs to set the status, a header or the body. It extends nothing and builds no response in the common case, so it can be called and tested as an ordinary function.
-- The signature is read once, in the parent, when the route is added. A handler the router cannot call, or a field that cannot be validated, stops the application from starting.
+- An action takes the request's data as typed parameters, one per field, or as one input class when there are many. It returns data, or a response when it needs to set the status, a header or the body. It extends nothing and builds no response in the common case, so it can be called and tested as an ordinary function.
+- The signature is read once, in the parent, when the route is added. An action the router cannot call, or a field that cannot be validated, stops the application from starting.
 - `Validation` builds values from request data by the declared types and rules; it knows nothing of HTTP. `Routing` turns a mismatch into a 422 through `Http\ErrorResponse`, as an ordinary response, so it passes back through middleware.
-- Services are never handler parameters. A handler class takes them in its constructor, which keeps "what the request sends" and "what the application provides" apart.
+- Services are never action parameters. An action class takes them in its constructor, which keeps "what the request sends" and "what the application provides" apart.
 - Status and headers are set in code, with the `Response` factories. There is no second place that states them, so nothing can fall out of step.
 - There is no generated description of the API. An OpenAPI document written from the signatures was built and then removed: PHP has no generics and no inference of a type from a value, so it could say what goes in but not the status or much of what comes out, and keeping it true was a cost on every later feature.
 
@@ -120,7 +126,7 @@ A long-running server has four phases. The most common bug in this style of fram
 | --- | --- | --- | --- |
 | 1. Define | Parent process, once | Load `.env` and config, create `App`, register providers, declare routes, middleware and commands | Definitions only: closures, class names, read-only config. No sockets, no files, no connections. |
 | 2. Start | Each worker, after the engine forks | Build the middleware chain; run worker-start hooks | Worker-scoped objects: connections, pools, timers |
-| 3. Request | Each worker, many times, possibly overlapping | Request → error handler → middleware → router → handler → response | Request-scoped data, carried **only** on the request object |
+| 3. Request | Each worker, many times, possibly overlapping | Request → error handler → middleware → router → action → response | Request-scoped data, carried **only** on the request object |
 | 4. Stop | Each worker | Drain in-flight requests, run worker-stop hooks, close connections | none |
 
 All four phases exist today. A provider that implements `WorkerProvider` gets `start(Worker $worker)` in phase 2 and `stop(Worker $worker)` in phase 4. Providers start in the order registered and stop in reverse. `stop()` runs only in a worker where every provider started, and after the event loop has stopped, so it cannot suspend.
@@ -135,14 +141,14 @@ All four phases exist today. A provider that implements `WorkerProvider` gets `s
 
 Consequences worth stating plainly:
 
-- The logged-in user is request scope like everything else about a request: middleware puts it on the request and a handler takes it as a parameter.
-- There is no `request()` or `auth()` global helper. Global helpers and static names are for process-scope things only (`config()`, `env()`, `Route::get()`, `Command::add()`). Request data is read from the request the handler was given.
+- The logged-in user is request scope like everything else about a request: middleware puts it on the request and an action takes it as a parameter.
+- There is no `request()` or `auth()` global helper. Global helpers and static names are for process-scope things only (`config()`, `env()`, `Route::get()`, `Command::add()`). Request data is read from the request the action was given.
 - A container entry is worker-scoped by default. Anything per-request is passed as an argument.
 - `env()` is called only inside config files. Everything else reads `config()`, so configuration has one source and can later be cached.
 
 ## Concurrency model *(decided; the database follows it)*
 
-The engine runs each request in its own fiber. A handler that calls blocking PHP (PDO, `curl_exec`, `file_get_contents` on a URL) blocks its whole worker until it returns. This decision shapes the database, cache, queue and HTTP client components, so it should be made before any of them.
+The engine runs each request in its own fiber. An action that calls blocking PHP (PDO, `curl_exec`, `file_get_contents` on a URL) blocks its whole worker until it returns. This decision shapes the database, cache, queue and HTTP client components, so it should be made before any of them.
 
 | | A. Blocking drivers | B. Async drivers |
 | --- | --- | --- |
@@ -165,7 +171,7 @@ Components take every async tool from the engine's own types (`EventLoop`, `Susp
 
 - **Stateless workers.** A worker holds nothing another worker needs. Sessions, cache, queues and locks live in external stores behind contracts, so any worker on any machine can serve any request.
 - **Process scaling.** `serve --workers=N` on one machine; identical instances behind a load balancer across machines. TLS terminates at the proxy (the engine has no TLS).
-- **Isolation by worker group.** HTTP, queue consumers and the scheduler run as separate engine worker groups, so a slow job cannot starve request handling.
+- **Isolation by worker group.** HTTP, queue consumers and the scheduler run as separate engine worker groups, so a slow job cannot starve request handling. Today each is a command of its own, `serve`, `queue:work` and `schedule:work`, and so a process tree of its own; the queue's and the scheduler's are started through the `Runner` contract, which `App` implements.
 - **Bounded everything.** The engine already bounds connections, tasks, buffers and body size per worker; framework components that queue or buffer take an explicit limit too.
 - **Graceful change.** SIGTERM drains, and a connection that looks idle is read a moment longer, since a request may already be on its way to it. New code needs a new process, because everything defined in phase 1 lives in the server's parent: `reload` has the server's keeper start a new server process on the socket it holds, and retire the old one only once the new one accepts connections. If the new one cannot start, the old one is left serving. SIGUSR1 still replaces the workers of one server process one at a time, with the code it already has.
 
@@ -184,7 +190,7 @@ flowchart LR
     R[Request] --> G["Every request's<br/>(prepended, the framework's, appended)"]
     G --> RT[Router]
     RT -->|no route| NF[404, back out through the first box]
-    RT --> GR["The groups'"] --> RO["The route's"] --> H[Handler]
+    RT --> GR["The groups'"] --> RO["The route's"] --> H[Action]
 ~~~
 
 - **The framework's own middleware is a list anyone can read,** `App::MIDDLEWARE`, and an application says how its own relate to it: before, after, without one of them, or in place of them all. Nothing the framework runs around a request is fixed.
@@ -226,7 +232,7 @@ flowchart TD
 
 ## Extension points
 
-Small and explicit; there are five, and no others are planned.
+Small and explicit; there are six, and no others are planned.
 
 | Point | How | Status |
 | --- | --- | --- |
@@ -234,13 +240,14 @@ Small and explicit; there are five, and no others are planned.
 | Per-worker work | `WorkerProvider::start(Worker)` / `stop(Worker)` | today |
 | Around requests | Middleware. Around every request: `withMiddleware()` in `app.php`, or the `MiddlewareStack` contract from a provider. Around some: `middleware:` on a route or a group. | today |
 | Commands | `Console` contract, `add()` | today |
-| Reacting to events | PSR-14 dispatcher | proposed, when the first component needs it |
+| Reacting to events | The `Events\Dispatcher` contract, PSR-14: `listen()` in a provider's `register()` | today, opt-in with `EventsProvider` |
+| Worker processes | The `Runner` contract: `run($group, $work, $workers)` from a command | today |
 
 No auto-discovery, no `boot()` phase, no global container accessor. `Route::get()` and `Command::add()` are static names for `$app->router` and `$app->console`, for declaring routes and commands before workers start; they are the only ones, and there is none for anything a request or a worker owns.
 
 ## Errors and observability
 
-- **One error path per entry point.** HTTP requests go through `ErrorHandler` *(today)*. Console commands report through `Console::run()` *(today)*. A task spawned on a worker that fails, a failure that escapes a timer, and a provider that fails to stop are written to the application's logger, and the worker keeps running *(today)*. Queue jobs and scheduled jobs get the same guarantee when those components are built.
+- **One error path per entry point.** HTTP requests go through `ErrorHandler` *(today)*. Console commands report through `Console::run()` *(today)*. A task spawned on a worker that fails, a failure that escapes a timer, and a provider that fails to stop are written to the application's logger, and the worker keeps running *(today)*. A queue job that throws is logged, tried again and in the end kept as failed; a scheduled task that throws is logged and runs again when next due; neither stops its worker *(today)*.
 - **The engine drops nothing.** Whatever it catches goes to the group's failure callbacks, and so to the application's logger, or to standard error when there are none *(today)*.
 - **Fail at startup, not at first use.** Misconfiguration stops `serve` with its cause *(today for middleware and logger)*.
 - **Request ids** *(today, opt-in)*. `Http\RequestId` is middleware an application adds with `withMiddleware(prepend: [RequestId::class])`; it assigns an id, stores it as the `request_id` attribute, returns it in `X-Request-Id` and the error handler adds it to the failure's log record. It is opt-in because it costs about 2 µs per request. The logger is shared by overlapping requests, so it cannot add the id by itself; code that logs passes it in the context.
@@ -267,12 +274,12 @@ A PSR implementation should also pass that PSR's public conformance suite where 
 1. **Close the contract gaps:** `Config`, `Router`, `Console` contracts; boundary tests for the layer rules. *Done.*
 2. **Worker lifecycle hooks:** `start` and `stop` for providers; error path for background tasks. *Done.*
 3. **Finish Http:** response cookies, multipart uploads, JSON bodies, bodies for router 404 and 405, request id middleware, warnings to exceptions. *Done.* A multipart body is read where the engine stored it, and an uploaded file is never held in memory. Still open: `getBody()` copies a body from the engine's storage when it is asked for.
-4. **Small PSR components:** clock (PSR-20), events (PSR-14), cache (PSR-16), HTTP client (PSR-18). *The clock and the HTTP client are done. The client speaks HTTP/2 and HTTP/1.1 on the event loop, with TLS through PHP's streams, an HTTP proxy, a cookie jar, retries and a fake for tests, and finds addresses with the engine's `DnsResolver`.*
-5. **Database.** *Connection pool, the thin query layer, the query builder, the schema builder and migrations are done, tested on SQLite and MySQL.* Next: models with relationships.
-6. **Queue**, then **Scheduling**, each as its own worker group.
-7. **Validation, Session, Auth.** *Validation is done, ahead of the steps before it, together with typed route handlers. Authentication is done: a way of authenticating is middleware that puts the user on the request, a handler takes the user as a parameter, and tokens in the database are one such way, opt-in, with a migration the application owns.* Roles and permissions, and sessions, are not built; sessions matter less for an API.
-8. **Application skeleton** (`crabphp/crab`) and the `make:*` commands. *The skeleton exists, kept minimal; it grows a folder when a component arrives. `make:migration` is the first `make:*` command.*
-9. **Per-component packages**, CI and the first tagged release.
+4. **Small PSR components:** clock (PSR-20), events (PSR-14), cache (PSR-16), HTTP client (PSR-18). *Done.* The client speaks HTTP/2 and HTTP/1.1 on the event loop, with TLS through PHP's streams, an HTTP proxy, a cookie jar, retries and a fake for tests, and finds addresses with the engine's `DnsResolver`. The cache keeps its entries in files, in a database table or in memory, behind a `Store` contract that a Redis store can later implement.
+5. **Database.** *Connection pool, the thin query layer, the query builder, the schema builder and migrations are done, tested on SQLite and MySQL.* Models with relationships are not planned; see the decisions. Next: a MySQL driver that waits on the event loop, behind the `Connection` contract as it is, so that a worker serves other requests while a query runs.
+6. **Queue**, then **Scheduling**, each as its own worker group. *Done.* Jobs are kept in a database table and run by `queue:work`; scheduled tasks are run by `schedule:work`, with no cron entry. Next: letting `serve` start both beside the HTTP workers, under the keeper, so that one command and one reload cover all three.
+7. **Validation, Auth.** *Validation is done, together with typed actions. Authentication is done: a way of authenticating is middleware that puts the user on the request, an action takes the user as a parameter, and tokens in the database are one such way, opt-in, with a migration the application owns.* Roles and permissions, and sessions, are not planned; see the decisions.
+8. **Application skeleton** (`crabphp/crab`) and the `make:*` commands. *The skeleton exists, kept minimal; it grows a folder when a component arrives. `make:migration` and `make:middleware` are the `make:*` commands so far.*
+9. **Per-component packages**, CI and the first tagged release. Nothing above needs to be finished first: what exists is a usable API framework, and use will say what is missing.
 
 ## Decisions
 
@@ -283,3 +290,9 @@ All agreed on 2026-10-04:
 3. **Worker hooks:** a provider may also implement `WorkerProvider`, with `start(Worker)` and `stop(Worker)`.
 4. **Packaging:** each component is published as its own package, at step 9 of the build order.
 5. **Global helpers:** process-scope values only (`config()`, `env()`), permanently.
+
+Agreed on 2026-10-10:
+
+6. **Scope:** Crab is not a Laravel on another engine. It stays a framework for JSON APIs that is long-running by design, and leaves out what that does not need: there is no model layer over the query builder, no session and no roles or permissions component. An application that wants one writes it over what is there, or brings a library.
+7. **Own components first:** events, cache, queue and scheduling are Crab's own, because each is small and the queue and the scheduler must run on the engine's worker groups, which a library with a worker loop of its own would sit beside. A third-party library remains welcome behind a contract, as a store or a driver: a Symfony cache adapter as a `Cache\Store`, for one.
+8. **Guide:** the usage of every component is written for application developers in `docs/`, one page per topic, and kept in step with the code by the `sync-docs` skill.

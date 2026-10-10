@@ -14,55 +14,55 @@ use Psr\Http\Server\RequestHandlerInterface;
  *     Route::get('/me', [UserController::class, 'me'], middleware: [TokenAuth::class]);
  *
  * It is $app->router under a shorter name and nothing more; see the
- * Router contract for what a pattern and a handler are. Routes are
+ * Router contract for what a pattern and an action are. Routes are
  * declared once, before any worker starts, which is why a static name for
  * them is safe where one for the request would not be.
  */
 final class Route
 {
     /**
-     * @param RequestHandlerInterface|\Closure|string|array{class-string, string} $handler
+     * @param RequestHandlerInterface|\Closure|string|array{class-string, string} $action
      * @param list<\Psr\Http\Server\MiddlewareInterface|class-string<\Psr\Http\Server\MiddlewareInterface>> $middleware Around this route alone.
      */
-    public static function get(string $pattern, RequestHandlerInterface|\Closure|string|array $handler, array $middleware = []): Router
+    public static function get(string $pattern, RequestHandlerInterface|\Closure|string|array $action, array $middleware = []): Router
     {
-        return App::current()->router->get($pattern, $handler, $middleware);
+        return App::current()->router->get($pattern, $action, $middleware);
     }
 
     /**
-     * @param RequestHandlerInterface|\Closure|string|array{class-string, string} $handler
+     * @param RequestHandlerInterface|\Closure|string|array{class-string, string} $action
      * @param list<\Psr\Http\Server\MiddlewareInterface|class-string<\Psr\Http\Server\MiddlewareInterface>> $middleware Around this route alone.
      */
-    public static function post(string $pattern, RequestHandlerInterface|\Closure|string|array $handler, array $middleware = []): Router
+    public static function post(string $pattern, RequestHandlerInterface|\Closure|string|array $action, array $middleware = []): Router
     {
-        return App::current()->router->post($pattern, $handler, $middleware);
+        return App::current()->router->post($pattern, $action, $middleware);
     }
 
     /**
-     * @param RequestHandlerInterface|\Closure|string|array{class-string, string} $handler
+     * @param RequestHandlerInterface|\Closure|string|array{class-string, string} $action
      * @param list<\Psr\Http\Server\MiddlewareInterface|class-string<\Psr\Http\Server\MiddlewareInterface>> $middleware Around this route alone.
      */
-    public static function put(string $pattern, RequestHandlerInterface|\Closure|string|array $handler, array $middleware = []): Router
+    public static function put(string $pattern, RequestHandlerInterface|\Closure|string|array $action, array $middleware = []): Router
     {
-        return App::current()->router->put($pattern, $handler, $middleware);
+        return App::current()->router->put($pattern, $action, $middleware);
     }
 
     /**
-     * @param RequestHandlerInterface|\Closure|string|array{class-string, string} $handler
+     * @param RequestHandlerInterface|\Closure|string|array{class-string, string} $action
      * @param list<\Psr\Http\Server\MiddlewareInterface|class-string<\Psr\Http\Server\MiddlewareInterface>> $middleware Around this route alone.
      */
-    public static function patch(string $pattern, RequestHandlerInterface|\Closure|string|array $handler, array $middleware = []): Router
+    public static function patch(string $pattern, RequestHandlerInterface|\Closure|string|array $action, array $middleware = []): Router
     {
-        return App::current()->router->patch($pattern, $handler, $middleware);
+        return App::current()->router->patch($pattern, $action, $middleware);
     }
 
     /**
-     * @param RequestHandlerInterface|\Closure|string|array{class-string, string} $handler
+     * @param RequestHandlerInterface|\Closure|string|array{class-string, string} $action
      * @param list<\Psr\Http\Server\MiddlewareInterface|class-string<\Psr\Http\Server\MiddlewareInterface>> $middleware Around this route alone.
      */
-    public static function delete(string $pattern, RequestHandlerInterface|\Closure|string|array $handler, array $middleware = []): Router
+    public static function delete(string $pattern, RequestHandlerInterface|\Closure|string|array $action, array $middleware = []): Router
     {
-        return App::current()->router->delete($pattern, $handler, $middleware);
+        return App::current()->router->delete($pattern, $action, $middleware);
     }
 
     /**
@@ -83,11 +83,11 @@ final class Route
     /**
      * A route for any other method, such as OPTIONS.
      *
-     * @param RequestHandlerInterface|\Closure|string|array{class-string, string} $handler
+     * @param RequestHandlerInterface|\Closure|string|array{class-string, string} $action
      * @param list<\Psr\Http\Server\MiddlewareInterface|class-string<\Psr\Http\Server\MiddlewareInterface>> $middleware Around this route alone.
      */
-    public static function add(string $method, string $pattern, RequestHandlerInterface|\Closure|string|array $handler, array $middleware = []): Router
+    public static function add(string $method, string $pattern, RequestHandlerInterface|\Closure|string|array $action, array $middleware = []): Router
     {
-        return App::current()->router->add($method, $pattern, $handler, $middleware);
+        return App::current()->router->add($method, $pattern, $action, $middleware);
     }
 }
