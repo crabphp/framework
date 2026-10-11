@@ -19,6 +19,7 @@ Reach for it when you are building an API and want it to start fast, answer fast
 ## Requirements
 
 - PHP 8.4 or newer.
+- The `mbstring` extension, which comes with most installations of PHP.
 - The `pcntl` and `posix` extensions to run more than one worker or a server in the background. Both come with PHP on Linux and macOS. Without them, everything works in a single process with `--single`.
 - `pdo_sqlite` or `pdo_mysql` for the database, `openssl` for calling `https` APIs.
 

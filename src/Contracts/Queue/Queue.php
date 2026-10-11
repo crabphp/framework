@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Crab\Contracts\Queue;
 
+use Crab\Contracts\Database\Connection;
+
 /**
  * Hands work to be done later, outside the request that asked for it. A
  * job is a class with a handle() method: its constructor takes the
@@ -43,4 +45,24 @@ interface Queue
      * which names it takes from with `queue:work --queue=emails,default`.
      */
     public function on(string $queue): Queue;
+
+    /**
+     * The same queue for a write that is being made in a transaction, so
+     * that the job exists exactly when the write does:
+     *
+     *     $this->db->transaction(function (Connection $db) use ($lines): void {
+     *         $id = $db->table('orders')->insert([...]);
+     *         $this->queue->within($db)->push(SendOrderConfirmation::class, orderId: $id);
+     *     });
+     *
+     * With jobs kept in the same database, the job is stored by the
+     * transaction itself: committed with the order, rolled back with it,
+     * and nothing in between can lose it. With jobs kept anywhere else it
+     * is pushed once the transaction has committed, and not at all when
+     * it is rolled back; push() then returns '' in place of an id, and a
+     * process that dies between the commit and the push loses the job.
+     *
+     * @param Connection $transaction The connection the transaction's callback was given.
+     */
+    public function within(Connection $transaction): Queue;
 }

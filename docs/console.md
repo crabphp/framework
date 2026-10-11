@@ -163,7 +163,7 @@ Providers add theirs when you register them:
 | Provider | Commands |
 | --- | --- |
 | `DatabaseProvider` | `migrate`, `migrate:rollback`, `migrate:status`, `make:migration` |
-| `TokenAuthProvider` | `tokens:install` |
+| `TokenAuthProvider` | `token:install` |
 | `CacheProvider` | `cache:clear`, `cache:install` |
 | `QueueProvider` | `queue:work`, `queue:failed`, `queue:retry`, `queue:forget`, `queue:install` |
 | `ScheduleProvider` | `schedule:work`, `schedule:list` |

@@ -4,7 +4,9 @@ declare(strict_types=1);
 
 namespace Crab\Queue;
 
+use Crab\Contracts\Database\Connection;
 use Crab\Contracts\Queue\Queue as QueueContract;
+use Crab\Contracts\Queue\TransactionalStore;
 use Crab\Contracts\Queue\Store;
 use Psr\Clock\ClockInterface;
 
@@ -26,11 +28,13 @@ final class Queue implements QueueContract
     /**
      * @param string $queue The name jobs are pushed under.
      * @param ClockInterface|null $clock The real time when left out.
+     * @param Connection|null $transaction The transaction a job is pushed as part of; see within().
      */
     public function __construct(
         private readonly Store $store,
         private readonly string $queue = 'default',
         private readonly ?ClockInterface $clock = null,
+        private readonly ?Connection $transaction = null,
     ) {
         if ($queue === '') {
             throw new \InvalidArgumentException('A queue needs a name.');
@@ -49,7 +53,12 @@ final class Queue implements QueueContract
 
     public function on(string $queue): QueueContract
     {
-        return new self($this->store, $queue, $this->clock);
+        return new self($this->store, $queue, $this->clock, $this->transaction);
+    }
+
+    public function within(Connection $transaction): QueueContract
+    {
+        return new self($this->store, $this->queue, $this->clock, $transaction);
     }
 
     /**
@@ -60,7 +69,17 @@ final class Queue implements QueueContract
         self::check($job, $data);
         $now = $this->clock?->now() ?? new \DateTimeImmutable();
         $available = $delay instanceof \DateInterval ? $now->add($delay) : $now->modify("+{$delay} seconds");
-        return $this->store->push($this->queue, $job, $data, max($available->getTimestamp(), $now->getTimestamp()), $now->getTimestamp());
+        $push = fn (Store $store): int|string => $store->push($this->queue, $job, $data, max($available->getTimestamp(), $now->getTimestamp()), $now->getTimestamp());
+        if ($this->transaction === null) {
+            return $push($this->store);
+        }
+        $joined = $this->store instanceof TransactionalStore ? $this->store->through($this->transaction) : null;
+        if ($joined !== null) {
+            return $push($joined);
+        }
+        // Kept elsewhere than the transaction writes to: it can only follow the commit.
+        $this->transaction->afterCommit(fn () => $push($this->store));
+        return '';
     }
 
     /**
@@ -99,10 +118,18 @@ final class Queue implements QueueContract
         if (!method_exists($job, 'handle')) {
             throw new \LogicException("{$job} was pushed as a job, and it has no handle() method. A job is a class whose constructor takes services and whose handle() takes the job's data.");
         }
+        $handle = new \ReflectionMethod($job, 'handle');
+        if (!$handle->isPublic() || $handle->isStatic() || $handle->isAbstract()) {
+            throw new \LogicException("{$job}::handle() must be a public method of an object, for a worker to call it.");
+        }
         $names = [];
         $required = [];
         $types = [];
-        foreach ((new \ReflectionMethod($job, 'handle'))->getParameters() as $parameter) {
+        foreach ($handle->getParameters() as $parameter) {
+            // push() and later() take these names themselves, so a value could not be given under them.
+            if (in_array($parameter->getName(), ['job', 'delay'], true)) {
+                throw new \LogicException("{$job}::handle() takes \${$parameter->getName()}, a name push() and later() use for themselves. Give the parameter another name.");
+            }
             if ($parameter->isVariadic()) {
                 throw new \LogicException("{$job}::handle() takes a variable number of arguments (...\${$parameter->getName()}). Name each value a job takes, so that what is pushed can be checked.");
             }

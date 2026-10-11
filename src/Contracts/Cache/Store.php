@@ -30,6 +30,16 @@ interface Store
      */
     public function add(string $key, string $value, ?int $expiresAt, int $now): bool;
 
+    /**
+     * Adds to the whole number at the key and returns what it now is, as
+     * one step with respect to every other caller of the same store. The
+     * number is kept as the text serialize() makes of it, "i:5;", which
+     * is what get() then returns. An entry that is absent, expired or not
+     * such a number counts from zero and expires at the time given; one
+     * that is counted on keeps the time it has.
+     */
+    public function increment(string $key, int $by, ?int $expiresAt, int $now): int;
+
     public function delete(string $key): void;
 
     /**

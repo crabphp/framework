@@ -130,6 +130,18 @@ $db->transaction(function (Connection $tx) use ($from, $to, $amount): void {
 
 `transaction()` returns what the callback returns. A transaction inside a transaction is a savepoint: the inner one can roll back alone.
 
+`afterCommit()` runs something once the transaction has committed, and never when it, or the inner transaction that asked, rolls back. Use it for what must not happen for a write that was undone:
+
+```php
+$db->transaction(function (Connection $tx) use ($id): void {
+    $tx->table('products')->where('id', $id)->update(['price' => 900]);
+
+    $tx->afterCommit(fn () => $this->cache->delete("product.{$id}"));
+});
+```
+
+To push a job with a write, use the queue's [`within()`](queues.md#with-a-database-write), which does this and better.
+
 Do not call another server from inside a transaction. The transaction holds a connection, and on MySQL locks, for as long as the call takes.
 
 ## Connections

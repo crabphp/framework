@@ -42,7 +42,7 @@ The last row is the rule that keeps the framework replaceable piece by piece: a 
 
 ### Enforcing the layers *(today)*
 
-`tests/LayerBoundaryTest.php` fails when a contract references a component, or when a component references the glue or a component it is not listed as built on. Today the listed pairs are `Routing` on `Http` and `Validation`, `Auth` on `Http`, `HttpClient` on `Http`, and `Testing` on `Container`. The cache, the queue and the scheduler need none: where one uses the database, the queue or the cache, it asks for that component's contract. `tests/EngineBoundaryTest.php` does the same for the engine. A rule that is only written down drifts.
+`tests/LayerBoundaryTest.php` fails when a contract references a component, or when a component references the glue or a component it is not listed as built on. Today the listed pairs are `Routing` on `Http` and `Validation`, `Auth` on `Http`, `HttpClient` on `Http`, and `Testing` on `Container` and `Http`. The cache, the queue and the scheduler need none: where one uses the database, the queue or the cache, it asks for that component's contract. `tests/EngineBoundaryTest.php` does the same for the engine. A rule that is only written down drifts.
 
 ## Contracts
 

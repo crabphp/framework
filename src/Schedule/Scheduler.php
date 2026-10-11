@@ -42,6 +42,12 @@ final class Scheduler
      * What this scheduler signs with when it keeps a task for one server.
      */
     private readonly string $owner;
+    /**
+     * When this scheduler last signed each task it keeps for one server, by the entry's key.
+     *
+     * @var array<string, float>
+     */
+    private array $kept = [];
 
     /**
      * @param ContainerInterface|null $container Makes task classes, and holds the console and the queue that commands and jobs go to.
@@ -95,6 +101,14 @@ final class Scheduler
         $name = $task->named();
         if (isset($this->running[$name])) {
             if ($task->interval() !== null) {
+                if ($task->runsOnOneServer()) {
+                    // Still at it: the task stays this server's for as long as it runs.
+                    try {
+                        $this->keep($task, $task->interval());
+                    } catch (\Throwable $error) {
+                        $this->logger?->error('Scheduled task {task} could not be kept for this server: {message}', ['task' => $name, 'message' => $error->getMessage(), 'exception' => $error]);
+                    }
+                }
                 return false;
             }
             $this->logger?->warning('Scheduled task {task} was due and is still running from before, so it was not started again.', ['task' => $name]);
@@ -244,13 +258,21 @@ final class Scheduler
     {
         $key = 'schedule.' . sha1($task->named()) . '.kept';
         $seconds = max(2, (int) ceil($interval * 3));
+        $now = hrtime(true) / 1e9;
         if ($this->cache->add($key, $this->owner, $seconds)) {
+            $this->kept[$key] = $now;
             return true;
         }
-        if ($this->cache->get($key) !== $this->owner) {
+        // Signed again only while the last signing cannot have run out. After a pause longer than
+        // that, another server may have taken the task, and writing over its entry would give
+        // the task to two: it is asked for afresh, which only one of them can win.
+        $fresh = isset($this->kept[$key]) && $now - $this->kept[$key] < $seconds * 2 / 3;
+        if (!$fresh || $this->cache->get($key) !== $this->owner) {
+            unset($this->kept[$key]);
             return false;
         }
         $this->cache->set($key, $this->owner, $seconds);
+        $this->kept[$key] = $now;
         return true;
     }
 }

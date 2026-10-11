@@ -159,6 +159,16 @@ final class AuthTest extends TestCase
         self::assertNull($tokens->owner($short), 'A token stops working at the moment it expires.');
         self::assertSame(7, $tokens->owner($token), 'One without an expiry goes on.');
 
+        // The moment is the same whatever zone it was said in: 19:30 in Bangkok is half past twelve here.
+        $elsewhere = $tokens->issue(7, expiresAt: new \DateTimeImmutable('2026-01-31 20:30:00', new \DateTimeZone('Asia/Bangkok')));
+        self::assertSame(7, $tokens->owner($elsewhere));
+        $clock->advance('+30 minutes');
+        self::assertNull($tokens->owner($elsewhere));
+        // An id that only looks like a number is given back as it was issued.
+        self::assertSame(['0007', '9223372036854775808'], [$tokens->owner($tokens->issue('0007')), $tokens->owner($tokens->issue('9223372036854775808'))]);
+        $tokens->revokeAll('0007');
+        $tokens->revokeAll('9223372036854775808');
+
         $robot = $tokens->issue(new Robot('deploy-bot'));
         self::assertSame('deploy-bot', $tokens->owner($robot), 'An id that is not a number stays text.');
         $tokens->revoke($token);
@@ -238,11 +248,11 @@ final class AuthTest extends TestCase
         // The table's migration is written into the application's own folder, once.
         self::assertSame([], $app->container->get(Migrator::class)->status(), 'The provider adds no migration of its own.');
         $out = fopen('php://memory', 'w+');
-        self::assertSame(0, $app->console->run(['tokens:install'], new Output($out, $out)));
+        self::assertSame(0, $app->console->run(['token:install'], new Output($out, $out)));
         $written = $this->migrations . '/2026_01_31_120000_create_auth_tokens_table.php';
         self::assertFileExists($written);
         self::assertStringContainsString("\$schema->create('auth_tokens'", (string) file_get_contents($written));
-        self::assertSame(0, $app->console->run(['tokens:install'], new Output($out, $out)));
+        self::assertSame(0, $app->console->run(['token:install'], new Output($out, $out)));
         rewind($out);
         self::assertSame(
             "Created {$written}\nRun `migrate` to create the table.\nYour migrations already have 2026_01_31_120000_create_auth_tokens_table; nothing was written.\n",
@@ -307,12 +317,12 @@ final class AuthTest extends TestCase
         $general = new App();
         $general->register(AuthProvider::class);
         self::assertInstanceOf(PasswordHasher::class, $general->container->get(PasswordHasherContract::class));
-        self::assertFalse($general->console->has('tokens:install'));
+        self::assertFalse($general->console->has('token:install'));
         self::assertFalse($general->container->has(TokenStore::class));
 
         $bare = new App();
         $bare->register(TokenAuthProvider::class);
-        self::assertTrue($bare->console->has('tokens:install'));
+        self::assertTrue($bare->console->has('token:install'));
         try {
             $bare->container->get(TokenStore::class);
             self::fail('Tokens were offered without a database to keep them in.');

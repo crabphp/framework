@@ -164,7 +164,27 @@ final class Request extends Message implements RequestContract
 
     public function getServerParams(): array
     {
-        return $this->serverParams;
+        $peer = $this->peer();
+        return $peer === '' ? $this->serverParams : ['REMOTE_ADDR' => $peer] + $this->serverParams;
+    }
+
+    public function ip(): string
+    {
+        $trusted = $this->getAttribute(TrustedProxies::ATTRIBUTE);
+        return is_string($trusted) && $trusted !== '' ? $trusted : $this->peer();
+    }
+
+    /**
+     * The address at the other end of the connection, without its port.
+     */
+    private function peer(): string
+    {
+        $peer = $this->source?->peer ?? '';
+        if ($peer === '') {
+            return (string) ($this->serverParams['REMOTE_ADDR'] ?? '');
+        }
+        $colon = strrpos($peer, ':');
+        return trim($colon === false ? $peer : substr($peer, 0, $colon), '[]');
     }
 
     public function getCookieParams(): array

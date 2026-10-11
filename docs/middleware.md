@@ -6,10 +6,12 @@
 - [Around some routes](#around-some-routes)
 - [The order they run in](#the-order-they-run-in)
 - [Middleware with options](#middleware-with-options)
+    - [Options and services](#options-and-services)
 - [Passing data to the action](#passing-data-to-the-action)
 - [Middleware that ships](#middleware-that-ships)
     - [CORS](#cors)
     - [Request ids](#request-ids)
+    - [Rate limiting](#rate-limiting)
 
 ## Introduction
 
@@ -132,6 +134,33 @@ Route::group(middleware: [TokenAuth::class, new RequireRole('admin')], routes: f
 
 There are no string options such as `'role:admin'`. Two objects of one class, `new RequireRole('admin')` and `new RequireRole('billing')`, are two middleware and both run.
 
+### Options and services
+
+An object you make with `new` gets its options and nothing else: no container is at hand in a routes file. Middleware that needs a service as well implements `UsesContainer`, and is asked for itself with the service before the first request:
+
+```php
+use Crab\Contracts\Http\UsesContainer;
+use Psr\Container\ContainerInterface;
+
+final readonly class RequirePlan implements Middleware, UsesContainer
+{
+    public function __construct(private string $plan, private ?Plans $plans = null)
+    {
+    }
+
+    public function withContainer(ContainerInterface $container): static
+    {
+        return new self($this->plan, $container->get(Plans::class));
+    }
+
+    // process() uses $this->plans
+}
+```
+
+```php
+Route::get('/exports', ListExports::class, middleware: [new RequirePlan('team')]);
+```
+
 ## Passing data to the action
 
 Put it on the request as an attribute, and pass the changed request on:
@@ -146,7 +175,7 @@ An action that takes the request reads it with `$request->getAttribute('tenant')
 
 ## Middleware that ships
 
-Both are off until you add them, because each adds work to every request.
+All are off until you add them, because each adds work to the requests it is around.
 
 ### CORS
 
@@ -183,3 +212,45 @@ Put it first, with `prepend:`, so that a page can read an error's body too. It a
 ```
 
 Use it when requests pass through several services and you want to follow one through their logs. Pass the id along when you log: `$logger->info('Charged', ['request_id' => $request->getAttribute('request_id')])`.
+
+### Rate limiting
+
+`Crab\Http\RateLimit` lets each client make so many requests in a length of time, and answers the rest `429`:
+
+```php
+use Crab\Http\RateLimit;
+
+Route::post('/login', Login::class, middleware: [new RateLimit(5, per: 60)]);
+
+Route::group(middleware: [TokenAuth::class, new RateLimit(120)], routes: function () {
+    // 120 a minute for each user, over all of these routes together
+});
+```
+
+| Argument | What it says | Default |
+| --- | --- | --- |
+| `limit` | Requests a client may make in one window | required |
+| `per` | The length of a window, in seconds | `60` |
+| `by` | A function from the request to who it counts against | the user, else the address |
+| `name` | Tells one limit from another | `''` |
+
+A client is the logged-in user when the request has one, so put the limit after the middleware that authenticates. Otherwise it is [the client's address](requests.md#the-clients-address); behind a proxy, add `TrustedProxies` or every client shares one count.
+
+Every answer says where the client stands, and a refusal says when to come back:
+
+```text
+X-RateLimit-Limit: 5
+X-RateLimit-Remaining: 0
+Retry-After: 42
+```
+
+Counts are kept in the [cache](cache.md), so register `CacheProvider`. Workers on one machine share the `file` store; several machines need the `database` or `redis` store. With the `array` store each worker counts alone.
+
+Two limits with the same `limit`, `per` and `name` are one count, wherever they are used. Give each its own name to count apart:
+
+```php
+Route::post('/login', Login::class, middleware: [new RateLimit(5, name: 'login')]);
+Route::post('/register', Register::class, middleware: [new RateLimit(5, name: 'register')]);
+```
+
+Each window counts from zero, so across the edge of two windows a client can get up to twice the limit through in a short time. Set the limit with that in mind.

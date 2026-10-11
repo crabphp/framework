@@ -10,6 +10,7 @@
     - [Removing](#removing)
     - [Several keys at once](#several-keys-at-once)
 - [Keys and time to live](#keys-and-time-to-live)
+- [Counting](#counting)
 - [Locks](#locks)
 - [A store of your own](#a-store-of-your-own)
 - [In tests](#in-tests)
@@ -163,6 +164,22 @@ $cache->set('report', $report, new \DateInterval('P1D'));
 
 Give every entry a time to live unless you delete it yourself when its source changes. An entry that lives forever and is never deleted is a bug waiting for the day the data changes.
 
+## Counting
+
+`increment()` adds to the whole number at a key and returns what it now is. It is one step, so of several callers at the same moment each is told a different count and none is lost:
+
+```php
+$attempts = $cache->increment('login.' . sha1($email), ttl: 900);
+
+if ($attempts > 5) {
+    throw new HttpException(429, 'Too many attempts. Try again in a quarter of an hour.');
+}
+```
+
+A key that holds nothing counts from zero. The time to live belongs to the count as it starts and is not moved by later additions, so the example counts attempts in fifteen minutes, not since the last one. Give a second argument to add more than one, or less than zero to take away: `$cache->increment('stock.7', -2)`.
+
+To limit how often a client may call a route, use the [`RateLimit` middleware](middleware.md#rate-limiting), which is built on this.
+
 ## Locks
 
 `add()` sets a key only when it holds nothing, and tells you whether it did. Of several callers at the same moment, exactly one is told `true`. That makes it a lock:
@@ -192,7 +209,7 @@ use Crab\Contracts\Cache\Store;
 $container->singleton(Store::class, static fn (): Store => new RedisStore(config('redis.host')));
 ```
 
-A store only stores text by key with an expiry time: `get()`, `set()`, `add()`, `delete()` and `clear()`. Checking keys, serializing values and reading the clock stay with the cache in front of it. `add()` must be one step with respect to every other caller, or locks built on it do not hold.
+A store only stores text by key with an expiry time: `get()`, `set()`, `add()`, `increment()`, `delete()` and `clear()`. Checking keys, serializing values and reading the clock stay with the cache in front of it. `add()` and `increment()` must each be one step with respect to every other caller, or the locks and limits built on them do not hold.
 
 ## In tests
 

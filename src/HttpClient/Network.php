@@ -46,6 +46,12 @@ final class Network implements Transport
      */
     private array $sessions = [];
     /**
+     * Requests waiting for a connection to each server, by what ends their wait.
+     *
+     * @var array<string, array<int, Cancellation>>
+     */
+    private array $waiting = [];
+    /**
      * The proxy's host, port and, when it asks who is calling, the header that says so.
      *
      * @var array{string, int, ?string}|null
@@ -102,7 +108,11 @@ final class Network implements Transport
                 $session = null;
             }
             try {
-                $connection = $session === null ? $this->connection($pool, $deadline, $cancellation) : null;
+                $connection = $session === null ? $this->connection($pool, $deadline, $cancellation, $origin) : null;
+                if ($connection === null && $session === null) {
+                    // While this one waited, another request opened an HTTP/2 conversation that has room for it.
+                    continue;
+                }
                 if ($connection !== null && $connection->protocol === 'h2') {
                     $session = $this->session($origin, $pool, $connection, $deadline);
                 }
@@ -194,6 +204,10 @@ final class Network implements Transport
         $this->sessions[$origin] = $session;
         try {
             $session->start($deadline);
+            // Whoever waits for a connection to this server need wait no longer.
+            foreach ($this->waiting[$origin] ?? [] as $waiter) {
+                $waiter->cancel();
+            }
         } catch (\Throwable $error) {
             $session->close($error);
             throw $error instanceof TimedOut ? $error : new \RuntimeException('the connection was lost while sending', previous: $error);
@@ -203,9 +217,12 @@ final class Network implements Transport
 
     /**
      * A connection to use: a kept one that still works, else a new one.
-     * Waiting for one to come free ends at the request's deadline.
+     * Waiting for one to come free ends at the request's deadline. It
+     * ends too, with null, when an HTTP/2 conversation is opened to the
+     * same server meanwhile: that carries every request at once, and the
+     * connection it took will not come free.
      */
-    private function connection(Pool $pool, float $deadline, ?Cancellation $cancellation): Connection
+    private function connection(Pool $pool, float $deadline, ?Cancellation $cancellation, string $origin): ?Connection
     {
         $left = $deadline - hrtime(true) / 1_000_000_000;
         if ($left <= 0) {
@@ -216,10 +233,17 @@ final class Network implements Transport
         $loop = EventLoop::current();
         $timer = $loop->delay($left, static fn () => $limit->cancel());
         $unsubscribe = $cancellation?->subscribe(static fn () => $limit->cancel());
+        $this->waiting[$origin][spl_object_id($limit)] = $limit;
         try {
             while (true) {
                 /** @var Connection $connection */
                 $connection = $pool->acquire($limit);
+                // Making a connection takes its own time; the request's may have run out meanwhile.
+                if (hrtime(true) / 1_000_000_000 >= $deadline || $cancellation?->isCancelled() === true) {
+                    $connection->used ? $pool->discard($connection) : $pool->release($connection);
+                    $cancellation?->throwIfCancelled();
+                    throw new TimedOut('waiting for a connection');
+                }
                 if (!$connection->used) {
                     return $connection;
                 }
@@ -230,8 +254,12 @@ final class Network implements Transport
             }
         } catch (CancelledException $cancelled) {
             $cancellation?->throwIfCancelled();
+            if (hrtime(true) / 1_000_000_000 < $deadline && ($this->sessions[$origin] ?? null)?->accepts() === true) {
+                return null;
+            }
             throw new TimedOut('waiting for a connection');
         } finally {
+            unset($this->waiting[$origin][spl_object_id($limit)]);
             $loop->cancel($timer);
             $unsubscribe?->__invoke();
         }

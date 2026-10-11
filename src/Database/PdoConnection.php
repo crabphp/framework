@@ -36,6 +36,19 @@ final class PdoConnection implements Connection
      * @var array<string, \PDOStatement>
      */
     private array $statements = [];
+    /**
+     * How many values each kept statement takes, by its SQL.
+     *
+     * @var array<string, int>
+     */
+    private array $takes = [];
+    /**
+     * What to run once the outermost transaction commits, each with the
+     * depth of the transaction that asked for it.
+     *
+     * @var list<array{int, \Closure}>
+     */
+    private array $afterCommit = [];
     private ?string $driver = null;
 
     /**
@@ -117,6 +130,24 @@ final class PdoConnection implements Connection
         return $result;
     }
 
+    public function afterCommit(\Closure $callback): void
+    {
+        if ($this->depth === 0) {
+            $callback();
+            return;
+        }
+        $this->afterCommit[] = [$this->depth, $callback];
+    }
+
+    /**
+     * Whether this connection is opened by the given function, which is
+     * how a pool knows its own.
+     */
+    public function opensWith(\Closure $connect): bool
+    {
+        return $this->connect === $connect;
+    }
+
     public function inTransaction(): bool
     {
         return $this->depth > 0 || ($this->pdo?->inTransaction() ?? false);
@@ -131,6 +162,7 @@ final class PdoConnection implements Connection
         $this->statements = [];
         $this->pdo = null;
         $this->depth = 0;
+        $this->afterCommit = [];
     }
 
     private function begin(): void
@@ -161,6 +193,23 @@ final class PdoConnection implements Connection
             throw $error;
         }
         $this->depth = $depth;
+        if ($depth > 0) {
+            return;
+        }
+        $waiting = $this->afterCommit;
+        $this->afterCommit = [];
+        $failure = null;
+        foreach ($waiting as [, $callback]) {
+            try {
+                $callback();
+            } catch (\Throwable $error) {
+                // The rest were promised a commit that has happened; they still run.
+                $failure ??= $error;
+            }
+        }
+        if ($failure !== null) {
+            throw $failure;
+        }
     }
 
     private function rollBack(): void
@@ -174,6 +223,8 @@ final class PdoConnection implements Connection
                 $this->pdo()->rollBack();
             }
             $this->depth = $depth;
+            // What this transaction, and any inside it, asked to run after a commit is not to run.
+            $this->afterCommit = array_values(array_filter($this->afterCommit, static fn (array $waiting): bool => $waiting[0] <= $depth));
         } catch (\Throwable) {
             // The failure being rolled back is the one to report; dropping the connection rolls back too.
             $this->close();
@@ -190,6 +241,12 @@ final class PdoConnection implements Connection
     {
         return $this->attempt(function () use ($sql, $bindings): \PDOStatement {
             $statement = $this->statements[$sql] ?? $this->pdo()->prepare($sql);
+            // A statement kept from before still holds the values it was last given: one left out now
+            // would be answered with another caller's. So it must be given as many as it takes.
+            $takes = $this->takes[$sql] ?? null;
+            if ($takes !== null && $takes !== count($bindings)) {
+                throw new DatabaseException("The statement takes {$takes} values and was given " . count($bindings) . " (SQL: {$sql})");
+            }
             foreach ($bindings as $key => $value) {
                 [$value, $type] = self::bound($value);
                 $statement->bindValue(is_int($key) ? $key + 1 : $key, $value, $type);
@@ -197,9 +254,11 @@ final class PdoConnection implements Connection
             $statement->execute();
             if (!isset($this->statements[$sql])) {
                 if (count($this->statements) >= self::STATEMENTS) {
+                    unset($this->takes[(string) array_key_first($this->statements)]);
                     array_shift($this->statements);
                 }
                 $this->statements[$sql] = $statement;
+                $this->takes[$sql] = count($bindings);
             }
             return $statement;
         }, $sql);

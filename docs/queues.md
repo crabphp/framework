@@ -5,6 +5,7 @@
 - [Configuration](#configuration)
 - [Writing a job](#writing-a-job)
 - [Pushing a job](#pushing-a-job)
+    - [With a database write](#with-a-database-write)
     - [Delaying a job](#delaying-a-job)
     - [Named queues](#named-queues)
     - [What a job may carry](#what-a-job-may-carry)
@@ -143,6 +144,29 @@ final readonly class RegisterUser
 What you push is checked against the job's `handle()` on that line. A parameter that does not exist, a required one left out, or a value given by position is refused there and then, with a message naming the job, and not minutes later by a worker.
 
 `push()` returns the id the job was stored under.
+
+### With a database write
+
+A job usually follows a write: the order is saved, then its confirmation is pushed. Done as two steps they can come apart. Push inside a transaction that then rolls back, and a job runs for an order that does not exist; push after it, and a crash in between loses the job.
+
+`within()` ties the job to the transaction. Give it the connection the transaction's callback received:
+
+```php
+use Crab\Contracts\Database\Connection;
+
+$this->db->transaction(function (Connection $db) use ($user, $total): void {
+    $id = $db->table('orders')->insert(['user_id' => $user->id, 'total' => $total]);
+
+    $this->queue->within($db)->on('mail')->push(SendOrderConfirmation::class, orderId: $id);
+});
+```
+
+| Where jobs are kept | What `within()` does |
+| --- | --- |
+| The `database` store, in the transaction's database | The job is a row of the same transaction: committed with the order, rolled back with it. Nothing can lose it. |
+| Anywhere else: `redis`, `memory`, another database | The job is pushed once the transaction has committed, and not at all when it rolls back. `push()` returns `''`, since the job has no id yet. |
+
+In the second case a process that dies between the commit and the push still loses the job. When that must never happen, keep the jobs in the database the write goes to.
 
 ### Delaying a job
 
@@ -358,7 +382,7 @@ $app = require dirname(__DIR__) . '/app.php';          // with 'queue' => ['stor
 
 $app->handle(new Request('POST', '/users', ['Content-Type' => 'application/json'], '{"email":"ada@example.com","name":"Ada"}'));
 
-$waiting = $app->container->get(Store::class)->waiting();
+$waiting = $app->container->get(Store::class)->jobs('default', 'pending', time());
 self::assertSame(SendWelcomeEmail::class, $waiting[0]->job);
 self::assertSame(['userId' => 1], $waiting[0]->data);
 ```

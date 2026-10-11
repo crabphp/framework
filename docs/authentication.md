@@ -76,7 +76,7 @@ use Crab\Auth\TokenAuthProvider;
 ```
 
 ```sh
-php cua tokens:install       # writes the tokens table's migration into your migrations
+php cua token:install       # writes the tokens table's migration into your migrations
 php cua migrate
 ```
 

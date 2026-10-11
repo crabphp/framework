@@ -4,6 +4,7 @@
 - [Testing a route](#testing-a-route)
     - [Sending JSON](#sending-json)
     - [Reading the answer](#reading-the-answer)
+    - [As a logged-in user](#as-a-logged-in-user)
 - [Settings for tests](#settings-for-tests)
 - [The database](#the-database)
 - [Testing a class on its own](#testing-a-class-on-its-own)
@@ -61,44 +62,56 @@ final class HelloTest extends TestCase
 
 ### Sending JSON
 
-A request takes a method, a path, headers and a body:
+`Crab\Testing\Api` sends requests as a client would. Data goes as JSON and JSON is asked for, so errors come back as JSON too:
 
 ```php
-$response = $this->app->handle(new Request(
-    'POST',
-    '/users',
-    ['Content-Type' => 'application/json', 'Accept' => 'application/json'],
-    json_encode(['email' => 'ada@example.com', 'name' => 'Ada']),
-));
+use Crab\Testing\Api;
 
-self::assertSame(201, $response->getStatusCode());
-self::assertSame('/users/1', $response->getHeaderLine('Location'));
+$api = new Api($this->app);
+
+$api->get('/users', ['page' => 2]);
+$api->post('/users', ['email' => 'ada@example.com', 'name' => 'Ada']);
+$api->patch('/users/1', ['name' => 'Ada L.']);
+$api->delete('/users/1');
 ```
 
-Send `Accept: application/json` to get errors as JSON, as your real clients do. A helper keeps tests short:
-
-```php
-private function json(string $method, string $path, array $data = [], array $headers = []): ResponseInterface
-{
-    return $this->app->handle(new Request(
-        $method,
-        $path,
-        ['Content-Type' => 'application/json', 'Accept' => 'application/json'] + $headers,
-        $data === [] ? '' : json_encode($data),
-    ));
-}
-```
+`put()` takes data as `post()` does, `request($method, $path, $json, $headers)` sends anything else, and `withHeaders([...])` gives an `Api` that adds those headers to every request.
 
 ### Reading the answer
 
 ```php
-$response = $this->json('POST', '/users', ['email' => 'not-an-email']);
+$response = $api->post('/users', ['email' => 'not-an-email']);
 
-self::assertSame(422, $response->getStatusCode());
+self::assertSame(422, $response->status);
+self::assertSame(['must be an email address'], $response->json('error.fields.email'));
+self::assertSame('/users/1', $api->post('/users', $valid)->header('Location'));
+```
 
-$body = json_decode((string) $response->getBody(), true);
-self::assertSame(['must be an email address'], $body['error']['fields']['email']);
-self::assertSame(['is required'], $body['error']['fields']['name']);
+| | |
+| --- | --- |
+| `$response->status` | The status |
+| `$response->json()` | The body, decoded |
+| `$response->json('data.0.name')` | One value of it, by a path with dots |
+| `$response->header('Location')` | A header |
+| `$response->body()` | The body as text |
+| `$response->response` | The PSR-7 response |
+
+`assertStatus()` fails the test when the status is another, and says what was answered instead, which with a `422` or a `500` is the reason:
+
+```php
+$order = $api->post('/orders', $lines)->assertStatus(201)->json();
+// POST /orders answered 422, not 201: {"error":{"status":422,"fields":{"lines.0.quantity":["must be at most 20"]}}}
+```
+
+### As a logged-in user
+
+`actingAs()` makes every request as a user, with no token to issue and send. The user is put on the request as authentication would put it, and middleware that authenticates lets it through:
+
+```php
+$ada = new User(1, 'ada@example.com');
+
+$api->actingAs($ada)->get('/me')->assertStatus(200);
+$api->get('/me')->assertStatus(401);            // without it, still refused
 ```
 
 ## Settings for tests
@@ -140,7 +153,7 @@ protected function setUp(): void
 
 public function testAUserIsStored(): void
 {
-    $this->json('POST', '/users', ['email' => 'ada@example.com', 'name' => 'Ada']);
+    $api->post('/users', ['email' => 'ada@example.com', 'name' => 'Ada']);
 
     self::assertSame('Ada', $this->db->table('users')->where('email', 'ada@example.com')->value('name'));
 }
@@ -185,10 +198,12 @@ use Crab\Contracts\HttpClient\Client;
 $mailer = new RecordingMailer();
 $this->app->container->instance(Mailer::class, $mailer);
 
-$this->json('POST', '/users', ['email' => 'ada@example.com', 'name' => 'Ada']);
+$api->post('/users', ['email' => 'ada@example.com', 'name' => 'Ada']);
 
 self::assertSame(['ada@example.com'], $mailer->recipients);
 ```
+
+It is replaced under every name it has: put a `FrozenClock` under Crab's `Clock` and whoever asks for PSR's `ClockInterface` gets it too. A service that was already made keeps what it was given, so replace before the first request.
 
 This is why services are asked for by interface: a test can then stand anything behind it. A fake is usually a few lines of your own that record what they were asked to do.
 
@@ -253,9 +268,9 @@ With `queue.store` set to `memory`, jobs are kept in the test's own process. Ass
 ```php
 use Crab\Contracts\Queue\Store;
 
-$this->json('POST', '/users', ['email' => 'ada@example.com', 'name' => 'Ada']);
+$api->post('/users', ['email' => 'ada@example.com', 'name' => 'Ada']);
 
-$waiting = $this->app->container->get(Store::class)->waiting();
+$waiting = $this->app->container->get(Store::class)->jobs('default', 'pending', time());
 self::assertSame(SendWelcomeEmail::class, $waiting[0]->job);
 self::assertSame(['userId' => 1], $waiting[0]->data);
 ```

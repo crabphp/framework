@@ -19,6 +19,12 @@ interface Database extends Connection
     public function connection(string $name): Database;
 
     /**
+     * Whether a connection is one of this database's, as the one a
+     * transaction() of it hands to its callback is.
+     */
+    public function owns(Connection $connection): bool;
+
+    /**
      * Borrows a connection, waiting for one to be free when every one is
      * in use. Whatever is acquired must be released; prefer run().
      */

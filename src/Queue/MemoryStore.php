@@ -52,7 +52,7 @@ final class MemoryStore implements Store
 
     public function release(Message $message, int $availableAt): void
     {
-        if (isset($this->jobs[$message->id])) {
+        if ($this->held($message)) {
             $this->jobs[$message->id]['reserved'] = null;
             $this->jobs[$message->id]['available'] = $availableAt;
         }
@@ -60,11 +60,21 @@ final class MemoryStore implements Store
 
     public function fail(Message $message, string $error, int $now): void
     {
-        if (isset($this->jobs[$message->id])) {
+        if ($this->held($message)) {
             $this->jobs[$message->id]['reserved'] = null;
             $this->jobs[$message->id]['error'] = $error;
             $this->jobs[$message->id]['failed'] = $now;
         }
+    }
+
+    /**
+     * Whether this worker still holds the job: taken, and on the try the
+     * worker was given. One since given to another is that other's.
+     */
+    private function held(Message $message): bool
+    {
+        $job = $this->jobs[$message->id] ?? null;
+        return $job !== null && $job['reserved'] !== null && $job['failed'] === null && $job['attempts'] === $message->attempts;
     }
 
     public function failed(?int $latest = null): array

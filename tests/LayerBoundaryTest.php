@@ -28,7 +28,7 @@ final class LayerBoundaryTest extends TestCase
         'HttpClient' => ['Http'],
         // A route's handler is called with an input the validator builds.
         'Routing' => ['Http', 'Validation'],
-        'Testing' => ['Container'],
+        'Testing' => ['Container', 'Http'],
     ];
 
     public function testContractsReferenceOnlyContractsAndTheEngine(): void

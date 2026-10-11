@@ -59,7 +59,7 @@ final class CacheProvider implements Provider
                 $name = $config->get('cache.database');
                 return new DatabaseStore(is_string($name) ? $database->connection($name) : $database, (string) $config->get('cache.table'));
             }
-            throw new \LogicException("\"cache.store\" is \"{$store}\", and the stores are \"file\", \"database\" and \"array\". For another, bind " . Store::class . ' to a store of your own.');
+            throw new \LogicException("\"cache.store\" is \"{$store}\", and the stores are \"file\", \"database\" and \"array\". For \"redis\", install crabphp/redis and register its RedisProvider after this one; for another, bind " . Store::class . ' to a store of your own.');
         });
         $container->singleton(CacheContract::class, static function (Container $container): Cache {
             $config = $container->get(Config::class);

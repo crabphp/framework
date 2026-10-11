@@ -48,6 +48,10 @@ final readonly class TokenAuth implements Middleware
 
     public function process(ServerRequestInterface $request, RequestHandlerInterface $handler): ResponseInterface
     {
+        if ($request->getAttribute(Identity::ATTRIBUTE) instanceof Identity) {
+            // Whoever put the user there, middleware before this one or a test, has said who it is.
+            return $handler->handle($request);
+        }
         $user = $this->user($request);
         if ($user !== null) {
             return $handler->handle($request->withAttribute(Identity::ATTRIBUTE, $user));

@@ -33,13 +33,16 @@ interface Store
     public function complete(Message $message): void;
 
     /**
-     * The job is to be tried again, no sooner than $availableAt.
+     * The job is to be tried again, no sooner than $availableAt. Only
+     * while it is still this worker's: taken, on the try the message
+     * says. One since given to another worker is left as it is.
      */
     public function release(Message $message, int $availableAt): void;
 
     /**
      * The job is given up on. It is kept, with the reason, until it is
-     * retried or forgotten.
+     * retried or forgotten. Only while it is still this worker's, as
+     * with release().
      */
     public function fail(Message $message, string $error, int $now): void;
 

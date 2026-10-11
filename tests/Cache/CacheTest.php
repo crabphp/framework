@@ -141,6 +141,60 @@ final class CacheTest extends TestCase
     }
 
     #[DataProvider('stores')]
+    public function testIncrementCountsFromZeroAndKeepsTheTimeTheCountStartedWith(string $kind): void
+    {
+        $cache = $this->cache($kind);
+
+        self::assertSame(1, $cache->increment('hits', ttl: 60));
+        self::assertSame(2, $cache->increment('hits', ttl: 600));
+        self::assertSame(7, $cache->increment('hits', 5));
+        self::assertSame(4, $cache->increment('hits', -3));
+        // A count is a value like any other.
+        self::assertSame(4, $cache->get('hits'));
+
+        // The later, longer times to live moved nothing: the count ends when it was first said to.
+        $this->clock->advance('+60 seconds');
+        self::assertFalse($cache->has('hits'));
+        self::assertSame(1, $cache->increment('hits'));
+        $this->clock->advance('+10 years');
+        self::assertSame(2, $cache->increment('hits'));
+
+        // What was set as a number is counted on; anything else is replaced.
+        $cache->set('seen', 40, 30);
+        self::assertSame(41, $cache->increment('seen', ttl: 600));
+        $this->clock->advance('+30 seconds');
+        self::assertFalse($cache->has('seen'));
+        $cache->set('text', 'not a number');
+        self::assertSame(1, $cache->increment('text'));
+        self::assertSame(-2, $cache->increment('below', -2));
+    }
+
+    public function testIncrementLosesNoCountBetweenProcesses(): void
+    {
+        if (!function_exists('pcntl_fork')) {
+            self::markTestSkipped('Needs pcntl to count from several processes at once.');
+        }
+        $children = [];
+        for ($child = 0; $child < 4; ++$child) {
+            $pid = pcntl_fork();
+            if ($pid === 0) {
+                $store = new FileStore($this->directory);
+                for ($i = 0; $i < 250; ++$i) {
+                    $store->increment('hits', 1, null, 100);
+                }
+                // Without the test's shutdown, which belongs to the parent.
+                posix_kill(getmypid(), SIGKILL);
+            }
+            $children[] = $pid;
+        }
+        foreach ($children as $pid) {
+            pcntl_waitpid($pid, $status);
+        }
+
+        self::assertSame(1001, (new FileStore($this->directory))->increment('hits', 1, null, 100));
+    }
+
+    #[DataProvider('stores')]
     public function testRememberMakesAValueOnce(string $kind): void
     {
         $cache = $this->cache($kind);

@@ -45,6 +45,14 @@ final class ArrayStore implements Store
         return true;
     }
 
+    public function increment(string $key, int $by, ?int $expiresAt, int $now): int
+    {
+        $entry = $this->get($key, $now);
+        $count = Counter::read($entry) + $by;
+        $this->entries[$key] = [Counter::write($count), Counter::is($entry) ? $this->entries[$key][1] : $expiresAt];
+        return $count;
+    }
+
     public function delete(string $key): void
     {
         unset($this->entries[$key]);

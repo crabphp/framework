@@ -305,4 +305,30 @@ final class Passes implements \Psr\Http\Server\MiddlewareInterface
     {
         return $handler->handle($request);
     }
+
+    public function testARouteDeclaredAsItReadsAnswersARequestThatNamesItEncoded(): void
+    {
+        $router = (new Router())
+            ->get('/café', static fn (): string => 'the café')
+            ->get('/{slug}', static fn (string $slug): string => "page {$slug}");
+
+        self::assertSame('the café', (string) $router->handle(new Request('GET', '/caf%C3%A9'))->getBody());
+        self::assertSame('page tea', (string) $router->handle(new Request('GET', '/tea'))->getBody());
+
+        // A whole number past what an integer holds is not quietly made another.
+        $router->get('/users/{id}', static fn (int $id): array => [$id]);
+        self::assertSame('[7]', (string) $router->handle(new Request('GET', '/users/007'))->getBody());
+        self::assertSame(422, $router->handle(new Request('GET', '/users/9223372036854775808'))->getStatusCode());
+        $router->get('/list', static fn (int $page = 1, ?\DateTimeImmutable $since = null): array => [$page, $since?->format('Y-m-d')]);
+        self::assertSame(422, $router->handle(new Request('GET', '/list?page=9223372036854775808'))->getStatusCode());
+        self::assertSame('[2,"2026-02-28"]', (string) $router->handle(new Request('GET', '/list?page=2&since=2026-02-28'))->getBody());
+        // A rule on a part of the address holds as it would on a field.
+        $router->get('/items/{id}/{code}', static fn (#[\Crab\Validation\Range(min: 1)] int $id, #[\Crab\Validation\Pattern('^[a-z]{3}$')] string $code): array => [$id, $code]);
+        self::assertSame('[5,"abc"]', (string) $router->handle(new Request('GET', '/items/5/abc'))->getBody());
+        $refused = $router->handle(new Request('GET', '/items/-2/ABCD', ['Accept' => 'application/json']));
+        self::assertSame(422, $refused->getStatusCode());
+        self::assertSame(['id', 'code'], array_keys(json_decode((string) $refused->getBody(), true)['error']['fields']));
+        // The calendar has no February 31st, and it is not read as a day in March.
+        self::assertSame(422, $router->handle(new Request('GET', '/list?since=2026-02-31'))->getStatusCode());
+    }
 }

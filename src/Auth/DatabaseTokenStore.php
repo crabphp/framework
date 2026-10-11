@@ -33,7 +33,8 @@ final readonly class DatabaseTokenStore implements TokenStore
             'owner_id' => (string) self::id($for),
             'name' => $name,
             'token_hash' => hash('sha256', $token),
-            'expires_at' => $expiresAt?->format('Y-m-d H:i:s'),
+            // As the clock tells the time, so that the two compare whatever zone the expiry was given in.
+            'expires_at' => $expiresAt === null ? null : \DateTimeImmutable::createFromInterface($expiresAt)->setTimezone($this->clock()->getTimezone())->format('Y-m-d H:i:s'),
             'created_at' => $this->now(),
         ]);
         return $token;
@@ -52,8 +53,9 @@ final readonly class DatabaseTokenStore implements TokenStore
             return null;
         }
         $owner = (string) $row['owner_id'];
-        // Ids are stored as text; one that is a number is given back as a number.
-        return ctype_digit($owner) ? (int) $owner : $owner;
+        // Ids are stored as text; one that is a number is given back as a number, and only when it
+        // is the same id then: "0007" and a number past what an integer holds stay as they are.
+        return (string) (int) $owner === $owner ? (int) $owner : $owner;
     }
 
     public function revoke(string $token): void
@@ -73,7 +75,11 @@ final readonly class DatabaseTokenStore implements TokenStore
 
     private function now(): string
     {
-        $now = $this->clock?->now() ?? new \DateTimeImmutable();
-        return $now->format('Y-m-d H:i:s');
+        return $this->clock()->format('Y-m-d H:i:s');
+    }
+
+    private function clock(): \DateTimeImmutable
+    {
+        return $this->clock?->now() ?? new \DateTimeImmutable();
     }
 }

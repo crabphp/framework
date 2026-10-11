@@ -61,4 +61,16 @@ interface Connection
      * @return mixed What the callback returned.
      */
     public function transaction(\Closure $callback): mixed;
+
+    /**
+     * Runs the callback once what this connection is doing has been
+     * committed: after the outermost transaction commits, and never when
+     * it, or the transaction inside it that asked, is rolled back.
+     * Outside a transaction there is nothing to wait for, and it runs at
+     * once. It is for what must not happen for a write that was undone,
+     * such as sending a message about it.
+     *
+     * @param \Closure(): void $callback
+     */
+    public function afterCommit(\Closure $callback): void;
 }

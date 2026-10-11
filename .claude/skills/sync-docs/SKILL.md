@@ -30,7 +30,7 @@ Run everything from the framework's root, the folder with `composer.json`.
 
 4. **Register a new page** in `docs/documentation.md`, under the section it belongs to, and link it from the related pages.
 
-5. **Check again** until the check prints `The docs are in step with the code.` Fix the page, not the check; change the check only when a rule in it is wrong.
+5. **Check again** until the check prints `The docs name what the code has`. It checks links, class names, commands and settings, not that an example behaves as the page says; read the examples against the code for that. Fix the page, not the check; change the check only when a rule in it is wrong.
 
 6. **Preview** when the layout or a new page should be seen:
 

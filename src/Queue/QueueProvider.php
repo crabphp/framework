@@ -74,7 +74,7 @@ final class QueueProvider implements Provider
                 $name = $config->get('queue.database');
                 return new DatabaseStore(is_string($name) ? $database->connection($name) : $database, (string) $config->get('queue.table'));
             }
-            throw new \LogicException("\"queue.store\" is \"{$store}\", and the stores are \"database\" and \"memory\". For another, bind " . Store::class . ' to a store of your own.');
+            throw new \LogicException("\"queue.store\" is \"{$store}\", and the stores are \"database\" and \"memory\". For \"redis\", install crabphp/redis and register its RedisProvider after this one; for another, bind " . Store::class . ' to a store of your own.');
         });
         $container->singleton(QueueContract::class, static fn (Container $container): Queue => new Queue(
             $container->get(Store::class),

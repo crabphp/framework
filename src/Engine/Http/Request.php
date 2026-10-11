@@ -81,6 +81,11 @@ final class Request
      * @param string $head @internal Validated head; replaces $headers, which is built from it on demand.
      * @param string|null $connection @internal Joined Connection values of $head.
      */
+    /**
+     * The address the connection came from, "203.0.113.7:51324"; empty when the request did not come over one.
+     */
+    public string $peer = '';
+
     public function __construct(
         public readonly string $method,
         public readonly string $target,

@@ -274,6 +274,16 @@ final class QueryTest extends TestCase
         self::assertSame(3, $users->count('age'), 'Null is not counted.');
         self::assertSame(2, $db->table('users')->where('active', true)->orderBy('name')->count());
         self::assertSame(171, $users->sum('age'));
+        // Over rows worked out first, a column named with its table is still found.
+        self::assertSame($db->table('users')->orderBy('id')->limit(2)->sum('age'), $db->table('users')->orderBy('id')->limit(2)->sum('users.age'));
+        // A statement run again takes as many values as before; one left out is not answered with the last caller's.
+        self::assertSame(['a' => 10, 'b' => 20], $db->first('select ? as a, ? as b', [10, 20]));
+        try {
+            $db->first('select ? as a, ? as b', [30]);
+            self::fail('A statement was run with a value missing.');
+        } catch (DatabaseException $error) {
+            self::assertStringContainsString('takes 2 values and was given 1', $error->getMessage());
+        }
         self::assertSame(0, $db->table('users')->where('id', 99)->sum('age'));
         self::assertSame(57.0, $users->avg('age'));
         self::assertNull($db->table('users')->where('id', 99)->avg('age'));
@@ -350,6 +360,16 @@ final class QueryTest extends TestCase
             ++$calls;
         });
         self::assertSame(1, $calls, 'Nothing is passed when nothing matches, and a full last part needs no empty one after it.');
+
+        // An "or" among the query's own conditions does not swallow the place it has read to.
+        $db = $this->seeded($driver);
+        $read = [];
+        $db->table('users')->where('active', true)->orWhere('id', '>', 2)->chunkById(2, static function (array $rows) use (&$read): bool {
+            array_push($read, ...array_column($rows, 'id'));
+            return count($read) < 20;
+        });
+        self::assertSame(array_values(array_unique($read)), $read, 'No row is read twice.');
+        self::assertSame($db->table('users')->where('active', true)->orWhere('id', '>', 2)->orderBy('id')->pluck('id'), $read);
     }
 
     #[DataProvider('drivers')]

@@ -175,6 +175,11 @@ final readonly class ConsumeEvents implements Command
     {
     }
 
+    public function description(): string
+    {
+        return 'Take events from the broker until stopped';
+    }
+
     public function handle(Input $input, Output $output): int
     {
         $broker = $this->broker;

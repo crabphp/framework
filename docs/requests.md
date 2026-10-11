@@ -5,6 +5,7 @@
 - [Input](#input)
 - [Headers and cookies](#headers-and-cookies)
 - [Route parameters and attributes](#route-parameters-and-attributes)
+- [The client's address](#the-clients-address)
 - [Uploaded files](#uploaded-files)
     - [Large uploads](#large-uploads)
 - [A client that has gone](#a-client-that-has-gone)
@@ -66,6 +67,26 @@ $requestId = $request->getAttribute('request_id');      // set by RequestId
 ```
 
 Attributes are how middleware hands something to what runs after it; see [Middleware](middleware.md#passing-data-to-the-action).
+
+## The client's address
+
+```php
+$request->ip();          // "203.0.113.7"
+```
+
+It is the address at the other end of the connection. Behind a load balancer or a reverse proxy that is the proxy's, for every request. Say which proxies stand in front of the application, and the address becomes the client's:
+
+```php
+// app.php
+use Crab\Http\TrustedProxies;
+
+->withMiddleware(prepend: [new TrustedProxies(['10.0.0.0/8', '127.0.0.1'])])
+```
+
+A proxy passes the client's address on in `X-Forwarded-For`, a header anyone can also write themselves. So it is believed only on a request that comes from a proxy you named, and read from the right: the first address that is not one of your proxies. Without the middleware the header is never read.
+
+> [!WARNING]
+> Name only proxies you run. Trusting an address a client can connect from lets that client say it is anyone, which defeats a limit or a block by address.
 
 ## Uploaded files
 

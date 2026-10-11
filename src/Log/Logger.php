@@ -88,7 +88,7 @@ final class Logger extends AbstractLogger implements LoggerContract
     private static function severity(mixed $level): int
     {
         if (!is_string($level) || !isset(self::LEVELS[$level])) {
-            throw new InvalidArgumentException('Unknown log level.');
+            throw new InvalidArgumentException('"' . (is_scalar($level) ? (string) $level : get_debug_type($level)) . '" is not a log level. Set "log.level" to one of ' . implode(', ', array_keys(self::LEVELS)) . '.');
         }
         return self::LEVELS[$level];
     }

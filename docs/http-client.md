@@ -99,7 +99,7 @@ The answer is a PSR-7 response with three additions:
 ```php
 $response->ok();                    // whether the status is 200 to 299
 $response->json();                  // the body, decoded
-$response->throw();                 // throws when the status is an error; otherwise returns the response
+$response->throw();                 // throws unless the status is 2xx; otherwise returns the response
 $response->getStatusCode();
 $response->getHeaderLine('Content-Type');
 (string) $response->getBody();
@@ -116,7 +116,7 @@ if ($response->getStatusCode() === 404) {
 }
 ```
 
-When any error status is a failure for you, say so with `throw()`:
+When anything but a `2xx` is a failure for you, say so with `throw()`. That includes a `304` and a redirect that was not followed:
 
 ```php
 $user = $http->get($url)->throw()->json();
@@ -124,7 +124,7 @@ $user = $http->get($url)->throw()->json();
 
 | Exception | When |
 | --- | --- |
-| `Crab\HttpClient\ResponseException` | `throw()` met an error status. `$error->response` is the answer. |
+| `Crab\HttpClient\ResponseException` | `throw()` met a status that is not `2xx`. `$error->response` is the answer. |
 | `Crab\HttpClient\NetworkException` | The server could not be reached, or took too long |
 | `Crab\HttpClient\RequestException` | The request itself could not be sent |
 

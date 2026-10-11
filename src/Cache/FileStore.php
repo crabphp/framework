@@ -75,6 +75,27 @@ final readonly class FileStore implements Store
         }
     }
 
+    public function increment(string $key, int $by, ?int $expiresAt, int $now): int
+    {
+        $handle = $this->lock($this->file($key));
+        try {
+            $entry = null;
+            $contents = (string) stream_get_contents($handle);
+            if ($contents !== '') {
+                [$existing, $value] = self::parse($contents);
+                if ($existing === null || $existing > $now) {
+                    $entry = $value;
+                }
+            }
+            $count = Counter::read($entry) + $by;
+            self::write($handle, Counter::write($count), Counter::is($entry) ? $existing : $expiresAt);
+            return $count;
+        } finally {
+            flock($handle, LOCK_UN);
+            fclose($handle);
+        }
+    }
+
     public function delete(string $key): void
     {
         @unlink($this->file($key));

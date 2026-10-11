@@ -49,6 +49,17 @@ final class Database implements DatabaseContract
         return $this->manager->connection($name);
     }
 
+    public function owns(Connection $connection): bool
+    {
+        return $connection === $this || ($connection instanceof PdoConnection && $connection->opensWith($this->connect));
+    }
+
+    public function afterCommit(\Closure $callback): void
+    {
+        // A statement of the pool's own is committed as it runs.
+        $callback();
+    }
+
     public function acquire(): Connection
     {
         try {
@@ -69,7 +80,14 @@ final class Database implements DatabaseContract
             $this->pool()->release($connection);
             throw new \LogicException('A connection was released inside a transaction; the transaction was rolled back.');
         }
-        $this->pool()->release($connection);
+        try {
+            $this->pool()->release($connection);
+        } catch (\LogicException) {
+            // Its pool was closed while it was out: there is nowhere to put it back, so it is closed.
+            if ($connection instanceof PdoConnection) {
+                $connection->close();
+            }
+        }
     }
 
     public function run(\Closure $callback): mixed

@@ -38,7 +38,7 @@ php cua serve --daemon       # in the background, returning once it is up
 
 ### While developing
 
-Plain `serve` is for your own machine. It starts the server again whenever a PHP file under `app`, `config` or `routes`, or `.env`, is added, changed or removed. When the code does not load, the error stays on the screen, and saving a fix starts the server again.
+Plain `serve` is for your own machine. It starts the server again whenever a PHP file under `app`, `config` or `routes`, or `app.php` or `.env`, is added, changed or removed. When the code does not load, the error stays on the screen, and saving a fix starts the server again.
 
 Set `server.watch` to other paths, or to `false` to watch nothing.
 

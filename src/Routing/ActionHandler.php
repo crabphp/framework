@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Crab\Routing;
 
 use Crab\Contracts\Auth\Identity;
+use Crab\Contracts\Validation\Rule;
 use Crab\Contracts\Validation\Validator;
 use Crab\Http\ErrorResponse;
 use Crab\Http\Response;
@@ -20,7 +21,7 @@ use Psr\Http\Server\RequestHandlerInterface;
  * class or a method of a class. It calls the action with what its
  * signature asks for. Each parameter is one of these:
  *
- *     the request          typed as a PSR-7 server request, or not typed at all
+ *     the request          typed as a PSR-7 server request
  *     the user             typed as a class that implements Identity: whoever
  *                          middleware put on the request's "user" attribute
  *     a route parameter    named as in the pattern: string, int, float or bool
@@ -58,6 +59,12 @@ final class ActionHandler implements RequestHandlerInterface
      * @var array<string, string>
      */
     private array $parameters = [];
+    /**
+     * The rules on the route parameters that have any, by name.
+     *
+     * @var array<string, list<Rule>>
+     */
+    private array $rules = [];
     /**
      * Parameters that receive the logged-in user: the class each must be,
      * and whether it may be null when nobody is logged in.
@@ -152,6 +159,12 @@ final class ActionHandler implements RequestHandlerInterface
         }
         foreach ($this->parameters as $name => $type) {
             $arguments[$name] = self::parameter((string) $request->getAttribute($name), $type, $name, $errors);
+            foreach ($arguments[$name] === null ? [] : $this->rules[$name] ?? [] as $rule) {
+                $problem = $rule->check($arguments[$name]);
+                if ($problem !== null) {
+                    $errors[$name][] = $problem;
+                }
+            }
         }
         if ($this->input !== null || $this->fields !== []) {
             $data = $this->fromQuery ? $request->getQueryParams() : $request->getParsedBody();
@@ -159,13 +172,15 @@ final class ActionHandler implements RequestHandlerInterface
                 // No body at all: every field is missing, and is reported as that.
                 $data = [];
             }
+            // A query string and a form carry everything as text, "3" for 3; JSON says what each value is.
+            $text = $this->fromQuery || preg_match('~^(?:application/x-www-form-urlencoded|multipart/form-data)\b~i', $request->getHeaderLine('Content-Type')) === 1;
             try {
                 if ($this->input !== null && $this->input[1] === Data::class) {
-                    $arguments += $this->described($data);
+                    $arguments += $this->described($data, $text);
                 } elseif ($this->input !== null) {
-                    $arguments[$this->input[0]] = $this->validator->validate($this->input[1], $data, $this->fromQuery);
+                    $arguments[$this->input[0]] = $this->validator->validate($this->input[1], $data, $text);
                 } else {
-                    $arguments += $this->validator->validateParameters($this->signature, $this->fields, $data, $this->fromQuery);
+                    $arguments += $this->validator->validateParameters($this->signature, $this->fields, $data, $text);
                 }
             } catch (ValidationException $invalid) {
                 $errors += $invalid->errors;
@@ -196,11 +211,11 @@ final class ActionHandler implements RequestHandlerInterface
      * @param array<mixed> $data
      * @return array<string, Data>
      */
-    private function described(array $data): array
+    private function described(array $data, bool $text): array
     {
         $name = $this->input[0];
         try {
-            return $this->validator->validateParameters($this->signature, [$name], [$name => $data], $this->fromQuery);
+            return $this->validator->validateParameters($this->signature, [$name], [$name => $data], $text);
         } catch (ValidationException $invalid) {
             $errors = [];
             foreach ($invalid->errors as $field => $problems) {
@@ -229,7 +244,14 @@ final class ActionHandler implements RequestHandlerInterface
                 throw new \LogicException("The action of {$route} takes the route parameter \${$name} as {$typeName}; it can be string, int, float or bool.");
             }
             $this->parameters[$name] = $typeName;
-        } elseif ($typeName === null || is_a($typeName, ServerRequestInterface::class, true)) {
+            // The rules on it, #[Range(min: 1)] int $id, hold for a part of the address as for any field.
+            foreach ($parameter->getAttributes(Rule::class, \ReflectionAttribute::IS_INSTANCEOF) as $attribute) {
+                $this->rules[$name][] = $attribute->newInstance();
+            }
+        } elseif ($typeName === null) {
+            // Without a type there is no saying what it is: the request, a field, a service put in the wrong place.
+            throw new \LogicException("The action of {$route} takes \${$name} with no type. Say what it is: a field by its type, such as string \${$name}, or the request, as " . ServerRequestInterface::class . '.');
+        } elseif (is_a($typeName, ServerRequestInterface::class, true)) {
             $this->requests[] = $name;
         } elseif (is_a($typeName, Identity::class, true)) {
             $this->users[$name] = [$typeName, $type->allowsNull()];
@@ -308,7 +330,8 @@ final class ActionHandler implements RequestHandlerInterface
         if ($type === 'string') {
             return $value;
         }
-        if ($type === 'int' && preg_match('/^-?\d+$/D', $value) === 1) {
+        // Only when the number read is the number written: one past what an integer holds would be another.
+        if ($type === 'int' && preg_match('/^-?\d+$/D', $value) === 1 && (string) (int) $value === preg_replace('/^(-?)0+(?=\d)/', '$1', $value)) {
             return (int) $value;
         }
         if ($type === 'float' && is_numeric($value)) {

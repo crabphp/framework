@@ -5,9 +5,11 @@ declare(strict_types=1);
 namespace Crab\Queue;
 
 use Crab\Contracts\Database\Connection;
+use Crab\Contracts\Database\Database;
 use Crab\Contracts\Database\Query;
 use Crab\Contracts\Queue\Message;
 use Crab\Contracts\Queue\Store;
+use Crab\Contracts\Queue\TransactionalStore;
 
 /**
  * Jobs kept in a table of the application's database, which every worker
@@ -19,7 +21,7 @@ use Crab\Contracts\Queue\Store;
  * the same statements serve MySQL and SQLite. A job's data is JSON in a
  * `text` column: on MySQL that is 64 kB for one job.
  */
-final readonly class DatabaseStore implements Store
+final readonly class DatabaseStore implements TransactionalStore
 {
     /**
      * How many waiting jobs to look at when others may be taking them too.
@@ -40,6 +42,17 @@ final readonly class DatabaseStore implements Store
             'available_at' => $availableAt,
             'created_at' => $now,
         ]);
+    }
+
+    public function through(Connection $transaction): ?Store
+    {
+        if ($transaction === $this->connection) {
+            return $this;
+        }
+        if ($this->connection instanceof Database && $this->connection->owns($transaction)) {
+            return new self($transaction, $this->table);
+        }
+        return null;
     }
 
     public function reserve(array $queues, int $now, int $retryAfter): ?Message
@@ -82,7 +95,7 @@ final readonly class DatabaseStore implements Store
 
     public function release(Message $message, int $availableAt): void
     {
-        $this->connection->table($this->table)->where('id', $message->id)->update([
+        $this->held($message)->update([
             'reserved_at' => null,
             'available_at' => $availableAt,
         ]);
@@ -90,7 +103,7 @@ final readonly class DatabaseStore implements Store
 
     public function fail(Message $message, string $error, int $now): void
     {
-        $this->connection->table($this->table)->where('id', $message->id)->update([
+        $this->held($message)->update([
             'reserved_at' => null,
             'failed_at' => $now,
             // Enough to see what went wrong; the whole trace is in the log.
@@ -155,6 +168,20 @@ final readonly class DatabaseStore implements Store
             default => throw new \InvalidArgumentException("\"{$state}\" is not a state a waiting job is in: pending, delayed or processing."),
         };
         return array_map(self::message(...), $query->limit(max(0, $limit))->get());
+    }
+
+    /**
+     * The job as this worker holds it: taken, and on the try the worker
+     * was given. One that was since taken to have died and given to
+     * another is that other's now, and what the first says of it changes nothing.
+     */
+    private function held(Message $message): Query
+    {
+        return $this->connection->table($this->table)
+            ->where('id', $message->id)
+            ->where('attempts', $message->attempts)
+            ->whereNotNull('reserved_at')
+            ->whereNull('failed_at');
     }
 
     private function failedRows(int|string|null $id): Query

@@ -31,6 +31,14 @@ interface Request extends ServerRequestInterface
     public function file(string $name): ?UploadedFileInterface;
 
     /**
+     * The address of whoever made the request: the other end of the
+     * connection, or, behind a proxy the application was told to trust
+     * (the TrustedProxies middleware), the client the proxy speaks for.
+     * Empty when it is not known, as for a request made in a test.
+     */
+    public function ip(): string;
+
+    /**
      * Cancelled when the request completes, times out or loses its
      * connection; pass it into cooperative waits.
      */

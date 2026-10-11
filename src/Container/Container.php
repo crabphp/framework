@@ -92,7 +92,8 @@ final class Container implements ContainerContract
                 // A new one each time, not the kept instance of the class.
                 $value = $this->build($concrete);
             } else {
-                $value = $this->get($concrete);
+                // Another name for the same thing: asked for each time, so that replacing the thing replaces it here too.
+                return $this->get($concrete);
             }
         } finally {
             unset($this->resolving[$id]);

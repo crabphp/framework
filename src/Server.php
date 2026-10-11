@@ -28,7 +28,7 @@ final class Server
     /**
      * What a developer edits, watched when "server.watch" does not say.
      */
-    public const WATCHED = ['app', 'config', 'routes', '.env'];
+    public const WATCHED = ['app', 'app.php', 'config', 'routes', '.env'];
 
     public function __construct(private readonly App $app)
     {
@@ -54,6 +54,22 @@ final class Server
     {
         $pid = $this->pidFile()->pid();
         return $pid !== null && self::isServer($pid) ? $pid : null;
+    }
+
+    /**
+     * Seconds a server process is given to stop before it is ended from
+     * outside: longer than its own workers are given, so that it is the
+     * one that ends them. Ended first, it would leave a worker that is
+     * stuck with no one to end it.
+     */
+    private function grace(): float
+    {
+        try {
+            return max(10.0, $this->app->servers->grace($this->app->with())) + 5.0;
+        } catch (\LogicException) {
+            // A setting that names a server there is not is reported where the server starts.
+            return 15.0;
+        }
     }
 
     /**
@@ -95,7 +111,7 @@ final class Server
         fclose($lock);
         $status = 1;
         try {
-            $keeper = new Keeper($pidFile, $log, $timeout);
+            $keeper = new Keeper($pidFile, $log, $timeout, $this->grace());
             $status = $keeper->run(
                 $address,
                 self::generationCommand($invocation, $address, $workers),
@@ -244,11 +260,11 @@ final class Server
             $changed = array_values(array_unique($changed));
             $others = count($changed) - 1;
             $say('Restarted: ' . $this->shortened($changed[0]) . ($others > 0 ? " and {$others} more" : '') . ' changed.');
-            self::terminate($process);
+            self::terminate($process, $this->grace());
             // It said where it serves the first time; once is enough.
             $process = self::spawn([...$command, '--quiet']);
         }
-        self::terminate($process);
+        self::terminate($process, $this->grace());
         return 0;
     }
 
@@ -358,13 +374,13 @@ final class Server
      *
      * @param resource|null $process
      */
-    private static function terminate(mixed $process): void
+    private static function terminate(mixed $process, float $grace = 8.0): void
     {
         if ($process === null) {
             return;
         }
         proc_terminate($process, 15);
-        $deadline = microtime(true) + 8.0;
+        $deadline = microtime(true) + $grace;
         while (proc_get_status($process)['running']) {
             if (microtime(true) > $deadline) {
                 proc_terminate($process, 9);

@@ -36,4 +36,19 @@ interface Cache extends CacheInterface
      * @return bool Whether this call set it.
      */
     public function add(string $key, mixed $value, null|int|\DateInterval $ttl = null): bool;
+
+    /**
+     * Adds to the whole number at the key, as one step, so that of
+     * several callers at once each is told a different count. A key that
+     * holds none counts from zero, and the time to live is given to a
+     * count as it starts, not moved by each addition:
+     *
+     *     $attempts = $cache->increment('login.' . $email, ttl: 900);
+     *
+     * An entry that is not a whole number is replaced by the count.
+     *
+     * @param int $by How much to add; less than zero takes away.
+     * @return int The number now at the key.
+     */
+    public function increment(string $key, int $by = 1, null|int|\DateInterval $ttl = null): int;
 }

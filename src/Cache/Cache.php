@@ -63,6 +63,12 @@ final readonly class Cache implements CacheContract
         return $this->store->add($this->key($key), serialize($value), $expiresAt, $now);
     }
 
+    public function increment(string $key, int $by = 1, null|int|\DateInterval $ttl = null): int
+    {
+        $now = $this->now();
+        return $this->store->increment($this->key($key), $by, $this->expiresAt($ttl, $now), $now);
+    }
+
     public function remember(string $key, null|int|\DateInterval $ttl, \Closure $make): mixed
     {
         $entry = $this->store->get($this->key($key), $this->now());

@@ -373,6 +373,10 @@ final class Query implements QueryContract
         do {
             $part = clone $this;
             if ($last !== null) {
+                // The query's own conditions as one, so that an "or" among them does not swallow the cursor.
+                if ($part->wheres !== []) {
+                    $part->wheres = [['type' => 'nested', 'boolean' => 'and', 'wheres' => $part->wheres]];
+                }
                 $part->where($column, '>', $last);
             }
             $rows = $part->orderBy($column)->limit($size)->get();

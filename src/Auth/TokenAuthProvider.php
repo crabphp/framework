@@ -16,7 +16,7 @@ use Psr\Clock\ClockInterface;
 /**
  * Binds authentication by token: tokens kept in the database, the
  * TokenAuth middleware reading "Authorization: Bearer", and the
- * `tokens:install` command, which writes the migration for the tokens
+ * `token:install` command, which writes the migration for the tokens
  * table into the application's migrations. Register it for an application
  * that authenticates this way, together with the database provider.
  *
@@ -43,7 +43,7 @@ final class TokenAuthProvider implements Provider
             return new TokenAuth($container->get(TokenStore::class), $container->get(IdentityResolver::class));
         });
         if ($container->has(Console::class)) {
-            $container->get(Console::class)->add('tokens:install', InstallTokens::class);
+            $container->get(Console::class)->add('token:install', InstallTokens::class);
         }
     }
 }

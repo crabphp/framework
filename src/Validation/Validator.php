@@ -164,7 +164,11 @@ final class Validator implements ValidatorContract
                 }
                 $found = count($errors);
                 $values = $this->values($property->fields ?? [], $value, $coerce, $field . '.', $errors);
-                return count($errors) > $found ? null : new Data($values);
+                // Only what was sent is kept, so that a field left out can be told from one sent as null.
+                return count($errors) > $found ? null : new Data(
+                    array_intersect_key($values, $value),
+                    array_map(static fn (Property $described): string => $described->name, $property->fields ?? []),
+                );
             case Property::STRING:
                 if (is_string($value)) {
                     return $value;
@@ -175,7 +179,8 @@ final class Validator implements ValidatorContract
                 if (is_int($value)) {
                     return $value;
                 }
-                if ($coerce && is_string($value) && preg_match('/^-?\d+$/D', $value) === 1) {
+                // Only when the number read is the number written: one past what an integer holds would be another.
+                if ($coerce && is_string($value) && preg_match('/^-?\d+$/D', $value) === 1 && (string) (int) $value === preg_replace('/^(-?)0+(?=\d)/', '$1', $value)) {
                     return (int) $value;
                 }
                 $errors[$field][] = 'must be a whole number';
@@ -238,7 +243,12 @@ final class Validator implements ValidatorContract
     {
         if (is_string($value) && $value !== '') {
             try {
-                return new ($property->class)($value);
+                $date = new ($property->class)($value);
+                // PHP reads February 31st as March 3rd and only notes that it did; such a date is refused.
+                $doubts = \DateTimeImmutable::getLastErrors();
+                if ($doubts === false || ($doubts['warning_count'] === 0 && $doubts['error_count'] === 0)) {
+                    return $date;
+                }
             } catch (\Exception) {
                 // Reported below, with what was expected.
             }

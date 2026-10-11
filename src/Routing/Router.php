@@ -116,6 +116,10 @@ final class Router implements RouterContract
             if ($this->container === null) {
                 throw new \LogicException("Route {$method} {$pattern} names its handler, which needs a router with a container.");
             }
+            if (!$this->container->has($action)) {
+                // Said now, and not by the first request for it.
+                throw new \LogicException("Route {$method} {$pattern} points at {$action}, and there is no such class or container entry.");
+            }
             $this->routes[$key] = new RouteInfo($method, $pattern, $action, $described);
             $handler = new ContainerHandler($this->container, $action);
         } else {
@@ -286,6 +290,10 @@ final class Router implements RouterContract
     private function find(string $method, string $path, array &$parameters): ?RequestHandlerInterface
     {
         $handler = $this->static[$method][$path] ?? null;
+        if ($handler === null && str_contains($path, '%')) {
+            // A route is declared as it reads, "/café"; a request names it encoded.
+            $handler = $this->static[$method][rawurldecode($path)] ?? null;
+        }
         if ($handler !== null || !isset($this->dynamic[$method])) {
             return $handler;
         }

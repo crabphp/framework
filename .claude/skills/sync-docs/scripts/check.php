@@ -160,7 +160,7 @@ foreach ($pages as $name => $markdown) {
 // ---- Report --------------------------------------------------------------
 
 if ($problems === []) {
-    echo 'The docs are in step with the code: ' . (count($pages) - 1) . ' pages, ' . count($commands) . ' commands, ' . count(array_unique($settings)) . " settings.\n";
+    echo 'The docs name what the code has (links, class names, commands, settings; not behaviour): ' . (count($pages) - 1) . ' pages, ' . count($commands) . ' commands, ' . count(array_unique($settings)) . " settings.\n";
     exit(0);
 }
 foreach ($problems as $problem) {

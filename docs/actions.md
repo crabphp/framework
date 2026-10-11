@@ -106,7 +106,7 @@ An action class extends nothing and is made once per worker. Like every service 
 | Named as in the route's pattern | That route parameter, as `string`, `int`, `float` or `bool` |
 | Any other `int`, `float`, `string`, `bool`, `array`, enum or `DateTimeImmutable` | A field of the request's data, by its name |
 | One class | The input: all the fields in one object |
-| Typed as a PSR-7 server request, or not typed | The request itself |
+| Typed as a PSR-7 server request | The request itself |
 | A class that implements `Identity` | The logged-in user |
 
 The request's data is the JSON body, or the query string for `GET`, `HEAD` and `DELETE`. Anything else in a signature is refused when the route is added.
@@ -121,7 +121,7 @@ Route::get('/users', static function (int $page = 1, ?string $search = null): ar
 });
 ```
 
-A parameter with a default or a nullable type may be left out of the request. Fields the action does not declare are ignored and never reach it.
+Every parameter has a type: one without is refused when the route is added, since nothing says what it is. A parameter with a default or a nullable type may be left out of the request. Fields the action does not declare are ignored and never reach it.
 
 ### An input class
 
@@ -177,7 +177,17 @@ public function handle(
 }
 ```
 
-It is validated before the action runs, as an input class is, and a problem is reported the same way: `lines.0.quantity`. A description that makes no sense stops the server from starting. Reading a field you did not describe throws, so a slip of the hand shows in the first test. `$order->toArray()` gives plain arrays.
+It holds what the request sent. A field that may be left out, and was, reads as null; `$order->has('note')` tells that from a null that was sent, and `$order->toArray()` gives only what was sent. That is what an update wants:
+
+```php
+// PATCH /users/7 with {"name": "Ada"} changes the name and leaves the rest alone
+public function handle(int $id, #[Fields(['name' => '?string', 'bio' => '?string'])] Data $changes): void
+{
+    $this->db->table('users')->where('id', $id)->update($changes->toArray());
+}
+```
+
+It is validated before the action runs, as an input class is, and a problem is reported the same way: `lines.0.quantity`. A description that makes no sense stops the server from starting. Reading a field you did not describe throws, so a slip of the hand shows in the first test.
 
 For a list of objects among other fields, `#[ListOf]` takes the same description:
 

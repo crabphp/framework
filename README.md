@@ -88,7 +88,7 @@ Either may be left out, and groups may be nested. See [Middleware](#middleware) 
 | Named as in the pattern, `string`, `int`, `float` or `bool` | That route parameter, as that type |
 | Any other `int`, `float`, `string`, `bool`, `array`, enum or `DateTimeImmutable` | A field of the request's data, by its name |
 | One class | The input: all the fields in one object, in place of separate parameters |
-| Typed as a PSR-7 server request, or not typed | The request itself |
+| Typed as a PSR-7 server request | The request itself |
 | A class that implements `Contracts\Auth\Identity` | The logged-in user; see [Authentication](#authentication) |
 
 The request's data is the JSON body, or the query string for `GET`, `HEAD` and `DELETE`. Fields the action does not name are ignored and never reach it; to read them, or the raw body, take the request as well and call `getParsedBody()`.
@@ -274,7 +274,7 @@ One way ships, because nearly every API starts with it: a token in a header, kep
 ~~~
 
 ~~~sh
-php cua tokens:install       # writes the tokens table's migration into your own migrations
+php cua token:install       # writes the tokens table's migration into your own migrations
 php cua migrate
 ~~~
 
@@ -303,7 +303,7 @@ final readonly class AuthController
 The client then sends `Authorization: Bearer <token>`, and `TokenAuth` is the middleware that reads it.
 
 - **You say how a user is found.** A token records whose it is, not who that is, so bind `Contracts\Auth\IdentityResolver` in your own provider; its `resolve($id)` returns your user or null.
-- **The table is yours.** `tokens:install` writes the migration for `auth_tokens` into your migrations folder, where you can read and change it; the framework ships no migration of its own.
+- **The table is yours.** `token:install` writes the migration for `auth_tokens` into your migrations folder, where you can read and change it; the framework ships no migration of its own.
 - **`TokenStore`** has `issue($user, $name, $expiresAt)`, `owner($token)`, `revoke($token)` and `revokeAll($user)`. A token is 64 random characters, shown once; only its hash is stored. Checking one is one query, and a revoked token stops working at once.
 - **Another header, or another word before the token,** is an argument, given as an object:
 
@@ -736,7 +736,7 @@ $cache->get('user.7');
 $cache->add('report.running', true, 300);                                   // true for one caller only: a lock
 ~~~
 
-It is PSR-16's cache under the contract `Contracts\Cache\Cache`, which adds `remember()` and `add()`. `cache.store` chooses where entries are kept:
+It is PSR-16's cache under the contract `Contracts\Cache\Cache`, which adds `remember()`, `add()` and `increment()`, a count that loses nothing between workers. `Http\RateLimit` is middleware built on that count: `new RateLimit(5, per: 60)` on a route. `cache.store` chooses where entries are kept:
 
 | Store | Kept | For |
 | --- | --- | --- |
@@ -841,7 +841,7 @@ php cua serve --daemon       # in the background, returning once it is up: for a
 
 ### In development
 
-Plain `serve` is what you want while writing code. It runs the server as a child process and starts it again whenever a PHP file under `app`, `config` or `routes`, or `.env`, is added, changed or removed. Set `server.watch` to a list of other paths, or pass them: `--watch=app,config,packages`. Folders named `vendor`, `node_modules`, `storage` and `.git` are never looked into.
+Plain `serve` is what you want while writing code. It runs the server as a child process and starts it again whenever a PHP file under `app`, `config` or `routes`, or `app.php` or `.env`, is added, changed or removed. Set `server.watch` to a list of other paths, or pass them: `--watch=app,config,packages`. Folders named `vendor`, `node_modules`, `storage` and `.git` are never looked into.
 
 When the code does not load, the server stays down and the error stays on the screen; saving a fix starts it again. Files are checked a few times a second by their time and size, so no extension is needed. Options given to PHP itself (`php -d ...`) are not passed on to the child.
 
@@ -901,7 +901,7 @@ Providers add theirs:
 | Provider | Commands |
 | --- | --- |
 | `DatabaseProvider` | `migrate`, `migrate:rollback`, `migrate:status`, `make:migration` |
-| `TokenAuthProvider` | `tokens:install` |
+| `TokenAuthProvider` | `token:install` |
 | `CacheProvider` | `cache:clear`, `cache:install` |
 | `QueueProvider` | `queue:work`, `queue:failed`, `queue:retry`, `queue:forget`, `queue:install` |
 | `ScheduleProvider` | `schedule:work`, `schedule:list` |

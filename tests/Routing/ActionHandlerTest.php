@@ -207,7 +207,25 @@ final class ActionHandlerTest extends TestCase
 
         // Returned, it is its fields; what was left out is null, and what was not described is not there.
         $good = ['email' => 'ada@example.com', 'lines' => [['productId' => 5, 'quantity' => 2]], 'extra' => true];
-        self::assertSame('{"email":"ada@example.com","address":null,"lines":[{"productId":5,"quantity":2}]}', $this->body($router, $this->json('POST', '/checkout', $good)));
+        self::assertSame('{"email":"ada@example.com","lines":[{"productId":5,"quantity":2}]}', $this->body($router, $this->json('POST', '/checkout', $good)));
+
+        // An update takes what was sent and nothing else: a field left out is not a field sent as null.
+        $router->patch('/users/{id}', static fn (int $id, #[Fields(['name' => '?string', 'bio' => '?string', 'age' => '?int'])] Data $changes): array => [
+            'sent' => $changes->toArray(),
+            'has' => [$changes->has('name'), $changes->has('bio'), $changes->has('age')],
+            'reads' => [$changes->name, $changes->bio, $changes->age],
+        ]);
+        self::assertSame(
+            '{"sent":{"name":"Ada","bio":null},"has":[true,true,false],"reads":["Ada",null,null]}',
+            $this->body($router, $this->json('PATCH', '/users/7', ['name' => 'Ada', 'bio' => null])),
+        );
+
+        // A form carries everything as text, as a query string does, and is read as the types described.
+        $router->post('/form', static fn (int $quantity, bool $gift = false): array => [$quantity, $gift]);
+        $form = new Request('POST', '/form', ['Content-Type' => 'application/x-www-form-urlencoded'], 'quantity=2&gift=true');
+        self::assertSame('[2,true]', $this->body($router, $form));
+        // JSON says what each value is, and "2" there is text.
+        self::assertSame(422, $router->handle($this->json('POST', '/form', ['quantity' => '2']))->getStatusCode());
 
         $data = new Data(['id' => 7, 'inner' => new Data(['ok' => true]), 'list' => [new Data(['n' => 1])]]);
         self::assertSame(['id' => 7, 'inner' => ['ok' => true], 'list' => [['n' => 1]]], $data->toArray());
@@ -228,6 +246,7 @@ final class ActionHandlerTest extends TestCase
             'where only rules such as' => static fn (#[Fields(['id' => ['int', 'required']])] Data $order) => '',
             'describes "lines", which, in each item, describes "n", which is declared as number' => static fn (#[Fields(['lines' => [['n' => 'number']]])] Data $order) => '',
             'takes two inputs' => static fn (#[Fields(['a' => 'int'])] Data $one, #[Fields(['b' => 'int'])] Data $two) => '',
+            'takes $email with no type' => static fn ($email) => '',
             'and also the field $name' => static fn (string $name, #[Fields(['a' => 'int'])] Data $order) => '',
         ];
         $n = 0;
@@ -249,7 +268,7 @@ final class ActionHandlerTest extends TestCase
         $router->get('/users/{id}/posts/{slug}', static fn (string $slug, int $id): array => [$id, $slug]);
         $router->put('/users/{id}', static fn (int $id, CreateUser $input, ServerRequestInterface $request): array => [$id, $input->name, $request->getMethod()]);
         $router->get('/ratio/{value}/{exact}', static fn (float $value, bool $exact): array => [$value, $exact]);
-        $router->get('/raw/{name}', static fn ($request, $name): array => [$name, $request->getAttribute('name')]);
+        $router->get('/raw/{name}', static fn (ServerRequestInterface $request, $name): array => [$name, $request->getAttribute('name')]);
         $router->delete('/users/{id}', static function (int $id, RequestContract $request): void {
         });
         $router->get('/text', static fn (): string => 'plain');

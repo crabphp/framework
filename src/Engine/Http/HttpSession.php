@@ -171,6 +171,7 @@ final class HttpSession
                 $this->scheduleDeadline($this->responseTimeout);
             }
             ++$this->requests;
+            $request->peer = $this->connection->remoteAddress;
             $response = ($this->handler)($request);
             if ($this->retired || $this->connection->isClosed()) {
                 return;

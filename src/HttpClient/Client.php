@@ -226,10 +226,13 @@ class Client implements ClientContract
         for ($tried = 0; ; ++$tried) {
             $response = null;
             try {
-                $response = $this->once($request, $cancellation);
-                $again = in_array($response->getStatusCode(), $safe ? [429, 502, 503, 504] : [429, 503], true);
+                $redirected = false;
+                $response = $this->once($request, $cancellation, $redirected);
+                // An answer that redirected means the server acted on the request: what failed was
+                // where it sent us next, and sending a POST again would do its work a second time.
+                $again = ($safe || !$redirected) && in_array($response->getStatusCode(), $safe ? [429, 502, 503, 504] : [429, 503], true);
             } catch (NetworkException $error) {
-                $again = $safe || $error->unsent;
+                $again = $safe || ($error->unsent && !$redirected);
             }
             $wait = $again && $resendable && $tried < $this->retries ? $this->wait($tried, $response) : null;
             if ($wait === null) {
@@ -263,8 +266,10 @@ class Client implements ClientContract
     /**
      * Sends a request once and follows where its answer redirects to,
      * keeping and sending cookies on the way when there is a jar.
+     *
+     * @param bool $redirected Set once an answer has redirected, whatever comes after.
      */
-    private function once(RequestInterface $request, ?Cancellation $cancellation): Response
+    private function once(RequestInterface $request, ?Cancellation $cancellation, bool &$redirected = false): Response
     {
         $deadline = hrtime(true) / 1_000_000_000 + $this->timeout;
         for ($followed = 0; ; ++$followed) {
@@ -284,6 +289,7 @@ class Client implements ClientContract
                 throw new ClientException(Exchange::describe($request) . " was redirected more than {$this->redirects} times.");
             }
             $request = $next;
+            $redirected = true;
         }
     }
 

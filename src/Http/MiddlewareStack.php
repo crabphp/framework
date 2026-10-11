@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Crab\Http;
 
 use Crab\Contracts\Http\MiddlewareStack as MiddlewareStackContract;
+use Crab\Contracts\Http\UsesContainer;
 use Psr\Container\ContainerInterface;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface;
@@ -64,6 +65,8 @@ final class MiddlewareStack implements MiddlewareStackContract, RequestHandlerIn
                 if (!$layer instanceof MiddlewareInterface) {
                     throw new \LogicException("{$name} must implement MiddlewareInterface.");
                 }
+            } elseif ($layer instanceof UsesContainer && $this->container !== null) {
+                $layer = $layer->withContainer($this->container);
             }
             $middleware[] = $layer;
         }

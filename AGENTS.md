@@ -61,6 +61,10 @@
 
 - An action says what it takes in its signature, and the framework validates the request against it before calling it. Do not add a second place to describe a route, such as an annotation or a schema file.
 - An action's parameters are the request, the pattern's parameters by name, and the request's data: either as further typed parameters, one per field, or as one input, never both. The input is a class written for it, or a `Validation\Data` whose fields the parameter describes with `#[Fields]`, for data that nests and needs no class of its own. Both are read when the route is added and validated the same way; do not add validation that runs inside the action. Services are never action parameters; an action class takes them in its constructor.
+- Every parameter of an action has a type, and one without is refused when the route is added. What arrives as text (a query string, a route parameter, a form) is read as the type asked for; JSON is taken as it says. A value is never quietly made another: a number past what an integer holds and a date the calendar does not have are refused. A `Validation\Data` holds only what was sent, so that an update can tell a field left out from one sent as null.
+- Who made a request is `Request::ip()`: the connection's address, and a proxy's word for it (`X-Forwarded-For`) only through `Http\TrustedProxies` and only from the proxies it names. Do not read forwarding headers anywhere else.
+- A job that follows a write is pushed with `Queue::within($transaction)`: stored by the transaction itself when the jobs are in its database, and otherwise pushed by `Connection::afterCommit()`. Do not push inside a transaction any other way.
+- A count shared by workers is `Cache::increment()`, which every store does as one step; never get, add one and set. `Http\RateLimit` is built on it. Middleware written with options that also needs a service implements `Contracts\Http\UsesContainer`, and does not reach for a global.
 - Take a few flat fields as parameters. Use an input class when there are many, when they nest, or when several routes share them. An input class is a final readonly class whose constructor declares every field with one type.
 - What a route points at is called an action, in the code, the guide and the skeleton (`app/Actions/`). "Handler" is kept for the PSR-15 interface and what implements it: the router, `ActionHandler`, the error handler, the `$handler` a middleware is given.
 - A class the framework calls for the application does its work in `handle()`: an action, a job, a listener, a scheduled class and a command alike. Do not accept `__invoke()` beside it. A route given a class name treats it as an action when it has `handle()` and is not a PSR-15 `RequestHandlerInterface`.
@@ -128,7 +132,7 @@
 
 - Crab is a framework: a component ships the general mechanism, and leaves an application's decisions to the application. It names no header, table, column or storage as the only one.
 - A concrete way of doing something is opt-in, behind a provider of its own (`TokenAuthProvider` beside `AuthProvider`), so that an application doing it another way never loads it.
-- A component ships no migration of its own. A table it needs is written into the application's migrations by a command (`tokens:install`), so that the application owns the file and all its tables are in one place.
+- A component ships no migration of its own. A table it needs is written into the application's migrations by a command (`token:install`), so that the application owns the file and all its tables are in one place.
 - Where a choice has a standard default, the default is an argument's default value (`Authorization: Bearer`), and anything else is that argument, never another class.
 
 ## Authentication

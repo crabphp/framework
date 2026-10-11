@@ -9,6 +9,12 @@ namespace Crab\Validation;
  * place of an object of a class written for it. Its fields are read as
  * properties, and it cannot be changed.
  *
+ * It holds what the request sent. A field that may be left out, and
+ * was, reads as null; has() tells that from a null that was sent, and
+ * toArray() gives only what was sent, which is what an update wants:
+ *
+ *     $db->table('users')->where('id', $id)->update($changes->toArray());
+ *
  * Reading a field that was not described is a mistake in the code, not
  * in the request, and throws.
  *
@@ -17,18 +23,31 @@ namespace Crab\Validation;
 final readonly class Data implements \JsonSerializable, \IteratorAggregate
 {
     /**
-     * @param array<string, mixed> $values
+     * @param array<string, mixed> $values The fields the request sent, checked.
+     * @param list<string> $described Every field that was described, sent or not; those of $values when left out.
      */
-    public function __construct(private array $values)
+    public function __construct(private array $values, private array $described = [])
     {
     }
 
     public function __get(string $name): mixed
     {
-        if (!array_key_exists($name, $this->values)) {
-            throw new \LogicException("This data has no field \"{$name}\"; it has " . ($this->values === [] ? 'none' : implode(', ', array_keys($this->values))) . '. Describe the field in #[Fields] to take it.');
+        if (array_key_exists($name, $this->values)) {
+            return $this->values[$name];
         }
-        return $this->values[$name];
+        if (!in_array($name, $this->described, true)) {
+            $fields = array_values(array_unique([...array_keys($this->values), ...$this->described]));
+            throw new \LogicException("This data has no field \"{$name}\"; it has " . ($fields === [] ? 'none' : implode(', ', $fields)) . '. Describe the field in #[Fields] to take it.');
+        }
+        return null;
+    }
+
+    /**
+     * Whether the request sent the field, be it null.
+     */
+    public function has(string $name): bool
+    {
+        return array_key_exists($name, $this->values);
     }
 
     public function __isset(string $name): bool
@@ -42,7 +61,7 @@ final readonly class Data implements \JsonSerializable, \IteratorAggregate
     }
 
     /**
-     * The fields as plain arrays, however deep.
+     * The fields the request sent, as plain arrays, however deep.
      *
      * @return array<string, mixed>
      */

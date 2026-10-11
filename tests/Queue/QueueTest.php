@@ -8,6 +8,7 @@ use Crab\App;
 use Crab\Config\Config;
 use Crab\Console\Output;
 use Crab\Container\Container;
+use Crab\Contracts\Database\Connection;
 use Crab\Contracts\Database\Table;
 use Crab\Contracts\Queue\JobRan;
 use Crab\Contracts\Queue\Queue as QueueContract;
@@ -68,6 +69,20 @@ final readonly class GreetJob
 final class TypedJob
 {
     public function handle(int $id, float $ratio, ?string $note = null, string|int $key = '', array $tags = [], mixed $anything = null): void
+    {
+    }
+}
+
+final class HiddenJob
+{
+    private function handle(): void
+    {
+    }
+}
+
+final class NamedJob
+{
+    public function handle(string $job = ''): void
     {
     }
 }
@@ -303,6 +318,13 @@ final class QueueTest extends TestCase
         $second = $store->reserve(['default'], $now + 90, 90);
         self::assertSame([$first->id, 2], [$second?->id, $second?->attempts]);
 
+        // The first worker was only slow. What it says of its try changes nothing: the job is the second's now.
+        $store->release($first, $now + 91);
+        $store->fail($first, 'too slow', $now + 91);
+        self::assertSame([0, 0, 1], [$store->counts('default', $now + 91)['pending'], $store->counts('default', $now + 91)['delayed'], $store->counts('default', $now + 91)['processing']]);
+        self::assertNull($store->reserve(['default'], $now + 100, 90));
+        self::assertSame([], $store->failed());
+
         // And when that happens as often as the job may be tried, it is given up on without being run.
         $this->clock->advance('+3 minutes');
         $consumer = $this->consumer($store, tries: 2);
@@ -328,6 +350,82 @@ final class QueueTest extends TestCase
 
         self::assertSame(['Hello, urgent!', 'Hello, ordinary!'], Ledger::$lines);
         self::assertSame([1, 0], [$store->size('other'), $store->size('urgent')]);
+    }
+
+    #[DataProvider('databases')]
+    public function testAJobPushedWithinATransactionIsStoredWithItOrNotAtAll(string $kind): void
+    {
+        $this->store($kind);
+        $db = new Database(fn (): \PDO => $this->pdo($kind), 1);
+        $store = new DatabaseStore($db, 'queue_test');
+        $queue = new Queue($store, clock: $this->clock);
+        $now = $this->clock->now()->getTimestamp();
+
+        $id = $db->transaction(static function (Connection $tx) use ($queue, $store, $now): int|string {
+            $id = $queue->within($tx)->on('mail')->push(GreetJob::class, name: 'user 7');
+            // Stored by the transaction's own connection, on a pool that has no other to lend.
+            self::assertSame(1, $tx->table('queue_test')->count());
+            return $id;
+        });
+        self::assertNotSame('', $id);
+        self::assertSame(1, $store->size('mail', $now));
+
+        try {
+            $db->transaction(static function (Connection $tx) use ($queue): void {
+                $queue->within($tx)->push(GreetJob::class, name: 'user 8');
+                $tx->transaction(static fn (Connection $inner) => $queue->within($inner)->push(GreetJob::class, name: 'user 9'));
+                throw new \DomainException('the order was refused');
+            });
+            self::fail('The failure was swallowed.');
+        } catch (\DomainException) {
+        }
+        self::assertSame([1, 0], [$store->size('mail', $now), $store->size('default', $now)], 'A job of a write that was undone must not exist.');
+    }
+
+    #[DataProvider('databases')]
+    public function testAJobKeptElsewhereIsPushedOnceTheTransactionHasCommitted(string $kind): void
+    {
+        $this->store($kind);
+        $db = new Database(fn (): \PDO => $this->pdo($kind), 1);
+        $now = $this->clock->now()->getTimestamp();
+        // In memory, and in a database that is not the transaction's own.
+        foreach ([new MemoryStore(), new DatabaseStore(new Database(fn (): \PDO => $this->pdo($kind), 1), 'queue_test')] as $store) {
+            $queue = new Queue($store, clock: $this->clock);
+            $before = $store->size('default', $now);
+
+            $db->transaction(static function (Connection $tx) use ($queue, $store, $now, $before, $kind): void {
+                self::assertSame('', $queue->within($tx)->push(GreetJob::class, name: 'user 7'));
+                try {
+                    $tx->transaction(static function (Connection $inner) use ($queue): void {
+                        $queue->within($inner)->push(GreetJob::class, name: 'user 8');
+                        throw new \DomainException('only this part is undone');
+                    });
+                } catch (\DomainException) {
+                }
+                if ($store instanceof MemoryStore || $kind === 'mysql') {
+                    self::assertSame($before, $store->size('default', $now), 'Nothing is pushed before the commit.');
+                }
+            });
+            self::assertSame($before + 1, $store->size('default', $now), 'The job of the part that was undone is not pushed.');
+
+            try {
+                $db->transaction(static function (Connection $tx) use ($queue): void {
+                    $queue->within($tx)->push(GreetJob::class, name: 'user 9');
+                    throw new \DomainException('refused');
+                });
+            } catch (\DomainException) {
+            }
+            self::assertSame($before + 1, $store->size('default', $now));
+
+            // Outside a transaction there is nothing to wait for.
+            $queue->within($db)->push(GreetJob::class, name: 'user 10');
+            self::assertSame($before + 2, $store->size('default', $now));
+        }
+    }
+
+    public static function databases(): array
+    {
+        return array_values(array_filter(self::stores(), static fn (array $store): bool => $store[0] !== 'memory'));
     }
 
     public function testWhatIsPushedIsCheckedAgainstTheJobWhereItIsPushed(): void
@@ -368,6 +466,8 @@ final class QueueTest extends TestCase
             'float as "key", which its handle() takes as string|int' => static fn () => $queue->push(TypedJob::class, id: 7, ratio: 1.0, key: 1.5),
             'null as "tags"' => static fn () => $queue->push(TypedJob::class, id: 7, ratio: 1.0, tags: null),
             'takes $when as DateTimeImmutable' => static fn () => $queue->push(DatedJob::class, when: '2026-01-01'),
+            'must be a public method' => static fn () => $queue->push(HiddenJob::class),
+            'takes $job, a name push() and later() use for themselves' => static fn () => $queue->push(NamedJob::class),
         ];
         foreach ($mistakes as $says => $mistake) {
             try {

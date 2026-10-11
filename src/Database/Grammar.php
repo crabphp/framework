@@ -85,8 +85,10 @@ abstract class Grammar
     public function aggregate(Query $query, string $function, string $column): Statement
     {
         $bindings = [];
-        $sql = "select {$function}(" . $this->wrap($column) . ') as ' . $this->quote('aggregate');
         $shaped = $query->distinct || $query->groups !== [] || $query->havings !== [] || $query->limit !== null || $query->offset !== null;
+        // Over rows worked out first, a column is known by its own name: its table's is not in scope out there.
+        $named = $shaped && $column !== '*' && str_contains($column, '.') ? substr($column, strrpos($column, '.') + 1) : $column;
+        $sql = "select {$function}(" . $this->wrap($named) . ') as ' . $this->quote('aggregate');
         if ($shaped) {
             // These change which rows there are, so the rows are worked out first and aggregated after.
             $sql .= ' from (' . $this->selectSql($query, $bindings) . ') as ' . $this->quote('crab_aggregate');

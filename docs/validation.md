@@ -35,7 +35,7 @@ A request that does not fit is answered `422` with every problem, by field. The 
 | Another class | An object, checked the same way |
 | `array` with `#[ListOf(...)]` | A list of the given kind |
 
-JSON is taken as it is: `"36"` is text and is refused for an `int` field. A query string and a route parameter are always text, so there `page=3` is read as the number `3` and `active=true` as a boolean.
+JSON is taken as it is: `"36"` is text and is refused for an `int` field. A query string, a route parameter and a form (`application/x-www-form-urlencoded` or `multipart/form-data`) are always text, so there `page=3` is read as the number `3` and `active=true` as a boolean.
 
 ```php
 enum Status: string
@@ -64,6 +64,8 @@ Prefer an enum to `#[OneOf]` when the choices are used in more than one place: t
 | `#[ListOf(Tag::class)]`, `#[ListOf('int')]` | What an `array` holds |
 
 They live in `Crab\Validation`. A rule runs only when the value is present and of the right type, so `#[Email] ?string $email` accepts a missing email and checks one that is given.
+
+A rule on a route parameter holds as on any field: with `#[Range(min: 1)] int $id`, a request for `/users/0` is answered `422`. A whole number too large for an integer, and a date the calendar does not have, such as February 31st, are refused and not read as something else.
 
 ## Nested objects and lists
 
