@@ -14,6 +14,7 @@ use Crab\Cache\InvalidKey;
 use Crab\Config\Config;
 use Crab\Console\Output;
 use Crab\Contracts\Cache\Cache as CacheContract;
+use Crab\Contracts\Cache\Lock;
 use Crab\Contracts\Cache\Store;
 use Crab\Contracts\Database\Table;
 use Crab\Database\Database;
@@ -141,6 +142,620 @@ final class CacheTest extends TestCase
     }
 
     #[DataProvider('stores')]
+    public function testALockCanBeTakenByOneHolderAndTakenAgainAfterRelease(string $kind): void
+    {
+        $cache = $this->cache($kind);
+
+        $lock = $cache->lock('reports.monthly', 60);
+        self::assertInstanceOf(Lock::class, $lock);
+        self::assertNull($cache->lock('reports.monthly', 60));
+        self::assertTrue($lock->release());
+
+        $next = $cache->lock('reports.monthly', 60);
+        self::assertInstanceOf(Lock::class, $next);
+        self::assertTrue($next->release());
+    }
+
+    #[DataProvider('stores')]
+    public function testAnExpiredHolderCannotReleaseTheLockTakenInItsPlace(string $kind): void
+    {
+        $cache = $this->cache($kind);
+        $first = $cache->lock('report', 10);
+        self::assertInstanceOf(Lock::class, $first);
+
+        $this->clock->advance('+11 seconds');
+        $second = $cache->lock('report', 10);
+        self::assertInstanceOf(Lock::class, $second);
+        self::assertFalse($first->release());
+        self::assertNull($cache->lock('report', 10));
+        self::assertTrue($second->release());
+    }
+
+    #[DataProvider('stores')]
+    public function testALockCanBeReleasedOnlyOnce(string $kind): void
+    {
+        $lock = $this->cache($kind)->lock('report', 60);
+        self::assertInstanceOf(Lock::class, $lock);
+
+        self::assertTrue($lock->release());
+        self::assertFalse($lock->release());
+    }
+
+    #[DataProvider('stores')]
+    public function testALockAndAnOrdinaryValueWithTheSameKeyStayApart(string $kind): void
+    {
+        $cache = $this->cache($kind);
+        $lock = $cache->lock('x', 60);
+        self::assertInstanceOf(Lock::class, $lock);
+
+        $cache->set('x', 'value');
+        self::assertSame('value', $cache->get('x'));
+        self::assertTrue($cache->delete('x'));
+        self::assertNull($cache->lock('x', 60));
+        self::assertTrue($lock->release());
+
+        $cache->set('x', 'value');
+        $next = $cache->lock('x', 60);
+        self::assertInstanceOf(Lock::class, $next);
+        self::assertTrue($next->release());
+        self::assertSame('value', $cache->get('x'));
+    }
+
+    #[DataProvider('stores')]
+    public function testALockRefusesATimeToLiveOfZero(string $kind): void
+    {
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('positive time to live');
+        $this->cache($kind)->lock('x', 0);
+    }
+
+    #[DataProvider('stores')]
+    public function testALockRefusesANegativeTimeToLive(string $kind): void
+    {
+        $this->expectException(\InvalidArgumentException::class);
+        $this->cache($kind)->lock('x', -5);
+    }
+
+    #[DataProvider('stores')]
+    public function testALockExpiresWithoutBeingReleased(string $kind): void
+    {
+        $cache = $this->cache($kind);
+        $first = $cache->lock('report', 10);
+        self::assertInstanceOf(Lock::class, $first);
+
+        $this->clock->advance('+10 seconds');
+        self::assertFalse($first->release());
+        self::assertInstanceOf(Lock::class, $cache->lock('report', 10));
+    }
+
+    #[DataProvider('stores')]
+    public function testALockAcceptsAnIntervalAndExpiresAtItsEnd(string $kind): void
+    {
+        $cache = $this->cache($kind);
+        self::assertInstanceOf(Lock::class, $cache->lock('report', new \DateInterval('PT10S')));
+
+        $this->clock->advance('+9 seconds');
+        self::assertNull($cache->lock('report', 10));
+        $this->clock->advance('+1 second');
+        self::assertInstanceOf(Lock::class, $cache->lock('report', 10));
+    }
+
+    #[DataProvider('stores')]
+    public function testALockRefusesAnIntervalThatDoesNotExpireInTheFuture(string $kind): void
+    {
+        $cache = $this->cache($kind);
+        $backwards = new \DateInterval('PT5S');
+        $backwards->invert = 1;
+        foreach ([new \DateInterval('PT0S'), $backwards] as $ttl) {
+            try {
+                $cache->lock('report', $ttl);
+                self::fail('A lock accepted an interval that does not expire in the future.');
+            } catch (\InvalidArgumentException $error) {
+                self::assertStringContainsString('positive time to live', $error->getMessage());
+            }
+        }
+        self::assertInstanceOf(Lock::class, $cache->lock('report', 10));
+    }
+
+    #[DataProvider('stores')]
+    public function testTheLastIntegerExpiryFitsForEveryCacheWrite(string $kind): void
+    {
+        $now = $this->clock->now()->getTimestamp();
+        $seconds = PHP_INT_MAX - $now;
+        $store = $this->store($kind);
+        $cache = new Cache($store, clock: $this->clock);
+        $locks = [];
+
+        foreach ([$seconds] as $index => $ttl) {
+            self::assertTrue($cache->set('set.' . $index, 'kept', $ttl));
+            self::assertTrue($cache->add('add.' . $index, 'added', $ttl));
+            self::assertSame(1, $cache->increment('count.' . $index, ttl: $ttl));
+            $locks[] = $cache->lock('lock.' . $index, $ttl);
+            self::assertInstanceOf(Lock::class, $locks[$index]);
+            self::assertSame('kept', $cache->get('set.' . $index));
+            self::assertSame('added', $cache->get('add.' . $index));
+        }
+
+        $this->clock->set('@' . PHP_INT_MAX);
+        foreach ($locks as $index => $lock) {
+            self::assertNull($cache->get('set.' . $index));
+            self::assertNull($cache->get('add.' . $index));
+            self::assertNull($cache->get('count.' . $index));
+            self::assertFalse($lock->release());
+        }
+    }
+
+    #[DataProvider('stores')]
+    public function testTheFirstOverflowingExpiryIsRefusedBeforeAnyCacheWrite(string $kind): void
+    {
+        $cache = $this->cache($kind);
+        $seconds = PHP_INT_MAX - $this->clock->now()->getTimestamp() + 1;
+        $interval = new \DateInterval('PT0S');
+        $interval->s = 100_000_001;
+        $cache->set('set', 'kept');
+        $cache->set('count', 41);
+        $writes = [
+            fn (int|\DateInterval $ttl): bool => $cache->set('set', 'changed', $ttl),
+            fn (int|\DateInterval $ttl): bool => $cache->add('add', 'changed', $ttl),
+            fn (int|\DateInterval $ttl): int => $cache->increment('count', ttl: $ttl),
+            fn (int|\DateInterval $ttl): ?Lock => $cache->lock('lock', $ttl),
+        ];
+
+        foreach ([$seconds, $interval] as $ttl) {
+            foreach ($writes as $write) {
+                try {
+                    $write($ttl);
+                    self::fail('A cache write accepted an expiry beyond the integer range.');
+                } catch (\InvalidArgumentException $error) {
+                    self::assertStringContainsString('too long', $error->getMessage());
+                    self::assertStringContainsString((string) PHP_INT_MAX, $error->getMessage());
+                    self::assertStringContainsString('shorter', $error->getMessage());
+                }
+            }
+        }
+        self::assertSame('kept', $cache->get('set'));
+        self::assertSame(41, $cache->get('count'));
+        self::assertFalse($cache->has('add'));
+        self::assertInstanceOf(Lock::class, $cache->lock('lock', 60));
+    }
+
+    public function testAnUnderflowingExpiryIsRefusedInsteadOfDeletingAnEntry(): void
+    {
+        $this->clock->set('@' . PHP_INT_MIN);
+        $cache = new Cache(new ArrayStore(), clock: $this->clock);
+        $cache->set('kept', 'value');
+        foreach ([-1] as $ttl) {
+            try {
+                $cache->set('kept', 'changed', $ttl);
+                self::fail('An underflowing expiry was accepted.');
+            } catch (\InvalidArgumentException $error) {
+                self::assertStringContainsString((string) PHP_INT_MIN, $error->getMessage());
+            }
+        }
+        self::assertSame('value', $cache->get('kept'));
+    }
+
+    public function testAnIntervalWithAPartPastAHundredMillionIsRefused(): void
+    {
+        $cache = new Cache(new ArrayStore(), clock: $this->clock);
+        $days = new \DateInterval('PT0S');
+        $days->d = 2_000_000_000_000_000;
+        $mixed = new \DateInterval('PT0S');
+        $mixed->d = 2_000_000_000_000_000;
+        $mixed->s = -1;
+        $back = new \DateInterval('PT0S');
+        $back->s = -100_000_001;
+        foreach ([$days, $mixed, $back] as $ttl) {
+            try {
+                $cache->lock('report', $ttl);
+                self::fail('An interval PHP cannot add without wrapping was accepted.');
+            } catch (\InvalidArgumentException $error) {
+                self::assertStringContainsString('too long', $error->getMessage());
+            }
+        }
+        $limit = new \DateInterval('PT0S');
+        $limit->y = 100_000_000;
+        self::assertInstanceOf(Lock::class, $cache->lock('report', $limit));
+    }
+
+    public function testAnIntervalMayBeRelativeOrMixItsSigns(): void
+    {
+        $cache = new Cache(new ArrayStore(), clock: $this->clock);
+        $now = $this->clock->now();
+        $weekday = \DateInterval::createFromDateString('next weekday');
+        $mixed = new \DateInterval('PT2H');
+        $mixed->i = -30;
+
+        self::assertTrue($cache->set('weekday', 'kept', $weekday));
+        self::assertTrue($cache->set('mixed', 'kept', $mixed));
+        $this->clock->set('@' . ($now->getTimestamp() + 5399));
+        self::assertSame('kept', $cache->get('mixed'));
+        $this->clock->set('@' . ($now->getTimestamp() + 5400));
+        self::assertNull($cache->get('mixed'));
+        self::assertSame($now->add($weekday)->getTimestamp() > $now->getTimestamp() + 5400, $cache->has('weekday'));
+    }
+
+    #[DataProvider('stores')]
+    public function testALockChecksItsKeyLikeAnOrdinaryCacheEntry(string $kind): void
+    {
+        $this->expectException(InvalidKey::class);
+        $this->cache($kind)->lock('not:a:key', 60);
+    }
+
+    #[DataProvider('stores')]
+    public function testAnEntryIsDeletedOnlyWhenItIsLiveAndItsValueMatchesExactly(string $kind): void
+    {
+        $store = $this->store($kind);
+        $store->set('owned', "token:\0\n", 110);
+        $store->set('expired', 'old', 100);
+        $store->set('forever', '', null);
+
+        self::assertFalse($store->deleteIf('missing', 'token', 100));
+        self::assertFalse($store->deleteIf('owned', "Token:\0\n", 100));
+        self::assertSame("token:\0\n", $store->get('owned', 100));
+        self::assertFalse($store->deleteIf('expired', 'old', 100));
+        self::assertSame(1, $store->prune(100));
+        self::assertTrue($store->deleteIf('owned', "token:\0\n", 100));
+        self::assertNull($store->get('owned', 100));
+        self::assertFalse($store->deleteIf('owned', "token:\0\n", 100));
+        self::assertTrue($store->deleteIf('forever', '', 1_000));
+        self::assertNull($store->get('forever', 1_000));
+    }
+
+    public function testDatabaseConditionalDeletionComparesBytesEvenWithACaseInsensitiveColumn(): void
+    {
+        $database = new Database(fn (): \PDO => $this->pdo('sqlite'), 1);
+        $database->execute('create table cache_nocase (key text unique, value text collate nocase, expires_at bigint)');
+        $store = new DatabaseStore($database, 'cache_nocase');
+        $store->set('owned', "\0", 110);
+
+        self::assertFalse($store->deleteIf('owned', 'h', 100));
+        self::assertSame("\0", $store->get('owned', 100));
+        self::assertTrue($store->deleteIf('owned', "\0", 100));
+        self::assertNull($store->get('owned', 100));
+    }
+
+    #[DataProvider('stores')]
+    public function testPruningRemovesExpiredEntriesAndKeepsLiveAndPermanentOnes(string $kind): void
+    {
+        $store = $this->store($kind);
+        $cache = new Cache($store, clock: $this->clock);
+        $cache->setMultiple(['old.one' => 1, 'old.two' => 2, 'old.three' => 3], 10);
+        $cache->setMultiple(['live.one' => 4, 'live.two' => 5], 100);
+        $cache->set('forever', 6);
+
+        $this->clock->advance('+11 seconds');
+        self::assertSame(3, $store->prune($this->clock->now()->getTimestamp()));
+        self::assertSame([null, null, null, 4, 5, 6], array_values($cache->getMultiple([
+            'old.one', 'old.two', 'old.three', 'live.one', 'live.two', 'forever',
+        ])));
+        self::assertSame(0, $store->prune($this->clock->now()->getTimestamp()));
+    }
+
+    #[DataProvider('stores')]
+    public function testTwoCachesWithDifferentPrefixesDoNotShareALock(string $kind): void
+    {
+        $store = $this->store($kind);
+        $one = new Cache($store, 'one.', clock: $this->clock);
+        $two = new Cache($store, 'two.', clock: $this->clock);
+        $first = $one->lock('report', 60);
+        $second = $two->lock('report', 60);
+
+        self::assertInstanceOf(Lock::class, $first);
+        self::assertInstanceOf(Lock::class, $second);
+        self::assertTrue($first->release());
+        self::assertNull($two->lock('report', 60));
+        self::assertTrue($second->release());
+    }
+
+    public function testACachePrefixCannotReachTheReservedLockNamespace(): void
+    {
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage("that text is kept for the cache's locks");
+        new Cache(new ArrayStore(), 'orders.:lock:');
+    }
+
+    #[DataProvider('stores')]
+    public function testClearingASharedStoreRemovesEveryPrefixAndItsLiveLocks(string $kind): void
+    {
+        $store = $this->store($kind);
+        $one = new Cache($store, 'one.', clock: $this->clock);
+        $two = new Cache($store, 'two.', clock: $this->clock);
+        $one->set('entry', 'one');
+        $two->set('entry', 'two');
+        $first = $one->lock('report', 60);
+        self::assertInstanceOf(Lock::class, $first);
+
+        self::assertTrue($two->clear());
+        self::assertNull($one->get('entry'));
+        self::assertNull($two->get('entry'));
+        $second = $one->lock('report', 60);
+        self::assertInstanceOf(Lock::class, $second);
+        self::assertFalse($first->release());
+        self::assertNull($one->lock('report', 60));
+        self::assertTrue($second->release());
+    }
+
+    public function testEverySuccessfulFileLockAcquisitionHasItsOwnSuccessfulReleaseAcrossProcesses(): void
+    {
+        if (!function_exists('pcntl_fork')) {
+            self::markTestSkipped('Needs pcntl to take and release locks from several processes at once.');
+        }
+        $children = [];
+        for ($child = 0; $child < 4; ++$child) {
+            $pid = pcntl_fork();
+            if ($pid === 0) {
+                pcntl_signal(SIGALRM, SIG_DFL);
+                pcntl_alarm(30);
+                try {
+                    $store = new FileStore($this->directory . '/files');
+                    $added = 0;
+                    $released = 0;
+                    $foreign = 0;
+                    for ($i = 0; $i < 200; ++$i) {
+                        $token = bin2hex(random_bytes(16));
+                        $added += (int) $store->add('lock', $token, 1_000, 100);
+                        $foreign += (int) $store->deleteIf('lock', 'foreign.' . $token, 100);
+                        $released += (int) $store->deleteIf('lock', $token, 100);
+                    }
+                    $result = [$added, $released, $foreign];
+                } catch (\Throwable $error) {
+                    $result = ['error' => $error->getMessage() . "\n" . $error->getTraceAsString()];
+                }
+                file_put_contents($this->directory . '/child-' . $child . '.json', json_encode($result, JSON_THROW_ON_ERROR));
+                // Without the test's shutdown, which belongs to the parent.
+                posix_kill(getmypid(), SIGKILL);
+            }
+            self::assertGreaterThan(0, $pid, 'The lock test could not fork a child process.');
+            $children[] = $pid;
+        }
+        foreach ($children as $pid) {
+            $this->waitForChild($pid);
+        }
+        $total = 0;
+        for ($child = 0; $child < 4; ++$child) {
+            $file = $this->directory . '/child-' . $child . '.json';
+            self::assertFileExists($file);
+            $result = json_decode(file_get_contents($file), true, flags: JSON_THROW_ON_ERROR);
+            self::assertArrayNotHasKey('error', $result, $result['error'] ?? '');
+            [$added, $released, $foreign] = $result;
+            self::assertSame($added, $released, 'Every acquisition must be released by the same child.');
+            self::assertSame(0, $foreign, 'A different token must never release a lock.');
+            $total += $added;
+        }
+        self::assertGreaterThan(0, $total);
+        self::assertNull((new FileStore($this->directory . '/files'))->get('lock', 100));
+    }
+
+    public function testPruningTheFileStoreLeavesForeignFilesAlone(): void
+    {
+        $store = new FileStore($this->directory);
+        $store->set('old', 'expired', 100);
+        $folder = $this->directory . '/' . substr(sha1('old'), 0, 2);
+        file_put_contents($this->directory . '/keep.txt', 'not the cache\'s');
+        file_put_contents($folder . '/keep.txt', "10\nnot the cache's");
+        mkdir($this->directory . '/foreign');
+        file_put_contents($this->directory . '/foreign/' . sha1('foreign'), "10\nnot the cache's");
+
+        self::assertSame(1, $store->prune(100));
+        self::assertFileDoesNotExist($folder . '/' . sha1('old'));
+        self::assertSame('not the cache\'s', file_get_contents($this->directory . '/keep.txt'));
+        self::assertSame("10\nnot the cache's", file_get_contents($folder . '/keep.txt'));
+        self::assertFileExists($this->directory . '/foreign/' . sha1('foreign'));
+        self::assertSame(0, $store->prune(100));
+        self::assertFalse($store->deleteIf('missing', 'value', 100));
+        self::assertFileDoesNotExist($this->directory . '/' . substr(sha1('missing'), 0, 2) . '/' . sha1('missing'));
+    }
+
+    public function testClearingAndDeletingFileLinksLeaveTheirOutsideTargetsWhole(): void
+    {
+        $store = new FileStore($this->directory . '/files');
+        $target = $this->directory . '/outside.txt';
+        file_put_contents($target, 'important outside contents');
+        $hash = sha1('linked');
+        $file = $this->directory . '/files/' . substr($hash, 0, 2) . '/' . $hash;
+
+        foreach (['clear', 'delete'] as $operation) {
+            $store->set('linked', 'old', null);
+            unlink($file);
+            self::assertTrue(symlink($target, $file));
+            if ($operation === 'clear') {
+                $store->clear();
+            } else {
+                $store->delete('linked');
+            }
+            self::assertFalse(is_link($file));
+            self::assertSame('important outside contents', file_get_contents($target));
+        }
+    }
+
+    public function testClearingAndDeletingBrokenFileLinksRemoveTheLinks(): void
+    {
+        $store = new FileStore($this->directory . '/files');
+        $hash = sha1('linked');
+        $file = $this->directory . '/files/' . substr($hash, 0, 2) . '/' . $hash;
+
+        foreach (['clear', 'delete'] as $operation) {
+            $store->set('linked', 'old', null);
+            unlink($file);
+            self::assertTrue(symlink($this->directory . '/missing.txt', $file));
+            if ($operation === 'clear') {
+                $store->clear();
+            } else {
+                $store->delete('linked');
+            }
+            self::assertFalse(is_link($file));
+        }
+    }
+
+    public function testConditionalDeletionAndPruningSkipFileLinks(): void
+    {
+        $store = new FileStore($this->directory . '/files');
+        $target = $this->directory . '/outside.txt';
+        file_put_contents($target, "110\ntoken");
+        $store->set('linked', 'old', null);
+        $hash = sha1('linked');
+        $file = $this->directory . '/files/' . substr($hash, 0, 2) . '/' . $hash;
+        unlink($file);
+        self::assertTrue(symlink($target, $file));
+
+        self::assertFalse($store->deleteIf('linked', 'token', 100));
+        self::assertSame(0, $store->prune(200));
+        self::assertTrue(is_link($file));
+        self::assertSame("110\ntoken", file_get_contents($target));
+    }
+
+    public function testClearingAndPruningSkipLinkedHashFolders(): void
+    {
+        $cacheDirectory = $this->directory . '/files';
+        $outside = $this->directory . '/outside';
+        mkdir($cacheDirectory);
+        mkdir($outside);
+        $hash = sha1('linked');
+        $folder = $cacheDirectory . '/' . substr($hash, 0, 2);
+        $target = $outside . '/' . $hash;
+        file_put_contents($target, "100\nimportant outside contents");
+        self::assertTrue(symlink($outside, $folder));
+        $store = new FileStore($cacheDirectory);
+
+        try {
+            self::assertSame(0, $store->prune(100));
+            $store->clear();
+            $store->delete('linked');
+            self::assertTrue(is_link($folder));
+            self::assertSame("100\nimportant outside contents", file_get_contents($target));
+        } finally {
+            unlink($folder);
+        }
+    }
+
+    public function testFileWritesRefuseToFollowLinkedEntries(): void
+    {
+        $store = new FileStore($this->directory . '/files');
+        $target = $this->directory . '/outside.txt';
+        file_put_contents($target, 'important outside contents');
+        $store->set('linked', 'old', null);
+        $hash = sha1('linked');
+        $file = $this->directory . '/files/' . substr($hash, 0, 2) . '/' . $hash;
+        unlink($file);
+        self::assertTrue(symlink($target, $file));
+
+        foreach ([
+            function () use ($store): void { $store->set('linked', 'changed', null); },
+            fn (): bool => $store->add('linked', 'changed', null, 100),
+            fn (): int => $store->increment('linked', 1, null, 100),
+        ] as $write) {
+            $error = null;
+            try {
+                $write();
+            } catch (\RuntimeException $error) {
+            }
+            self::assertInstanceOf(\RuntimeException::class, $error);
+            self::assertStringContainsString('could not write', $error->getMessage());
+            self::assertSame('important outside contents', file_get_contents($target));
+        }
+    }
+
+    public function testAFailedFileRemovalLeavesTheEntryWholeAndCanBePrunedAfterPermissionsRecover(): void
+    {
+        if (!function_exists('posix_geteuid') || posix_geteuid() === 0) {
+            self::markTestSkipped('Needs Unix directory permissions and a user other than root.');
+        }
+        $store = new FileStore($this->directory . '/files');
+        $store->set('old', 'expired', 100);
+        $hash = sha1('old');
+        $file = $this->directory . '/files/' . substr($hash, 0, 2) . '/' . $hash;
+        $folder = dirname($file);
+        self::assertTrue(chmod($folder, 0o555));
+
+        try {
+            foreach ([
+                fn (): int => $store->prune(100),
+                function () use ($store): void { $store->delete('old'); },
+                fn (): bool => $store->deleteIf('old', 'expired', 50),
+            ] as $remove) {
+                $error = null;
+                try {
+                    $remove();
+                } catch (\RuntimeException $error) {
+                }
+                self::assertInstanceOf(\RuntimeException::class, $error);
+                self::assertStringContainsString('cannot be written to', $error->getMessage());
+                self::assertStringContainsString($folder, $error->getMessage());
+                self::assertSame("100\nexpired", file_get_contents($file));
+            }
+        } finally {
+            chmod($folder, 0o775);
+        }
+        self::assertSame(1, $store->prune(100));
+        self::assertFileDoesNotExist($file);
+        self::assertSame(0, $store->prune(100));
+    }
+
+    public function testDescriptorExhaustionFailsFileDeletionWithAnExceptionInsteadOfHanging(): void
+    {
+        if (!function_exists('pcntl_fork') || !function_exists('posix_setrlimit')) {
+            self::markTestSkipped('Needs pcntl and POSIX descriptor limits.');
+        }
+        $store = new FileStore($this->directory . '/files');
+        $store->set('owned', 'token', 110);
+        $resultFile = $this->directory . '/descriptor-child.json';
+        $pid = pcntl_fork();
+        if ($pid === 0) {
+            pcntl_signal(SIGALRM, SIG_DFL);
+            pcntl_alarm(30);
+            $handles = [];
+            try {
+                if (!posix_setrlimit(POSIX_RLIMIT_NOFILE, 64, 64)) {
+                    throw new \RuntimeException('The descriptor limit could not be set.');
+                }
+                while (($handle = @fopen('/dev/null', 'r')) !== false) {
+                    $handles[] = $handle;
+                }
+                $store->delete('owned');
+                $result = ['exception' => null, 'message' => 'Deletion returned without an exception.'];
+            } catch (\Throwable $error) {
+                $result = ['exception' => $error::class, 'message' => $error->getMessage()];
+            } finally {
+                foreach ($handles as $handle) {
+                    fclose($handle);
+                }
+            }
+            file_put_contents($resultFile, json_encode($result, JSON_THROW_ON_ERROR));
+            // Without the test's shutdown, which belongs to the parent.
+            posix_kill(getmypid(), SIGKILL);
+        }
+        self::assertGreaterThan(0, $pid, 'The descriptor test could not fork a child process.');
+        $this->waitForChild($pid);
+        self::assertFileExists($resultFile);
+        $result = json_decode(file_get_contents($resultFile), true, flags: JSON_THROW_ON_ERROR);
+        self::assertSame(\RuntimeException::class, $result['exception']);
+        self::assertStringContainsString('could not write', $result['message']);
+        self::assertSame('token', $store->get('owned', 100));
+    }
+
+    public function testThePruneCommandPrintsHowManyExpiredEntriesItRemoved(): void
+    {
+        $app = new App(new Config(['cache' => ['directory' => $this->directory . '/files']]));
+        $app->container->instance(\Psr\Clock\ClockInterface::class, $this->clock);
+        $app->register(CacheProvider::class);
+        $cache = $app->container->get(CacheContract::class);
+        $cache->setMultiple(['one' => 1, 'two' => 2, 'three' => 3], 10);
+        $cache->set('kept', 'value', 100);
+        $this->clock->advance('+11 seconds');
+        $stream = fopen('php://memory', 'w+');
+        $output = new Output($stream, fopen('php://memory', 'w+'));
+
+        self::assertSame(0, $app->console->run(['cache:prune'], $output));
+        rewind($stream);
+        self::assertSame("Removed 3 expired cache entries.\n", stream_get_contents($stream));
+        self::assertSame('value', $cache->get('kept'));
+        self::assertSame(0, $app->console->run(['cache:prune'], $output));
+        rewind($stream);
+        self::assertSame("Removed 3 expired cache entries.\nRemoved 0 expired cache entries.\n", stream_get_contents($stream));
+    }
+
+    #[DataProvider('stores')]
     public function testIncrementCountsFromZeroAndKeepsTheTimeTheCountStartedWith(string $kind): void
     {
         $cache = $this->cache($kind);
@@ -178,6 +793,8 @@ final class CacheTest extends TestCase
         for ($child = 0; $child < 4; ++$child) {
             $pid = pcntl_fork();
             if ($pid === 0) {
+                pcntl_signal(SIGALRM, SIG_DFL);
+                pcntl_alarm(30);
                 $store = new FileStore($this->directory);
                 for ($i = 0; $i < 250; ++$i) {
                     $store->increment('hits', 1, null, 100);
@@ -185,10 +802,11 @@ final class CacheTest extends TestCase
                 // Without the test's shutdown, which belongs to the parent.
                 posix_kill(getmypid(), SIGKILL);
             }
+            self::assertGreaterThan(0, $pid, 'The counter test could not fork a child process.');
             $children[] = $pid;
         }
         foreach ($children as $pid) {
-            pcntl_waitpid($pid, $status);
+            $this->waitForChild($pid);
         }
 
         self::assertSame(1001, (new FileStore($this->directory))->increment('hits', 1, null, 100));
@@ -411,5 +1029,15 @@ final class CacheTest extends TestCase
     private function quiet(): Output
     {
         return new Output(fopen('php://memory', 'w+'), fopen('php://memory', 'w+'));
+    }
+
+    /**
+     * Reaps only this test's child and turns its alarm into a useful failure.
+     */
+    private function waitForChild(int $pid): void
+    {
+        self::assertSame($pid, pcntl_waitpid($pid, $status));
+        self::assertTrue(pcntl_wifsignaled($status), 'The cache child exited before reporting its result.');
+        self::assertSame(SIGKILL, pcntl_wtermsig($status), 'The cache child timed out or was interrupted before completing.');
     }
 }

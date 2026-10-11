@@ -12,6 +12,7 @@
 - [Keys and time to live](#keys-and-time-to-live)
 - [Counting](#counting)
 - [Locks](#locks)
+- [Cleaning up](#cleaning-up)
 - [A store of your own](#a-store-of-your-own)
 - [In tests](#in-tests)
 
@@ -51,11 +52,13 @@ return [
 | Setting | Default | |
 | --- | --- | --- |
 | `cache.store` | `file` | Where entries are kept: `file`, `database` or `array`, or `redis` with the `crabphp/redis` package |
-| `cache.directory` | the system's temporary folder | The file store's folder |
+| `cache.directory` | `crab-cache` inside the system's temporary folder | The file store's folder |
 | `cache.table` | `cache` | The database store's table |
 | `cache.database` | `null` | The name of the database the table is in; the default one when null |
 | `cache.prefix` | none | Put before every key, to keep two applications apart in one store |
 | `cache.ttl` | `null` | Seconds an entry lives when you give none; forever when null |
+
+A `cache.prefix` cannot contain `:lock:`: that text is kept for the cache's locks.
 
 ### Choosing a store
 
@@ -143,6 +146,11 @@ php cua cache:clear
 
 empties the cache from the command line, for example after a deploy that changes what is cached. An `array` store lives inside each worker and is emptied by restarting the server.
 
+`cache.prefix` does not scope `clear()` or `cache:clear` on the array, file and database stores: they remove every entry in the shared store. Redis clears only entries under its store's own prefix.
+
+> [!WARNING]
+> `clear()` and `cache:clear` remove active locks too. Do not clear a store whose locks are in use: another worker could take the same lock while its first holder is still working.
+
 ### Several keys at once
 
 ```php
@@ -153,9 +161,9 @@ $cache->deleteMultiple(['a', 'b']);
 
 ## Keys and time to live
 
-A key is text without any of `{}()/\@:` in it, as PSR-16 requires. Separate its parts with a dot or a dash: `user.7.orders`, not `user:7:orders`. A key that breaks the rule throws, with a message that says what a key may be.
+A key is nonempty text without any of `{}()/\@:` in it, as PSR-16 requires. Separate its parts with a dot or a dash: `user.7.orders`, not `user:7:orders`. A key that breaks the rule throws, with a message that says what a key may be.
 
-A time to live is a number of seconds, a `DateInterval`, or left out for `cache.ttl`:
+A time to live is a whole number of seconds, a `DateInterval`, or left out or `null` for `cache.ttl` (forever only when that default is null). With zero or a negative time to live, `set()` deletes the entry and `add()` returns `false` without changing it:
 
 ```php
 $cache->set('report', $report, 3600);
@@ -163,6 +171,8 @@ $cache->set('report', $report, new \DateInterval('P1D'));
 ```
 
 Give every entry a time to live unless you delete it yourself when its source changes. An entry that lives forever and is never deleted is a bug waiting for the day the data changes.
+
+A time to live too long for a timestamp throws `InvalidArgumentException`, and so does a `DateInterval` with more than a hundred million of any part.
 
 ## Counting
 
@@ -182,21 +192,42 @@ To limit how often a client may call a route, use the [`RateLimit` middleware](m
 
 ## Locks
 
-`add()` sets a key only when it holds nothing, and tells you whether it did. Of several callers at the same moment, exactly one is told `true`. That makes it a lock:
+Take a lock when only one worker should build a report at a time. `lock()` returns a lock you can release, or `null` when someone holds it:
 
 ```php
-if (!$cache->add('reports.monthly.running', true, 600)) {
+$lock = $cache->lock('reports.monthly', 600);
+if ($lock === null) {
     return;                                    // someone else is already building it
 }
 
 try {
     $this->buildMonthlyReport();
 } finally {
-    $cache->delete('reports.monthly.running');
+    $lock->release();                           // false if it expired or was already released
 }
 ```
 
-Always give the lock a time to live, longer than the work takes: if the process dies before the `finally`, the lock still goes away. Across machines this needs a store they share, which is the database store.
+A positive time to live is required, in seconds or as a `DateInterval`. Give it longer than the work takes: expiry lets another worker start, even if the first is still running. If the process dies, the lock still expires. A late `release()` returns `false` and leaves a new holder's lock alone. Locks use keys of their own, so storing or deleting a value with the same key does not affect them.
+
+Clearing the store removes its locks as well. Do not run `clear()` or `cache:clear` while work relies on those locks.
+
+Across machines, use a shared database or Redis store. An array store coordinates only callers inside one worker. `add()` remains available to set an ordinary value only when its key holds nothing, returning whether it did.
+
+## Cleaning up
+
+Expired file and database entries stop being returned, but still occupy space until replaced or removed. Run the cleanup command regularly when keys keep changing, such as rate limits for each client and minute:
+
+```sh
+php cua cache:prune
+```
+
+It prints how many expired entries it removed and keeps live entries and those with no expiry. To run it hourly, register `ScheduleProvider` and declare it on the [schedule](scheduling.md):
+
+```php
+$schedule->command('cache:prune')->hourly();
+```
+
+Redis drops expired entries itself and needs no scheduled cleanup; its prune command reports zero. An array store lives inside each worker, so a separate command cannot prune the other workers' entries.
 
 ## A store of your own
 
@@ -204,12 +235,13 @@ For Redis, install the `crabphp/redis` package, register its `RedisProvider` aft
 
 ```php
 // app/Providers/AppProvider.php
+use App\CacheStore;
 use Crab\Contracts\Cache\Store;
 
-$container->singleton(Store::class, static fn (): Store => new RedisStore(config('redis.host')));
+$container->singleton(Store::class, CacheStore::class);
 ```
 
-A store only stores text by key with an expiry time: `get()`, `set()`, `add()`, `increment()`, `delete()` and `clear()`. Checking keys, serializing values and reading the clock stay with the cache in front of it. `add()` and `increment()` must each be one step with respect to every other caller, or the locks and limits built on them do not hold.
+A store only stores text by key with an expiry time: `get()`, `set()`, `add()`, `increment()`, `delete()`, `deleteIf()`, `prune()` and `clear()`. Checking keys, serializing values and reading the clock stay with the cache in front of it. `add()`, `increment()` and `deleteIf()` must each be one step with respect to every other caller, or the locks and limits built on them do not hold. `deleteIf()` removes only a live entry holding the exact given text; `prune()` removes expired entries and returns the count.
 
 ## In tests
 

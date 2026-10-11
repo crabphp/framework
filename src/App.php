@@ -32,6 +32,7 @@ use Crab\Contracts\Workers;
 use Crab\Engine\Async\Async;
 use Crab\Engine\Async\Cancellation;
 use Crab\Engine\Async\CancelledException;
+use Crab\Engine\FailureReporter;
 use Crab\Engine\Process\Worker;
 use Crab\Engine\Runtime;
 use Crab\Engine\Server\HttpServer;
@@ -114,6 +115,7 @@ final class App implements RequestHandlerInterface, Runner
         public readonly ?string $basePath = null,
         array $middleware = self::MIDDLEWARE,
     ) {
+        $config->defaults('server', ['drain' => 5.0]);
         self::$current = $this;
         $container->instance(self::class, $this);
         // What runs workers that serve no requests, for a provider's commands.
@@ -255,25 +257,59 @@ final class App implements RequestHandlerInterface, Runner
      */
     public function runtime(string $address = 'tcp://127.0.0.1:8080', int $workers = 1, mixed $socket = null, bool $servers = true): Runtime
     {
+        $drain = $this->drain();
         // Beside HTTP, the servers "server.with" switches on: none unless it says so. In one
         // process there is room for HTTP alone.
         $with = $servers ? $this->with() : [];
         $groups = $this->alongside($with);
         // Long enough for the slowest of them to finish what it has in hand.
-        $runtime = new Runtime(shutdownTimeout: max(5.0, $this->servers->grace($with)));
+        $runtime = new Runtime(shutdownTimeout: max($drain, $this->servers->grace($with)));
         foreach ($groups as $group) {
             $this->group($runtime, $group, background: $socket !== null);
         }
-        $runtime->group('http', $workers)
+        $runtime->group('http', $workers, shutdownTimeout: $drain)
             ->listen($address, new HttpServer(
                 new EngineHandler($this->stack),
                 maxBodyBytes: (int) $this->config->get('server.max_body', 1048576),
                 bodyTimeout: (float) $this->config->get('server.body_timeout', 30),
             ), socket: $socket)
             ->onStart($this->start(...))
-            ->onStop($this->stop(...))
+            ->onStop(function (Worker $worker): void {
+                try {
+                    $cut = $worker->stats()['cutConnections'];
+                    if ($cut > 0) {
+                        $message = 'HTTP worker {pid} reached server.drain; cut {connections} connections.';
+                        $context = ['pid' => getmypid(), 'connections' => $cut];
+                        try {
+                            $this->container->get(LoggerContract::class)->warning($message, $context);
+                        } catch (\Throwable $error) {
+                            try {
+                                $fallback = new Logger();
+                                $fallback->warning($message, $context);
+                            } finally {
+                                FailureReporter::report('HTTP drain warning logger failed', $error);
+                            }
+                        }
+                    }
+                } finally {
+                    $this->stop($worker);
+                }
+            })
             ->onFailure($this->report(...));
         return $runtime;
+    }
+
+    /**
+     * Seconds HTTP workers have to finish requests after they stop
+     * accepting. Validate before starting any process or binding a socket.
+     */
+    public function drain(): float
+    {
+        $drain = $this->config->get('server.drain');
+        if (!is_numeric($drain) || !is_finite((float) $drain) || (float) $drain <= 0) {
+            throw new \InvalidArgumentException('Set "server.drain" to a finite number of seconds greater than zero.');
+        }
+        return (float) $drain;
     }
 
     /**
@@ -415,18 +451,21 @@ final class App implements RequestHandlerInterface, Runner
      * worker ends when the program does, and is then started again, as
      * any worker is.
      *
-     * The program is started as the leader of a group of processes of
-     * its own, and it is the group that is signalled: what it started in
-     * turn, as `npm run dev` starts node, stops with it.
+     * Under an isolated daemon keeper the program stays in the server's
+     * group, so force reaches it even when its worker cannot clean up.
+     * Foreground programs retain their own group for ordinary cleanup.
      *
      * @param list<string> $command The program and its arguments.
      * @return \Closure(Worker, Cancellation): void
      */
     private static function process(string $id, array $command): \Closure
     {
-        return static function (Worker $worker, Cancellation $cancellation) use ($id, $command): void {
-            // A small step in between: it makes itself the leader of a new group, then becomes the program.
-            $launcher = [PHP_BINARY, '-r', 'posix_setsid(); pcntl_exec($argv[1], array_slice($argv, 2)); fwrite(STDERR, "could not run {$argv[1]}\n"); exit(127);', '--', ...$command];
+        $keeper = function_exists('posix_getppid') ? posix_getppid() : 0;
+        $sharedGroup = in_array('--generation', $_SERVER['argv'] ?? [], true)
+            && $keeper > 1 && posix_getsid($keeper) === $keeper && posix_getpgid(0) === $keeper;
+        return static function (Worker $worker, Cancellation $cancellation) use ($id, $command, $sharedGroup): void {
+            $detach = $sharedGroup ? '' : 'posix_setsid(); ';
+            $launcher = [PHP_BINARY, '-r', $detach . 'pcntl_exec($argv[1], array_slice($argv, 2)); fwrite(STDERR, "could not run {$argv[1]}\n"); exit(127);', '--', ...$command];
             $process = proc_open($launcher, [['file', '/dev/null', 'r'], ['pipe', 'w'], ['pipe', 'w']], $pipes);
             if ($process === false) {
                 throw new \RuntimeException("Could not start the server \"{$id}\".");
@@ -454,9 +493,10 @@ final class App implements RequestHandlerInterface, Runner
                     $pass($which);
                 });
             }
-            $signal = static function (int $number) use ($group): void {
-                // To the whole group; to the leader alone where groups cannot be signalled.
-                if (!function_exists('posix_kill') || !@posix_kill(-$group, $number)) {
+            $signal = static function (int $number) use ($group, $sharedGroup): void {
+                // An isolated foreground program owns a group; a daemon
+                // program shares the keeper's and must be signalled by pid.
+                if ($sharedGroup || $group <= 1 || !function_exists('posix_kill') || !@posix_kill(-$group, $number)) {
                     @posix_kill($group, $number);
                 }
             };

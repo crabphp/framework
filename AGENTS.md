@@ -88,6 +88,10 @@
 - A command that starts or reloads a server returns only when it accepts connections, and exits with a failure and the reason when it does not. A reload that fails leaves the running server untouched.
 - A process that stops gracefully goes on reading a connection that looks idle for a moment (`HttpSession::DRAIN_GRACE`): the client may have sent a request before it could know.
 - A process id read from a file is checked to be a server before it is reported or signalled; the file may be older than the process that now has the number.
+- `server.drain` is the seconds a worker has to finish requests in hand when it stops; the worker passes that number down to its connections, so no shorter timer cuts them first. At the limit it logs one warning with how many requests it cut, counted by the protocol (an idle keep-alive connection is not one), and that line reaches stderr if the logger fails. A group with its own allowance borrows nothing from another group, and a supervisor that has to end a worker says so once.
+- A generation keeps the allowance it started with. The keeper enforces a retiring generation's deadline in one collection pass that also runs while another generation starts or fails to start, and writes the allowances beside the pid file so that `stop` waits as long as the running server needs, whatever the configuration on disk now says. `--timeout` given by hand always wins.
+- `stop --force` ends the whole server: through the owners first, then, if the keeper does not answer, with one signal to the keeper's process group, and only when the keeper leads its own session, which a server in the background makes it do; a program registered with `Servers::process()` stays in that session so the signal reaches it. Otherwise only the keeper is ended and the command fails, saying so. Never signal a group built from pid 1 or less. Do not keep lists of worker pids to signal later: a number outlives its process.
+- The keeper writes when it was started beside its pid; a pid that is alive but was started at another time is a stale file, and nothing is signalled. A plain `stop` returns when the keeper's session is empty, or fails naming what is left.
 - After going into the background a process must not use the `STDIN`, `STDOUT` or `STDERR` constants, which are closed; `echo`, `php://stdout` and `php://stderr` reach its log.
 - A process started with `proc_open` inherits every descriptor its parent has open, and PHP cannot close them by number. So only a process that opens almost nothing, the keeper, may start a long-lived one; a server process must never start its own successor.
 - Process control that is not about HTTP (`Keeper`, `Generation`, `Daemon`, `PidFile`, `FileWatcher`, `Runtime::onReady()` and `onSignal()`) lives in `Engine\Process` and is tested there with real processes; what needs `App` lives in `Server`, tested by driving a real application in `tests/ServerTest.php`. Run both on Linux (`composer test:linux`) before changing either.
@@ -103,6 +107,7 @@
 - A route records the middleware around it in `RouteInfo`, and `route:list` lists it, so what guards a route can be read without opening the routes file.
 - A middleware object may be made before the workers are forked, so it chooses nothing per worker in its constructor (`RequestId` picks its prefix on the first request).
 - An application sets the middleware around every request with `withMiddleware()` and a provider adds to it through the `MiddlewareStack` contract. `App` has no method of its own for it.
+- `Http\AccessLog` writes one line per request and never changes the outcome: a failure of its own goes to the engine's `FailureReporter`, and the response or exception passes through as it was.
 - A way of doing something for some routes, such as authenticating, is a middleware. Do not add a contract and a wrapper middleware around it where PSR-15 already says the same.
 
 ## Calling out
@@ -115,6 +120,8 @@
 - HTTP/2 is offered to every `https` server and spoken with those that take it; one `Http2Session` per server carries all its requests, and its connection stays lent from that server's pool for as long as it lasts. Every header block received is decoded, wanted or not, because each may change the table the next refers to. Frames are written whole and one writer at a time.
 - The HPACK tables (`Hpack::STATIC`, `Hpack::HUFFMAN`) were generated from the text of RFC 7541 and are checked against its examples; do not edit them by hand.
 - `retry()` tries a request again only when that cannot do it twice: one that may safely be made twice, on no answer or 429, 502, 503, 504; any other only when none of it was sent (`NetworkException::$unsent`) or the server answered 429 or 503. A 500 is never tried again. Widening this needs the owner's agreement.
+- `timeout()` bounds the whole call: every try, redirect, connect and pause shares one deadline, and a connect is bounded by `connect_timeout` and by what is left. A pause that cannot fit ends the call with what the last try gave. Nothing is written after the deadline; a request of which no byte was written fails as unsent. A connection is opened by the caller that borrows it, under that caller's deadline.
+- A message that quotes a URL the caller gave shows it without its query and fragment.
 - A name is looked up with the engine's `DnsResolver`, never `gethostbyname()` directly: the hosts file, then answers kept for as long as they hold, then the name servers over UDP on the event loop. The system's blocking resolver is only what is fallen back on when they give nothing.
 - The client an application is given is shared by every request its worker serves, so nothing about one caller is set on it. `timeout()` and `cookies()` return another client over the same connections and leave the first as it was; a new option of that kind is added the same way, never as a setter.
 - What belongs to one request is an argument of the call (`query:`, `headers:`, `json:`, `form:`, `files:`, `body:`, `cancellation:`); what holds for several is an argument of the constructor and, where a caller needs to change it, a method that returns another client. One thing is said in one of the two, not both.
@@ -150,7 +157,9 @@
 ## Cache
 
 - `Cache\Cache` is the one class that checks keys, works out expiry and turns values into text; a store only stores, behind `Contracts\Cache\Store`. A new place to keep entries is a new store, never a second cache class.
-- A store's `add()` sets a key only when it is absent, as one step with respect to every other caller of that store. Locks are built on it; a store that cannot do that atomically must not be used for them.
+- A store's `add()` sets a key only when it is absent, and its `deleteIf()` removes a key only while it still holds the given value, each as one step with respect to every other caller of that store. `Cache::lock()` is built on the two; a store that cannot do both atomically must not be used for locks.
+- A lock is an entry under `:lock:`, which a `cache.prefix` may not contain. `clear()` removes locks with everything else, and on the array, file and database stores it empties every prefix.
+- The file store never follows a link, and removes an entry by unlinking it before truncating, checking both. An entry that outlived its time stays until it is read or `cache:prune` runs.
 - Times are passed to a store, never read by it, so that every store can be tested with a frozen clock.
 - A cache is chosen with `cache.store`, and anything else by binding `Contracts\Cache\Store` after the provider. There is one cache per application; do not add named caches until the owner asks.
 
@@ -168,7 +177,7 @@
 - A store hands a job to one worker at a time by changing its row, not by holding a lock or a transaction while the job runs. `Queue\DatabaseStore` uses the query builder only, so that the same statements serve MySQL and SQLite.
 - A job that was taken and never reported back is given out again after `queue.retry_after` seconds. Its attempt was already counted, so a job whose worker dies under it every time is given up on like any other.
 - What a job throws is logged with its trace, as a warning while tries remain and as an error when it is given up on. The consumer's loop catches a failure of the store too, logs it and goes on.
-- Retries are settings of the consumer (`queue.tries`, `queue.backoff`), the same for every job a supervisor runs; a supervisor may set its own. Do not add per-job options until the owner asks.
+- Retries default to the consumer's settings (`queue.tries`, `queue.backoff`); a supervisor may set its own, and a job may override either one with `#[Crab\Queue\Retry]`. The attribute is checked where the job is pushed, read once per class, and what it leaves out comes from the consumer running the job. Do not add other per-job options until the owner asks.
 
 - A queue supervisor is a named set of workers with its queues and limits, declared under `queue.supervisors` and read by `Queue\Supervisor`. `queue:work` runs every one as an engine worker group of its own through `Runner::runAll()`. A setting a supervisor accepts must change what its workers do today: do not accept a key ahead of the feature behind it.
 
@@ -184,11 +193,13 @@
 ## Database
 
 - MySQL and SQLite are the supported databases. PostgreSQL is out of scope for now: do not add code, tests or documentation for it until the owner asks.
-- SQL values are always bound, never concatenated; an exception's message carries the SQL and never the bound values.
+- SQL values are always bound, never concatenated; an exception's message carries the SQL and the driver's own message, and never the bindings. The driver may quote a value in what it says (MySQL names a duplicate entry); that is kept, and the guide says so.
 - A statement is retried on a new connection only when the old one was already closed before the statement was sent and no transaction was open. Anything that may have reached the server is reported, not repeated.
 - Code that needs the time asks for `Contracts\Clock\Clock` (or PSR-20's `ClockInterface`, which is bound to the same object, where a signature should accept any PSR clock) and never calls `time()`, `date()` or `new DateTime('now')` itself, so a test can hold the clock still with `Testing\FrozenClock`. A component that works standalone takes the clock as an optional argument.
 - `Table` and `Column` collect what a migration says and hold no SQL; `SchemaGrammar` writes it, and a dialect subclass says only where its database differs, as with `Query` and `Grammar`. A new column type is added to `Table`, to both dialects and to the tests of both.
 - A migration runs in a transaction only where the database can roll back a change to its tables; say so wherever that difference reaches the user.
+- Two deployments never run the same migration. On MySQL `run()` and `rollback()` hold a named lock on one connection, and check they still own it before each migration and before returning. On SQLite each migration commits on its own and checks its record again inside `BEGIN IMMEDIATE`, skipping what another process finished. `status()` and `make()` take no lock. The wait is `database.migration_lock_timeout`, whole seconds, zero for no wait.
+- A migration works through the `Schema` and connection it is given, so a pool of one is enough; one that takes another connection from the pool needs two.
 - An application's databases are configured by name and held by `DatabaseManager`. Asking for the `Database` contract gives the default one, and `Database::connection($name)` another; do not bind a second database in the container under a name of its own. The kind of database is read from its `dsn`, never from a separate setting.
 - The layers are built in order and each works without the one above it: pool, query layer, query builder, schema builder, migrator. Do not make a lower layer depend on a higher one. There is no model layer; see Scope.
 - The query builder needs only the `Connection` contract. The one place a lower layer names it is `Connection::table()`, a single `new Query($this, $table)`; nothing else in the pool or query layer may know it.

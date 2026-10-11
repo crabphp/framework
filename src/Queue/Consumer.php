@@ -70,26 +70,40 @@ final readonly class Consumer
         if ($message === null) {
             return false;
         }
-        if ($message->attempts > $this->tries) {
-            // It was taken as often as it may be and never reported back: its workers died under it.
-            $this->giveUp($message, new \RuntimeException("The job was started {$this->tries} times and never finished; the worker running it stopped or took longer than {$this->retryAfter} seconds."));
+        $started = hrtime(true);
+        try {
+            $retry = Retry::for($message->job);
+        } catch (\InvalidArgumentException $error) {
+            // An older producer may have stored a job whose declaration is now invalid.
+            $this->giveUp($message, $error, $message->attempts);
+            $this->tell(new JobRan($message, (hrtime(true) - $started) / 1e9, $error, true));
             return true;
         }
-        $started = hrtime(true);
+        $tries = $retry?->tries ?? $this->tries;
+        $backoff = $retry?->backoff ?? $this->backoff;
+        if ($message->attempts > $tries) {
+            // This reservation only detects exhaustion; the limit may have changed since earlier tries.
+            $attempts = $message->attempts - 1;
+            $taken = $attempts === 1 ? 'once' : "{$attempts} times";
+            $error = new \RuntimeException("The retry limit of {$tries} is exhausted; the job was taken {$taken} before this check. This can happen without a recorded failure when a worker stopped while running it or it ran longer than {$this->retryAfter} seconds (queue.retry_after). It can also happen when its limit was lowered. Review the job before retrying it with queue:retry.");
+            $this->giveUp($message, $error, $attempts);
+            $this->tell(new JobRan($message, (hrtime(true) - $started) / 1e9, $error, true));
+            return true;
+        }
         try {
             $job = $this->container?->has($message->job) ? $this->container->get($message->job) : self::make($message->job);
             $job->handle(...$message->data);
         } catch (\Throwable $error) {
             $seconds = (hrtime(true) - $started) / 1e9;
-            $gaveUp = $message->attempts >= $this->tries;
+            $gaveUp = $message->attempts >= $tries;
             if ($gaveUp) {
-                $this->giveUp($message, $error);
+                $this->giveUp($message, $error, $message->attempts);
             } else {
-                $wait = $this->backoff === [] ? 0 : $this->backoff[min($message->attempts, count($this->backoff)) - 1];
+                $wait = $backoff === [] ? 0 : $backoff[min($message->attempts, count($backoff)) - 1];
                 $this->store->release($message, $this->now() + $wait);
                 $this->logger?->warning('Job {job} failed on try {attempt} of {tries} and will be tried again in {wait} seconds: {message}', [
                     'job' => $message->job, 'id' => $message->id, 'queue' => $message->queue,
-                    'attempt' => $message->attempts, 'tries' => $this->tries, 'wait' => $wait,
+                    'attempt' => $message->attempts, 'tries' => $tries, 'wait' => $wait,
                     'message' => $error->getMessage(), 'exception' => $error,
                 ]);
             }
@@ -153,12 +167,16 @@ final readonly class Consumer
         return $ran;
     }
 
-    private function giveUp(Message $message, \Throwable $error): void
+    /**
+     * Keeps the failed job and logs its counted attempts. A reservation
+     * used only to detect exhaustion is left out of the log's count.
+     */
+    private function giveUp(Message $message, \Throwable $error, int $attempts): void
     {
         $this->store->fail($message, $error::class . ': ' . $error->getMessage(), $this->now());
         $this->logger?->error('Job {job} failed for good after {attempt} tries: {message}', [
             'job' => $message->job, 'id' => $message->id, 'queue' => $message->queue,
-            'attempt' => min($message->attempts, $this->tries),
+            'attempt' => $attempts,
             'message' => $error->getMessage(), 'exception' => $error,
         ]);
     }

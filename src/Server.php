@@ -30,6 +30,12 @@ final class Server
      */
     public const WATCHED = ['app', 'app.php', 'config', 'routes', '.env'];
 
+    /**
+     * A watched child reports its computed stop allowance on this pipe.
+     * The launcher keeps old code and configuration across file changes.
+     */
+    private const WATCH_REPORT = 3;
+
     public function __construct(private readonly App $app)
     {
     }
@@ -52,7 +58,11 @@ final class Server
      */
     public function running(): ?int
     {
-        $pid = $this->pidFile()->pid();
+        $pidFile = $this->pidFile();
+        $pid = $pidFile->pid();
+        if ($pid !== null) {
+            $pidFile->verify($pid);
+        }
         return $pid !== null && self::isServer($pid) ? $pid : null;
     }
 
@@ -64,11 +74,12 @@ final class Server
      */
     private function grace(): float
     {
+        $drain = $this->app->drain();
         try {
-            return max(10.0, $this->app->servers->grace($this->app->with())) + 5.0;
+            return max(10.0, $drain + 1.0, $this->app->servers->grace($this->app->with())) + 5.0;
         } catch (\LogicException) {
             // A setting that names a server there is not is reported where the server starts.
-            return 15.0;
+            return max(10.0, $drain + 1.0) + 5.0;
         }
     }
 
@@ -77,7 +88,22 @@ final class Server
      */
     public function serve(string $address, int $workers, bool $single = false): void
     {
-        $this->app->runtime($address, $workers, servers: !$single)->run(singleProcess: $single);
+        $runtime = $this->app->runtime($address, $workers, servers: !$single);
+        if (in_array('--watch-report', $_SERVER['argv'] ?? [], true)) {
+            $report = @fopen('php://fd/' . self::WATCH_REPORT, 'wb');
+            if ($report === false) {
+                throw new \RuntimeException('The watched server has no pipe to report its stop allowance. Start it with `serve`.');
+            }
+            try {
+                $allowance = $this->grace() . "\n";
+                if (@fwrite($report, $allowance) !== strlen($allowance)) {
+                    throw new \RuntimeException('The watched server could not report its stop allowance. Start it again with `serve`.');
+                }
+            } finally {
+                fclose($report);
+            }
+        }
+        $runtime->run(singleProcess: $single);
     }
 
     /**
@@ -93,6 +119,7 @@ final class Server
      */
     public function start(string $address, int $workers, array $invocation, float $timeout = 20.0): int
     {
+        $grace = $this->grace();
         $pidFile = $this->pidFile();
         $log = $this->logFile();
         $lock = $this->lock($pidFile);
@@ -111,7 +138,12 @@ final class Server
         fclose($lock);
         $status = 1;
         try {
-            $keeper = new Keeper($pidFile, $log, $timeout, $this->grace());
+            // The daemon's second fork is detached but no longer leads its
+            // group. Give only this background keeper its own session/group.
+            if (posix_setsid() === -1) {
+                throw new \RuntimeException('Could not give the background keeper its own process group. Start the server again.');
+            }
+            $keeper = new Keeper($pidFile, $log, $timeout, $grace);
             $status = $keeper->run(
                 $address,
                 self::generationCommand($invocation, $address, $workers),
@@ -152,11 +184,11 @@ final class Server
      * Tells the server in the background to finish what it has in hand
      * and stop, and waits until it has.
      *
-     * @param float $timeout Seconds to wait for it.
-     * @param bool $force Whether to end it outright when it has not stopped in that time.
+     * @param float|null $timeout Seconds to wait for a graceful stop; null reads the running keeper's allowance.
+     * @param bool $force Whether to cut requests and end every server process now.
      * @return int|null The process id of the server that stopped, or null when none was running.
      */
-    public function stop(float $timeout = 15.0, bool $force = false): ?int
+    public function stop(?float $timeout = null, bool $force = false): ?int
     {
         $pidFile = $this->pidFile();
         $pid = $this->running();
@@ -164,13 +196,31 @@ final class Server
             return null;
         }
         self::requireSignals();
-        posix_kill($pid, SIGTERM);
-        if (!self::waitForExit($pid, $timeout)) {
-            if (!$force) {
+        $keeper = new Keeper($pidFile, $this->logFile());
+        if ($force) {
+            try {
+                $keeper->force($pid);
+            } finally {
+                // A limited force also removes the ended keeper's numeric pid,
+                // while preserving the error that its workers were not forced.
+                if (!PidFile::running($pid) && (int) trim((string) @file_get_contents($pidFile->path)) === $pid) {
+                    @unlink($pidFile->path);
+                }
+            }
+        } else {
+            $timeout ??= $keeper->allowance($pid) ?? $this->grace();
+            $deadline = microtime(true) + $timeout;
+            $ownsGroup = $pid > 1 && posix_getsid($pid) === $pid;
+            posix_kill($pid, SIGTERM);
+            if (!self::waitForExit($pid, $timeout)) {
                 throw new \RuntimeException("The server, pid {$pid}, has not stopped after {$timeout} seconds. It may still be finishing requests; `stop --force` ends it outright.");
             }
-            posix_kill($pid, SIGKILL);
-            self::waitForExit($pid, 5.0);
+            if ($ownsGroup) {
+                $keeper->waitForGroup($pid, max(0.0, $deadline - microtime(true)));
+            }
+        }
+        if (PidFile::zombie($pid)) {
+            echo "The server, pid {$pid}, has ended and is waiting to be collected by its parent.\n";
         }
         // A server that was ended outright could not remove its own file.
         if ((int) trim((string) @file_get_contents($pidFile->path)) === $pid) {
@@ -202,13 +252,16 @@ final class Server
         $log = $this->logFile();
         $logged = (int) @filesize($log);
         try {
-            $answer = Keeper::request($pidFile, $server, $address, self::generationCommand($invocation, $address, $workers), (string) getcwd(), $timeout + 5.0);
+            $answer = Keeper::request($pidFile, $server, $address, self::generationCommand($invocation, $address, $workers), (string) getcwd(), $timeout + 5.0, $this->grace());
         } finally {
             fclose($lock);
         }
         if ($answer['ok'] !== true) {
             $why = (string) ($answer['message'] ?? 'It did not say why.');
-            throw new \RuntimeException("The server was not reloaded, and goes on serving as it was: {$why}" . self::firstLines($log, $logged) . "\nIts output is in {$log}.");
+            $context = PidFile::running($server)
+                ? 'The server was not reloaded, and goes on serving as it was: '
+                : '';
+            throw new \RuntimeException($context . $why . self::firstLines($log, $logged) . "\nIts output is in {$log}.");
         }
         return [$server, (int) $answer['pid'], (int) $answer['previous']];
     }
@@ -223,6 +276,7 @@ final class Server
      */
     public function watch(array $command, array $paths, \Closure $say): int
     {
+        $grace = $this->grace();
         $watcher = new FileWatcher(array_map($this->path(...), $paths));
 
         $stopping = false;
@@ -234,9 +288,10 @@ final class Server
             pcntl_signal(SIGINT, $stop);
             pcntl_signal(SIGTERM, $stop);
         }
-        $process = self::spawn($command);
+        [$process, $report] = self::spawn($command);
         while (!$stopping) {
             usleep(300_000);
+            $grace = self::reportedGrace($report, $grace);
             if ($process !== null) {
                 $status = proc_get_status($process);
                 if (!$status['running']) {
@@ -260,11 +315,19 @@ final class Server
             $changed = array_values(array_unique($changed));
             $others = count($changed) - 1;
             $say('Restarted: ' . $this->shortened($changed[0]) . ($others > 0 ? " and {$others} more" : '') . ' changed.');
-            self::terminate($process, $this->grace());
+            $grace = self::reportedGrace($report, $grace);
+            self::terminate($process, $grace);
+            if (is_resource($report)) {
+                fclose($report);
+            }
             // It said where it serves the first time; once is enough.
-            $process = self::spawn([...$command, '--quiet']);
+            [$process, $report] = self::spawn([...$command, '--quiet']);
         }
-        self::terminate($process, $this->grace());
+        $grace = self::reportedGrace($report, $grace);
+        self::terminate($process, $grace);
+        if (is_resource($report)) {
+            fclose($report);
+        }
         return 0;
     }
 
@@ -356,16 +419,39 @@ final class Server
 
     /**
      * @param list<string> $command
-     * @return resource
+     * @return array{resource, resource} The child process and its stop-allowance pipe.
      */
-    private static function spawn(array $command): mixed
+    private static function spawn(array $command): array
     {
         // The child reads and writes the terminal as this process does.
-        $process = proc_open([PHP_BINARY, ...$command], [STDIN, STDOUT, STDERR], $pipes);
+        $process = proc_open([PHP_BINARY, ...$command, '--watch-report'], [STDIN, STDOUT, STDERR, self::WATCH_REPORT => ['pipe', 'w']], $pipes);
         if ($process === false) {
             throw new \RuntimeException('Could not start the server process.');
         }
-        return $process;
+        stream_set_blocking($pipes[self::WATCH_REPORT], false);
+        return [$process, $pipes[self::WATCH_REPORT]];
+    }
+
+    /**
+     * Takes the allowance computed by the child's current application,
+     * instead of keeping the launcher's older drain setting after a save.
+     *
+     * @param resource|null $report
+     */
+    private static function reportedGrace(mixed &$report, float $fallback): float
+    {
+        if (!is_resource($report)) {
+            return $fallback;
+        }
+        $seconds = trim((string) @fread($report, 64));
+        if ($seconds === '' && !feof($report)) {
+            return $fallback;
+        }
+        fclose($report);
+        $report = null;
+        return is_numeric($seconds) && is_finite((float) $seconds) && (float) $seconds > 0
+            ? (float) $seconds
+            : $fallback;
     }
 
     /**
@@ -374,7 +460,7 @@ final class Server
      *
      * @param resource|null $process
      */
-    private static function terminate(mixed $process, float $grace = 8.0): void
+    private static function terminate(mixed $process, float $grace): void
     {
         if ($process === null) {
             return;
@@ -410,7 +496,7 @@ final class Server
     private static function waitForExit(int $pid, float $timeout): bool
     {
         $deadline = microtime(true) + $timeout;
-        while (PidFile::alive($pid)) {
+        while (PidFile::running($pid)) {
             if (microtime(true) > $deadline) {
                 return false;
             }

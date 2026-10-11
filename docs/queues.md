@@ -72,9 +72,9 @@ return [
 | `queue.table` | `jobs` | The table |
 | `queue.database` | `null` | The name of the database it is in; the default one when null |
 | `queue.queue` | `default` | The queue jobs are pushed to and taken from when none is named |
-| `queue.tries` | `3` | How many times a job is started before it is given up on |
-| `queue.backoff` | `[10, 60]` | Seconds to wait before the second try, the third, and so on; the last is used for every later one |
-| `queue.retry_after` | `90` | Seconds after which a job that was taken and never finished is given to another worker |
+| `queue.tries` | `3` | How many times a job is started before it is given up on, unless its `#[Retry]` sets tries |
+| `queue.backoff` | `[10, 60]` | Seconds to wait before the second try, the third, and so on; the last repeats. A job's `#[Retry]` may set its own |
+| `queue.retry_after` | `90` | Seconds after which an unfinished reservation is recovered; the handler runs again only if tries remain |
 | `queue.workers` | `1` | Worker processes `queue:work` starts |
 | `queue.concurrency` | `1` | Jobs one worker runs at a time |
 | `queue.sleep` | `1.0` | Seconds a worker waits before looking again when no job was due |
@@ -111,7 +111,7 @@ final readonly class SendWelcomeEmail
 
 This is the same shape as an action: services in the constructor, data in the signature. There is no base class and no interface to implement.
 
-The container makes a job class once per worker and keeps it. Like any service, it must hold nothing of one run in a property.
+The container keeps autowired and singleton job classes per worker; a transient `bind()` makes one for each try. Like any service, it must hold nothing of one run in a property.
 
 > [!NOTE]
 > If you come from Laravel: a job is not an object you construct with its data and dispatch. The data and the services are kept apart, so the data can travel as plain JSON and the class needs no serializing.
@@ -122,7 +122,10 @@ Ask for the queue, and give the job's data by parameter name:
 
 ```php
 use App\Actions\SendWelcomeEmail;
+use Crab\Contracts\Database\Database;
 use Crab\Contracts\Queue\Queue;
+use Crab\Http\Response;
+use Crab\Validation\Email;
 
 final readonly class RegisterUser
 {
@@ -225,7 +228,7 @@ While you develop, start it in a second terminal when you are working on jobs. T
 | `--workers=4` | Worker processes; the default is `queue.workers` |
 | `--concurrency=5` | Jobs one worker runs at a time; the default is `queue.concurrency` |
 | `--single` | Run in this process, without the `pcntl` and `posix` extensions |
-| `--stop-when-empty` | Run what is waiting, print how many jobs ran, and return |
+| `--stop-when-empty` | Run jobs due now, print how many ran, and return when none are due; future delayed jobs and retries remain stored |
 
 > [!WARNING]
 > A worker runs the code it started with. After a deploy, stop `queue:work` and start it again, or it goes on running the old jobs.
@@ -263,10 +266,10 @@ webhooks: running jobs from webhooks
 
 | Key | |
 | --- | --- |
-| `queues` | The queues it takes from, the most urgent first. Required |
+| `queues` | The queues it takes from, the most urgent first; defaults to `[queue.queue]`. An empty list is refused |
 | `workers` | Worker processes |
 | `concurrency` | Jobs one worker runs at a time |
-| `tries`, `backoff`, `retry_after` | As the settings of the same name, for this supervisor's jobs |
+| `tries`, `backoff`, `retry_after` | As the settings of the same name, for this supervisor's jobs; a job's `#[Retry]` overrides tries and backoff when given |
 | `sleep` | Seconds a worker waits before looking again when no job was due |
 
 What a supervisor leaves out is taken from the setting of the same name, such as `queue.workers`. A key that is not in this table is refused when `queue:work` starts.
@@ -306,7 +309,37 @@ return [
 ];
 ```
 
-The settings hold for every job. To give up early on a failure that a retry cannot fix, catch it in the job and return:
+The settings are the defaults for every job. Give a payment webhook more tries, or a push notification only one, with `#[Retry]` on its class:
+
+```php
+// app/Actions/ChargeCard.php
+namespace App\Actions;
+
+use Crab\Queue\Retry;
+
+#[Retry(tries: 10, backoff: [30, 120, 600])]
+final readonly class ChargeCard
+{
+    public function __construct(private Payments $payments)
+    {
+    }
+
+    public function handle(int $orderId): void
+    {
+        $this->payments->charge($orderId);
+    }
+}
+```
+
+The attribute wins over the consumer's or supervisor's settings. Leave either value null to keep its default: `#[Retry(tries: 1)]` keeps the default backoff, and `#[Retry(backoff: [5])]` keeps the default tries. The last pause repeats; `backoff: []` retries without a pause.
+
+Pending jobs use the declaration in the worker's current class; it is not saved with the job's data. Change the declaration and restart workers to apply it to pending jobs. If you lower tries from 5 to 2 after a job has already been taken four times, the worker keeps it as failed without running its handler again.
+
+Use one `#[Retry]` declaration. Set tries to an integer of at least 1 and backoff to a list of whole numbers greater than or equal to 0. Give at least one of them. Wrong argument types, repeated attributes and invalid values all throw `InvalidArgumentException` naming the job when you push it. Jobs are still delivered at least once, so make repeating their work safe.
+
+If an already stored job has an invalid retry declaration, the worker keeps it as failed immediately, logs the error, and moves on without running it.
+
+To give up early on a failure that a retry cannot fix, catch it in the job and return:
 
 ```php
 public function handle(int $userId): void
@@ -335,7 +368,7 @@ Fix the cause, deploy, then `queue:retry all`.
 
 ### Jobs run at least once
 
-A job is delivered at least once, and occasionally more: a worker may be killed after doing the work and before saying so. Write every job so that running it twice does no harm.
+A job is delivered at least once, and occasionally more: a worker may be killed after doing the work and before saying so. Write every job so that running it twice does no harm; this example needs a mail service that honors the order's idempotency key, since a sent flag alone cannot prevent duplicate mail.
 
 ```php
 public function handle(int $orderId): void
@@ -345,17 +378,17 @@ public function handle(int $orderId): void
         return;                                                 // already done
     }
 
-    $this->mailer->sendReceipt($order);
+    $this->mailer->sendReceipt($order, idempotencyKey: "receipt-{$orderId}");
     $this->db->table('orders')->where('id', $orderId)->update(['receipt_sent_at' => date('Y-m-d H:i:s')]);
 }
 ```
 
 ### A job that takes too long
 
-A job that was taken and has neither finished nor failed after `queue.retry_after` seconds is taken to have died with its worker, and is given to another.
+A job that was taken and has neither finished nor failed after `queue.retry_after` seconds can be recovered by another worker. Its earlier reservation already counts as a try. The worker runs its handler again only while its current retry limit permits; otherwise it keeps the job as failed. A job with `#[Retry(tries: 1)]` whose worker dies is therefore failed after recovery without another handler run.
 
 > [!WARNING]
-> Set `queue.retry_after` above the time your longest job takes. A job still running when it is reached is started a second time, beside the first.
+> Set `queue.retry_after` above the time your longest job takes. If tries remain, a job still running when it is reached is started a second time, beside the first.
 
 A job cannot be interrupted from outside. Give slow calls a timeout of their own, as `$http->timeout(10)` does, so that a job ends by throwing.
 
@@ -377,6 +410,7 @@ Set the store to `memory`, run the code, and look at what was pushed:
 
 ```php
 use Crab\Contracts\Queue\Store;
+use Crab\Http\Request;
 
 $app = require dirname(__DIR__) . '/app.php';          // with 'queue' => ['store' => 'memory'] in the test config
 

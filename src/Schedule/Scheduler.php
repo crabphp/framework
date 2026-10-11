@@ -144,6 +144,9 @@ final class Scheduler
      */
     public function tick(Worker $worker, \DateTimeImmutable $at): int
     {
+        if ($worker->isDraining()) {
+            return 0;
+        }
         $due = $this->due($at);
         foreach ($due as $task) {
             $worker->spawn(fn (): bool => $this->run($task, $at));
@@ -167,6 +170,10 @@ final class Scheduler
                 continue;
             }
             $timers[] = $worker->loop->repeat($seconds, function () use ($worker, $task): void {
+                // A worker that is stopping takes no new task, and a timer may still fire while it finishes one.
+                if ($worker->isDraining()) {
+                    return;
+                }
                 $worker->spawn(fn (): bool => $this->run($task, $this->now()));
             });
         }

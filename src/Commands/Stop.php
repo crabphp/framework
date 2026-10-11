@@ -22,16 +22,17 @@ final readonly class Stop implements Command
             Stop the server running in the background
 
             Options:
-              --timeout=15   Seconds to wait for it to finish its requests
-              --force        End it outright when it has not stopped in that time
+              --timeout=15   Graceful wait in seconds; if omitted, read from the running server
+              --force        Cut requests and end every server process now
             TEXT;
     }
 
     public function handle(Input $input, Output $output): int
     {
         $server = new Server($this->app);
+        $timeout = $input->option('timeout');
         try {
-            $pid = $server->stop((float) $input->option('timeout', '15'), $input->flag('force'));
+            $pid = $server->stop($timeout === null ? null : (float) $timeout, $input->flag('force'));
         } catch (\RuntimeException $error) {
             $output->error($error->getMessage());
             return 1;

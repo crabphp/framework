@@ -5,7 +5,9 @@ declare(strict_types=1);
 namespace Crab\Tests\Validation;
 
 use Crab\Contracts\Validation\Rule;
+use Crab\Validation\Data;
 use Crab\Validation\Email;
+use Crab\Validation\Fields;
 use Crab\Validation\Length;
 use Crab\Validation\ListOf;
 use Crab\Validation\OneOf;
@@ -145,6 +147,34 @@ abstract class Shape
 {
 }
 
+/**
+ * An intentionally untyped field, even though it has a default, must be
+ * refused by inspection without constructing an input.
+ */
+final readonly class UntypedField
+{
+    /**
+     * Inspection reads the signature and must never reach this body.
+     */
+    public function __construct($email = null)
+    {
+        throw new \LogicException('The untyped input was constructed.');
+    }
+}
+
+/**
+ * A nested input proves inspection checks more than the outer signature.
+ */
+final readonly class HoldsUntypedField
+{
+    /**
+     * The outer type is valid but the nested class is not.
+     */
+    public function __construct(public UntypedField $customer)
+    {
+    }
+}
+
 final class ValidatorTest extends TestCase
 {
     private const VALID = [
@@ -153,6 +183,59 @@ final class ValidatorTest extends TestCase
         'role' => 'admin',
         'address' => ['city' => 'London', 'zip' => '12345'],
     ];
+
+    /**
+     * Startup inspection refuses untyped constructor fields, including
+     * nested ones, with the declaration needed to repair them.
+     */
+    public function testAnInputFieldWithoutATypeIsRefusedDuringInspection(): void
+    {
+        $validator = new Validator();
+        foreach ([UntypedField::class, HoldsUntypedField::class] as $class) {
+            try {
+                $validator->inspect($class);
+                self::fail('Inspection accepted an input field without a type.');
+            } catch (\LogicException $error) {
+                self::assertStringContainsString(UntypedField::class . '::$email has no type', $error->getMessage());
+                self::assertStringContainsString('string $email', $error->getMessage());
+            }
+        }
+    }
+
+    /**
+     * Standalone parameter inspection uses the same rule as input classes,
+     * including a parameter with a Fields attribute but no declared type.
+     */
+    public function testAParameterWithoutATypeIsRefusedDuringInspection(): void
+    {
+        $validator = new Validator();
+        $functions = [
+            static fn ($email = null): array => [],
+            static fn (#[Fields(['name' => 'string'])] $email): array => [],
+        ];
+        foreach ($functions as $function) {
+            try {
+                $validator->inspectParameters(new \ReflectionFunction($function), ['email']);
+                self::fail('Inspection accepted a parameter without a type.');
+            } catch (\LogicException $error) {
+                self::assertStringContainsString('A closure takes $email, which has no type', $error->getMessage());
+                self::assertStringContainsString('string $email', $error->getMessage());
+            }
+        }
+    }
+
+    /**
+     * Described inputs inspect their nested classes at startup as well,
+     * without needing data to reveal a missing constructor field type.
+     */
+    public function testADescribedInputWithAnUntypedNestedFieldIsRefusedDuringInspection(): void
+    {
+        $validator = new Validator();
+        $function = static fn (#[Fields(['customer' => UntypedField::class])] Data $input): array => [];
+        $this->expectException(\LogicException::class);
+        $this->expectExceptionMessage(UntypedField::class . '::$email has no type; declare it with one type, such as string $email.');
+        $validator->inspectParameters(new \ReflectionFunction($function), ['input']);
+    }
 
     public function testDataBecomesATypedObject(): void
     {

@@ -87,6 +87,26 @@ final readonly class DatabaseStore implements Store
         $this->connection->table($this->table)->where('key', $key)->delete();
     }
 
+    public function deleteIf(string $key, string $value, int $now): bool
+    {
+        return $this->connection->transaction(function (Connection $connection) use ($key, $value, $now): bool {
+            $row = $connection->table($this->table)->select('value', 'expires_at')->where('key', $key)->lockForUpdate()->first();
+            if ($row === null || ($row['expires_at'] !== null && (int) $row['expires_at'] <= $now)) {
+                return false;
+            }
+            // Compare bytes here: a database's text collation may treat different base64 strings as equal.
+            if (base64_decode((string) $row['value'], true) !== $value) {
+                return false;
+            }
+            return $connection->table($this->table)->where('key', $key)->delete() === 1;
+        });
+    }
+
+    public function prune(int $now): int
+    {
+        return $this->connection->table($this->table)->where('expires_at', '<=', $now)->delete();
+    }
+
     public function clear(): void
     {
         $this->connection->table($this->table)->delete();

@@ -19,6 +19,12 @@ final class TestServer
      * @var list<array{method: string, target: string, headers: array<string, string>, body: string, connection: int}>
      */
     public array $requests = [];
+    /**
+     * Bytes received per connection, including an unfinished request.
+     *
+     * @var array<int, int>
+     */
+    public array $bytes = [];
     public int $connections = 0;
     /**
      * @var resource
@@ -39,15 +45,16 @@ final class TestServer
     /**
      * @param \Closure(array, self): (string|array{string, float}|null) $reply The bytes to write back, with a number of seconds to wait first when given as a pair; null to close without a word. A reply holding "Connection: close" closes after it.
      * @param string|null $certificate A PEM file holding a certificate and its key, to serve over TLS.
+     * @param float $handshakeDelay Seconds to wait before starting TLS, to test deadlines while a connection is being opened.
      */
-    public function __construct(private readonly \Closure $reply, ?string $certificate = null)
+    public function __construct(private readonly \Closure $reply, ?string $certificate = null, float $handshakeDelay = 0.0)
     {
         $context = stream_context_create($certificate === null ? [] : ['ssl' => ['local_cert' => $certificate]]);
         $this->socket = stream_socket_server('tcp://127.0.0.1:0', $code, $reason, STREAM_SERVER_BIND | STREAM_SERVER_LISTEN, $context);
         stream_set_blocking($this->socket, false);
         $this->port = (int) substr(strrchr(stream_socket_get_name($this->socket, false), ':'), 1);
         $loop = EventLoop::current();
-        $this->accepting = $loop->onReadable($this->socket, function () use ($loop, $certificate): void {
+        $this->accepting = $loop->onReadable($this->socket, function () use ($loop, $certificate, $handshakeDelay): void {
             $connection = @stream_socket_accept($this->socket, 0);
             if ($connection === false) {
                 return;
@@ -57,7 +64,7 @@ final class TestServer
             $this->open[$number] = $connection;
             $buffer = '';
             $encrypted = $certificate === null;
-            $this->watching[$number][] = $loop->onReadable($connection, function (string $watcher) use ($loop, $connection, $number, &$buffer, &$encrypted): void {
+            $reader = $loop->onReadable($connection, function (string $watcher) use ($loop, $connection, $number, &$buffer, &$encrypted): void {
                 if (!$encrypted) {
                     $done = @stream_socket_enable_crypto($connection, true, STREAM_CRYPTO_METHOD_TLS_SERVER);
                     if ($done === false) {
@@ -76,6 +83,7 @@ final class TestServer
                     }
                     return;
                 }
+                $this->bytes[$number] = ($this->bytes[$number] ?? 0) + strlen($bytes);
                 $buffer .= $bytes;
                 while (($request = self::take($buffer)) !== null) {
                     $request['connection'] = $number;
@@ -107,6 +115,15 @@ final class TestServer
                     $after > 0 ? $loop->delay($after, $write) : $write();
                 }
             });
+            $this->watching[$number][] = $reader;
+            if ($certificate !== null && $handshakeDelay > 0) {
+                $loop->disable($reader);
+                $this->watching[$number][] = $loop->delay($handshakeDelay, function () use ($loop, $number, $reader): void {
+                    if (isset($this->open[$number])) {
+                        $loop->enable($reader);
+                    }
+                });
+            }
         });
     }
 

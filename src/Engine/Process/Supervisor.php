@@ -106,6 +106,19 @@ final class Supervisor
 
     public function reload(): void { $this->reloadRequested = true; }
 
+    /**
+     * Ends every owned worker now. The run loop reaps each one before
+     * returning, so the generation cannot leave its workers behind.
+     */
+    public function force(): void
+    {
+        $this->stop();
+        foreach (array_keys($this->children) as $pid) {
+            posix_kill($pid, SIGKILL);
+            $this->children[$pid]['deadline'] = INF;
+        }
+    }
+
     public function stats(): array
     {
         $workers = [];
@@ -142,7 +155,7 @@ final class Supervisor
                 $driver = EventLoop::install(($this->loopFactory)());
                 $worker = new Worker(
                     $driver, $this->groups[$definition['group']], $definition['index'],
-                    $this->bindings[$definition['group']], $this->shutdownTimeout, $pair[1],
+                    $this->bindings[$definition['group']], $this->groups[$definition['group']]->shutdownTimeout ?? $this->shutdownTimeout, $pair[1],
                 );
                 $worker->run();
                 exit(0);
@@ -190,7 +203,11 @@ final class Supervisor
                 $this->retire($pid, intentional: false);
             }
             if ($child['deadline'] !== null && $now >= $child['deadline']) {
+                $group = $this->slots[$child['slot']]['group'];
+                $seconds = $this->grace($child['slot']);
+                FailureReporter::report("Worker {$pid} in group \"{$group}\" did not stop within {$seconds} seconds; ending it.");
                 posix_kill($pid, SIGKILL);
+                $this->children[$pid]['deadline'] = INF;
             }
         }
         if ($this->stopping) { return; }
@@ -263,11 +280,24 @@ final class Supervisor
         if (!isset($this->children[$pid]) || $this->children[$pid]['retiring']) { return; }
         $this->children[$pid]['retiring'] = true;
         $this->children[$pid]['intentional'] = $intentional;
-        $this->children[$pid]['deadline'] = self::now() + $this->shutdownTimeout;
+        $this->children[$pid]['deadline'] = self::now() + $this->grace($this->children[$pid]['slot']);
         $stream = $this->children[$pid]['stream'];
         if (!is_resource($stream) || @fwrite($stream, "stop\n") !== 5) {
             posix_kill($pid, SIGTERM);
         }
+    }
+
+    /**
+     * A worker with its own drain deadline must reach it before the
+     * supervisor ends the process, leaving time to report and clean up.
+     * Groups without an override keep the runtime's existing deadline.
+     */
+    private function grace(string $slot): float
+    {
+        $group = $this->groups[$this->slots[$slot]['group']];
+        return $group->shutdownTimeout === null
+            ? $this->shutdownTimeout
+            : $group->shutdownTimeout + 1.0;
     }
 
     private function reaped(int $pid): void

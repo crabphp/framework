@@ -98,17 +98,83 @@ final readonly class FileStore implements Store
 
     public function delete(string $key): void
     {
-        @unlink($this->file($key));
+        $this->deleteFile($this->file($key));
+    }
+
+    public function deleteIf(string $key, string $value, int $now): bool
+    {
+        $file = $this->file($key);
+        $handle = $this->lock($file, create: false);
+        if ($handle === null) {
+            return false;
+        }
+        try {
+            $contents = (string) stream_get_contents($handle);
+            if ($contents === '') {
+                return false;
+            }
+            [$expiresAt, $existing] = self::parse($contents);
+            if (($expiresAt !== null && $expiresAt <= $now) || $existing !== $value) {
+                return false;
+            }
+            self::remove($handle, $file);
+            return true;
+        } finally {
+            flock($handle, LOCK_UN);
+            fclose($handle);
+        }
+    }
+
+    public function prune(int $now): int
+    {
+        $removed = 0;
+        foreach (glob($this->directory . '/[0-9a-f][0-9a-f]', GLOB_ONLYDIR) ?: [] as $folder) {
+            if (is_link($folder)) {
+                continue;
+            }
+            foreach (glob($folder . '/*') ?: [] as $file) {
+                $name = basename($file);
+                if (preg_match('/^[0-9a-f]{40}$/D', $name) !== 1 || substr($name, 0, 2) !== basename($folder)
+                    || !is_file($file) || is_link($file)) {
+                    continue;
+                }
+                $handle = $this->lock($file, create: false);
+                if ($handle === null) {
+                    continue;
+                }
+                try {
+                    // Read expiry while holding the writer's lock, so a fresh entry is never removed.
+                    $line = fgets($handle);
+                    $expiresAt = $line === false ? 0 : (int) $line;
+                    if ($expiresAt !== 0 && $expiresAt <= $now) {
+                        self::remove($handle, $file);
+                        ++$removed;
+                    }
+                } finally {
+                    flock($handle, LOCK_UN);
+                    fclose($handle);
+                }
+            }
+        }
+        return $removed;
     }
 
     public function clear(): void
     {
         // Only what this store wrote: two-letter folders of hash-named files.
         foreach (glob($this->directory . '/[0-9a-f][0-9a-f]', GLOB_ONLYDIR) ?: [] as $folder) {
-            foreach (glob($folder . '/*') ?: [] as $file) {
-                @unlink($file);
+            if (is_link($folder)) {
+                continue;
             }
-            @rmdir($folder);
+            foreach (glob($folder . '/*') ?: [] as $file) {
+                if (is_link($file) || is_file($file)) {
+                    $this->deleteFile($file);
+                }
+            }
+            // A writer may have populated the folder again; leave it when it is not empty.
+            if (!@rmdir($folder) && is_dir($folder) && !is_writable($this->directory)) {
+                throw new \RuntimeException("The cache directory {$this->directory} cannot be written to. Check its permissions.");
+            }
         }
     }
 
@@ -123,26 +189,98 @@ final readonly class FileStore implements Store
      * or writes the entry waits for the same lock, so of several callers
      * of add() one finds it empty.
      *
-     * @return resource
+     * @return resource|null Null when an existing entry was requested and is gone.
      */
-    private function lock(string $file): mixed
+    private function lock(string $file, bool $create = true): mixed
     {
-        $this->prepare($file);
-        for ($try = 0; $try < 5; ++$try) {
-            $handle = @fopen($file, 'c+');
+        for ($try = 0; $try < 100; ++$try) {
+            clearstatcache(true, $file);
+            if (is_link($file) || is_link(dirname($file))) {
+                if (!$create) {
+                    return null;
+                }
+                break;
+            }
+            $before = $create ? false : @lstat($file);
+            if (!$create && $before === false) {
+                return null;
+            }
+            if ($create) {
+                $this->prepare($file);
+            }
+            $handle = @fopen($file, $create ? 'c+' : 'r+');
             if ($handle === false) {
+                if (!$create) {
+                    clearstatcache(true, $file);
+                    $after = @lstat($file);
+                    // The requested inode is gone, even if another entry already took its path.
+                    if ($after === false || $after['ino'] !== $before['ino']) {
+                        return null;
+                    }
+                }
                 break;
             }
             flock($handle, LOCK_EX);
             clearstatcache(true, $file);
             // Deleted or cleared while this waited: the lock is on a file no one else will open. Start again.
-            if ((fstat($handle)['ino'] ?? null) === (@stat($file)['ino'] ?? false)) {
+            if ((fstat($handle)['ino'] ?? null) === (@lstat($file)['ino'] ?? false) && !is_link(dirname($file))) {
                 return $handle;
             }
             flock($handle, LOCK_UN);
             fclose($handle);
         }
         throw new \RuntimeException("The cache could not write to {$this->directory}. Check that the directory can be written to.");
+    }
+
+    /**
+     * Uses the writer's lock for ordinary deletion too, so it cannot
+     * replace the file while deleteIf() or prune() checks its contents.
+     */
+    private function deleteFile(string $file): void
+    {
+        clearstatcache(true, $file);
+        if (is_link(dirname($file))) {
+            return;
+        }
+        if (is_link($file)) {
+            self::unlink($file);
+            return;
+        }
+        $handle = $this->lock($file, create: false);
+        if ($handle === null) {
+            return;
+        }
+        try {
+            self::remove($handle, $file);
+        } finally {
+            flock($handle, LOCK_UN);
+            fclose($handle);
+        }
+    }
+
+    /**
+     * Unlinks while the file is locked, then empties the open inode so
+     * waiting readers see a miss. A failed unlink leaves the entry whole.
+     *
+     * @param resource $handle The entry's file, locked.
+     */
+    private static function remove(mixed $handle, string $file): void
+    {
+        self::unlink($file);
+        if (!@ftruncate($handle, 0)) {
+            throw new \RuntimeException("The cache file {$file} could not be emptied. Check that cache files can be written to.");
+        }
+    }
+
+    /**
+     * Removes a path without following links and reports a failed removal.
+     */
+    private static function unlink(string $file): void
+    {
+        if (!@unlink($file)) {
+            $folder = dirname($file);
+            throw new \RuntimeException("The cache directory {$folder} cannot be written to. Check its permissions.");
+        }
     }
 
     /**

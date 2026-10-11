@@ -6,6 +6,7 @@ namespace Crab\Cache;
 
 use Crab\Cache\Commands\ClearCache;
 use Crab\Cache\Commands\InstallCache;
+use Crab\Cache\Commands\PruneCache;
 use Crab\Contracts\Cache\Cache as CacheContract;
 use Crab\Contracts\Cache\Store;
 use Crab\Contracts\Config\Config;
@@ -18,7 +19,7 @@ use Psr\SimpleCache\CacheInterface;
 
 /**
  * Binds the cache from the "cache" configuration section, and adds the
- * `cache:clear` and `cache:install` commands.
+ * `cache:clear`, `cache:prune` and `cache:install` commands.
  *
  *     store       "file", "database" or "array"; file unless set
  *     directory   where the file store keeps its entries
@@ -77,6 +78,7 @@ final class CacheProvider implements Provider
         if ($container->has(Console::class)) {
             $console = $container->get(Console::class);
             $console->add('cache:clear', ClearCache::class);
+            $console->add('cache:prune', PruneCache::class);
             $console->add('cache:install', InstallCache::class);
         }
     }

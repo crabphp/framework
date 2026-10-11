@@ -18,7 +18,7 @@
 
 ## Introduction
 
-A Crab application is tested without a server. A test loads `app.php`, hands the application a request, and reads the response; no port is opened and nothing is forked, so a suite of hundreds of tests runs in a second or two.
+A Crab application is tested without a server. A test loads `app.php`, hands the application a request, and reads the response; no port is opened and nothing is forked, while the time it takes depends on your code and services.
 
 Most of your code needs even less. Actions, jobs, listeners and commands are plain classes: a test makes one with `new` and calls it.
 
@@ -58,7 +58,7 @@ final class HelloTest extends TestCase
 }
 ```
 
-`$app->handle()` runs the request through everything a real one meets: the middleware, the router, validation and your action. Each test loads a fresh application, so nothing carries over from one to the next.
+`$app->handle()` runs the request through everything a real one meets: the middleware, the router, validation and your action. Each test loads a fresh container; isolate persistent stores and environment state too, since loading another `.env` does not clear omitted keys.
 
 ### Sending JSON
 
@@ -93,6 +93,9 @@ self::assertSame('/users/1', $api->post('/users', $valid)->header('Location'));
 | `$response->json()` | The body, decoded |
 | `$response->json('data.0.name')` | One value of it, by a path with dots |
 | `$response->header('Location')` | A header |
+| `$response->assertStatus(201)` | Checks the status and returns the response for chaining |
+| `$response->assertJson('data.0.name', 'mug')` | Checks that a dot path exists and its value and type match exactly |
+| `$response->assertHeader('Location', '/users/1')` | Checks that a header exists and has this value |
 | `$response->body()` | The body as text |
 | `$response->response` | The PSR-7 response |
 
@@ -103,9 +106,18 @@ $order = $api->post('/orders', $lines)->assertStatus(201)->json();
 // POST /orders answered 422, not 201: {"error":{"status":422,"fields":{"lines.0.quantity":["must be at most 20"]}}}
 ```
 
+`assertJson()` and `assertHeader()` also return the response for chaining, and include the request, status and body when an assertion fails:
+
+```php
+$api->get('/products/1')->assertStatus(200)->assertJson('name', 'Stoneware Mug');
+$api->post('/users', $valid)->assertStatus(201)->assertHeader('Location', '/users/1');
+```
+
+`json()` throws `LogicException` for a non-JSON body or a missing path; use `assertJson()` to report it as an assertion failure.
+
 ### As a logged-in user
 
-`actingAs()` makes every request as a user, with no token to issue and send. The user is put on the request as authentication would put it, and middleware that authenticates lets it through:
+`actingAs()` puts the user on each request and bypasses the built-in `TokenAuth`, with no token to issue and send. Custom authentication middleware must honor that attribute or be tested with its real credentials:
 
 ```php
 $ada = new User(1, 'ada@example.com');
@@ -114,17 +126,19 @@ $api->actingAs($ada)->get('/me')->assertStatus(200);
 $api->get('/me')->assertStatus(401);            // without it, still refused
 ```
 
+Use `$api->withToken($token)->get('/me')` when testing token authentication itself; use `actingAs()` when the test only needs a logged-in user. `withToken($token, 'Token')` changes the scheme, and `withToken($token, '')` sends the token alone.
+
 ## Settings for tests
 
 Tests should not use your development database or send real email. Configuration files read the environment, and PHPUnit can set it, so say what differs in `phpunit.xml`:
 
 ```xml
-<phpunit ...>
+<phpunit bootstrap="vendor/autoload.php">
     <php>
-        <env name="DB_DSN" value="sqlite::memory:"/>
-        <env name="QUEUE_STORE" value="memory"/>
-        <env name="CACHE_STORE" value="array"/>
-        <env name="LOG_PATH" value="php://memory"/>
+        <env name="DB_DSN" value="sqlite::memory:" force="true"/>
+        <env name="QUEUE_STORE" value="memory" force="true"/>
+        <env name="CACHE_STORE" value="array" force="true"/>
+        <env name="LOG_PATH" value="php://memory" force="true"/>
     </php>
 </phpunit>
 ```
@@ -144,6 +158,8 @@ With `sqlite::memory:` every test starts with an empty database that vanishes af
 use Crab\Contracts\Database\Database;
 use Crab\Contracts\Database\Migrator;
 
+private Database $db;
+
 protected function setUp(): void
 {
     $this->app = require dirname(__DIR__) . '/app.php';
@@ -153,6 +169,7 @@ protected function setUp(): void
 
 public function testAUserIsStored(): void
 {
+    $api = new Api($this->app);
     $api->post('/users', ['email' => 'ada@example.com', 'name' => 'Ada']);
 
     self::assertSame('Ada', $this->db->table('users')->where('email', 'ada@example.com')->value('name'));
@@ -184,7 +201,7 @@ public function testShowUserRefusesAnUnknownId(): void
 }
 ```
 
-The same goes for a job (`(new SendWelcomeEmail($db, $mailer))->handle(userId: 1)`), a listener, and a command (`$command->handle(new Input(['--dry-run']), $output)`).
+The same goes for a job (`(new SendWelcomeEmail($db, $mailer))->handle(userId: 1)`), a listener, and a command (`$command->handle(new \Crab\Console\Input(['--dry-run']), $output)`).
 
 Test through `$app->handle()` what depends on the route: validation, middleware, the status code. Test by calling the class what the class decides.
 
@@ -254,7 +271,7 @@ $http = new FakeClient([
 ]);
 $this->app->container->instance(Client::class, $http);
 
-$response = $this->json('GET', '/weather?city=Paris');
+$response = (new Api($this->app))->get('/weather', ['city' => 'Paris']);
 
 self::assertCount(1, $http->sent('GET https://api.weather.example/*'));
 ```

@@ -108,24 +108,29 @@ final class Network implements Transport
                 $session = null;
             }
             try {
-                $connection = $session === null ? $this->connection($pool, $deadline, $cancellation, $origin) : null;
-                if ($connection === null && $session === null) {
+                $slot = $session === null ? $this->connection($pool, $deadline, $cancellation, $origin, $scheme, $host, $port) : null;
+                $connection = $slot?->connection;
+                if ($slot === null && $session === null) {
                     // While this one waited, another request opened an HTTP/2 conversation that has room for it.
                     continue;
                 }
                 if ($connection !== null && $connection->protocol === 'h2') {
-                    $session = $this->session($origin, $pool, $connection, $deadline);
+                    $session = $this->session($origin, $pool, $slot, $deadline);
                 }
             } catch (CancelledException $cancelled) {
                 throw $cancelled;
             } catch (PoolExhaustedException | TimedOut $error) {
-                throw new NetworkException("{$what} failed: it took more than {$timeout} seconds, and every one of the {$this->connections} connections to {$host} was still busy.", $request, $error, unsent: true);
+                $why = $error instanceof TimedOut && $error->doing !== 'waiting for a connection'
+                    ? "was {$error->doing} when given up"
+                    : "every one of the {$this->connections} connections to {$host} was still busy";
+                throw new NetworkException("{$what} failed: it took more than {$timeout} seconds, and {$why}.", $request, $error, unsent: true);
             } catch (\RuntimeException $error) {
                 throw new NetworkException("{$what} failed: {$error->getMessage()}.", $request, $error, unsent: true);
             }
             if ($session !== null) {
+                $sent = false;
                 try {
-                    return $session->exchange($request, $deadline, $cancellation);
+                    return $session->exchange($request, $deadline, $cancellation, $sent);
                 } catch (CancelledException $cancelled) {
                     throw $cancelled;
                 } catch (Unprocessed $error) {
@@ -136,14 +141,14 @@ final class Network implements Transport
                     throw new NetworkException("{$what} failed: {$error->getMessage()}.", $request, $error, unsent: true);
                 } catch (\RuntimeException $error) {
                     $why = $error instanceof TimedOut ? "it took more than {$timeout} seconds, and was {$error->doing} when given up" : $error->getMessage();
-                    throw new NetworkException("{$what} failed: {$why}.", $request, $error);
+                    throw new NetworkException("{$what} failed: {$why}.", $request, $error, unsent: $error instanceof TimedOut && !$sent);
                 }
             }
             $exchange = new Exchange($connection, $deadline, $cancellation);
             try {
                 $response = $exchange->run($request);
             } catch (\Throwable $error) {
-                $pool->discard($connection);
+                $pool->discard($slot);
                 if ($error instanceof CancelledException || !$error instanceof \RuntimeException) {
                     throw $error;
                 }
@@ -152,14 +157,14 @@ final class Network implements Transport
                     continue;
                 }
                 $why = $error instanceof TimedOut ? "it took more than {$timeout} seconds, and was {$error->doing} when given up" : $error->getMessage();
-                throw new NetworkException("{$what} failed: {$why}.", $request, $error);
+                throw new NetworkException("{$what} failed: {$why}.", $request, $error, unsent: $error instanceof TimedOut && !$exchange->sent);
             }
             if ($exchange->reusable) {
                 $connection->used = true;
                 $connection->idleSince = hrtime(true) / 1_000_000_000;
-                $pool->release($connection);
+                $pool->release($slot);
             } else {
-                $pool->discard($connection);
+                $pool->discard($slot);
             }
             return $response;
         }
@@ -187,19 +192,20 @@ final class Network implements Transport
      * another request made to the same server a moment earlier, which is
      * then the one to use.
      */
-    private function session(string $origin, Pool $pool, Connection $connection, float $deadline): Http2Session
+    private function session(string $origin, Pool $pool, PooledConnection $slot, float $deadline): Http2Session
     {
+        $connection = $slot->connection;
         $existing = $this->sessions[$origin] ?? null;
         if ($existing !== null && $existing->accepts()) {
-            $pool->discard($connection);
+            $pool->discard($slot);
             return $existing;
         }
-        $session = new Http2Session($connection, EventLoop::current(), function () use ($origin, $pool, $connection, &$session): void {
+        $session = new Http2Session($connection, EventLoop::current(), function () use ($origin, $pool, $slot, &$session): void {
             if (($this->sessions[$origin] ?? null) === $session) {
                 unset($this->sessions[$origin]);
             }
             // The connection stays lent to its session for as long as the session lasts.
-            $pool->discard($connection);
+            $pool->discard($slot);
         });
         $this->sessions[$origin] = $session;
         try {
@@ -222,7 +228,7 @@ final class Network implements Transport
      * same server meanwhile: that carries every request at once, and the
      * connection it took will not come free.
      */
-    private function connection(Pool $pool, float $deadline, ?Cancellation $cancellation, string $origin): ?Connection
+    private function connection(Pool $pool, float $deadline, ?Cancellation $cancellation, string $origin, string $scheme, string $host, int $port): ?PooledConnection
     {
         $left = $deadline - hrtime(true) / 1_000_000_000;
         if ($left <= 0) {
@@ -236,21 +242,36 @@ final class Network implements Transport
         $this->waiting[$origin][spl_object_id($limit)] = $limit;
         try {
             while (true) {
-                /** @var Connection $connection */
-                $connection = $pool->acquire($limit);
-                // Making a connection takes its own time; the request's may have run out meanwhile.
+                /** @var PooledConnection $slot */
+                $slot = $pool->acquire($limit);
+                $connection = $slot->connection;
+                // A handed-over slot may resume after its caller's deadline.
                 if (hrtime(true) / 1_000_000_000 >= $deadline || $cancellation?->isCancelled() === true) {
-                    $connection->used ? $pool->discard($connection) : $pool->release($connection);
+                    $connection?->used ? $pool->discard($slot) : $pool->release($slot);
                     $cancellation?->throwIfCancelled();
                     throw new TimedOut('waiting for a connection');
                 }
+                if ($connection === null) {
+                    try {
+                        // Open in the borrowing caller, including after a failed connection freed this slot.
+                        $slot->connection = $connection = $this->connect($scheme, $host, $port, $deadline, $cancellation);
+                    } catch (\Throwable $error) {
+                        $pool->discard($slot);
+                        throw $error;
+                    }
+                    if (hrtime(true) / 1_000_000_000 >= $deadline || $cancellation?->isCancelled() === true) {
+                        $pool->discard($slot);
+                        $cancellation?->throwIfCancelled();
+                        throw new TimedOut('connecting');
+                    }
+                }
                 if (!$connection->used) {
-                    return $connection;
+                    return $slot;
                 }
                 if (hrtime(true) / 1_000_000_000 - $connection->idleSince < self::IDLE && $connection->isReusable()) {
-                    return $connection;
+                    return $slot;
                 }
-                $pool->discard($connection);
+                $pool->discard($slot);
             }
         } catch (CancelledException $cancelled) {
             $cancellation?->throwIfCancelled();
@@ -270,30 +291,56 @@ final class Network implements Transport
         return $this->pools["{$scheme}://{$host}:{$port}"] ??= new Pool(
             // Asked for now and not when the client was made: a worker has a loop of its own.
             EventLoop::current(),
-            fn (): Connection => $this->connect($scheme, $host, $port),
+            // Reserve capacity first; opening a socket then uses the borrowing caller's deadline.
+            static fn (): PooledConnection => new PooledConnection(),
             $this->connections,
             // Each caller brings its own deadline; this is only the longest anyone could wait.
             86400.0,
-            static fn (Connection $connection) => $connection->close(),
+            static fn (PooledConnection $slot) => $slot->connection?->close(),
         );
     }
 
-    private function connect(string $scheme, string $host, int $port): Connection
+    private function connect(string $scheme, string $host, int $port, float $requestDeadline, ?Cancellation $cancellation): Connection
     {
-        $deadline = hrtime(true) / 1_000_000_000 + $this->connectTimeout;
+        $deadline = min($requestDeadline, hrtime(true) / 1_000_000_000 + $this->connectTimeout);
         $tlsHost = $scheme === 'https' ? $host : null;
         // HTTP/2 is offered first to a server that may speak it; which one is spoken is settled as encryption is.
         $tls = ['alpn_protocols' => $this->http2 ? 'h2,http/1.1' : 'http/1.1', ...$this->tls];
         $loop = EventLoop::current();
         // Through a proxy, the connection is made to the proxy.
         [$toHost, $toPort] = $this->proxy ?? [$host, $port];
-        $failure = null;
-        foreach ($this->resolver->resolve($loop, $toHost) as $address) {
+        $left = $deadline - hrtime(true) / 1_000_000_000;
+        if ($left <= 0) {
+            throw new TimedOut('connecting');
+        }
+        $limit = new Cancellation();
+        $timer = $loop->delay($left, static fn () => $limit->cancel());
+        $unsubscribe = $cancellation?->subscribe(static fn () => $limit->cancel());
+        try {
             try {
-                if ($this->proxy === null) {
-                    return Connection::open($loop, $address, $port, $tlsHost, $tls, $deadline);
+                $addresses = $this->resolver->resolve($loop, $toHost, $limit);
+            } catch (CancelledException $error) {
+                $cancellation?->throwIfCancelled();
+                if ($deadline === $requestDeadline) {
+                    throw new TimedOut('finding the server address');
                 }
-                $connection = Connection::open($loop, $address, $toPort, $tlsHost, $tls, $deadline, encrypt: false);
+                throw new \RuntimeException("connecting to {$toHost} took more than {$this->connectTimeout} seconds", previous: $error);
+            }
+        } finally {
+            $loop->cancel($timer);
+            $unsubscribe?->__invoke();
+        }
+        $failure = null;
+        foreach ($addresses as $address) {
+            try {
+                $cancellation?->throwIfCancelled();
+                if (hrtime(true) / 1_000_000_000 >= $deadline) {
+                    throw new TimedOut('connecting');
+                }
+                if ($this->proxy === null) {
+                    return Connection::open($loop, $address, $port, $tlsHost, $tls, $deadline, $cancellation);
+                }
+                $connection = Connection::open($loop, $address, $toPort, $tlsHost, $tls, $deadline, $cancellation, encrypt: false);
                 if ($tlsHost === null) {
                     // What is not encrypted is handed to the proxy to pass on.
                     $connection->forwarded = true;
@@ -301,15 +348,21 @@ final class Network implements Transport
                     return $connection;
                 }
                 try {
-                    $this->tunnel($connection, $host, $port, $deadline);
-                    $connection->encrypt($deadline);
+                    $this->tunnel($connection, $host, $port, $deadline, $cancellation);
+                    $connection->encrypt($deadline, $cancellation);
                 } catch (\Throwable $error) {
                     $connection->close();
                     throw $error;
                 }
                 return $connection;
             } catch (TimedOut $error) {
+                if ($deadline === $requestDeadline) {
+                    throw $error;
+                }
                 $failure ??= new \RuntimeException("connecting to {$toHost} took more than {$this->connectTimeout} seconds", previous: $error);
+                break;
+            } catch (CancelledException $error) {
+                throw $error;
             } catch (\RuntimeException $error) {
                 // The first address's failure is the one told: a later address is often one the server does not listen on.
                 $failure ??= new \RuntimeException("{$toHost} could not be reached: {$error->getMessage()}", previous: $error);
@@ -322,16 +375,20 @@ final class Network implements Transport
      * Asks the proxy for a connection straight through to a server, over
      * which the encrypted exchange then runs unseen by the proxy.
      */
-    private function tunnel(Connection $connection, string $host, int $port, float $deadline): void
+    private function tunnel(Connection $connection, string $host, int $port, float $deadline, ?Cancellation $cancellation): void
     {
         $ask = "CONNECT {$host}:{$port} HTTP/1.1\r\nHost: {$host}:{$port}\r\n";
         if ($this->proxy[2] !== null) {
             $ask .= "Proxy-Authorization: {$this->proxy[2]}\r\n";
         }
-        $connection->write($ask . "\r\n", $deadline);
+        $cancellation?->throwIfCancelled();
+        if (hrtime(true) / 1_000_000_000 >= $deadline) {
+            throw new TimedOut('connecting through the proxy');
+        }
+        $connection->write($ask . "\r\n", $deadline, $cancellation);
         $answer = '';
         while (!str_contains($answer, "\r\n\r\n")) {
-            $bytes = $connection->read($deadline);
+            $bytes = $connection->read($deadline, $cancellation);
             if ($bytes === null || strlen($answer) > 16384) {
                 throw new \RuntimeException('the proxy closed the connection without answering');
             }
@@ -341,4 +398,18 @@ final class Network implements Transport
             throw new \RuntimeException('the proxy would not connect to ' . $host . ': it answered "' . trim((string) strtok($answer, "\r\n")) . '"');
         }
     }
+}
+
+/**
+ * A place in the connection pool. Its socket is opened only after it is
+ * borrowed, so a replacement uses the waiting caller's own deadline.
+ *
+ * @internal
+ */
+final class PooledConnection
+{
+    /**
+     * The socket kept for this place, once a caller has opened it.
+     */
+    public ?Connection $connection = null;
 }

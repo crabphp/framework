@@ -136,7 +136,8 @@ final class FakeClient extends Client implements Transport
             // Made again so that it knows which request it answers, for throw() to name.
             return new Response($reply->getStatusCode(), $reply->getHeaders(), new Stream((string) $reply->getBody()), $reply->getReasonPhrase(), $reply->getProtocolVersion(), $what);
         }
-        $known = $this->replies === [] ? 'It has none.' : 'It has: ' . implode(', ', array_keys($this->replies)) . '.';
+        $patterns = array_map(static fn (string $pattern): string => substr($pattern, 0, strcspn($pattern, '?#')), array_keys($this->replies));
+        $known = $patterns === [] ? 'It has none.' : 'It has: ' . implode(', ', $patterns) . '.';
         throw new \LogicException("Nothing fakes {$what}. Add a reply for it to the FakeClient. {$known}");
     }
 

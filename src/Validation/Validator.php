@@ -358,14 +358,17 @@ final class Validator implements ValidatorContract
     {
         $name = $parameter->getName();
         $declared = $parameter->getType();
-        if ($declared !== null && !$declared instanceof \ReflectionNamedType) {
+        if ($declared === null) {
+            throw new \LogicException("{$where} has no type; declare it with one type, such as string \${$name}.");
+        }
+        if (!$declared instanceof \ReflectionNamedType) {
             throw new \LogicException("{$where} has a union or intersection type; give it one type so that it can be validated.");
         }
         if ($parameter->isVariadic()) {
             throw new \LogicException("{$where} is variadic; declare an array with #[ListOf(...)] instead.");
         }
-        $described = $declared?->getName() === Data::class;
-        [$type, $typeClass] = $described ? [Property::FIELDS, null] : self::type($declared?->getName() ?? 'mixed', $where);
+        $described = $declared->getName() === Data::class;
+        [$type, $typeClass] = $described ? [Property::FIELDS, null] : self::type($declared->getName(), $where);
         $items = null;
         $fields = null;
         $rules = [];
@@ -396,7 +399,7 @@ final class Validator implements ValidatorContract
             throw new \LogicException("{$where} is declared as " . Data::class . ' and has no #[Fields] to say what its fields are.');
         }
         $hasDefault = $parameter->isDefaultValueAvailable();
-        $nullable = $declared === null || $declared->allowsNull();
+        $nullable = $declared->allowsNull();
         return new Property(
             $name,
             $type,

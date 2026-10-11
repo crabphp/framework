@@ -3,6 +3,7 @@
 - [Introduction](#introduction)
 - [Writing a migration](#writing-a-migration)
 - [Running migrations](#running-migrations)
+- [Deploying from several machines](#deploying-from-several-machines)
 - [Creating tables](#creating-tables)
     - [Columns](#columns)
     - [Column options](#column-options)
@@ -72,6 +73,27 @@ Run `php cua migrate` as a step of every deploy, before the new code goes live.
 > [!WARNING]
 > Never edit a migration that has run anywhere but your own machine. Write a new one that makes the correction.
 
+## Deploying from several machines
+
+During a rolling deploy, several machines may run `php cua migrate` together. A database lock prevents them from applying the same migration twice. MySQL holds the lock for the command. SQLite locks each migration and checks its record again before making changes, so several commands may share the work.
+
+`database.migration_lock_timeout` is the number of whole seconds to wait for a lock, `60` by default. Zero does not wait; fractional configuration values are cast to integers. Increase it when your migrations take longer:
+
+```php
+// config/database.php
+return [
+    'dsn' => env('DB_DSN'),
+    'migrations' => dirname(__DIR__) . '/database/migrations',
+    'migration_lock_timeout' => 120,
+];
+```
+
+If the wait expires, the command fails and tells you to inspect `php cua migrate:status`. Status and creating a migration file remain available while another command holds the lock. Status shows committed work, including each SQLite migration as it finishes. A rollback chooses the latest committed batch and skips migrations another rollback already took back.
+
+MySQL uses a connection lock named `crab_migrations_` followed by the migrations table name. Applications using the same table name on one MySQL server share that lock. The command holds one pooled connection and gives it to the migration's `Schema`; a migration that also asks the application's `Database` service for a connection needs a pool of at least two, or it fails with “No database connection became free …; the pool holds 1.” If that session loses its lock, the command stops before the next migration or before returning, warns that a migration may be half applied, and tells you to inspect `migrate:status`.
+
+SQLite commits each migration separately. Its writer transaction blocks other writes only for that migration, and its commit callbacks run before the next one starts. A failed migration rolls back its own changes; earlier committed migrations remain. A commit callback that fails reports its migration's name, but its database changes are already committed. Both databases release their locks after success or failure.
+
 ## Creating tables
 
 ### Columns
@@ -79,19 +101,19 @@ Run `php cua migrate` as a step of every deploy, before the new code goes live.
 | Method | Column |
 | --- | --- |
 | `id()` | An auto-incrementing primary key named `id` |
-| `foreignId('user_id')` | An unsigned big integer, for another table's id |
+| `foreignId('user_id')` | Another table's id: an unsigned big integer on MySQL, an integer on SQLite |
 | `integer('age')`, `bigInteger('views')` | Whole numbers |
-| `string('name')`, `string('code', 20)` | Text up to 255 characters, or the length given |
+| `string('name')`, `string('code', 20)` | Text up to 255 characters, or the length given, on MySQL; SQLite does not enforce the length |
 | `text('body')` | Long text |
 | `boolean('active')` | True or false |
-| `decimal('price', 10, 2)` | An exact number: digits in all, digits after the point |
+| `decimal('price', 10, 2)` | On MySQL, an exact number with total digits and digits after the point; SQLite ignores precision and scale and may store floating point |
 | `float('ratio')` | An approximate number |
 | `date('born_on')`, `dateTime('sent_at')` | A date; a date and time |
 | `json('settings')` | JSON |
 | `binary('data')` | Bytes |
 | `timestamps()` | `created_at` and `updated_at`, both nullable |
 
-Use `decimal` for money, never `float`.
+Use `decimal` for money on MySQL; use integer minor units for exact money on both databases. SQLite does not enforce `unsigned()` either.
 
 ### Column options
 
@@ -104,7 +126,7 @@ $table->string('email')->unique();
 $table->string('status')->index();
 ```
 
-A column must be given a value on insert unless it is `nullable()` or has a default.
+A non-generated column must be given a value on insert unless it is `nullable()` or has a default; `id()` is generated and may be omitted.
 
 ### Indexes
 
@@ -181,9 +203,9 @@ public function up(Schema $schema): void
 
 ## MySQL and SQLite
 
-The same file runs on both; the schema is written for the database in use. They differ in one way that matters:
+The same file runs on both; the schema is written for the database in use. Besides column constraints, they differ in transactions:
 
-- **On SQLite a migration that fails leaves nothing behind**, because it runs in a transaction.
+- **On SQLite each migration runs in a transaction.** A failure before commit rolls back its changes; a failed commit callback leaves its already committed changes.
 - **MySQL commits each change to a table as it is made.** A migration that fails halfway has done the first half. Keep each migration small, one change to one table where you can, so that a failure leaves little to tidy.
 
 SQLite checks foreign keys on the connections the provider opens.

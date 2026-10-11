@@ -24,8 +24,8 @@ final readonly class Restart implements Command
             Options:
               --address=tcp://127.0.0.1:8080   Where to listen; default from "server.address"
               --workers=1                      Worker processes; default from "server.workers"
-              --timeout=15                     Seconds to wait for the old one to finish its requests
-              --force                          End it outright when it has not stopped in that time
+              --timeout=15                     Graceful wait in seconds; if omitted, read from the running server
+              --force                          Cut requests and end every old server process now
 
             Connections are refused between the stop and the start. `reload` replaces
             the server without that gap.
@@ -37,8 +37,9 @@ final readonly class Restart implements Command
         $server = new Server($this->app);
         $address = Serve::address($this->app, $input);
         $workers = Serve::workers($this->app, $input);
+        $timeout = $input->option('timeout');
         try {
-            $old = $server->stop((float) $input->option('timeout', '15'), $input->flag('force'));
+            $old = $server->stop($timeout === null ? null : (float) $timeout, $input->flag('force'));
             if ($old !== null) {
                 $output->line("Stopped the server, pid {$old}.");
             }

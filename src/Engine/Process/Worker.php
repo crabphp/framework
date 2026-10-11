@@ -37,6 +37,11 @@ final class Worker
     private bool $draining = false;
     private bool $starting = true;
     private array $keepAlive = [];
+    /**
+     * Connections with unfinished work at the drain deadline, counted before close
+     * callbacks remove them so the stop callback can report the cut once.
+     */
+    private int $cutConnections = 0;
 
     /**
      * @param array{tcp:list<resource>, udp:list<resource>} $bindings
@@ -142,13 +147,19 @@ final class Worker
         foreach ($this->listeners as $listener) { $listener->close(); }
         foreach ($this->pendingConnects as $cancel) { $cancel(); }
         foreach ($this->tasks as $task) { $task->cancel(); }
-        foreach ($this->connections as $connection) { $connection->drain(); }
-        foreach ($this->datagrams as $endpoint) { $endpoint->drain(); }
+        // Count and close before the transports' matching deadlines can fire.
         $this->loop->delay($this->shutdownTimeout, function (): void {
+            foreach ($this->connections as $connection) {
+                if ($connection->hasPendingWork()) {
+                    ++$this->cutConnections;
+                }
+            }
             foreach ($this->connections as $connection) { $connection->close(); }
             foreach ($this->datagrams as $endpoint) { $endpoint->close(); }
             $this->loop->stop();
         });
+        foreach ($this->connections as $connection) { $connection->drain($this->shutdownTimeout); }
+        foreach ($this->datagrams as $endpoint) { $endpoint->drain(); }
         $this->finishDrain();
     }
 
@@ -209,6 +220,7 @@ final class Worker
             'tasks' => count($this->tasks), 'datagrams' => count($this->datagrams),
             'queuedBytes' => array_sum(array_map(static fn(Connection $c): int => $c->bufferedBytes(), $this->connections)),
             'memoryBytes' => memory_get_usage(true), 'draining' => $this->draining,
+            'cutConnections' => $this->cutConnections,
         ];
     }
 

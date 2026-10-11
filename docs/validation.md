@@ -19,6 +19,8 @@ use Crab\Validation\Length;
 
 Route::post('/users', static function (#[Email] string $email, #[Length(min: 2, max: 50)] string $name): array {
     // Runs only when both are present and fit.
+
+    return ['email' => $email, 'name' => $name];
 });
 ```
 
@@ -46,6 +48,8 @@ enum Status: string
 
 Route::get('/posts', static function (Status $status = Status::Published, ?\DateTimeImmutable $since = null): array {
     // GET /posts?status=draft&since=2026-01-01T00:00:00Z
+
+    return ['status' => $status, 'since' => $since];
 });
 ```
 
@@ -72,6 +76,9 @@ A rule on a route parameter holds as on any field: with `#[Range(min: 1)] int $i
 A parameter typed as another class is an object in the data, checked by that class's constructor. `#[ListOf]` says what an array holds:
 
 ```php
+use Crab\Validation\Length;
+use Crab\Validation\ListOf;
+
 final readonly class Address
 {
     public function __construct(
@@ -159,7 +166,9 @@ final readonly class Slug implements Rule
 ```
 
 ```php
-Route::post('/posts', static fn (#[Slug] string $slug, string $title): array => [...]);
+use App\Rules\Slug;
+
+Route::post('/posts', static fn (#[Slug] string $slug, string $title): array => ['slug' => $slug, 'title' => $title]);
 ```
 
 A rule sees one value. A check that needs the database, such as "this email is not taken", belongs in the action, which throws `HttpException(409)` or returns a `422` of its own.

@@ -58,6 +58,28 @@ final class ArrayStore implements Store
         unset($this->entries[$key]);
     }
 
+    public function deleteIf(string $key, string $value, int $now): bool
+    {
+        $entry = $this->entries[$key] ?? null;
+        if ($entry === null || ($entry[1] !== null && $entry[1] <= $now) || $entry[0] !== $value) {
+            return false;
+        }
+        unset($this->entries[$key]);
+        return true;
+    }
+
+    public function prune(int $now): int
+    {
+        $removed = 0;
+        foreach ($this->entries as $key => $entry) {
+            if ($entry[1] !== null && $entry[1] <= $now) {
+                unset($this->entries[$key]);
+                ++$removed;
+            }
+        }
+        return $removed;
+    }
+
     public function clear(): void
     {
         $this->entries = [];

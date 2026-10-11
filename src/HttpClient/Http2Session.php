@@ -138,10 +138,11 @@ final class Http2Session
     }
 
     /**
+     * @param bool $sent Set once any request header bytes are written, so a timeout before transmission is known to be safe to retry.
      * @throws Unprocessed When the server did not act on the request, which may then be made on another connection.
      * @throws \RuntimeException Saying what went wrong, to be put after the name of the request.
      */
-    public function exchange(RequestInterface $request, float $deadline, ?Cancellation $cancellation): Response
+    public function exchange(RequestInterface $request, float $deadline, ?Cancellation $cancellation, bool &$sent = false): Response
     {
         while ($this->accepts() && count($this->streams) >= $this->maxStreams) {
             $this->park($deadline, $cancellation, 'waiting for the server to take another request');
@@ -160,7 +161,7 @@ final class Http2Session
                 $stream = new Http2Stream($this->nextId, $this->streamWindow, $request->getMethod() === 'HEAD');
                 $this->nextId += 2;
                 $this->streams[$stream->id] = $stream;
-                $this->connection->write($this->head($stream->id, $request, $size), $deadline, $cancellation);
+                $this->connection->write($this->head($stream->id, $request, $size), $deadline, $cancellation, $sent);
             } catch (\Throwable $error) {
                 $this->writeFailed($error);
                 throw $error;

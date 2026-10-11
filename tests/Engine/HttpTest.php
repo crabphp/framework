@@ -321,6 +321,60 @@ final class HttpTest extends TestCase
         self::assertTrue(substr_count($output, str_repeat('q', 4096)) === 400 && str_ends_with($output, "0\r\n\r\n"), 'Slow reader caused streaming loss or deadlock.');
     }
 
+    #[DataProvider('incompleteRequests')]
+    public function testAConnectionReadingARequestCountsAsPendingWork(string $wire): void
+    {
+        $loop = $this->newLoop();
+        [$serverSocket, $client] = $this->pair();
+        $connection = $this->connection($loop, $serverSocket);
+        (new HttpServer(static fn (): string => 'unreachable'))->attach($connection);
+        self::assertFalse($connection->hasPendingWork(), 'A connection without input is idle.');
+        fwrite($client, $wire);
+        $watchdog = $loop->delay(2.0, static fn () => throw new RuntimeException('Incomplete input was never classified.'));
+        $check = $loop->repeat(0.001, $this->guardCallback(static function (string $id) use ($connection, $loop, $watchdog): void {
+            if (!$connection->hasPendingWork()) {
+                return;
+            }
+            $loop->cancel($id);
+            $loop->cancel($watchdog);
+            $connection->close();
+        }));
+        $loop->run();
+        self::assertTrue($connection->isClosed());
+        self::assertSame([], $loop->getIdentifiers());
+    }
+
+    /**
+     * Both parser phases represent a request even before a handler starts.
+     */
+    public static function incompleteRequests(): iterable
+    {
+        yield 'headers' => ["GET / HTTP/1.1\r\nHost: x\r\n"];
+        yield 'body' => ["POST / HTTP/1.1\r\nHost: x\r\nContent-Length: 4\r\n\r\na"];
+    }
+
+    public function testAQueuedResponseCountsAsPendingWorkAfterTheHttpSessionRetires(): void
+    {
+        $loop = $this->newLoop();
+        [$serverSocket, $client] = $this->pair();
+        $connection = $this->connection($loop, $serverSocket);
+        (new HttpServer(static fn (): Response => Response::text(str_repeat('x', 400_000))))->attach($connection);
+        fwrite($client, "GET / HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n");
+        $watchdog = $loop->delay(2.0, static fn () => throw new RuntimeException('The response never queued.'));
+        $loop->repeat(0.001, $this->guardCallback(static function (string $id) use ($connection, $loop, $watchdog): void {
+            if ($connection->bufferedBytes() === 0) {
+                return;
+            }
+            self::assertFalse($connection->isClosed());
+            self::assertTrue($connection->hasPendingWork(), 'Accepted response bytes were mistaken for idle work.');
+            $loop->cancel($id);
+            $loop->cancel($watchdog);
+            $connection->close();
+        }));
+        $loop->run();
+        self::assertSame([], $loop->getIdentifiers());
+    }
+
     public function testContinueHandshakeDoesNotDeadlockAWaitingClient(): void
     {
         $loop = $this->newLoop();

@@ -733,10 +733,14 @@ use Crab\Contracts\Cache\Cache;
 $rates = $cache->remember('rates', 3600, fn () => $this->bank->rates());   // made once an hour
 $cache->set('user.7', $user, 600);
 $cache->get('user.7');
-$cache->add('report.running', true, 300);                                   // true for one caller only: a lock
+$cache->add('welcome.sent.7', true, 86400);                                 // true for the first caller only
+
+if ($lock = $cache->lock('report', 300)) {                                  // null when another caller holds it
+    try { $this->build(); } finally { $lock->release(); }
+}
 ~~~
 
-It is PSR-16's cache under the contract `Contracts\Cache\Cache`, which adds `remember()`, `add()` and `increment()`, a count that loses nothing between workers. `Http\RateLimit` is middleware built on that count: `new RateLimit(5, per: 60)` on a route. `cache.store` chooses where entries are kept:
+It is PSR-16's cache under the contract `Contracts\Cache\Cache`, which adds `remember()`, `add()`, `lock()` and `increment()`, a count that loses nothing between workers. A lock is released only by the caller that took it, and frees itself after its seconds if that caller dies. `Http\RateLimit` is middleware built on that count: `new RateLimit(5, per: 60)` on a route. `cache.store` chooses where entries are kept:
 
 | Store | Kept | For |
 | --- | --- | --- |
@@ -744,7 +748,7 @@ It is PSR-16's cache under the contract `Contracts\Cache\Cache`, which adds `rem
 | `database` | The `cache.table` table; `php cua cache:install` writes its migration | Several machines |
 | `array` | The worker's memory | Tests |
 
-`cache.prefix` keeps two applications apart in one store and `cache.ttl` is the seconds an entry lives when none is given, forever unless set. `php cua cache:clear` empties it. A store of your own implements `Contracts\Cache\Store` and is bound under that name. See [docs/cache.md](docs/cache.md).
+`cache.prefix` keeps two applications apart in one store and `cache.ttl` is the seconds an entry lives when none is given, forever unless set. `php cua cache:clear` empties it, locks included, and `php cua cache:prune` removes what has outlived its time. A store of your own implements `Contracts\Cache\Store` and is bound under that name. See [docs/cache.md](docs/cache.md).
 
 ## Events
 
@@ -797,7 +801,7 @@ $queue->on('emails')->push(SendWelcomeEmail::class, userId: 7);          // on a
 
 - **A job is a class with `handle()`**, as an action is: services in its constructor, its data as typed parameters, given by name when it is pushed. A wrong name or a missing value is refused by the line that pushed it.
 - **The data is JSON:** numbers, text, booleans, null and arrays. Pass an id, not the record.
-- **A job runs at least once.** One that throws is tried again, `queue.tries` times in all (3), after `queue.backoff` seconds (10, then 60); then it is kept as failed. `queue:failed` lists those, `queue:retry <id|all>` puts them back and `queue:forget <id|all>` deletes them.
+- **A job runs at least once.** One that throws is tried again, `queue.tries` times in all (3), after `queue.backoff` seconds (10, then 60); then it is kept as failed. A job sets its own with `#[Retry(tries: 5, backoff: [5, 30])]`. `queue:failed` lists those, `queue:retry <id|all>` puts them back and `queue:forget <id|all>` deletes them.
 - **Workers are processes of their own**, so a slow job never holds up a request. Each is started and stopped as an HTTP worker is, and every failure reaches the log.
 - **Supervisors keep kinds of work apart.** `queue.supervisors` names sets of workers, each with its own queues, number of workers and retries, and `queue:work` runs them all: `'mail' => ['queues' => ['mail'], 'workers' => 2]`. A flood of one kind of job then cannot take the workers of another.
 - **`queue.retry_after`** (90) is how long a job may take before it is taken to have died with its worker and is given to another. Set it above your longest job.
@@ -902,7 +906,7 @@ Providers add theirs:
 | --- | --- |
 | `DatabaseProvider` | `migrate`, `migrate:rollback`, `migrate:status`, `make:migration` |
 | `TokenAuthProvider` | `token:install` |
-| `CacheProvider` | `cache:clear`, `cache:install` |
+| `CacheProvider` | `cache:clear`, `cache:prune`, `cache:install` |
 | `QueueProvider` | `queue:work`, `queue:failed`, `queue:retry`, `queue:forget`, `queue:install` |
 | `ScheduleProvider` | `schedule:work`, `schedule:list` |
 

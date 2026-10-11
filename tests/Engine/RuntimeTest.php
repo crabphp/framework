@@ -26,6 +26,32 @@ use Throwable;
 
 final class RuntimeTest extends TestCase
 {
+    public function testForceEndsASingleProcessRuntimeWithoutWaitingForItsDrain(): void
+    {
+        $runtime = new Runtime(shutdownTimeout: 30.0);
+        $stopped = false;
+        $socket = $this->ownStream(Listener::bind('tcp://127.0.0.1:0'));
+        $address = 'tcp://' . stream_socket_get_name($socket, false);
+        $peer = $this->ownStream(stream_socket_client($address, $code, $message, 1));
+        stream_set_timeout($peer, 2);
+        $runtime->group()
+            ->listen($address, static function (Connection $connection) use ($runtime): void {
+                // This open connection deliberately does not finish draining.
+                $connection->onDrainRequest(static function (): void {});
+                $connection->loop()->delay(0.005, $runtime->force(...));
+            }, socket: $socket)
+            ->onStart(static function (Worker $worker) use ($runtime): void {
+                $worker->loop->delay(1.0, static fn () => throw new RuntimeException('Force did not stop the runtime.'));
+            })
+            ->onStop(static function () use (&$stopped): void { $stopped = true; });
+        $before = microtime(true);
+        $runtime->run(singleProcess: true);
+        self::assertTrue($stopped);
+        self::assertLessThan(2.0, microtime(true) - $before);
+        self::assertSame('', stream_get_contents($peer));
+        self::assertTrue(feof($peer), 'Force must close the connection without its drain wait.');
+    }
+
     public function testBoundedBootstrapTasksRunAndUnwindDuringDrain(): void
     {
         $cleaned = $ran = $bounded = false;

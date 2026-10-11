@@ -31,6 +31,10 @@ final class Exchange
      */
     public bool $answered = false;
     /**
+     * Whether any byte of this request was written, even if a write failed.
+     */
+    public bool $sent = false;
+    /**
      * Whether the connection can carry another request afterwards.
      */
     public bool $reusable = false;
@@ -150,7 +154,7 @@ final class Exchange
         }
         $head .= "\r\n";
         if ($size === 0) {
-            $this->connection->write($head, $this->deadline, $this->cancellation);
+            $this->connection->write($head, $this->deadline, $this->cancellation, $this->sent);
             return;
         }
         if ($body->isSeekable()) {
@@ -165,7 +169,7 @@ final class Exchange
             }
             $pending .= $size === null ? dechex(strlen($bytes)) . "\r\n{$bytes}\r\n" : $bytes;
             if (strlen($pending) >= 65536) {
-                $this->connection->write($pending, $this->deadline, $this->cancellation);
+                $this->connection->write($pending, $this->deadline, $this->cancellation, $this->sent);
                 $pending = '';
             }
         }
@@ -173,7 +177,7 @@ final class Exchange
             $pending .= "0\r\n\r\n";
         }
         if ($pending !== '') {
-            $this->connection->write($pending, $this->deadline, $this->cancellation);
+            $this->connection->write($pending, $this->deadline, $this->cancellation, $this->sent);
         }
     }
 

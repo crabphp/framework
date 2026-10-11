@@ -11,16 +11,22 @@ const { NGHTTP2_REFUSED_STREAM, NGHTTP2_INTERNAL_ERROR } = http2.constants;
 
 let sessions = 0;
 const seen = {};
+const received = {};
 server.on('session', (session) => {
     session.number = ++sessions;
 });
 server.on('stream', (stream, headers) => {
+    const session = stream.session.number;
     const path = headers[':path'].split('?')[0];
     seen[path] = (seen[path] ?? 0) + 1;
     const chunks = [];
     stream.on('error', () => {});
-    stream.on('data', (chunk) => chunks.push(chunk));
+    stream.on('data', (chunk) => {
+        chunks.push(chunk);
+        received[path] = (received[path] ?? 0) + chunk.length;
+    });
     const reply = (status, body = '', extra = {}) => {
+        if (stream.destroyed || stream.closed) return;
         stream.respond({ ':status': status, ...extra });
         stream.end(body);
     };
@@ -35,11 +41,14 @@ server.on('stream', (stream, headers) => {
             length: body.length,
             hash: crypto.createHash('md5').update(body).digest('hex'),
             body: body.length < 2000 ? body.toString() : '',
-            session: stream.session.number,
+            session,
             times: seen[path],
         });
     };
     switch (path) {
+        case '/seen':
+            reply(200, JSON.stringify({ requests: seen, bytes: received }), { 'content-type': 'application/json' });
+            break;
         case '/slow':
             setTimeout(() => { if (!stream.destroyed) reply(200, echo(), { 'content-type': 'application/json' }); }, 200);
             break;

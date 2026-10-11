@@ -202,6 +202,62 @@ final class TransportTest extends TestCase
         self::assertSame([], $loop->getIdentifiers(), 'Close deadline leaked resources.');
     }
 
+    public function testDrainingUsesTheWorkersAllowanceInsteadOfAnEarlierCloseTimer(): void
+    {
+        [$loop, $connection] = $this->connectedPair(closeTimeout: 0.01);
+        $connection->onDrainRequest(static function (): void {});
+        $connection->shutdownWrite();
+        $connection->drain(0.1);
+        $checked = false;
+        $loop->delay(0.04, $this->guardCallback(static function () use ($connection, &$checked): void {
+            self::assertFalse($connection->isClosed(), 'The transport retained its earlier deadline.');
+            $checked = true;
+        }));
+        $this->until($loop, static fn (): bool => $connection->isClosed());
+        self::assertTrue($checked);
+        self::assertSame([], $loop->getIdentifiers());
+    }
+
+    public function testDrainingWithoutAnOverrideKeepsTheTransportCloseAllowance(): void
+    {
+        [$loop, $connection] = $this->connectedPair(closeTimeout: 0.02);
+        $connection->onDrainRequest(static function (): void {});
+        $connection->drain();
+        $this->until($loop, static fn (): bool => $connection->isClosed());
+        self::assertSame([], $loop->getIdentifiers());
+    }
+
+    public function testDrainingRejectsInvalidAllowancesWithoutClosingTheConnection(): void
+    {
+        [, $connection] = $this->connectedPair();
+        foreach ([0.0, -1.0, INF, NAN] as $timeout) {
+            try {
+                $connection->drain($timeout);
+                self::fail('An invalid drain allowance was accepted.');
+            } catch (InvalidArgumentException $error) {
+                self::assertStringContainsString('drain timeout', $error->getMessage());
+                self::assertFalse($connection->isClosed());
+            }
+        }
+    }
+
+    public function testTheProtocolOwnerDeterminesWhetherAnOpenConnectionHasPendingWork(): void
+    {
+        [, $connection] = $this->connectedPair();
+        self::assertTrue($connection->hasPendingWork(), 'An unclassified stream may carry work.');
+        $pending = false;
+        $connection->onDrainRequest(static function (): void {}, static function () use (&$pending): bool {
+            return $pending;
+        });
+        self::assertFalse($connection->hasPendingWork());
+        $pending = true;
+        self::assertTrue($connection->hasPendingWork());
+        $connection->onDrainRequest(static function (): void {});
+        self::assertTrue($connection->hasPendingWork(), 'Replacing the owner must release its predicate.');
+        $connection->close();
+        self::assertFalse($connection->hasPendingWork());
+    }
+
     public function testSuccessfulConnectCleansUpBeforeCallbackAndIgnoresLaterCancellation(): void
     {
         $loop = $this->newLoop();

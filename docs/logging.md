@@ -10,7 +10,7 @@
 
 ## Introduction
 
-Crab ships a small PSR-3 logger that writes one line per record to a file or a stream. Use it to record what your application did and why it failed. Because it is PSR-3, any library that takes a `Psr\Log\LoggerInterface` is given the same logger, and you can swap in Monolog without changing the code that logs.
+Crab ships a small PSR-3 logger that writes timestamped messages and context to a file or a stream, preserving message newlines. Use it to record what your application did and why it failed. Because it is PSR-3, any library that takes a `Psr\Log\LoggerInterface` is given the same logger, and you can swap in Monolog without changing the code that logs.
 
 ## Configuration
 
@@ -27,7 +27,7 @@ return [
 ];
 ```
 
-Write to standard error in a container, where the platform collects it. Write to a file such as `storage/logs/app.log` on a machine you run yourself. The file is opened for appending, so it can be rotated by copying and truncating.
+Write to standard error in a container, where the platform collects it. Write to a file such as `storage/logs/app.log` on a machine you run yourself. The file is opened for appending, so it can be rotated by copying and truncating; if the target cannot be opened, Crab writes to standard error instead.
 
 The levels, from least to most severe, are `debug`, `info`, `notice`, `warning`, `error`, `critical`, `alert` and `emergency`. Set `log.level` to `info` or `warning` in production to leave out the chatter.
 
@@ -49,6 +49,8 @@ final readonly class ChargeCard
         $this->logger->info('Charging order {order}', ['order' => $orderId, 'amount' => $amount]);
 
         // ...
+
+        return ['orderId' => $orderId, 'amount' => $amount];
     }
 }
 ```
@@ -57,7 +59,7 @@ There is a method per level: `debug()`, `info()`, `notice()`, `warning()`, `erro
 
 ### Context
 
-The second argument is context. A `{name}` in the message is replaced by the context value of that name, and the rest follows the message as JSON:
+The second argument is context. A `{name}` in the message is replaced by a scalar or `Stringable` context value of that name; other values follow as JSON and leave their placeholders unchanged:
 
 ```text
 2026-10-10T08:15:02.114+00:00 INFO Charging order 1042 {"amount":4900}
@@ -86,7 +88,7 @@ try {
 }
 ```
 
-Never log a password, a token or a card number. An exception's message may carry one; the framework's own messages do not.
+Crab never adds database bindings to messages or log lines, but it keeps the driver's own message, which may quote a value (MySQL names a duplicate entry). SQL literals are logged as written, so pass values as bindings and never log passwords, tokens or card numbers.
 
 ## What the framework logs
 
@@ -96,11 +98,13 @@ Never log a password, a token or a card number. An exception's message may carry
 | A queue job that failed and will be tried again | `warning` |
 | A queue job given up on | `error` |
 | A scheduled task that failed | `error` |
-| A scheduled task skipped because its last run is still going | `warning` |
+| A cron task skipped because its last run is still going (interval skips are quiet) | `warning` |
 | A task or timer that failed in a worker | `error` |
 | A deprecated PHP feature, once per place | `warning` |
 
 An `HttpException` below `500` is an answer, not a failure, and is not logged.
+
+Add [AccessLog middleware](middleware.md#access-logging) to record every request's method, path, status and response time through the same logger.
 
 ## Using another logger
 

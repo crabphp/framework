@@ -230,7 +230,92 @@ final class AuthTest extends TestCase
         $optional = new TokenAuth($tokens, $members, required: false);
         self::assertSame([200, 'user 7', ''], $through($optional, ['Authorization' => "Bearer {$token}"]));
         self::assertSame([200, 'nobody', ''], $through($optional, []));
-        self::assertSame([200, 'nobody', ''], $through($optional, ['Authorization' => 'Bearer wrong']));
+        self::assertSame([401, '401 Authentication is required.', 'Bearer'], $through($optional, ['Authorization' => 'Bearer wrong']));
+    }
+
+    /**
+     * @return list<array{array<string, string>}>
+     */
+    public static function requestsWithoutTokens(): array
+    {
+        return [[[]], [['Authorization' => 'Basic abc']], [['Authorization' => 'Bearer ']], [['Authorization' => 'Bearer']]];
+    }
+
+    #[DataProvider('requestsWithoutTokens')]
+    public function testOptionalAuthenticationLetsARequestWithoutATokenThroughAnonymously(array $headers): void
+    {
+        $tokens = new DatabaseTokenStore($this->database('sqlite'));
+        $optional = new TokenAuth($tokens, new Members(), required: false);
+        $response = $optional->process(new Request('GET', '/', $headers), new Reached());
+
+        self::assertSame([200, 'nobody', ''], [$response->getStatusCode(), (string) $response->getBody(), $response->getHeaderLine('WWW-Authenticate')]);
+    }
+
+    public function testOptionalAuthenticationPassesAValidTokensUserToTheHandler(): void
+    {
+        $tokens = new DatabaseTokenStore($this->database('sqlite'));
+        $members = new Members();
+        $members->known[7] = new Member(7, 'Ada');
+        $token = $tokens->issue(7);
+        $optional = new TokenAuth($tokens, $members, required: false);
+        $response = $optional->process(new Request('GET', '/', ['Authorization' => "Bearer {$token}"]), new Reached());
+
+        self::assertSame([200, 'user 7', ''], [$response->getStatusCode(), (string) $response->getBody(), $response->getHeaderLine('WWW-Authenticate')]);
+    }
+
+    public function testOptionalAuthenticationRefusesAnUnknownTokenWithAChallenge(): void
+    {
+        $tokens = new DatabaseTokenStore($this->database('sqlite'));
+        $optional = new TokenAuth($tokens, new Members(), required: false);
+        $response = $optional->process(new Request('GET', '/', ['Authorization' => 'Bearer unknown']), new Reached());
+
+        self::assertSame([401, 'Bearer'], [$response->getStatusCode(), $response->getHeaderLine('WWW-Authenticate')]);
+    }
+
+    public function testOptionalAuthenticationRefusesATokenAtItsExpiry(): void
+    {
+        $clock = new FrozenClock('2026-01-31 12:00:00');
+        $tokens = new DatabaseTokenStore($this->database('sqlite'), clock: $clock);
+        $members = new Members();
+        $members->known[7] = new Member(7, 'Ada');
+        $token = $tokens->issue(7, expiresAt: $clock->now()->modify('+1 hour'));
+        $optional = new TokenAuth($tokens, $members, required: false);
+        $request = new Request('GET', '/', ['Authorization' => "Bearer {$token}"]);
+
+        self::assertSame('user 7', (string) $optional->process($request, new Reached())->getBody());
+        $clock->advance('+1 hour');
+        $response = $optional->process($request, new Reached());
+        self::assertSame([401, 'Bearer'], [$response->getStatusCode(), $response->getHeaderLine('WWW-Authenticate')]);
+    }
+
+    public function testOptionalAuthenticationRefusesATokenWhoseUserNoLongerExists(): void
+    {
+        $tokens = new DatabaseTokenStore($this->database('sqlite'));
+        $token = $tokens->issue(99);
+        $optional = new TokenAuth($tokens, new Members(), required: false);
+        $response = $optional->process(new Request('GET', '/', ['Authorization' => "Bearer {$token}"]), new Reached());
+
+        self::assertSame(401, $response->getStatusCode());
+    }
+
+    public function testOptionalAuthenticationUsesTheConfiguredHeaderAndScheme(): void
+    {
+        $tokens = new DatabaseTokenStore($this->database('sqlite'));
+        $members = new Members();
+        $members->known[7] = new Member(7, 'Ada');
+        $token = $tokens->issue(7);
+        $key = new TokenAuth($tokens, $members, 'X-Service-Key', '', required: false);
+
+        self::assertSame('nobody', (string) $key->process(new Request('GET', '/', ['X-Service-Key' => ' ']), new Reached())->getBody());
+        self::assertSame('user 7', (string) $key->process(new Request('GET', '/', ['X-Service-Key' => " {$token} "]), new Reached())->getBody());
+        $refused = $key->process(new Request('GET', '/', ['X-Service-Key' => 'wrong']), new Reached());
+        self::assertSame([401, 'X-Service-Key'], [$refused->getStatusCode(), $refused->getHeaderLine('WWW-Authenticate')]);
+
+        $scheme = new TokenAuth($tokens, $members, scheme: 'Token', required: false);
+        self::assertSame('nobody', (string) $scheme->process(new Request('GET', '/', ['Authorization' => "Bearer {$token}"]), new Reached())->getBody());
+        self::assertSame('user 7', (string) $scheme->process(new Request('GET', '/', ['Authorization' => "token   {$token} "]), new Reached())->getBody());
+        $refused = $scheme->process(new Request('GET', '/', ['Authorization' => 'Token wrong']), new Reached());
+        self::assertSame([401, 'Token'], [$refused->getStatusCode(), $refused->getHeaderLine('WWW-Authenticate')]);
     }
 
     public function testRoutesAreProtectedAndHandlersReceiveTheUserByType(): void

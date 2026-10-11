@@ -38,11 +38,13 @@ final class DatabaseManager implements Migrators
      * @param array<string, array<string, mixed>> $connections The settings of each database, by its name.
      * @param string $default The name of the one used when none is named.
      * @param ClockInterface|null $clock Passed to the migrators; the real time when left out.
+     * @param int $migrationLockTimeout Whole seconds each migrator waits; zero does not wait.
      */
     public function __construct(
         private readonly array $connections,
         private readonly string $default,
         private readonly ?ClockInterface $clock = null,
+        private readonly int $migrationLockTimeout = 60,
     ) {
         if (!isset($connections[$default])) {
             throw new DatabaseException("The default database is \"{$default}\", and no database of that name is configured.");
@@ -67,7 +69,7 @@ final class DatabaseManager implements Migrators
         if (!isset($this->migrators[$name])) {
             $database = $this->connection($name);
             $directory = $this->connections[$name]['migrations'] ?? null;
-            $this->migrators[$name] = new Migrator($database, is_string($directory) && $directory !== '' ? $directory : [], clock: $this->clock);
+            $this->migrators[$name] = new Migrator($database, is_string($directory) && $directory !== '' ? $directory : [], clock: $this->clock, lockTimeout: $this->migrationLockTimeout);
         }
         return $this->migrators[$name];
     }

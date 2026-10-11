@@ -134,8 +134,123 @@ final class PlainController
     }
 }
 
+/**
+ * Deliberately untyped action parameters expose the registration error
+ * for both a class action and a named method.
+ */
+final class UntypedRouteAction
+{
+    /**
+     * The missing type must be caught before this action can run.
+     */
+    public function handle($id): string
+    {
+        return (string) $id;
+    }
+
+    /**
+     * A default does not replace the parameter's required type.
+     */
+    public function show($id = 'fallback'): string
+    {
+        return (string) $id;
+    }
+}
+
+/**
+ * A malformed input whose constructor must never run during registration.
+ */
+final readonly class UntypedInput
+{
+    /**
+     * The field has no type, so inspection must refuse it first.
+     */
+    public function __construct($email = null)
+    {
+        throw new \LogicException('The input was constructed before its signature was checked.');
+    }
+}
+
 final class ActionHandlerTest extends TestCase
 {
+    /**
+     * Class actions, named methods and closures all declare their inputs
+     * when the route is registered, including parameters with defaults.
+     */
+    public function testAnActionParameterWithoutATypeIsRefusedWhenTheRouteIsAdded(): void
+    {
+        $router = new Router();
+        $actions = [
+            [UntypedRouteAction::class, UntypedRouteAction::class, 'id'],
+            [[UntypedRouteAction::class, 'show'], UntypedRouteAction::class . '::show', 'id'],
+            [static fn ($id): string => (string) $id, 'Closure', 'id'],
+            [static fn ($id = null): string => (string) $id, 'Closure', 'id'],
+            [static fn ($email): string => (string) $email, 'Closure', 'email'],
+            [static fn (#[Fields(['email' => 'string'])] $input): array => [], 'Closure', 'input'],
+        ];
+        foreach ($actions as [$action, $name, $parameter]) {
+            try {
+                $router->get('/untyped/{id}', $action);
+                self::fail('An action parameter without a type was accepted.');
+            } catch (\LogicException $error) {
+                self::assertStringContainsString("The action {$name} of GET /untyped/{id}", $error->getMessage());
+                self::assertStringContainsString("takes \${$parameter} with no type", $error->getMessage());
+                self::assertStringContainsString("string \${$parameter}", $error->getMessage());
+            }
+            self::assertSame([], $router->routes(), 'The refusal happens before a route or request exists.');
+        }
+    }
+
+    /**
+     * Input classes are inspected at registration, including ones nested
+     * in described fields or lists, rather than on the first request.
+     */
+    public function testAnInputFieldWithoutATypeIsRefusedWhenTheRouteIsAdded(): void
+    {
+        $router = new Router();
+        $actions = [
+            static fn (UntypedInput $input): array => [],
+            static fn (#[ListOf(UntypedInput::class)] array $inputs): array => [],
+            static fn (#[Fields(['customer' => UntypedInput::class])] Data $input): array => [],
+            static fn (#[Fields(['customers' => [[UntypedInput::class]]])] Data $input): array => [],
+        ];
+        foreach ($actions as $action) {
+            try {
+                $router->post('/untyped-input', $action);
+                self::fail('An input field without a type was accepted.');
+            } catch (\LogicException $error) {
+                self::assertStringContainsString('POST /untyped-input', $error->getMessage());
+                self::assertStringContainsString(UntypedInput::class . '::$email has no type', $error->getMessage());
+                self::assertStringContainsString('string $email', $error->getMessage());
+            }
+            self::assertSame([], $router->routes(), 'No request is needed to find the malformed input.');
+        }
+    }
+
+    /**
+     * Descriptions need a type for every field just as constructors do,
+     * including fields of a nested object or list.
+     */
+    public function testADescribedFieldWithoutATypeIsRefusedWhenTheRouteIsAdded(): void
+    {
+        $router = new Router();
+        $actions = [
+            [static fn (#[Fields(['email' => []])] Data $input): array => [], 'email'],
+            [static fn (#[Fields(['customer' => ['email' => []]])] Data $input): array => [], 'email'],
+            [static fn (#[Fields(['customers' => [['email' => []]]])] Data $input): array => [], 'email'],
+        ];
+        foreach ($actions as [$action, $field]) {
+            try {
+                $router->post('/untyped-description', $action);
+                self::fail('A described field without a type was accepted.');
+            } catch (\LogicException $error) {
+                self::assertStringContainsString('POST /untyped-description', $error->getMessage());
+                self::assertStringContainsString("describes \"{$field}\", which must be a type such as 'int'", $error->getMessage());
+            }
+            self::assertSame([], $router->routes());
+        }
+    }
+
     public function testTheFieldsOfARequestCanBeDescribedWhereTheyAreUsedInPlaceOfAClass(): void
     {
         $router = new Router();
@@ -268,7 +383,7 @@ final class ActionHandlerTest extends TestCase
         $router->get('/users/{id}/posts/{slug}', static fn (string $slug, int $id): array => [$id, $slug]);
         $router->put('/users/{id}', static fn (int $id, CreateUser $input, ServerRequestInterface $request): array => [$id, $input->name, $request->getMethod()]);
         $router->get('/ratio/{value}/{exact}', static fn (float $value, bool $exact): array => [$value, $exact]);
-        $router->get('/raw/{name}', static fn (ServerRequestInterface $request, $name): array => [$name, $request->getAttribute('name')]);
+        $router->get('/raw/{name}', static fn (ServerRequestInterface $request, string $name): array => [$name, $request->getAttribute('name')]);
         $router->delete('/users/{id}', static function (int $id, RequestContract $request): void {
         });
         $router->get('/text', static fn (): string => 'plain');

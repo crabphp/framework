@@ -28,14 +28,21 @@ final class WorkerGroup
     private array $failureCallbacks = [];
     private bool $frozen = false;
 
+    /**
+     * @param float|null $shutdownTimeout Seconds this group's workers have to drain; null uses the runtime's deadline.
+     */
     public function __construct(
         public readonly string $name,
         public readonly int $workers = 1,
         public readonly int $maxConnections = 512,
         public readonly int $maxTasks = 1024,
+        public readonly ?float $shutdownTimeout = null,
     ) {
         if ($name === '' || $workers < 1 || $maxConnections < 1 || $maxTasks < 1) {
             throw new \InvalidArgumentException('Group name, worker count, connection limit and task limit must be valid.');
+        }
+        if ($shutdownTimeout !== null && (!is_finite($shutdownTimeout) || $shutdownTimeout <= 0)) {
+            throw new \InvalidArgumentException('Set the worker shutdown timeout to a finite number of seconds greater than zero.');
         }
     }
 

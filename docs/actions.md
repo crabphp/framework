@@ -23,6 +23,8 @@ This is where Crab differs most from Laravel. There is no base controller, no `$
 ```php
 Route::post('/users', static function (#[Email] string $email, #[Length(min: 2, max: 50)] string $name): Response {
     // $email and $name are already checked.
+
+    return Response::created(['email' => $email, 'name' => $name]);
 });
 ```
 
@@ -77,6 +79,11 @@ Route::post('/orders', [OrderController::class, 'store']);
 ```
 
 ```php
+use App\Http\CreateOrder;
+use Crab\Contracts\Database\Database;
+use Crab\Http\HttpException;
+use Crab\Http\Response;
+
 final readonly class OrderController
 {
     public function __construct(private Database $db)
@@ -97,7 +104,7 @@ final readonly class OrderController
 }
 ```
 
-An action class extends nothing and is made once per worker. Like every service it must not keep anything about one request in a property; see [Request lifecycle](lifecycle.md#services-hold-no-request-state).
+An action class extends nothing and is kept per worker unless it has a transient `bind()` binding. Like every service it must not keep anything about one request in a property; see [Request lifecycle](lifecycle.md#services-hold-no-request-state).
 
 ## What an action takes
 
@@ -118,6 +125,8 @@ Take a few flat fields as parameters, one each:
 ```php
 Route::get('/users', static function (int $page = 1, ?string $search = null): array {
     // GET /users?page=2&search=ada
+
+    return ['page' => $page, 'search' => $search];
 });
 ```
 
@@ -129,6 +138,8 @@ Use a class when there are many fields, when they nest, or when several routes t
 
 ```php
 // app/Http/CreateOrder.php
+namespace App\Http;
+
 use Crab\Validation\Length;
 use Crab\Validation\ListOf;
 use Crab\Validation\Range;
@@ -174,6 +185,8 @@ public function handle(
         $line->productId;                    // 5
     }
     $order->note;                            // null when it was left out
+
+    return Response::created($order->toArray());
 }
 ```
 
@@ -215,7 +228,7 @@ See [Requests](requests.md).
 
 ### The logged-in user
 
-A parameter whose class implements `Crab\Contracts\Auth\Identity` receives the user that authentication middleware put on the request. A request without one is answered `401`.
+A parameter whose class implements `Crab\Contracts\Auth\Identity` receives the user that authentication middleware put on the request. A request without one is answered `401` unless the parameter is nullable.
 
 ```php
 Route::get('/me', static fn (User $user): User => $user, middleware: [TokenAuth::class]);

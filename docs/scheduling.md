@@ -48,6 +48,7 @@ Tasks are declared in a provider's `register()`, on the schedule from the contai
 
 ```php
 // app/Providers/AppProvider.php
+use Crab\Contracts\Container\Container;
 use Crab\Contracts\Schedule\Schedule;
 
 public function register(Container $container): void
@@ -91,6 +92,8 @@ This is the best choice for work that takes a while or may fail: the scheduler o
 `call()` runs a class with `handle()`, made by the container with its services, or a closure:
 
 ```php
+use Crab\Contracts\Cache\Cache;
+
 $schedule->call(RefreshRates::class)->everyMinutes(5);
 
 $schedule->call(static function () use ($container): void {
@@ -98,7 +101,7 @@ $schedule->call(static function () use ($container): void {
 })->hourly();
 ```
 
-The task runs inside the scheduler's own process. Keep such tasks short; give long ones to the queue with `job()`.
+The task runs inside the scheduler's own process. Register `CacheProvider` for the cache example; keep such tasks short and give long ones to the queue with `job()`.
 
 ## When a task runs
 
@@ -187,7 +190,7 @@ A minute during which the scheduler was not running is not made up for. A task d
 
 ## Overlapping runs
 
-Each due task runs on its own, so a slow task delays no other. A task that is still running when it is next due is not started a second time: that run is skipped and a warning is logged.
+Each due task runs in its own fiber: waits through the engine let other tasks run, while blocking calls delay them. A task still running when it is next due is skipped; cron overlaps log a warning and interval overlaps are skipped quietly.
 
 So a task set for every minute that takes three minutes runs every third minute. If you see the warning often, the task belongs on the queue.
 
@@ -203,7 +206,7 @@ The servers agree through the [cache](cache.md), which must then be one they sha
 
 With a single server, or a single machine running the scheduler, you do not need it.
 
-A task set with `everySeconds()` can be marked too. One server keeps the task and runs it every time; if that server stops, another takes over after three intervals, and never sooner than two seconds.
+A task set with `everySeconds()` can be marked too. One server keeps it with a lease lasting `max(2, ceil(3 * interval))` seconds from its last renewal; after expiry, another server takes over on its next interval check.
 
 > [!NOTE]
 > For such a task every server asks the cache at every run: twice a second each for `everySeconds(0.5)`. The `database` store answers that with a query each time. If you run tasks this often on several servers, give the cache a faster shared store, such as Redis, with [a store of your own](cache.md#a-store-of-your-own).

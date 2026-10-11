@@ -10,13 +10,18 @@ use Crab\Contracts\Auth\Identity;
 use Crab\Contracts\Auth\IdentityResolver;
 use Crab\Contracts\Auth\TokenStore;
 use Crab\Contracts\Clock\Clock;
+use Crab\Http\ClosureHandler;
 use Crab\Http\HttpException;
+use Crab\Http\Response;
 use Crab\Testing\Api;
+use Crab\Testing\ApiResponse;
 use Crab\Testing\FrozenClock;
 use Crab\Validation\Email;
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\AssertionFailedError;
 use PHPUnit\Framework\TestCase;
 use Psr\Clock\ClockInterface;
+use Psr\Http\Message\ServerRequestInterface;
 
 final readonly class Member implements Identity
 {
@@ -27,6 +32,170 @@ final readonly class Member implements Identity
 
 final class ApiTest extends TestCase
 {
+    public function testATokenIsSentWithEveryRequestWithoutChangingTheOriginalClient(): void
+    {
+        $api = self::echoApi();
+        $authenticated = $api->withToken('abc');
+
+        self::assertNotSame($api, $authenticated);
+        self::assertSame('Bearer abc', $authenticated->get('/echo')->json('authorization'));
+        self::assertSame('Bearer abc', $authenticated->post('/echo')->json('authorization'));
+        self::assertSame('', $api->get('/echo')->json('authorization'));
+    }
+
+    public function testATokenUsesTheSchemeItIsGivenOrNoScheme(): void
+    {
+        $api = self::echoApi();
+
+        self::assertSame('Token abc', $api->withToken('abc', 'Token')->get('/echo')->json('authorization'));
+        self::assertSame('abc', $api->withToken('abc', '')->get('/echo')->json('authorization'));
+    }
+
+    public function testTokensHeadersAndUsersAreKeptWhenClientOptionsAreCombined(): void
+    {
+        $api = self::echoApi();
+        $token = $api->withToken('abc');
+        self::assertSame(['authorization' => 'Bearer abc', 'tenant' => 'acme', 'user' => null], $token->withHeaders(['X-Tenant' => 'acme'])->get('/echo')->json());
+        self::assertSame('', $token->get('/echo')->json('tenant'));
+        self::assertSame('acme', $api->withHeaders(['X-Tenant' => 'acme'])->withToken('abc')->get('/echo')->json('tenant'));
+
+        $acting = $api->actingAs(new Member(7, 'Ada'));
+        self::assertSame(['authorization' => 'Bearer abc', 'tenant' => '', 'user' => 7], $acting->withToken('abc')->get('/echo')->json());
+        self::assertSame('', $acting->get('/echo')->json('authorization'));
+        self::assertSame(7, $token->actingAs(new Member(7, 'Ada'))->get('/echo')->json('user'));
+    }
+
+    public function testAJsonAssertionReadsADotPathAndReturnsTheResponseForChaining(): void
+    {
+        $response = new ApiResponse(Response::json(['data' => [['name' => 'mug']]]), 'GET /items');
+
+        self::assertSame($response, $response->assertJson('data.0.name', 'mug'));
+        self::assertSame($response, $response->assertJson('data.0', ['name' => 'mug'])->assertStatus(200));
+    }
+
+    public function testAWrongJsonValueFailsWithTheRequestPathExpectedValueAndBody(): void
+    {
+        $body = ['data' => [['name' => 'mug']]];
+        $response = new ApiResponse(Response::json($body), 'GET /items?page=2');
+
+        try {
+            $response->assertJson('data.0.name', 'kettle');
+            self::fail('A different JSON value passed.');
+        } catch (AssertionFailedError $error) {
+            foreach (['GET /items?page=2', 'answered 200', 'data.0.name', 'kettle', '{"data":[{"name":"mug"}]}'] as $detail) {
+                self::assertStringContainsString($detail, $error->getMessage());
+            }
+        }
+    }
+
+    public function testAMissingJsonPathIsAnAssertionFailureEvenWhenNullWasExpected(): void
+    {
+        $response = new ApiResponse(Response::json(['data' => [['name' => 'mug']]]), 'POST /items');
+
+        try {
+            $response->assertJson('data.1.name', null);
+            self::fail('An absent JSON value passed.');
+        } catch (AssertionFailedError $error) {
+            foreach (['POST /items', 'answered 200', 'data.1.name', 'NULL', 'answered without "data.1.name"', '{"data":[{"name":"mug"}]}'] as $detail) {
+                self::assertStringContainsString($detail, $error->getMessage());
+            }
+        }
+    }
+
+    /**
+     * @return list<array{string}>
+     */
+    public static function jsonCountsThatAreNotIntegers(): array
+    {
+        return [['{"count":"1"}'], ['{"count":1.0}']];
+    }
+
+    #[DataProvider('jsonCountsThatAreNotIntegers')]
+    public function testJsonAssertionsRequireAnIdenticalValueAndType(string $body): void
+    {
+        $response = new ApiResponse(new Response(body: $body), 'GET /count');
+
+        try {
+            $response->assertJson('count', 1);
+            self::fail('A value of another type passed for an integer.');
+        } catch (AssertionFailedError $error) {
+            self::assertStringContainsString('JSON path "count" must be identical to 1', $error->getMessage());
+            self::assertStringContainsString($body, $error->getMessage());
+        }
+    }
+
+    public function testPresentNullFalseZeroAndEmptyArraysCanBeAsserted(): void
+    {
+        $values = ['nothing' => null, 'enabled' => false, 'count' => 0, 'data' => []];
+        $response = new ApiResponse(Response::json($values), 'GET /items');
+
+        foreach ($values as $path => $expected) {
+            self::assertSame($response, $response->assertJson($path, $expected));
+        }
+        self::assertSame($response, $response->assertJson('', $values));
+    }
+
+    public function testAJsonAssertionOnANonJsonBodyIsReportedAsATestFailure(): void
+    {
+        $response = new ApiResponse(Response::text('not JSON'), 'GET /broken');
+
+        try {
+            $response->assertJson('count', 1);
+            self::fail('A non-JSON body passed.');
+        } catch (AssertionFailedError $error) {
+            self::assertStringContainsString('GET /broken answered 200', $error->getMessage());
+            self::assertStringContainsString('JSON path "count" must be identical to 1', $error->getMessage());
+            self::assertStringContainsString('a body that is not JSON: not JSON', $error->getMessage());
+        }
+    }
+
+    public function testAHeaderAssertionReturnsTheResponseAndIgnoresTheNamesCase(): void
+    {
+        $response = new ApiResponse(Response::created(['id' => 1], '/users/1'), 'POST /users');
+
+        self::assertSame($response, $response->assertHeader('Location', '/users/1')->assertStatus(201));
+        self::assertSame($response, $response->assertHeader('location', '/users/1'));
+        $empty = new ApiResponse(new Response(headers: ['X-Empty' => '']));
+        self::assertSame($empty, $empty->assertHeader('X-Empty', ''));
+    }
+
+    public function testAWrongHeaderFailsWithItsNameActualValueAndResponseContext(): void
+    {
+        $response = new ApiResponse(Response::created(['id' => 1], '/users/1'), 'POST /users');
+
+        try {
+            $response->assertHeader('Location', '/users/2');
+            self::fail('A different header value passed.');
+        } catch (AssertionFailedError $error) {
+            foreach (['POST /users', 'answered 201', 'Location', '/users/2', '/users/1', '{"id":1}'] as $detail) {
+                self::assertStringContainsString($detail, $error->getMessage());
+            }
+        }
+    }
+
+    /**
+     * @return list<array{string}>
+     */
+    public static function valuesExpectedFromMissingHeaders(): array
+    {
+        return [['/users/1'], ['']];
+    }
+
+    #[DataProvider('valuesExpectedFromMissingHeaders')]
+    public function testAMissingHeaderFailsEvenWhenAnEmptyValueWasExpected(string $expected): void
+    {
+        $response = new ApiResponse(Response::json(['id' => 1]), 'POST /users');
+
+        try {
+            $response->assertHeader('Location', $expected);
+            self::fail('An absent header passed.');
+        } catch (AssertionFailedError $error) {
+            foreach (['POST /users', 'answered 200', 'Location', "but was ''", 'The header is not there.', '{"id":1}'] as $detail) {
+                self::assertStringContainsString($detail, $error->getMessage());
+            }
+        }
+    }
+
     public function testRequestsAreSentAsAClientWouldAndAnswersAreEasyToCheck(): void
     {
         $app = new App();
@@ -145,5 +314,22 @@ final class ApiTest extends TestCase
 
         $this->expectException(\InvalidArgumentException::class);
         new \Crab\Http\TrustedProxies(['ten.zero']);
+    }
+
+    /**
+     * Shows client options through a handler without needing application
+     * wiring or a real authentication store.
+     */
+    private static function echoApi(): Api
+    {
+        $handler = new ClosureHandler(static function (ServerRequestInterface $request): Response {
+            $user = $request->getAttribute(Identity::ATTRIBUTE);
+            return Response::json([
+                'authorization' => $request->getHeaderLine('Authorization'),
+                'tenant' => $request->getHeaderLine('X-Tenant'),
+                'user' => $user instanceof Identity ? $user->id : null,
+            ]);
+        });
+        return new Api($handler);
     }
 }

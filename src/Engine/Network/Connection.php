@@ -29,6 +29,7 @@ final class Connection
     private ?Closure $dataHandler = null;
     private ?Closure $eofHandler = null;
     private ?Closure $drainHandler = null;
+    private ?Closure $pendingWork = null;
     private ?Closure $errorHandler = null;
     /**
      * @var list<Closure>
@@ -206,11 +207,22 @@ final class Connection
 
     /**
      * @param callable(self): void $handler Protocol-specific graceful shutdown.
+     * @param (callable(self): bool)|null $pendingWork Whether the protocol is reading, handling or answering a request; null counts any open connection.
      */
-    public function onDrainRequest(callable $handler): self
+    public function onDrainRequest(callable $handler, ?callable $pendingWork = null): self
     {
         $this->drainHandler = Closure::fromCallable($handler);
+        $this->pendingWork = $pendingWork === null ? null : Closure::fromCallable($pendingWork);
         return $this;
+    }
+
+    /**
+     * Asks the protocol owner what would be cut by closing this connection.
+     * An unclassified open stream is conservatively treated as work.
+     */
+    public function hasPendingWork(): bool
+    {
+        return !$this->closed && ($this->pendingWork === null || ($this->pendingWork)($this));
     }
 
     /**
@@ -222,13 +234,24 @@ final class Connection
         return $this;
     }
 
-    public function drain(): void
+    /**
+     * Gives the protocol time to finish. A worker supplies its own allowance
+     * so the transport's ordinary close timeout cannot shorten that drain.
+     */
+    public function drain(?float $timeout = null): void
     {
+        if ($timeout !== null && (!is_finite($timeout) || $timeout <= 0)) {
+            throw new InvalidArgumentException('Set the connection drain timeout to a finite number of seconds greater than zero.');
+        }
         if ($this->closed || $this->draining) {
             return;
         }
         $this->draining = true;
-        $this->armCloseDeadline();
+        if ($timeout !== null && $this->closeTimer !== null) {
+            $this->driver->cancel($this->closeTimer);
+            $this->closeTimer = null;
+        }
+        $this->armCloseDeadline($timeout);
         if ($this->drainHandler !== null) {
             $this->invoke($this->drainHandler);
         } else {
@@ -343,7 +366,7 @@ final class Connection
         $this->buffered = 0;
         $handlers = $this->closeHandlers;
         $this->closeHandlers = $this->drainHandlers = [];
-        $this->dataHandler = $this->eofHandler = $this->drainHandler = null;
+        $this->dataHandler = $this->eofHandler = $this->drainHandler = $this->pendingWork = null;
         foreach ($handlers as $handler) {
             $this->invoke($handler);
         }
@@ -542,10 +565,10 @@ final class Connection
         }
     }
 
-    private function armCloseDeadline(): void
+    private function armCloseDeadline(?float $timeout = null): void
     {
         if ($this->closeTimer === null) {
-            $this->closeTimer = $this->driver->delay($this->closeTimeout, function (): void {
+            $this->closeTimer = $this->driver->delay($timeout ?? $this->closeTimeout, function (): void {
                 $this->closeTimer = null;
                 $this->close();
             });

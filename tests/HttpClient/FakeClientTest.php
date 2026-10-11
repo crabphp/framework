@@ -190,10 +190,117 @@ final class FakeClientTest extends TestCase
         \Crab\Engine\EventLoop::current()->run();
     }
 
+    public function testAPauseThatCannotFitThrowsTheLastFailureUnchanged(): void
+    {
+        $loop = \Crab\Engine\EventLoop::current();
+        $pauseElapsed = false;
+        $timer = $loop->delay(0.075, static function () use (&$pauseElapsed): void {
+            $pauseElapsed = true;
+        });
+        $failure = null;
+        $cause = new \RuntimeException('the original cause');
+        $http = new FakeClient(['*' => static function (RequestInterface $request) use (&$failure, $cause): NetworkException {
+            return $failure = new NetworkException('The connection was lost.', $request, $cause);
+        }]);
+        try {
+            (new Client(timeout: 0.05, retries: 1, retryDelay: 0.2, transport: $http))->get('https://api.example.com/');
+            self::fail('A failed try was turned into an answer.');
+        } catch (NetworkException $error) {
+            self::assertSame($failure, $error);
+            self::assertSame($cause, $error->getPrevious());
+        } finally {
+            $loop->cancel($timer);
+        }
+        self::assertFalse($pauseElapsed, 'The last failure is thrown before a timer inside the forbidden pause fires.');
+        self::assertCount(1, $http->requests);
+    }
+
+    public function testRetryAfterMustFitTheTimeLeftRatherThanTheOriginalTimeout(): void
+    {
+        $loop = \Crab\Engine\EventLoop::current();
+        $pauseElapsed = false;
+        $timer = null;
+        $http = new FakeClient(['*' => static function () use ($loop, &$pauseElapsed, &$timer): mixed {
+            \Crab\Engine\Async\Async::sleep($loop, 0.6);
+            $timer = $loop->delay(0.2, static function () use (&$pauseElapsed): void {
+                $pauseElapsed = true;
+            });
+            return FakeClient::response(429, 'slow down', ['Retry-After' => '1']);
+        }]);
+        try {
+            $response = $http->timeout(1.5)->retry(1, 0.0)->get('https://api.example.com/');
+            self::assertFalse($pauseElapsed, 'The response returns before a timer inside Retry-After fires.');
+        } finally {
+            if ($timer !== null) {
+                $loop->cancel($timer);
+            }
+        }
+
+        self::assertSame(429, $response->getStatusCode());
+        self::assertSame('slow down', (string) $response->getBody());
+        self::assertSame('1', $response->getHeaderLine('Retry-After'));
+        self::assertCount(1, $http->requests, 'One second fits the original allowance but not what remains after the first try.');
+    }
+
+    public function testAWorkerThatResumesAfterTheDeadlineDoesNotSendALateRetry(): void
+    {
+        $held = false;
+        $http = new FakeClient(['*' => static function () use (&$held): int {
+            // Queued work runs after the retry pause suspends, before its caller can resume.
+            \Crab\Engine\EventLoop::current()->defer(static function () use (&$held): void {
+                usleep(200_000);
+                $held = true;
+            });
+            return 503;
+        }]);
+
+        $client = new Client(timeout: 0.1, retries: 1, retryDelay: 0.02, transport: $http);
+        self::assertSame(503, $client->get('https://api.example.com/')->getStatusCode());
+        self::assertTrue($held, 'The pause actually suspended before the worker was held past the deadline.');
+        self::assertCount(1, $http->requests);
+    }
+
+    public function testARedirectWhoseDeadlineHasPassedIsNeverSent(): void
+    {
+        $http = new FakeClient(['*' => static function (): mixed {
+            \Crab\Engine\Async\Async::sleep(\Crab\Engine\EventLoop::current(), 0.2);
+            return FakeClient::response(302, '', ['Location' => '/next']);
+        }]);
+        try {
+            $http->timeout(0.05)->get('https://api.example.com/start');
+            self::fail('A redirect was sent after the call expired.');
+        } catch (NetworkException $error) {
+            self::assertStringContainsString('it took more than 0.05 seconds', $error->getMessage());
+            self::assertSame('/next', $error->getRequest()->getUri()->getPath());
+            self::assertTrue($error->unsent);
+        }
+        self::assertCount(1, $http->requests);
+    }
+
     public function testAFakeFailureOfTheNetworkIsThrownAsOne(): void
     {
         $http = new FakeClient(['*' => static fn (RequestInterface $request) => new NetworkException('GET https://x.example/ failed: it took more than 5 seconds.', $request)]);
         $this->expectException(NetworkException::class);
         $http->get('https://x.example/');
+    }
+
+    /**
+     * A missing fake reply reports request and pattern paths, without
+     * query or fragment secrets from either of them.
+     */
+    public function testAnUnmatchedFakeRequestDoesNotExposeSecretsFromReplyPatterns(): void
+    {
+        $http = new FakeClient([
+            'GET https://api.example.com/known?token=query-secret#fragment-secret' => 200,
+            'https://api.example.com/other#other-secret?token=hidden-secret' => 200,
+        ]);
+        try {
+            $http->get('https://api.example.com/missing?token=request-secret#request-fragment-secret');
+            self::fail('A request without a fake reply was accepted.');
+        } catch (\LogicException $error) {
+            self::assertStringContainsString('Nothing fakes GET https://api.example.com/missing.', $error->getMessage());
+            self::assertStringContainsString('It has: GET https://api.example.com/known, https://api.example.com/other.', $error->getMessage());
+            self::assertStringNotContainsString('secret', $error->getMessage());
+        }
     }
 }

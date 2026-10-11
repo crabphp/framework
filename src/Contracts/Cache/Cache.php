@@ -7,9 +7,8 @@ namespace Crab\Contracts\Cache;
 use Psr\SimpleCache\CacheInterface;
 
 /**
- * PSR-16's cache, and the two things an application most often builds on
- * it: a value that is made when it is missing, and a value that is set
- * only when it is missing.
+ * PSR-16's cache, with values made when missing, atomic counts and locks
+ * that only their holder can release.
  *
  * A time to live is a number of seconds, a DateInterval, or null for the
  * cache's default. A key is text without any of {}()/\@: in it.
@@ -30,12 +29,20 @@ interface Cache extends CacheInterface
 
     /**
      * Sets the value only when the key holds none, as one step, so that
-     * of several callers at once exactly one is told true. This is what a
-     * lock is made of: add('report:running', true, 600).
+     * of several callers at once exactly one is told true.
      *
      * @return bool Whether this call set it.
      */
     public function add(string $key, mixed $value, null|int|\DateInterval $ttl = null): bool;
+
+    /**
+     * Takes a lock, or returns null when another caller holds it. The
+     * lock uses its own keys, apart from ordinary cached values.
+     * Give a positive time to live so a crashed process cannot hold it forever.
+     *
+     * @throws \InvalidArgumentException When the time to live is zero or less.
+     */
+    public function lock(string $key, int|\DateInterval $ttl): ?Lock;
 
     /**
      * Adds to the whole number at the key, as one step, so that of

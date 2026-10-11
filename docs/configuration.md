@@ -88,6 +88,11 @@ Configuration is fixed once the application is defined. Do not change it at run 
 
 ```php
 // app.php
+use App\Providers\AppProvider;
+use Crab\App;
+use Crab\Database\DatabaseProvider;
+use Crab\Http\Cors;
+
 return App::configure(__DIR__)
     ->withProviders([
         DatabaseProvider::class,
@@ -107,6 +112,8 @@ Every step is optional and they may come in any order. Nothing happens until `cr
 `App::configure(__DIR__)` begins the chain with two steps on your behalf, `withEnv('.env')` and `withConfig('config', required: false)`. Call either yourself to name another file or folder:
 
 ```php
+use Crab\App;
+
 return App::configure(__DIR__)
     ->withEnv('.env.testing')
     ->withConfig('settings')
@@ -152,6 +159,7 @@ It says that this worker answers, and asks nothing of the database. That is deli
 | `server.watch` | `app`, `app.php`, `config`, `routes`, `.env` | What `serve` watches; `false` to watch nothing |
 | `server.max_body` | `1048576` | The largest request body taken, in bytes |
 | `server.body_timeout` | `30` | Seconds a client has to send a body |
+| `server.drain` | `5.0` | Seconds an HTTP worker has to finish in-flight requests on stop, reload or restart; unfinished requests at the limit are cut and counted in one warning per worker. Idle keep-alive connections do not count. Must be a finite number greater than zero |
 | `server.pid` | `storage/crab.pid` | The process id of a server in the background |
 | `server.log` | `storage/logs/server.log` | What a server in the background prints |
 

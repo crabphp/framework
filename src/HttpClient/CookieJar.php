@@ -123,7 +123,8 @@ final class CookieJar implements CookieJarContract
         $parts = parse_url($url);
         $host = strtolower((string) ($parts['host'] ?? ''));
         if ($host === '') {
-            throw new \LogicException("A cookie is set for a whole URL, \"https://shop.example\", not \"{$url}\".");
+            $shown = substr($url, 0, strcspn($url, '?#'));
+            throw new \LogicException("A cookie is set for a whole URL, \"https://shop.example\", not \"{$shown}\".");
         }
         $this->cookies["{$host}|/|{$name}"] = [
             'name' => $name, 'value' => $value, 'domain' => $host, 'hostOnly' => true, 'path' => '/', 'secure' => false, 'expires' => null,

@@ -37,10 +37,10 @@ use Crab\HttpClient\HttpClientProvider;
 
 | Setting | Default | |
 | --- | --- | --- |
-| `http_client.timeout` | `30.0` | Seconds a whole exchange may take |
+| `http_client.timeout` | `30.0` | Seconds a whole call may take, retries included |
 | `http_client.connect_timeout` | `5.0` | Seconds connecting may take |
 | `http_client.redirects` | `5` | Redirects followed; `0` returns the redirect itself |
-| `http_client.connections` | `8` | Requests on their way to one server at once |
+| `http_client.connections` | `8` | HTTP/1.1 connections to one server; HTTP/2 stream concurrency follows the peer's settings |
 | `http_client.base_url` | none | Put before every relative URL of the default client |
 | `http_client.headers` | none | Added to every request of the default client |
 | `http_client.proxy` | none | `http://host:port`, with `user:password@` when it asks |
@@ -92,6 +92,8 @@ $http->request('PUT', $url, body: $csv, headers: ['Content-Type' => 'text/csv'])
 | `body:` | A body as it is, with `request()` |
 | `headers:` | Headers for this request |
 
+`json: null` sends no JSON body, and `form: []` without files sends no form body. To send the JSON literal null, use `request()` with `body: 'null', headers: ['Content-Type' => 'application/json']`.
+
 ### Reading the answer
 
 The answer is a PSR-7 response with three additions:
@@ -130,13 +132,15 @@ $user = $http->get($url)->throw()->json();
 
 No answer always throws. All three are a `Psr\Http\Client\ClientExceptionInterface`, and no message holds the query string or a header, so they are safe to log.
 
+`json()` throws `JsonException` for an empty or malformed JSON body; exceeding the redirect limit throws `Crab\HttpClient\ClientException`.
+
 ## Timeouts
 
 ```php
 $http->timeout(2.0)->get($url);
 ```
 
-`timeout()` returns a client that allows each exchange that many seconds, redirects and waiting for a free connection included. The client you called it on is unchanged, which matters because every request a worker serves shares it.
+`timeout()` returns a client that allows the whole call that many seconds: finding the address, connecting, waiting for a free connection, redirects, retries and their pauses all share one deadline. Each later try gets the time left. `http_client.connect_timeout` also limits each connection, within that remaining time. The client you called it on is unchanged, which matters because every request a worker serves shares it.
 
 Give every call to another service a timeout you chose. The default of 30 seconds is longer than most clients of your API will wait.
 
@@ -150,7 +154,8 @@ $http->request('GET', $url, cancellation: $request->cancellation());
 
 ```php
 $http->retry(3)->get($url);                 // up to three more times
-$http->retry(3, delay: 0.5)->get($url);     // waiting 0.5 s, then 1 s, then 2 s
+$http->retry(3, delay: 0.5)->get($url);     // random pauses: 0.375–0.5 s, 0.75–1 s, 1.5–2 s
+$http->timeout(2)->retry(3)->get($url);     // two seconds for the whole call
 ```
 
 A request is tried again only when that cannot do it twice:
@@ -160,7 +165,11 @@ A request is tried again only when that cannot do it twice:
 | `GET`, `HEAD`, `OPTIONS`, `PUT`, `DELETE` | It got no answer, or `429`, `502`, `503` or `504` |
 | `POST`, `PATCH` | None of it was sent, or it was answered `429` or `503` |
 
-A server's `Retry-After` is waited when it is longer than the delay. A `500` is never tried again: a server that failed may fail the same way.
+Retrying also requires an empty or seekable body. A request outside the first row is never retried after following a redirect, even if the next hop fails or asks for a retry.
+
+A server's `Retry-After` replaces a shorter delay and must fit before the whole-call deadline. A `500` is never tried again: a server that failed may fail the same way.
+
+If the next pause cannot fit before the deadline, the call ends at once with the last try's result: its response is returned, or its failure is thrown. No more requests are sent. A try or connection that itself runs out of time throws `NetworkException`.
 
 For work that must eventually succeed, such as delivering a webhook, do not retry in the request. Push a [job](queues.md), which retries over minutes.
 
@@ -177,7 +186,7 @@ $http->post($url, form: ['title' => 'Q3'], files: [
 ]);
 ```
 
-A file is read from disk as it is written to the body, never into memory whole.
+Files are copied in chunks into a temporary body stream, which spills to disk when large; small bodies may stay in memory.
 
 ## A client for one API
 
@@ -228,7 +237,7 @@ $session->get('https://shop.example/orders');            // sent with the cookie
 
 - HTTP/3, HTTP/2 without encryption, and server push.
 - Proxies reached over TLS, and SOCKS proxies.
-- Brotli. Answers compressed with gzip or deflate are decompressed for you.
+- Brotli. With PHP's `zlib` extension, answers compressed with gzip or deflate are decompressed for you; without it they remain encoded.
 
 HTTP/2 is spoken with every `https` server that offers it: all requests to one server then share one connection and run at once. With the others it is HTTP/1.1 on connections that are kept and reused, up to `http_client.connections` to one server.
 
@@ -239,6 +248,7 @@ HTTP/2 is spoken with every `https` server that offers it: all requests to one s
 ```php
 use Crab\Contracts\HttpClient\Client;
 use Crab\HttpClient\FakeClient;
+use Psr\Http\Message\RequestInterface;
 
 $http = new FakeClient([
     'GET https://api.example.com/users/7' => ['id' => 7, 'name' => 'Ada'],                       // JSON, 200
@@ -254,6 +264,6 @@ self::assertCount(1, $http->sent('POST https://api.example.com/charges'));
 self::assertSame('{"amount":500}', (string) $http->requests[0]->getBody());
 ```
 
-- A reply is found by method and URL, the first that matches. `*` stands for anything, and the method may be left out.
+- A reply is found by method and URL, the first that matches. `*` stands for anything, and the method may be left out. Patterns without `?` ignore the query string; include it and the expected query or wildcards to distinguish query values.
 - A request nothing matches throws, naming it, so a test never reaches the network.
 - Everything else is the real client: base URL, headers, redirects, cookies and `throw()` behave as they do over the network.

@@ -118,6 +118,7 @@ final class Queue implements QueueContract
         if (!method_exists($job, 'handle')) {
             throw new \LogicException("{$job} was pushed as a job, and it has no handle() method. A job is a class whose constructor takes services and whose handle() takes the job's data.");
         }
+        Retry::for($job);
         $handle = new \ReflectionMethod($job, 'handle');
         if (!$handle->isPublic() || $handle->isStatic() || $handle->isAbstract()) {
             throw new \LogicException("{$job}::handle() must be a public method of an object, for a worker to call it.");

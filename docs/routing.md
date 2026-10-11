@@ -66,6 +66,8 @@ Route::get('/posts/{year:\d{4}}', ListPostsOfYear::class);    // only four digit
 Routes that share a path prefix, middleware, or both go in a group:
 
 ```php
+use Crab\Auth\TokenAuth;
+
 Route::group(prefix: '/admin', middleware: [TokenAuth::class], routes: function () {
     Route::get('/users', [AdminController::class, 'users']);          // GET /admin/users
     Route::get('/users/{id}', [AdminController::class, 'user']);      // GET /admin/users/{id}
@@ -93,11 +95,11 @@ Route::get('/me', [UserController::class, 'me'], middleware: [TokenAuth::class])
 Route::post('/reports', CreateReport::class, middleware: [TokenAuth::class, new RequireRole('analyst')]);
 ```
 
-Give a class name, or an object when the middleware takes options. See [Middleware](middleware.md#around-some-routes).
+Give a class name, or an object when the middleware takes options. For `TokenAuth`, register the providers in [Authentication](authentication.md#installation); see [Middleware](middleware.md#around-some-routes).
 
 ## When no route matches
 
-A path no route has is answered `404`. A path that exists for another method is answered `405` with an `Allow` header listing the methods it has. Both have the same body as any other error, JSON when the client accepts it; see [Error handling](errors.md).
+A path no route has is answered `404`. A path that exists for another method is answered `405` with an `Allow` header listing the methods it has. `HEAD` falls back to a matching `GET` route unless a `HEAD` route exists, and `GET` adds `HEAD` to `Allow`. Both errors have the same body as any other error, JSON when the client accepts it; see [Error handling](errors.md).
 
 Both pass back through the middleware around every request, which is how a `404` still carries its CORS headers.
 
@@ -107,7 +109,7 @@ Both pass back through the middleware around every request, which is how a `404`
 php cua route:list
 ```
 
-It prints every route with its action and the middleware around it, its groups' included, so you can see what guards a route without opening the routes file.
+It prints every route with its action and route and group middleware; global middleware from `app.php` and providers is not shown.
 
 ## Several route files
 

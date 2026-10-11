@@ -51,7 +51,7 @@ The third argument is the description shown in the command list.
 
 ### A class
 
-Use a class when the command needs services. The container makes it when it runs:
+Use a class when the command needs services. The container makes it when its description is first needed or when it runs, so listing commands or asking for help can construct it:
 
 ```php
 // app/Console/PruneUsers.php
@@ -103,7 +103,7 @@ Command::add('users:prune', PruneUsers::class);
 
 The first line of `description()` is shown in the command list, and all of it by `--help`. `handle()` returns the exit status: `0` for success, anything else for failure. An exception is printed and the status is `1`.
 
-A name is lower-case letters, digits, `:`, `_` and `-`. Use `area:action`, as in `users:prune`, with the area in the singular. The framework's own follow it: `route:list`, `schedule:list`, `queue:work`, `cache:clear`. Name a command that lists things `area:list`.
+A name starts with a lower-case letter or digit and contains only lower-case letters, digits, `:`, `_` and `-`; `list` and `help` are reserved. Use `area:action`, as in `users:prune`, with the area in the singular. The framework's own follow it: `route:list`, `schedule:list`, `queue:work`, `cache:clear`. Name a command that lists things `area:list`.
 
 ## Arguments and options
 
@@ -129,8 +129,8 @@ $input->flag('v');                   // true: each letter of -abc is a flag
 $input->options();                   // ["batch" => "500", "force" => true, "v" => true]
 ```
 
-- An option's value is text; cast it.
-- `flag()` is true when the option is present and not `false`, `0` or `no`, so `--force=false` switches it off.
+- An option's value is text; write `--batch=500` and cast it, since `--batch 500` makes `batch` a flag and `500` an argument.
+- `flag()` is true when the option is present and not `false`, `0`, `no` or an empty value, so `--force=false` and `--force=` switch it off.
 - Everything after `--` is an argument, even when it starts with a dash.
 - `--help` and `-h` are taken by the console; do not use `h` for an option of your own.
 
@@ -155,8 +155,16 @@ Print results with `line()` and problems with `error()`, so that a script can pi
 | --- | --- |
 | `serve` | Serves the application; see [Deployment](deployment.md) |
 | `stop`, `reload`, `restart`, `status` | Control a server running in the background |
-| `route:list` | Lists the routes, each with its action and middleware |
+| `route:list` | Lists routes, actions and route and group middleware; global middleware is not shown |
 | `make:middleware` | Writes a middleware class in `app/Http/` |
+
+`stop` and the stop phase of `restart` use the running server's remaining allowance, even after its configuration changes. `--timeout` overrides the graceful wait. To cut in-flight requests and end every server process immediately, use:
+
+```sh
+php cua stop --force
+```
+
+Success means the background server, including registered programs, has ended; a keeper that does not lead its own session is ended alone, with a non-zero result saying its workers may remain and must be ended by whatever started it. Foreground `serve` writes no background PID file: stop its terminal job or process manager. See [Deployment](deployment.md#finishing-requests-on-stop) for drain limits.
 
 Providers add theirs when you register them:
 
@@ -164,7 +172,7 @@ Providers add theirs when you register them:
 | --- | --- |
 | `DatabaseProvider` | `migrate`, `migrate:rollback`, `migrate:status`, `make:migration` |
 | `TokenAuthProvider` | `token:install` |
-| `CacheProvider` | `cache:clear`, `cache:install` |
+| `CacheProvider` | `cache:clear`, `cache:prune`, `cache:install` |
 | `QueueProvider` | `queue:work`, `queue:failed`, `queue:retry`, `queue:forget`, `queue:install` |
 | `ScheduleProvider` | `schedule:work`, `schedule:list` |
 

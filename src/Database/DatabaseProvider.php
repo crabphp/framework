@@ -41,6 +41,7 @@ final class DatabaseProvider implements WorkerProvider
             'pool' => null,
             'timeout' => 5.0,
             'migrations' => null,
+            'migration_lock_timeout' => 60,
             // Several databases: the same settings for each, by a name of your choosing, and which one is the default.
             'connections' => [],
             'default' => null,
@@ -61,7 +62,11 @@ final class DatabaseProvider implements WorkerProvider
             }
             $default = (string) ($config->get('database.default') ?? array_key_first($connections));
             $clock = $container->has(ClockInterface::class) ? $container->get(ClockInterface::class) : null;
-            return new DatabaseManager($connections, $default, $clock);
+            $lockTimeout = $config->get('database.migration_lock_timeout');
+            if (!is_numeric($lockTimeout) || !is_finite((float) $lockTimeout) || (float) $lockTimeout < 0) {
+                throw new \InvalidArgumentException('Set "database.migration_lock_timeout" to a nonnegative number of whole seconds; zero does not wait.');
+            }
+            return new DatabaseManager($connections, $default, $clock, (int) $lockTimeout);
         });
         $container->singleton(DatabaseContract::class, static fn (Container $container): Database => $container->get(DatabaseManager::class)->connection());
         $container->singleton(Connection::class, DatabaseContract::class);

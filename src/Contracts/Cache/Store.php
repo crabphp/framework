@@ -43,6 +43,19 @@ interface Store
     public function delete(string $key): void;
 
     /**
+     * Deletes a live entry only when its text is exactly the given value,
+     * as one step with respect to every other caller of the same store.
+     * Returns whether this call removed it.
+     */
+    public function deleteIf(string $key, string $value, int $now): bool;
+
+    /**
+     * Removes every expired entry of this store and returns how many
+     * were removed. Entries that never expire are kept.
+     */
+    public function prune(int $now): int;
+
+    /**
      * Removes every entry of this store.
      */
     public function clear(): void;

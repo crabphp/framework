@@ -20,9 +20,9 @@ Under PHP-FPM every request starts from nothing: the framework boots, answers an
 | 1. Define | Once, in the parent process | `.env` and `config/` are loaded, providers are registered, routes, middleware and commands are declared |
 | 2. Start | In each worker, as it starts | The middleware is made, and each provider that asked is started |
 | 3. Request | In each worker, many times, overlapping | Request, middleware, router, action, response |
-| 4. Stop | In each worker, as it stops | Requests in hand are finished, providers are stopped, connections are closed |
+| 4. Stop | In each worker, as it stops | Requests have up to `server.drain` seconds to finish, then remaining connections close and providers stop |
 
-Phase 1 runs when you type `php cua serve`. The server then forks its workers, and each worker runs phase 2. A mistake in a route, a middleware that cannot be made, or a missing setting stops the server here, with the reason on the screen, and not on the first request at three in the morning.
+Phase 1 runs when you type `php cua serve`. The server then forks its workers, and each worker runs phase 2. Invalid routes, middleware construction and provider start hooks can fail startup; an action service or a setting it needs can still fail on its first request.
 
 ## Where state lives
 
@@ -40,11 +40,14 @@ A worker serves requests that **overlap**. While one waits for another API to an
 
 ### Services hold no request state
 
-The container makes one object of each class per worker and hands the same one to every request. A property that belongs to one request will be read by another.
+The container keeps autowired classes and singleton bindings per worker; `bind()` makes a new value on each `get()`. A property in a kept service that belongs to one request will be read by another.
 
 ```php
+use App\User;
+use Crab\Contracts\Database\Database;
+
 // Wrong: the second request overwrites the first one's user.
-final class Invoices
+final class StatefulInvoices
 {
     private User $user;
 
@@ -70,14 +73,14 @@ final readonly class Invoices
 }
 ```
 
-Declaring services `final readonly class` makes the mistake impossible to write. For the same reason, do not keep request data in a `static` property.
+Declaring services `final readonly class` prevents property reassignment; keep request state out of mutable objects those properties hold too. For the same reason, do not keep request data in a `static` property.
 
 ### There is no global request or user
 
 There is no `request()` helper and no `Auth::user()`. An action receives what it needs as parameters, and passes it on as arguments:
 
 ```php
-Route::get('/invoices', static fn (User $user, int $page = 1): array => $invoices->listFor($user, $page));
+Route::get('/invoices', static fn (User $user): array => $invoices->listFor($user));
 ```
 
 The only global helpers are `config()` and `env()`, because configuration is the same for every request.
@@ -97,7 +100,7 @@ So call other APIs with the HTTP client, never with cURL. Database queries are s
 ## Following one request
 
 1. A worker accepts the connection and reads the request.
-2. It passes through the middleware around every request, outermost first. The first of these is the error handler, which turns anything thrown beneath it into a response.
+2. It passes through the middleware around every request, outermost first. The default error handler catches failures beneath it, except cancellation; prepended middleware runs outside it.
 3. The router finds the route. No route is a `404` or `405`, which travels back out through that middleware like any other response.
 4. The request passes through the route's groups' middleware and its own.
 5. The framework reads what the action's signature asks for, validates the request's data against it, and answers `422` itself when it does not fit.

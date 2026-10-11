@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Crab\Tests\HttpClient;
 
+use Crab\Engine\Async\Async;
 use Crab\Engine\Async\Task;
 use Crab\Engine\EventLoop;
 use Crab\Http\Request;
@@ -12,7 +13,11 @@ use Crab\HttpClient\Client;
 use Crab\HttpClient\CookieJar;
 use Crab\HttpClient\Hpack;
 use Crab\HttpClient\NetworkException;
+use Crab\HttpClient\Network;
+use Crab\HttpClient\TimedOut;
 use PHPUnit\Framework\TestCase;
+use Psr\Http\Message\RequestInterface;
+use Psr\Http\Message\StreamInterface;
 
 /**
  * The client against a real HTTP/2 server, Node's, and its header
@@ -117,6 +122,33 @@ final class Http2Test extends TestCase
         self::assertSame('/echo?redirected=1', $http->get($this->url . '/redirect')->json()['path']);
     }
 
+    public function testConcurrentFirstRequestsJoinTheHttp2SessionBeingOpened(): void
+    {
+        $http = $this->serve(connections: 1, timeout: 2.0);
+        $loop = EventLoop::current();
+        $tasks = [];
+        // No warm-up request: the first task must open the sole connection
+        // while the others wait for the session that will keep it borrowed.
+        for ($index = 0; $index < 3; ++$index) {
+            $tasks[] = Task::spawn($loop, function () use ($http, $index): array|NetworkException {
+                try {
+                    $response = $http->get($this->url . '/slow', query: ['first' => $index]);
+                    return ['protocol' => $response->getProtocolVersion(), ...$response->json()];
+                } catch (NetworkException $error) {
+                    return $error;
+                }
+            });
+        }
+        $answers = array_map(static fn (Task $task): array|NetworkException => $task->await(), $tasks);
+        foreach ($answers as $answer) {
+            self::assertIsArray($answer, $answer instanceof NetworkException ? $answer->getMessage() : '');
+        }
+        self::assertSame(['/slow?first=0', '/slow?first=1', '/slow?first=2'], array_column($answers, 'path'));
+        self::assertSame(['2', '2', '2'], array_column($answers, 'protocol'));
+        self::assertSame([1, 1, 1], array_column($answers, 'session'), 'Every first request must finish on the one new HTTP/2 session.');
+        self::assertSame(1, $http->get($this->url . '/echo')->json()['session'], 'A later request keeps that same session.');
+    }
+
     public function testBodiesOfAnySizeGoBothWays(): void
     {
         $http = $this->serve();
@@ -140,6 +172,84 @@ final class Http2Test extends TestCase
         self::assertSame([200, ''], [$http->request('HEAD', $this->url . '/echo')->getStatusCode(), (string) $http->request('HEAD', $this->url . '/echo')->getBody()]);
         self::assertSame([413, 'too large'], [($early = $http->request('POST', $this->url . '/early', body: $content))->getStatusCode(), (string) $early->getBody()], 'An answer that comes before the body is all sent is the answer.');
         self::assertSame(1, $http->get($this->url . '/echo')->json()['session'], 'All of it on the one connection.');
+    }
+
+    /**
+     * Header preparation can also consume the remaining allowance. A
+     * first HTTP/2 write after that must leave the request unsent.
+     */
+    public function testHeadersPreparedAfterTheDeadlineCannotOpenAnHttp2Stream(): void
+    {
+        $network = null;
+        $http = $this->serve(network: $network);
+        self::assertSame('2', $http->get($this->url . '/echo')->getProtocolVersion());
+        $producer = new BodyProducer();
+        $deadline = hrtime(true) / 1_000_000_000 + 0.05;
+        $read = false;
+        $request = $this->createStub(RequestInterface::class);
+        $request->method('getMethod')->willReturn('POST');
+        $request->method('getUri')->willReturn((new Request('POST', $this->url . '/late-headers'))->getUri());
+        $request->method('getBody')->willReturn(new Stream(''));
+        $request->method('getHeaders')->willReturn([]);
+        $request->method('getHeaderLine')->willReturn('');
+        $request->method('getRequestTarget')->willReturnCallback(static function () use ($producer, $deadline, &$read): string {
+            $producer->readAfter($deadline, 65536);
+            $read = true;
+            return '/late-headers';
+        });
+        try {
+            $network->exchange($request, $deadline, 0.05, null);
+            self::fail('Expired headers opened a request stream.');
+        } catch (NetworkException $error) {
+            self::assertStringContainsString('it took more than 0.05 seconds, and was sending', $error->getMessage());
+            self::assertInstanceOf(TimedOut::class, $error->getPrevious());
+            self::assertTrue($error->unsent);
+        } finally {
+            $producer->close();
+        }
+        self::assertTrue($read, 'The deadline passed while preparing the request headers.');
+        // Finish the failed writer's queued connection cleanup before opening another exchange.
+        Async::sleep(EventLoop::current(), 0.0);
+        $seen = $http->get($this->url . '/seen')->json();
+        self::assertArrayNotHasKey('/late-headers', $seen['requests']);
+    }
+
+    /**
+     * HTTP/2 writes headers before reading a body. Expiry during a pipe
+     * read must prevent late DATA while retaining the partial-send result.
+     */
+    public function testABodyProducedAfterTheDeadlineCannotSendHttp2Data(): void
+    {
+        $network = null;
+        $http = $this->serve(network: $network);
+        self::assertSame('2', $http->get($this->url . '/echo')->getProtocolVersion());
+        $producer = new BodyProducer();
+        $deadline = hrtime(true) / 1_000_000_000 + 0.05;
+        $body = $this->createStub(StreamInterface::class);
+        $body->method('getSize')->willReturn(null);
+        $body->method('isSeekable')->willReturn(false);
+        $body->method('eof')->willReturnCallback(static fn (): bool => $producer->body->eof());
+        $read = false;
+        $body->method('read')->willReturnCallback(static function (int $length) use ($producer, $deadline, &$read): string {
+            $read = true;
+            return $producer->readAfter($deadline, $length);
+        });
+        try {
+            $network->exchange(new Request('POST', $this->url . '/late-body?token=secret#fragment-secret', [], $body), $deadline, 0.05, null);
+            self::fail('Expired body bytes were sent as DATA.');
+        } catch (NetworkException $error) {
+            self::assertStringContainsString('it took more than 0.05 seconds, and was sending', $error->getMessage());
+            self::assertStringNotContainsString('secret', $error->getMessage());
+            self::assertInstanceOf(TimedOut::class, $error->getPrevious());
+            self::assertFalse($error->unsent, 'The request headers were already sent before body production.');
+        } finally {
+            $producer->close();
+        }
+        self::assertTrue($read, 'The deadline passed while reading the request body.');
+        Async::sleep(EventLoop::current(), 0.0);
+        $seen = $http->get($this->url . '/seen')->json();
+        self::assertSame(1, $seen['requests']['/late-body']);
+        self::assertSame(0, $seen['bytes']['/late-body'] ?? 0, 'No late DATA reached the server.');
     }
 
     public function testWhatTheServerDidNotActOnIsMadeAgainAndTheRestIsReported(): void
@@ -180,7 +290,7 @@ final class Http2Test extends TestCase
     /**
      * Starts the server and returns a client that trusts it.
      */
-    private function serve(): Client
+    private function serve(int $connections = 8, float $timeout = 10.0, ?Network &$network = null): Client
     {
         $node = trim((string) @shell_exec('command -v node'));
         if ($node === '' || !extension_loaded('openssl')) {
@@ -191,6 +301,8 @@ final class Http2Test extends TestCase
         $port = (int) fgets($pipes[1]);
         self::assertGreaterThan(0, $port, 'The HTTP/2 server did not start.');
         $this->url = "https://localhost:{$port}";
-        return $this->clients[] = new Client(tls: ['cafile' => $this->certificate], timeout: 10.0);
+        $tls = ['cafile' => $this->certificate];
+        $network = new Network(tls: $tls, connections: $connections);
+        return $this->clients[] = new Client(tls: $tls, timeout: $timeout, connections: $connections, transport: $network);
     }
 }

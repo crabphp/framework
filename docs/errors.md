@@ -47,7 +47,7 @@ throw new HttpException(429, 'Slow down.', ['Retry-After' => '30']);  // with he
 
 A status below `500` is an answer, not a failure, and is not logged. Use `4xx` for what the client can fix and let real failures be `500`.
 
-From middleware, return the response directly; there is nothing to catch it above you:
+Middleware inside the error handler may throw `HttpException`; middleware prepended outside it must return an error response or catch its own failures:
 
 ```php
 use Crab\Http\ErrorResponse;
@@ -98,6 +98,14 @@ Inside a worker, a PHP warning or notice is thrown as an `ErrorException`. Readi
 The error handler is the middleware `Crab\Http\ErrorHandler`. To answer in a format of your own, write a middleware that catches, and put it in its place:
 
 ```php
+use Crab\Contracts\Http\Middleware;
+use Crab\Http\HttpException;
+use Crab\Http\Response;
+use Psr\Http\Message\ResponseInterface;
+use Psr\Http\Message\ServerRequestInterface;
+use Psr\Http\Server\RequestHandlerInterface;
+use Psr\Log\LoggerInterface;
+
 final readonly class ProblemJson implements Middleware
 {
     public function __construct(private LoggerInterface $logger)

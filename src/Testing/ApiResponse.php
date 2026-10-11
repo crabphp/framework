@@ -58,12 +58,64 @@ final readonly class ApiResponse
     public function assertStatus(int $status): static
     {
         $message = "{$this->request} answered {$this->status}, not {$status}: " . self::short($this->body());
+        self::assertSame($status, $this->status, $message);
+        return $this;
+    }
+
+    /**
+     * Checks a JSON value by its dot path, including its type. A missing
+     * path fails the assertion too, with the request and body as context.
+     */
+    public function assertJson(string $path, mixed $expected): static
+    {
+        $message = "{$this->request} answered {$this->status}: JSON path \"{$path}\" must be identical to " . var_export($expected, true) . '. Body: ' . self::short($this->body());
+        try {
+            $actual = $this->json($path);
+        } catch (\LogicException $error) {
+            self::fail($message . ' ' . $error->getMessage());
+        }
+        self::assertSame($expected, $actual, $message);
+        return $this;
+    }
+
+    /**
+     * Checks a response header and reports the request, status and body
+     * when the header is absent or has another value.
+     */
+    public function assertHeader(string $name, string $expected): static
+    {
+        $actual = $this->header($name);
+        $message = "{$this->request} answered {$this->status}: header \"{$name}\" must be " . var_export($expected, true) . ', but was ' . var_export($actual, true) . '. Body: ' . self::short($this->body());
+        if (!$this->response->hasHeader($name)) {
+            self::fail($message . ' The header is not there.');
+        }
+        self::assertSame($expected, $actual, $message);
+        return $this;
+    }
+
+    /**
+     * Keeps all response comparisons strict, with the same fallback when
+     * the testing helpers are used without PHPUnit installed.
+     */
+    private static function assertSame(mixed $expected, mixed $actual, string $message): void
+    {
         if (class_exists(\PHPUnit\Framework\Assert::class)) {
-            \PHPUnit\Framework\Assert::assertSame($status, $this->status, $message);
-        } elseif ($this->status !== $status) {
+            \PHPUnit\Framework\Assert::assertSame($expected, $actual, $message);
+        } elseif ($actual !== $expected) {
             throw new \LogicException($message);
         }
-        return $this;
+    }
+
+    /**
+     * Turns an unreadable assertion value into a test failure rather than
+     * leaking json()'s LogicException as a test error.
+     */
+    private static function fail(string $message): never
+    {
+        if (class_exists(\PHPUnit\Framework\Assert::class)) {
+            \PHPUnit\Framework\Assert::fail($message);
+        }
+        throw new \LogicException($message);
     }
 
     private static function short(string $body): string

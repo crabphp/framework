@@ -83,8 +83,8 @@ interface Client extends ClientInterface
     public function delete(string $url, array $query = [], array $headers = []): Response;
 
     /**
-     * A client that allows each exchange this many seconds, redirects
-     * included, and is otherwise this one: it uses the same connections.
+     * A client that allows each whole call this many seconds, redirects,
+     * retries and their pauses included, over the same connections.
      * This client is left as it was.
      */
     public function timeout(float $seconds): static;
@@ -93,6 +93,7 @@ interface Client extends ClientInterface
      * A client that tries a request again, up to this many more times,
      * when it could not be made or the server asked for it to be made
      * later, and is otherwise this one. This client is left as it was.
+     * Every try and pause shares the timeout of the whole call.
      *
      * A request that may safely be made twice (GET, HEAD, OPTIONS, PUT,
      * DELETE) is tried again when it got no answer, or 429, 502, 503 or

@@ -122,11 +122,18 @@ final class Connection
         }
     }
 
-    public function write(string $bytes, float $deadline, ?Cancellation $cancellation = null): void
+    /**
+     * Writes while time remains, recording the first byte so an exchange
+     * can distinguish a request never sent from one partly sent.
+     */
+    public function write(string $bytes, float $deadline, ?Cancellation $cancellation = null, bool &$sent = false): void
     {
         $offset = 0;
         $length = strlen($bytes);
         while ($offset < $length) {
+            if (hrtime(true) / 1_000_000_000 >= $deadline) {
+                throw new TimedOut('sending');
+            }
             $written = @fwrite($this->stream(), $offset === 0 ? $bytes : substr($bytes, $offset));
             if ($written === false) {
                 throw new \RuntimeException('the connection was lost while sending');
@@ -136,6 +143,9 @@ final class Connection
                     throw new \RuntimeException('the connection was lost while sending');
                 }
                 $this->wait(true, $deadline, $cancellation, 'sending');
+            }
+            if ($written > 0) {
+                $sent = true;
             }
             $offset += $written;
         }

@@ -11,6 +11,24 @@ use PHPUnit\Framework\TestCase;
 
 final class CookieJarTest extends TestCase
 {
+    /**
+     * An invalid cookie URL can be corrected from its error without
+     * logging a query or fragment that may hold credentials.
+     */
+    public function testAnInvalidCookieUrlIsReportedWithoutItsQueryOrFragment(): void
+    {
+        $jar = new CookieJar();
+        foreach (['shop.example?token=query-secret#fragment-secret', 'shop.example#fragment-secret?token=query-secret'] as $url) {
+            try {
+                $jar->set($url, 'session', 'cookie-secret');
+                self::fail('An invalid cookie URL was accepted.');
+            } catch (\LogicException $error) {
+                self::assertSame('A cookie is set for a whole URL, "https://shop.example", not "shop.example".', $error->getMessage());
+                self::assertStringNotContainsString('secret', $error->getMessage());
+            }
+        }
+    }
+
     public function testACookieGoesBackOnlyWhereABrowserWouldSendIt(): void
     {
         $jar = new CookieJar();

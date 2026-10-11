@@ -91,11 +91,21 @@ final class HttpSession
                 $this->retire();
                 $this->connection->end();
             });
-        });
+        }, $this->hasPendingWork(...));
         // The first request of a read turn runs without a scheduler round
         // trip; pipelined successors keep their own deferred turns.
         $connection->onData($this->process(...));
         $this->armDeadline('headers');
+    }
+
+    /**
+     * Idle keep-alive sockets have nothing to cut. Accepted response bytes
+     * still count while they flush, even after this session has retired.
+     */
+    private function hasPendingWork(): bool
+    {
+        return $this->connection->bufferedBytes() > 0
+            || (!$this->retired && ($this->busy || $this->parser->phase() !== 'idle'));
     }
 
     private function schedule(): void

@@ -145,7 +145,7 @@ $db->table('tags')->insertOrIgnore(['name' => 'php']);                          
 $db->table('settings')->upsert(['user_id' => 7, 'theme' => 'dark'], 'user_id');
 ```
 
-The second argument names the columns of a unique key. A third lists the columns to overwrite, every other column when left out.
+The second argument names the columns of a unique key. A third lists the columns to overwrite, every other column when left out. SQLite uses the named key as the conflict target; MySQL updates on any conflicting unique index and uses that argument only to choose default update columns.
 
 ## Updating
 
@@ -171,6 +171,8 @@ $db->table('users')->where('active', false)->delete();          // rows affected
 `paginate()` runs the query for one page and counts the rest:
 
 ```php
+use Crab\Contracts\Database\Page;
+
 Route::get('/users', static function (int $page = 1) use ($db): Page {
     return $db->table('users')->orderBy('id')->paginate(20, $page);
 });
@@ -194,7 +196,7 @@ $db->table('users')->where('active', true)->chunkById(500, function (array $rows
 });
 ```
 
-Use it in commands and jobs that walk a whole table.
+Use it in commands and jobs that walk a whole table, on an otherwise unordered query; select the cursor column and do not change it while walking the rows.
 
 ## In a transaction
 
@@ -208,7 +210,7 @@ $db->transaction(function (Connection $tx) use ($orderId): void {
 });
 ```
 
-`lockForUpdate()` holds the selected rows until the transaction ends, so that two requests cannot both read the same stock and both take it.
+On MySQL, `lockForUpdate()` holds the selected rows until the transaction ends. On SQLite it adds no SQL; a Crab transaction takes the database write lock when it starts.
 
 ## Raw SQL
 
@@ -229,5 +231,5 @@ Raw SQL is not rewritten for the database in use, so it may tie the query to one
 
 - **Building changes the query; running does not.** `get()`, `count()` and the rest leave it as it was, so one query can be counted and then fetched. `clone` it to branch into two.
 - **Values are bound and names are quoted**, so both may come from a request. Only the `Raw` methods take SQL as written.
-- **`update()` and `delete()` refuse a query with a join, an order or a limit**, which they would have to drop silently.
+- **`update()` and `delete()` accept only WHERE conditions**; joins, grouping, HAVING, ordering, limits and offsets are refused.
 - **`toSql()` and `bindings()`** show what would run, for debugging.

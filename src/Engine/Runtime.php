@@ -40,12 +40,16 @@ final class Runtime
             : $loopFactory(...);
     }
 
-    public function group(string $name = 'default', int $workers = 1, int $maxConnections = 512, int $maxTasks = 1024): WorkerGroup
+    /**
+     * A group may have a shorter drain deadline than the runtime's other
+     * workers; its supervisor still allows time for cleanup and exit.
+     */
+    public function group(string $name = 'default', int $workers = 1, int $maxConnections = 512, int $maxTasks = 1024, ?float $shutdownTimeout = null): WorkerGroup
     {
         if ($this->running || isset($this->groups[$name])) {
             throw new \LogicException('Groups must be unique and configured before startup.');
         }
-        return $this->groups[$name] = new WorkerGroup($name, $workers, $maxConnections, $maxTasks);
+        return $this->groups[$name] = new WorkerGroup($name, $workers, $maxConnections, $maxTasks, $shutdownTimeout);
     }
 
     /**
@@ -106,7 +110,7 @@ final class Runtime
             if ($singleProcess) {
                 $group = reset($this->groups);
                 $driver = EventLoop::install(($this->loopFactory)());
-                $this->runner = new Worker($driver, $group, 0, $bindings[$group->name], $this->shutdownTimeout);
+                $this->runner = new Worker($driver, $group, 0, $bindings[$group->name], $group->shutdownTimeout ?? $this->shutdownTimeout);
                 if ($this->onReady !== null) {
                     // The first turn of the loop comes after the worker has started.
                     $onReady = $this->onReady;
@@ -143,5 +147,19 @@ final class Runtime
     public function stop(): void
     {
         $this->runner?->stop();
+    }
+
+    /**
+     * Ends workers without waiting for their drain and collects them in
+     * their supervisor. In one process, normal finalization closes its sockets.
+     */
+    public function force(): void
+    {
+        if ($this->runner instanceof Supervisor) {
+            $this->runner->force();
+        } elseif ($this->runner instanceof Worker) {
+            $this->runner->stop();
+            $this->runner->loop->stop();
+        }
     }
 }

@@ -5,9 +5,11 @@ declare(strict_types=1);
 namespace Crab\Database;
 
 use Crab\Contracts\Database\Connection;
+use Crab\Contracts\Database\Database as DatabaseContract;
 use Crab\Contracts\Database\Migration;
 use Crab\Contracts\Database\Migrator as MigratorContract;
 use Crab\Contracts\Database\Table as TableContract;
+use Crab\Engine\FailureReporter;
 use Psr\Clock\ClockInterface;
 
 /**
@@ -15,8 +17,8 @@ use Psr\Clock\ClockInterface;
  * names, and keeps the names that have run in a table of the database.
  *
  * Where the database can roll back a change to its tables (SQLite), each
- * migration runs in a transaction, so one that fails leaves nothing
- * behind. Where it cannot (MySQL), a migration that fails halfway has
+ * migration runs in a transaction, so a failure before commit leaves
+ * nothing behind. Where it cannot (MySQL), a migration that fails halfway has
  * done what it did before failing.
  */
 final class Migrator implements MigratorContract
@@ -30,13 +32,18 @@ final class Migrator implements MigratorContract
      * @param string|list<string> $directories Where the migration files are.
      * @param string $table The table that remembers which have run.
      * @param ClockInterface|null $clock Tells the time a migration ran and names new files; the real time when left out.
+     * @param int $lockTimeout Whole seconds to wait for another migrator; zero does not wait.
      */
     public function __construct(
         private readonly Connection $connection,
         string|array $directories = [],
         private readonly string $table = 'migrations',
         private readonly ?ClockInterface $clock = null,
+        private readonly int $lockTimeout = 60,
     ) {
+        if ($lockTimeout < 0) {
+            throw new \InvalidArgumentException('The migration lock timeout must be at least zero whole seconds. Set "database.migration_lock_timeout" to the time you can wait.');
+        }
         foreach ((array) $directories as $directory) {
             $this->path($directory);
         }
@@ -49,8 +56,19 @@ final class Migrator implements MigratorContract
 
     public function run(): array
     {
+        return $this->locked(fn (Connection $connection): array => $this->runMigrations($connection));
+    }
+
+    /**
+     * MySQL keeps its deployment lock; SQLite checks pending work again
+     * inside each migration's writer transaction before calling up().
+     *
+     * @return list<string>
+     */
+    private function runMigrations(Connection $connection): array
+    {
         $files = $this->files();
-        $ran = $this->ran();
+        $ran = $this->ran($connection);
         $batch = $ran === [] ? 1 : max($ran) + 1;
         $done = [];
         foreach ($files as $name => $file) {
@@ -58,19 +76,37 @@ final class Migrator implements MigratorContract
                 continue;
             }
             $migration = self::load($name, $file);
-            $this->apply($name, 'run', function (Connection $connection) use ($migration, $name, $batch): void {
+            $this->assertLockHeld($connection);
+            $applied = $this->apply($connection, $name, 'run', function (Connection $connection) use ($migration, $name, $batch): bool {
+                if ($connection->table($this->table)->where('name', $name)->exists()) {
+                    return false;
+                }
                 $migration->up(new Schema($connection));
                 $connection->table($this->table)->insert(['name' => $name, 'batch' => $batch, 'ran_at' => $this->now()]);
+                return true;
             });
-            $done[] = $name;
+            if ($applied) {
+                $done[] = $name;
+            }
         }
         return $done;
     }
 
     public function rollback(): array
     {
+        return $this->locked(fn (Connection $connection): array => $this->rollbackMigrations($connection));
+    }
+
+    /**
+     * Takes back the latest committed batch. SQLite checks each record
+     * again after acquiring its writer lock so two rollbacks do not repeat it.
+     *
+     * @return list<string>
+     */
+    private function rollbackMigrations(Connection $connection): array
+    {
         $files = $this->files();
-        $ran = $this->ran();
+        $ran = $this->ran($connection);
         if ($ran === []) {
             return [];
         }
@@ -83,18 +119,25 @@ final class Migrator implements MigratorContract
                 throw new DatabaseException("The migration \"{$name}\" has run, but its file is gone, so it cannot be taken back.");
             }
             $migration = self::load($name, $files[$name]);
-            $this->apply($name, 'rolled back', function (Connection $connection) use ($migration, $name): void {
+            $this->assertLockHeld($connection);
+            $applied = $this->apply($connection, $name, 'rolled back', function (Connection $connection) use ($migration, $name): bool {
+                if (!$connection->table($this->table)->where('name', $name)->exists()) {
+                    return false;
+                }
                 $migration->down(new Schema($connection));
                 $connection->table($this->table)->where('name', $name)->delete();
+                return true;
             });
-            $done[] = $name;
+            if ($applied) {
+                $done[] = $name;
+            }
         }
         return $done;
     }
 
     public function status(): array
     {
-        $ran = $this->ran();
+        $ran = $this->ran($this->connection, create: false);
         $status = [];
         foreach (array_keys($this->files()) as $name) {
             $status[$name] = $ran[$name] ?? null;
@@ -126,19 +169,130 @@ final class Migrator implements MigratorContract
      * Runs one migration's work, in a transaction where the database can
      * roll back a change to its tables.
      *
-     * @param \Closure(Connection): void $work
+     * @param \Closure(Connection): bool $work Whether this migration still needed applying.
      */
-    private function apply(string $name, string $verb, \Closure $work): void
+    private function apply(Connection $connection, string $name, string $verb, \Closure $work): bool
     {
         try {
-            if (SchemaGrammar::for($this->connection->driver())->transactional()) {
-                $this->connection->transaction($work);
-            } else {
-                $work($this->connection);
+            if (SchemaGrammar::for($connection->driver())->transactional()) {
+                return $connection->transaction($work);
             }
+            return $work($connection);
         } catch (\Throwable $error) {
+            // A writer-lock timeout belongs to the deployment, not to up() or down().
+            $previous = $error->getPrevious();
+            if ($error instanceof DatabaseException && $error->sql === 'BEGIN IMMEDIATE' && $previous instanceof \PDOException && ($previous->errorInfo[1] ?? null) === 5) {
+                throw $error;
+            }
             throw new DatabaseException("The migration \"{$name}\" could not be {$verb}: {$error->getMessage()}", previous: $error);
         }
+    }
+
+    /**
+     * Keeps a single borrowed connection until the work and lock cleanup
+     * finish. A pool of one works when migrations use the Schema and
+     * connection they receive; acquiring from the pool again needs two.
+     * MySQL's connection lock survives DDL's implicit commits.
+     *
+     * @param \Closure(Connection): list<string> $work
+     * @return list<string>
+     */
+    private function locked(\Closure $work): array
+    {
+        $lock = function (Connection $connection) use ($work): array {
+            if ($connection->driver() === 'sqlite') {
+                return $this->lockedSqlite($connection, $work);
+            }
+            $name = 'crab_migrations_' . $this->table;
+            $row = $connection->first('SELECT GET_LOCK(?, ?) AS acquired', [$name, $this->lockTimeout]);
+            if (($row['acquired'] ?? null) === null) {
+                throw new DatabaseException('The database could not acquire the migration lock. Check the database connection and retry "migrate".');
+            }
+            if ((int) $row['acquired'] !== 1) {
+                throw $this->lockTimedOut();
+            }
+            $failure = null;
+            try {
+                $done = $work($connection);
+                $this->assertLockHeld($connection);
+                return $done;
+            } catch (\Throwable $error) {
+                $failure = $error;
+                throw $error;
+            } finally {
+                try {
+                    $connection->first('SELECT RELEASE_LOCK(?) AS released', [$name]);
+                } catch (\Throwable $error) {
+                    if ($failure === null) {
+                        throw $error;
+                    }
+                    FailureReporter::report('The migration lock could not be released', $error);
+                }
+            }
+        };
+        if ($this->connection instanceof DatabaseContract) {
+            return $this->connection->run($lock);
+        }
+        return $lock($this->connection);
+    }
+
+    /**
+     * Each SQLite migration owns BEGIN IMMEDIATE and rechecks its history
+     * before making changes. Separate commits preserve afterCommit order
+     * and earlier successful migrations without a persistent lock row.
+     * The busy timeout covers waiting for each writer and is restored for
+     * the next borrower, including after an acquisition timeout.
+     *
+     * @param \Closure(Connection): list<string> $work
+     * @return list<string>
+     */
+    private function lockedSqlite(Connection $connection, \Closure $work): array
+    {
+        $row = $connection->first('PRAGMA busy_timeout');
+        $timeout = (int) $row['timeout'];
+        $milliseconds = (int) min($this->lockTimeout * 1000, 2_147_483_647);
+        // PRAGMA's assignment syntax cannot bind a parameter; only a bounded integer goes into it.
+        $connection->execute('PRAGMA busy_timeout = ' . $milliseconds);
+        try {
+            return $work($connection);
+        } catch (DatabaseException $error) {
+            $previous = $error->getPrevious();
+            if ($previous instanceof \PDOException && ($previous->errorInfo[1] ?? null) === 5) {
+                throw $this->lockTimedOut($error);
+            }
+            throw $error;
+        } finally {
+            $connection->execute('PRAGMA busy_timeout = ' . $timeout);
+        }
+    }
+
+    /**
+     * PDO can reconnect after a pre-send failure. Its new session does not
+     * inherit the named lock, so stop before another migration can start.
+     */
+    private function assertLockHeld(Connection $connection): void
+    {
+        if ($connection->driver() === 'sqlite') {
+            return;
+        }
+        $previous = null;
+        try {
+            $row = $connection->first('SELECT IS_USED_LOCK(?) = CONNECTION_ID() AS owned', ['crab_migrations_' . $this->table]);
+            if ((int) ($row['owned'] ?? 0) === 1) {
+                return;
+            }
+        } catch (DatabaseException $error) {
+            $previous = $error;
+        }
+        throw new DatabaseException('The database connection was lost during migration. The migration in progress may be half applied. Run "migrate:status" to inspect the migrations before retrying.', previous: $previous);
+    }
+
+    /**
+     * Gives a waiting deployment a command to inspect the pending work.
+     */
+    private function lockTimedOut(?\Throwable $previous = null): DatabaseException
+    {
+        return new DatabaseException("Another process has been migrating for {$this->lockTimeout} seconds. Run \"migrate:status\" to inspect the migrations, then retry when it finishes.", previous: $previous);
     }
 
     /**
@@ -164,21 +318,32 @@ final class Migrator implements MigratorContract
     }
 
     /**
-     * @return array<string, int> The batch of each migration that has run, by name. Makes the table that remembers them when it is not there.
+     * @return array<string, int> The batch of each migration that has run, by name. Only a writer creates the table, so status stays read-only during the first deployment.
      */
-    private function ran(): array
+    private function ran(Connection $connection, bool $create = true): array
     {
-        $schema = new Schema($this->connection);
+        $schema = new Schema($connection);
         if (!$schema->hasTable($this->table)) {
-            $schema->create($this->table, static function (TableContract $table): void {
-                $table->id();
-                $table->string('name')->unique();
-                $table->integer('batch');
-                $table->dateTime('ran_at');
-            });
+            if (!$create) {
+                return [];
+            }
+            try {
+                $schema->create($this->table, static function (TableContract $table): void {
+                    $table->id();
+                    $table->string('name')->unique();
+                    $table->integer('batch');
+                    $table->dateTime('ran_at');
+                });
+            } catch (DatabaseException $error) {
+                // Another SQLite writer can create it between hasTable() and create().
+                $previous = $error->getPrevious();
+                if ($connection->driver() !== 'sqlite' || !$previous instanceof \PDOException || ($previous->errorInfo[1] ?? null) !== 1 || !str_contains($previous->getMessage(), 'already exists') || !$schema->hasTable($this->table)) {
+                    throw $error;
+                }
+            }
         }
         $ran = [];
-        foreach ($this->connection->table($this->table)->orderBy('id')->get() as $row) {
+        foreach ($connection->table($this->table)->orderBy('id')->get() as $row) {
             $ran[(string) $row['name']] = (int) $row['batch'];
         }
         return $ran;

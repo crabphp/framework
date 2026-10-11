@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Crab\Tests;
 
 use PHPUnit\Framework\TestCase;
+use PHPUnit\Framework\Attributes\Group;
 
 /**
  * Drives a real application through its command line: served in the
@@ -23,6 +24,12 @@ final class ServerTest extends TestCase
      * @var resource|null A watcher left running by a test that failed.
      */
     private mixed $watcher = null;
+    /**
+     * Subprocess handles owned by the additional lifecycle fixtures.
+     *
+     * @var list<array{process: resource, pipes: array<int, resource>, pid: int, role: string}>
+     */
+    private array $fixtures = [];
 
     protected function setUp(): void
     {
@@ -51,6 +58,17 @@ final class ServerTest extends TestCase
         if (is_resource($this->watcher)) {
             proc_terminate($this->watcher, 9);
             proc_close($this->watcher);
+        }
+        foreach ($this->fixtures as $fixture) {
+            if ($fixture['role'] === 'keep-pipeline' && posix_getpgid($fixture['pid']) === $fixture['pid']) {
+                // This entire pipeline group was created by this test.
+                posix_kill(-$fixture['pid'], SIGKILL);
+            }
+            proc_terminate($fixture['process'], SIGKILL);
+            proc_close($fixture['process']);
+            foreach ($fixture['pipes'] as $pipe) {
+                if (is_resource($pipe)) { fclose($pipe); }
+            }
         }
         $this->cua('stop', '--force', '--timeout=3');
         $files = new \RecursiveIteratorIterator(
@@ -107,6 +125,961 @@ final class ServerTest extends TestCase
         self::assertSame($output, $this->cua('serve', '-h', "--address={$this->address}")[1]);
         self::assertNull($this->get());
         self::assertSame(1, $this->cua('serve', '--daemon', '--watch')[0]);
+    }
+
+    public function testTheDefaultDrainKeepsTheWorkersFiveSecondsAndTheServersFifteenSeconds(): void
+    {
+        $app = new \Crab\App();
+        self::assertSame(5.0, $app->config->get('server.drain'));
+        self::assertSame(5.0, $app->drain());
+        $runtime = $app->runtime($this->address);
+        self::assertSame(5.0, $runtime->shutdownTimeout);
+        $groups = new \ReflectionProperty($runtime, 'groups');
+        self::assertSame(5.0, $groups->getValue($runtime)['http']->shutdownTimeout);
+        $server = new \Crab\Server($app);
+        self::assertSame(15.0, new \ReflectionMethod($server, 'grace')->invoke($server));
+    }
+
+    public function testEveryOuterAllowanceExceedsTheHttpDrainDeadline(): void
+    {
+        foreach ([1.0, 30.0, 120.0] as $drain) {
+            $app = new \Crab\App(new \Crab\Config\Config(['server' => ['drain' => $drain]]));
+            $runtime = $app->runtime($this->address);
+            $groups = new \ReflectionProperty($runtime, 'groups')->getValue($runtime);
+            $supervisor = new \Crab\Engine\Process\Supervisor($groups, [], static fn () => \Crab\Engine\EventLoop::current(), $runtime->shutdownTimeout);
+            $workerWait = new \ReflectionMethod($supervisor, 'grace')->invoke($supervisor, 'http:0');
+            $server = new \Crab\Server($app);
+            $outerWait = new \ReflectionMethod($server, 'grace')->invoke($server);
+            self::assertGreaterThan($drain, $workerWait);
+            self::assertGreaterThan($workerWait, $outerWait, 'The keeper, watcher and default stop wait use this allowance.');
+        }
+    }
+
+    public function testHttpDrainIsKeptSeparateFromTheOtherServersAllowance(): void
+    {
+        $app = new \Crab\App(new \Crab\Config\Config(['server' => ['drain' => 0.3, 'with' => ['slow']]]));
+        $app->servers->add('slow', static fn () => [], grace: 30.0);
+        $runtime = $app->runtime($this->address);
+        $groups = new \ReflectionProperty($runtime, 'groups')->getValue($runtime);
+        self::assertSame(30.0, $runtime->shutdownTimeout);
+        self::assertSame(0.3, $groups['http']->shutdownTimeout);
+        $server = new \Crab\Server($app);
+        self::assertSame(35.0, new \ReflectionMethod($server, 'grace')->invoke($server));
+    }
+
+    public function testANumericDrainFromTheEnvironmentIsReadAsSeconds(): void
+    {
+        $app = new \Crab\App(new \Crab\Config\Config(['server' => ['drain' => '0.3']]));
+        self::assertSame(0.3, $app->drain());
+        self::assertSame(0.3, $app->runtime($this->address)->shutdownTimeout);
+    }
+
+    public function testAWatchedChildReportsItsCurrentAllowanceAfterTheSettingChanges(): void
+    {
+        $spawn = new \ReflectionMethod(\Crab\Server::class, 'spawn');
+        $reported = new \ReflectionMethod(\Crab\Server::class, 'reportedGrace');
+        $terminate = new \ReflectionMethod(\Crab\Server::class, 'terminate');
+        foreach ([1.0 => 15.0, 30.0 => 36.0, 120.0 => 126.0] as $drain => $expected) {
+            $this->drainSetting($drain);
+            [$process, $report] = $spawn->invoke(null, [$this->directory . '/cua', 'serve', '--no-watch', '--single', '--quiet', "--address={$this->address}"]);
+            try {
+                $deadline = microtime(true) + 3.0;
+                $allowance = -1.0;
+                while (is_resource($report) && microtime(true) < $deadline) {
+                    $allowance = $reported->invokeArgs(null, [&$report, $allowance]);
+                    usleep(5_000);
+                }
+                self::assertSame($expected, $allowance, 'The launcher must use the child\'s new setting.');
+                self::assertSame('one', $this->get(retry: true));
+            } finally {
+                $terminate->invoke(null, $process, $expected);
+                if (is_resource($report)) {
+                    fclose($report);
+                }
+            }
+        }
+    }
+
+    public function testServeRefusesInvalidDrainSettingsBeforeStarting(): void
+    {
+        foreach ([0, 'abc', -1, null, false, INF, NAN] as $drain) {
+            $this->drainSetting($drain);
+            foreach ([['--no-watch', '--single'], ['--daemon'], []] as $options) {
+                [$status, $output] = $this->cua('serve', "--address={$this->address}", ...$options);
+                self::assertSame(1, $status, $output);
+                self::assertStringContainsString('server.drain', $output);
+                self::assertFileDoesNotExist($this->directory . '/storage/crab.pid');
+            }
+        }
+    }
+
+    public function testAStoppingServerAnswersARequestThatFinishesWithinItsDrainTime(): void
+    {
+        $this->drainSetting(2.0);
+        $this->slowVersion('one', 0.5);
+        [$status, $output] = $this->cua('serve', '--daemon', "--address={$this->address}");
+        self::assertSame(0, $status, $output);
+        $request = $this->slowRequest();
+        try {
+            [$status, $output] = $this->stopDuringRequest();
+            self::assertSame(0, $status, $output);
+            $response = (string) stream_get_contents($request);
+            self::assertStringContainsString('200 OK', $response);
+            self::assertStringEndsWith('one finished', $response);
+            self::assertStringNotContainsString('WARNING', $this->drainLog());
+        } finally {
+            fclose($request);
+        }
+    }
+
+    public function testAStoppingServerCutsAnOverdueRequestAndLogsOneWarning(): void
+    {
+        $this->drainSetting(0.3);
+        // Another server's allowance must not lengthen HTTP draining.
+        file_put_contents($this->directory . '/config/server.php', "<?php return ['drain' => 0.3, 'with' => ['slow']];");
+        file_put_contents($this->directory . '/app.php', <<<'PHP'
+            <?php
+            $app = Crab\App::configure(__DIR__)->withRouting(routes: 'app/routes.php')->create();
+            $app->servers->add('slow', static fn () => [], grace: 30.0);
+            return $app;
+            PHP);
+        $this->slowVersion('one', 2.0);
+        [$status, $output] = $this->cua('serve', '--daemon', "--address={$this->address}");
+        self::assertSame(0, $status, $output);
+        $request = $this->slowRequest();
+        try {
+            $before = microtime(true);
+            [$status, $output] = $this->stopDuringRequest();
+            $elapsed = microtime(true) - $before;
+            self::assertSame(0, $status, $output);
+            self::assertGreaterThanOrEqual(0.25, $elapsed);
+            self::assertLessThan(3.0, $elapsed, 'The server did not exit promptly at its drain deadline.');
+            self::assertSame('', stream_get_contents($request));
+            $log = $this->drainLog();
+            self::assertSame(1, substr_count($log, 'WARNING'));
+            self::assertStringContainsString('server.drain; cut 1 connections.', $log);
+        } finally {
+            fclose($request);
+        }
+    }
+
+    public function testAReloadLetsTheOldGenerationFinishWhileNewRequestsUseTheNewCode(): void
+    {
+        $this->drainSetting(2.0);
+        $this->slowVersion('one', 0.5);
+        [$status, $output] = $this->cua('serve', '--daemon', "--address={$this->address}");
+        self::assertSame(0, $status, $output);
+        $request = $this->slowRequest();
+        try {
+            $this->slowVersion('two', 0.5);
+            [$status, $output] = $this->cua('reload', "--address={$this->address}");
+            self::assertSame(0, $status, $output);
+            self::assertSame('two', $this->get());
+            $this->releaseRequest();
+            $response = (string) stream_get_contents($request);
+            self::assertStringContainsString('200 OK', $response);
+            self::assertStringEndsWith('one finished', $response);
+            self::assertStringNotContainsString('WARNING', $this->drainLog());
+        } finally {
+            fclose($request);
+        }
+    }
+
+    public function testAWorkerLogsOneWarningWithTheCountOfAllConnectionsItCuts(): void
+    {
+        $this->drainSetting(0.3);
+        $this->slowVersion('one', 2.0);
+        [$status, $output] = $this->cua('serve', '--daemon', "--address={$this->address}");
+        self::assertSame(0, $status, $output);
+        $first = $this->slowRequest();
+        $second = $this->slowRequest();
+        try {
+            [$status, $output] = $this->stopDuringRequest();
+            self::assertSame(0, $status, $output);
+            self::assertSame('', stream_get_contents($first));
+            self::assertSame('', stream_get_contents($second));
+            $log = $this->drainLog();
+            self::assertSame(1, substr_count($log, 'WARNING'));
+            self::assertStringContainsString('server.drain; cut 2 connections.', $log);
+        } finally {
+            fclose($first);
+            fclose($second);
+        }
+    }
+
+    #[Group('slow')]
+    public function testASixSecondRequestIsAnsweredInFullUnderAnEightSecondDrain(): void
+    {
+        $this->drainSetting(8.0);
+        $this->slowVersion('one', 6.0);
+        [$status, $output] = $this->cua('serve', '--daemon', "--address={$this->address}");
+        self::assertSame(0, $status, $output);
+        $request = $this->slowRequest();
+        try {
+            [$status, $output] = $this->stopDuringRequest();
+            self::assertSame(0, $status, $output);
+            $response = (string) stream_get_contents($request);
+            self::assertStringContainsString('200 OK', $response);
+            self::assertStringEndsWith('one finished', $response);
+            self::assertStringNotContainsString('WARNING', $this->drainLog());
+        } finally {
+            fclose($request);
+        }
+    }
+
+    #[Group('slow')]
+    public function testATwentySecondRequestIsCutAtTheSevenSecondDrainWithItsCount(): void
+    {
+        $this->drainSetting(7.0);
+        $this->slowVersion('one', 20.0);
+        [$status, $output] = $this->cua('serve', '--daemon', "--address={$this->address}");
+        self::assertSame(0, $status, $output);
+        $request = $this->slowRequest();
+        try {
+            $before = microtime(true);
+            [$status, $output] = $this->stopDuringRequest();
+            $elapsed = microtime(true) - $before;
+            self::assertSame(0, $status, $output);
+            self::assertGreaterThanOrEqual(6.8, $elapsed);
+            self::assertLessThan(10.0, $elapsed);
+            self::assertSame('', stream_get_contents($request));
+            self::assertSame(1, substr_count($this->drainLog(), 'WARNING'));
+            self::assertStringContainsString('server.drain; cut 1 connections.', $this->drainLog());
+        } finally {
+            fclose($request);
+        }
+    }
+
+    public function testAnIdleKeepAliveConnectionDoesNotIncreaseTheCutRequestCount(): void
+    {
+        $this->drainSetting(0.04);
+        $this->slowVersion('one', 2.0);
+        self::assertSame(0, $this->cua('serve', '--daemon', "--address={$this->address}")[0]);
+        $idle = stream_socket_client($this->address, $code, $message, 1);
+        self::assertIsResource($idle);
+        stream_set_timeout($idle, 5);
+        fwrite($idle, "GET / HTTP/1.1\r\nHost: localhost\r\n\r\n");
+        $headers = '';
+        while (($line = fgets($idle)) !== false) {
+            $headers .= $line;
+            if ($line === "\r\n") {
+                break;
+            }
+        }
+        self::assertStringContainsString('200 OK', $headers);
+        self::assertSame('one', fread($idle, 3));
+        $active = $this->slowRequest();
+        try {
+            [$status, $output] = $this->stopDuringRequest();
+            self::assertSame(0, $status, $output);
+            self::assertSame('', stream_get_contents($active));
+            self::assertSame('', stream_get_contents($idle));
+            self::assertSame(1, substr_count($this->drainLog(), 'WARNING'));
+            self::assertStringContainsString('server.drain; cut 1 connections.', $this->drainLog());
+        } finally {
+            fclose($active);
+            fclose($idle);
+        }
+    }
+
+    public function testABlockedHttpWorkerIsEndedAtItsOwnAllowanceAndReportedOnce(): void
+    {
+        $this->drainSetting(0.1);
+        file_put_contents($this->directory . '/config/server.php', "<?php return ['drain' => 0.1, 'with' => ['slow']];");
+        file_put_contents($this->directory . '/app.php', <<<'PHP'
+            <?php
+            $app = Crab\App::configure(__DIR__)->withRouting(routes: 'app/routes.php')->create();
+            $app->servers->add('slow', static fn (): array => [
+                new Crab\Contracts\Workers('slow', setup: static function (Crab\Engine\WorkerGroup $group): void {}),
+            ], grace: 30.0);
+            return $app;
+            PHP);
+        file_put_contents($this->directory . '/app/routes.php', <<<'PHP'
+            <?php
+            Crab\Route::get('/slow', static function (): string {
+                file_put_contents(dirname(__DIR__) . '/in-flight', (string) getmypid());
+                sleep(20);
+                return 'too late';
+            });
+            PHP);
+        self::assertSame(0, $this->cua('serve', '--daemon', "--address={$this->address}")[0]);
+        $request = $this->slowRequest();
+        try {
+            $worker = trim((string) file_get_contents($this->directory . '/in-flight'));
+            $before = microtime(true);
+            [$status, $output] = $this->cua('stop');
+            self::assertSame(0, $status, $output);
+            self::assertLessThan(4.0, microtime(true) - $before, 'Another group stretched the HTTP hard deadline.');
+            self::assertSame('', stream_get_contents($request));
+            $log = (string) file_get_contents($this->directory . '/storage/logs/server.log');
+            $notice = "Worker {$worker} in group \"http\" did not stop within 1.1 seconds; ending it.";
+            self::assertSame(1, substr_count($log, $notice), $log);
+            self::assertStringNotContainsString('WARNING', $this->drainLog(), 'A blocked worker cannot count its requests.');
+        } finally {
+            fclose($request);
+        }
+    }
+
+    public function testAnExplicitFifteenSecondStopDoesNotDeriveItsWaitFromConfiguration(): void
+    {
+        $this->drainSetting(30.0);
+        self::assertSame(0, $this->cua('serve', '--daemon', "--address={$this->address}")[0]);
+        $pid = $this->pid();
+        $this->drainSetting('abc');
+        // An old pid file has no keeper record and uses the legacy fallback.
+        unlink($this->directory . '/storage/crab.pid.state');
+        [$status, $output] = $this->cua('stop');
+        self::assertSame(1, $status, $output);
+        self::assertStringContainsString('server.drain', $output);
+        self::assertTrue(posix_kill($pid, 0), 'A legacy pid file uses the configuration fallback.');
+        self::assertSame([0, "Stopped the server, pid {$pid}.\n"], $this->cua('stop', '--timeout=15'));
+        self::assertFalse(posix_kill($pid, 0));
+    }
+
+    public function testAnExplicitFifteenSecondRestartStopsBeforeValidatingTheNewGeneration(): void
+    {
+        $this->drainSetting(30.0);
+        self::assertSame(0, $this->cua('serve', '--daemon', "--address={$this->address}")[0]);
+        $pid = $this->pid();
+        $this->drainSetting('abc');
+        [$status, $output] = $this->cua('restart', '--timeout=15', "--address={$this->address}");
+        self::assertSame(1, $status, $output);
+        self::assertStringContainsString("Stopped the server, pid {$pid}.", $output);
+        self::assertStringContainsString('server.drain', $output);
+        self::assertFalse(posix_kill($pid, 0));
+        self::assertFileDoesNotExist($this->directory . '/storage/crab.pid');
+    }
+
+    public function testAThrowingWarningLoggerPreservesTheCountAndProviderCleanup(): void
+    {
+        $this->checkThrowingLogger(false);
+    }
+
+    public function testTheDaemonLeadsItsGroupAndLeavesNoDrainRecordsAfterNormalStop(): void
+    {
+        $this->observeProcesses();
+        self::assertSame(0, $this->cua('serve', '--daemon', "--address={$this->address}", '--workers=2')[0]);
+        $pid = $this->pid();
+        self::assertSame($pid, posix_getpgid($pid));
+        self::assertSame($pid, posix_getsid($pid));
+        $processes = $this->observedProcesses($pid);
+        self::assertCount(1, $processes);
+        self::assertCount(2, $processes[0]['workers']);
+        self::assertSame($pid, posix_getpgid($processes[0]['pid']));
+        foreach (file($this->directory . '/test-processes', FILE_IGNORE_NEW_LINES) as $line) {
+            $worker = json_decode($line, true);
+            self::assertSame($pid, $worker['group']);
+            self::assertSame($pid, $worker['session']);
+            self::assertNotContains('php://fd/5', $worker['streams'], 'No worker inherits the removed record descriptor.');
+            foreach ($worker['streams'] as $uri) {
+                self::assertStringNotContainsString('crab.pid.generation.', $uri);
+            }
+        }
+        $state = json_decode(file_get_contents($this->directory . '/storage/crab.pid.state'), true);
+        self::assertSame(\Crab\Engine\Process\PidFile::identity($pid), $state['identity']);
+        self::assertSame(['pid', 'stopTimeout', 'deadline'], array_keys($state['generations'][0]));
+        self::assertSame(0, $this->cua('stop')[0]);
+        $this->assertProcessesGone($pid, $processes);
+        self::assertSame([$this->directory . '/storage/crab.pid.lock'], glob($this->directory . '/storage/crab.pid*'));
+    }
+
+    public function testForceOfAHungKeeperInAnotherJobsGroupReportsAPartialStop(): void
+    {
+        mkdir($this->directory . '/config');
+        file_put_contents($this->directory . '/config/server.php', "<?php return ['pid' => 'storage/service.pid'];");
+        $fixture = __DIR__ . '/Engine/Fixtures/drain.php';
+        $autoload = dirname(__DIR__) . '/vendor/autoload.php';
+        $processes = [];
+        $streams = [];
+        try {
+            foreach (['storage', 'unrelated'] as $name) {
+                $process = proc_open([PHP_BINARY, $fixture, 'unresponsive', $autoload, $this->directory . '/' . $name, 'serve'],
+                    [1 => ['pipe', 'w'], 2 => ['pipe', 'w']], $pipes);
+                self::assertIsResource($process);
+                $processes[] = $process;
+                array_push($streams, ...array_values($pipes));
+                stream_set_timeout($pipes[1], 3);
+                self::assertSame("ready\n", fgets($pipes[1]));
+            }
+            $keeper = proc_get_status($processes[0])['pid'];
+            $unrelated = proc_get_status($processes[1])['pid'];
+            self::assertNotSame($keeper, posix_getpgid($keeper));
+            self::assertSame(posix_getpgid($keeper), posix_getpgid($unrelated));
+            [$command, $pipes] = $this->startCommand('stop', '--force');
+            $processes[] = $command;
+            array_push($streams, ...array_values($pipes));
+            $deadline = microtime(true) + 5.0;
+            do {
+                // Reap our child while the command checks that its keeper is gone.
+                proc_get_status($processes[0]);
+                $status = proc_get_status($command);
+                if (!$status['running']) {
+                    break;
+                }
+                usleep(5_000);
+            } while (microtime(true) < $deadline);
+            self::assertFalse($status['running'], 'A partial force must still have a bounded wait.');
+            [$exit, $output] = $this->finishCommand($command, $pipes);
+            self::assertSame(1, $exit, $output);
+            self::assertStringContainsString("Ended only the keeper, pid {$keeper}", $output);
+            self::assertStringContainsString('Its workers may still be running and are not this command\'s to signal', $output);
+            self::assertStringContainsString('Whatever started the server must end them', $output);
+            self::assertStringNotContainsString('within their drain time', $output);
+            self::assertFalse(posix_kill($keeper, 0));
+            self::assertTrue(posix_kill($unrelated, 0), 'Another process in the job must survive.');
+            self::assertFileDoesNotExist($this->directory . '/storage/service.pid');
+        } finally {
+            foreach ($processes as $process) {
+                if (is_resource($process)) {
+                    proc_terminate($process, SIGKILL);
+                    proc_close($process);
+                }
+            }
+            foreach ($streams as $stream) {
+                if (is_resource($stream)) {
+                    fclose($stream);
+                }
+            }
+        }
+    }
+
+    public function testForcePreservesASiblingInAShellPipelineGroup(): void
+    {
+        mkdir($this->directory . '/config');
+        file_put_contents($this->directory . '/config/server.php', "<?php return ['pid' => 'storage/service.pid'];");
+        [$keeper, $pipes, $pid] = $this->launchDrainFixture('keep-pipeline', $this->directory . '/storage', $this->address, 'serve');
+        $owned = [];
+        try {
+            self::assertSame($pid, posix_getpgid($pid));
+            self::assertNotSame($pid, posix_getsid($pid));
+            $observation = json_decode(trim(file_get_contents($this->directory . '/storage/observed-workers')), true);
+            $owned = [$observation['pid'], $observation['generation']];
+            [$sibling, $siblingPipes, $siblingPid] = $this->launchDrainFixture('unresponsive', $this->directory . '/unrelated', 'serve', (string) $pid);
+            self::assertSame($pid, posix_getpgid($siblingPid));
+            posix_kill($pid, SIGSTOP);
+            [$status, $output] = $this->cua('stop', '--force');
+            self::assertSame(1, $status, $output);
+            self::assertStringContainsString('did not lead its own session', $output);
+            self::assertStringContainsString('Whatever started the server must end them', $output);
+            self::assertTrue(posix_kill($siblingPid, 0), 'The sibling belongs to the shell job, not the server.');
+            foreach ($owned as $process) {
+                self::assertTrue(posix_kill($process, 0), 'Limited force must not signal the surrounding group.');
+            }
+        } finally {
+            foreach ($owned as $process) {
+                posix_kill($process, SIGKILL);
+            }
+        }
+    }
+
+    public function testAStaleStartIdentityCannotSelectAnotherLiveServeProcess(): void
+    {
+        mkdir($this->directory . '/config');
+        file_put_contents($this->directory . '/config/server.php', "<?php return ['pid' => 'storage/service.pid'];");
+        [$old, $oldPipes, $oldPid] = $this->launchDrainFixture('unresponsive', $this->directory . '/old', 'serve');
+        $oldIdentity = \Crab\Engine\Process\PidFile::identity($oldPid);
+        // ps lstart has one-second resolution; make these real births distinct.
+        usleep(1_100_000);
+        [$other, $otherPipes, $pid] = $this->launchDrainFixture('unresponsive', $this->directory . '/storage', 'serve');
+        self::assertNotNull($oldIdentity);
+        self::assertNotSame($oldIdentity, \Crab\Engine\Process\PidFile::identity($pid));
+        $pidFile = new \Crab\Engine\Process\PidFile($this->directory . '/storage/service.pid');
+        file_put_contents($pidFile->path . '.state', json_encode(['pid' => $pid, 'identity' => $oldIdentity]));
+        foreach (['status', 'stop'] as $command) {
+            [$status, $output] = $this->cua($command, '--force');
+            self::assertSame(1, $status, $output);
+            self::assertStringContainsString('is stale', $output);
+            self::assertStringContainsString('started at another time', $output);
+            self::assertTrue(posix_kill($pid, 0), 'No signal may reach the unrelated process.');
+        }
+        try {
+            (new \Crab\Engine\Process\Keeper($pidFile, $this->directory . '/service.log'))->force($pid);
+            self::fail('The direct force path must also check the recorded identity.');
+        } catch (\RuntimeException $error) {
+            self::assertStringContainsString('is stale', $error->getMessage());
+            self::assertTrue(posix_kill($pid, 0));
+        }
+    }
+
+    public function testForceEndsARegisteredProgramInTheKeepersSession(): void
+    {
+        $this->checkRegisteredProgramStop(true);
+    }
+
+    public function testARegisteredProgramsOrdinaryCleanupStillRuns(): void
+    {
+        $this->checkRegisteredProgramStop(false);
+    }
+
+    public function testForceEndsARegisteredProgramWhenItsKeeperIsSuspended(): void
+    {
+        $this->checkRegisteredProgramStop(true, suspended: true);
+    }
+
+    public function testPlainStopWaitsForADrainingWorkerWhoseSupervisorCrashed(): void
+    {
+        $this->checkCrashedSupervisorStop(false);
+    }
+
+    public function testPlainStopNamesACrashedSupervisorsWorkerThatOutlivesTheAllowance(): void
+    {
+        $this->checkCrashedSupervisorStop(true);
+    }
+
+    public function testAZombieKeeperIsReportedAsEndedWithoutFailingAnEmptyGroupStop(): void
+    {
+        mkdir($this->directory . '/config');
+        file_put_contents($this->directory . '/config/server.php', "<?php return ['pid' => 'storage/service.pid'];");
+        [$keeper, $pipes, $pid] = $this->launchDrainFixture('unresponsive-session', $this->directory . '/storage', 'serve');
+        self::assertSame($pid, posix_getsid($pid));
+        // Do not poll/reap our child while the independent command observes it.
+        [$status, $output] = $this->cua('stop', '--force');
+        self::assertSame(0, $status, $output);
+        self::assertTrue(\Crab\Engine\Process\PidFile::zombie($pid));
+        self::assertStringContainsString('has ended and is waiting to be collected by its parent', $output);
+        self::assertStringNotContainsString('has not exited', $output);
+        self::assertSame([], \Crab\Engine\Process\PidFile::groupMembers($pid));
+        self::assertFileDoesNotExist($this->directory . '/storage/service.pid');
+    }
+
+    public function testReloadReportsAKeeperThatEndedBeforeAnswering(): void
+    {
+        $this->observeProcesses();
+        self::assertSame(0, $this->cua('serve', '--daemon', "--address={$this->address}")[0]);
+        $pid = $this->pid();
+        $processes = $this->observedProcesses($pid);
+        self::assertSame($pid, posix_getsid($pid));
+        posix_kill($pid, SIGSTOP);
+        [$command, $pipes] = $this->startCommand('reload', "--address={$this->address}");
+        try {
+            $deadline = microtime(true) + 3.0;
+            while (!is_file($this->directory . '/storage/crab.pid.reload') && microtime(true) < $deadline) {
+                usleep(5_000);
+            }
+            self::assertFileExists($this->directory . '/storage/crab.pid.reload');
+            posix_kill(-$pid, SIGKILL);
+            [$status, $output] = $this->finishCommand($command, $pipes);
+            self::assertSame(1, $status, $output);
+            self::assertStringContainsString("The server, pid {$pid}, ended before it answered; it is no longer running.", $output);
+            self::assertStringNotContainsString('goes on serving as it was', $output);
+            $this->assertProcessesGone($pid, $processes);
+        } finally {
+            if (is_resource($command)) {
+                proc_terminate($command, SIGKILL);
+                proc_close($command);
+            }
+        }
+    }
+
+    /**
+     * Keeps a registered program observable through both force and normal
+     * cancellation; its SIGTERM marker verifies ordinary cleanup survives.
+     */
+    private function checkRegisteredProgramStop(bool $force, bool $suspended = false): void
+    {
+        mkdir($this->directory . '/config');
+        file_put_contents($this->directory . '/config/server.php', "<?php return ['with' => ['aux']];");
+        $source = file_get_contents($this->directory . '/app.php');
+        $source = str_replace('return Crab\\App', '$app = Crab\\App', $source);
+        $source .= "\n\$app->servers->process('aux', PHP_BINARY . ' ' . escapeshellarg(__DIR__ . '/aux.php'));\nreturn \$app;\n";
+        file_put_contents($this->directory . '/app.php', $source);
+        file_put_contents($this->directory . '/aux.php', <<<'PHP'
+            <?php
+            declare(strict_types=1);
+            pcntl_async_signals(true);
+            pcntl_signal(SIGTERM, static function (): void {
+                file_put_contents(__DIR__ . '/aux-stopped', 'yes');
+                exit(0);
+            });
+            file_put_contents(__DIR__ . '/aux-pid', json_encode([
+                'pid' => getmypid(), 'group' => posix_getpgid(0), 'session' => posix_getsid(0),
+            ]));
+            while (true) { usleep(10_000); }
+            PHP);
+        self::assertSame(0, $this->cua('serve', '--daemon', "--address={$this->address}")[0]);
+        $pid = $this->pid();
+        $deadline = microtime(true) + 3.0;
+        while (!is_file($this->directory . '/aux-pid') && microtime(true) < $deadline) {
+            usleep(5_000);
+        }
+        self::assertFileExists($this->directory . '/aux-pid');
+        $program = json_decode(file_get_contents($this->directory . '/aux-pid'), true);
+        try {
+            self::assertSame($pid, $program['session']);
+            self::assertSame($pid, $program['group']);
+            if ($suspended) {
+                posix_kill($pid, SIGSTOP);
+            }
+            [$status, $output] = $this->cua('stop', ...($force ? ['--force'] : []));
+            self::assertSame(0, $status, $output);
+            self::assertFalse(\Crab\Engine\Process\PidFile::running($program['pid']));
+            if (!$force) {
+                self::assertFileExists($this->directory . '/aux-stopped');
+            }
+        } finally {
+            if (\Crab\Engine\Process\PidFile::running($program['pid'])) {
+                posix_kill($program['pid'], SIGKILL);
+            }
+        }
+    }
+
+    /**
+     * Holds a crashed supervisor's old request independently of the new
+     * generation. A stopped old worker exercises the same bounded wait's
+     * failure result without depending on a precise handler duration.
+     */
+    private function checkCrashedSupervisorStop(bool $outlives): void
+    {
+        $this->drainSetting(5.0);
+        $this->slowVersion('one', 0.2);
+        $this->observeProcesses();
+        self::assertSame(0, $this->cua('serve', '--daemon', "--address={$this->address}")[0]);
+        $pid = $this->pid();
+        $request = $this->slowRequest();
+        $worker = (int) file_get_contents($this->directory . '/in-flight');
+        $processes = $this->observedProcesses($pid);
+        posix_kill($processes[0]['pid'], SIGKILL);
+        $command = null;
+        try {
+            $deadline = microtime(true) + 5.0;
+            while (count($this->observedProcesses($pid)) < 2 && microtime(true) < $deadline) {
+                usleep(5_000);
+            }
+            self::assertCount(2, $this->observedProcesses($pid));
+            $deadline = microtime(true) + 3.0;
+            while (!is_file($this->directory . '/draining') && microtime(true) < $deadline) {
+                usleep(5_000);
+            }
+            self::assertFileExists($this->directory . '/draining');
+            if ($outlives) {
+                posix_kill($worker, SIGSTOP);
+            }
+            $before = microtime(true);
+            [$command, $pipes] = $this->startCommand('stop', ...($outlives ? ['--timeout=0.6'] : []));
+            if (!$outlives) {
+                $deadline = microtime(true) + 3.0;
+                while (\Crab\Engine\Process\PidFile::running($pid) && microtime(true) < $deadline) {
+                    usleep(5_000);
+                }
+                self::assertFalse(\Crab\Engine\Process\PidFile::running($pid));
+                self::assertTrue(proc_get_status($command)['running'], 'Stop must still wait for the old worker.');
+                self::assertTrue(posix_kill($worker, 0));
+                file_put_contents($this->directory . '/release', 'yes');
+            }
+            [$status, $output] = $this->finishCommand($command, $pipes);
+            self::assertSame($outlives ? 1 : 0, $status, $output);
+            if ($outlives) {
+                self::assertStringContainsString('still has running processes', $output);
+                self::assertStringContainsString("their pids are {$worker}", $output);
+                self::assertLessThan(2.0, microtime(true) - $before, 'The group gets the remaining allowance, not another full wait.');
+            } else {
+                self::assertStringContainsString('one finished', stream_get_contents($request));
+                self::assertFalse(\Crab\Engine\Process\PidFile::running($worker));
+                self::assertSame('', $this->drainLog());
+            }
+        } finally {
+            posix_kill($worker, SIGKILL);
+            fclose($request);
+            if (is_resource($command)) {
+                proc_terminate($command, SIGKILL);
+                proc_close($command);
+            }
+        }
+    }
+
+    /**
+     * Starts only this test's subprocess and keeps its handle until cleanup,
+     * allowing zombie tests to deliberately defer parent collection.
+     *
+     * @return array{resource, array<int, resource>, int}
+     */
+    private function launchDrainFixture(string $role, string $directory, string ...$arguments): array
+    {
+        if (!is_dir($directory)) {
+            mkdir($directory, recursive: true);
+        }
+        $process = proc_open([PHP_BINARY, __DIR__ . '/Engine/Fixtures/drain.php', $role,
+            dirname(__DIR__) . '/vendor/autoload.php', $directory, ...$arguments],
+            [1 => ['pipe', 'w'], 2 => ['pipe', 'w']], $pipes);
+        self::assertIsResource($process);
+        $pid = proc_get_status($process)['pid'];
+        $this->fixtures[] = ['process' => $process, 'pipes' => $pipes, 'pid' => $pid, 'role' => $role];
+        stream_set_timeout($pipes[1], 3);
+        self::assertSame("ready\n", fgets($pipes[1]));
+        return [$process, $pipes, $pid];
+    }
+
+    public function testForceCutsAnInFlightRequestAndCollectsEveryGenerationAndWorker(): void
+    {
+        $this->drainSetting(30.0);
+        $this->slowVersion('one', 20.0);
+        $this->observeProcesses();
+        self::assertSame(0, $this->cua('serve', '--daemon', "--address={$this->address}", '--workers=2')[0]);
+        $pid = $this->pid();
+        $request = $this->slowRequest();
+        $worker = (int) file_get_contents($this->directory . '/in-flight');
+        try {
+            $this->version('two');
+            self::assertSame(0, $this->cua('reload', "--address={$this->address}", '--workers=2')[0]);
+            $processes = $this->observedProcesses($pid);
+            self::assertCount(2, $processes, 'Force must include the retiring generation too.');
+            $before = microtime(true);
+            [$status, $output] = $this->cua('stop', '--force');
+            self::assertSame(0, $status, $output);
+            self::assertLessThan(3.0, microtime(true) - $before);
+            self::assertSame('', stream_get_contents($request));
+            self::assertFalse(posix_kill($worker, 0), 'The request worker must be gone before force returns.');
+            $this->assertProcessesGone($pid, $processes);
+            self::assertSame([], glob($this->directory . '/storage/crab.pid.generation.*'));
+            self::assertFileDoesNotExist($this->directory . '/storage/crab.pid.state');
+        } finally {
+            fclose($request);
+        }
+    }
+
+    public function testForceAlsoEndsDrainingWorkersWhoseGenerationCrashed(): void
+    {
+        $this->drainSetting(30.0);
+        $this->slowVersion('one', 20.0);
+        $this->observeProcesses();
+        self::assertSame(0, $this->cua('serve', '--daemon', "--address={$this->address}")[0]);
+        $pid = $this->pid();
+        $request = $this->slowRequest();
+        try {
+            $processes = $this->observedProcesses($pid);
+            $worker = (int) file_get_contents($this->directory . '/in-flight');
+            posix_kill($processes[0]['pid'], SIGKILL);
+            $deadline = microtime(true) + 5.0;
+            $log = $this->directory . '/storage/logs/server.log';
+            while (!str_contains((string) file_get_contents($log), 'Serving again, generation pid ') && microtime(true) < $deadline) {
+                usleep(5_000);
+            }
+            self::assertStringContainsString('Serving again, generation pid ', (string) file_get_contents($log));
+            self::assertTrue(posix_kill($worker, 0), 'The old worker still has a held request to drain.');
+            $processes = $this->observedProcesses($pid);
+            self::assertCount(2, $processes);
+            [$status, $output] = $this->cua('stop', '--force');
+            self::assertSame(0, $status, $output);
+            self::assertSame('', stream_get_contents($request));
+            $this->assertProcessesGone($pid, $processes);
+        } finally {
+            fclose($request);
+        }
+    }
+
+    #[Group('slow')]
+    public function testPlainStopUsesTheRunningDrainAfterConfigurationIsShortened(): void
+    {
+        $this->checkChangedConfigurationStop(1.0, 16.0);
+    }
+
+    public function testPlainStopAnswersTheRequestDespiteAnInvalidNewDrainSetting(): void
+    {
+        $this->checkChangedConfigurationStop('abc', 0.5);
+    }
+
+    public function testPlainRestartDrainsTheOldServerBeforeRejectingInvalidNewConfiguration(): void
+    {
+        $this->drainSetting(30.0);
+        $this->slowVersion('one', 0.5);
+        self::assertSame(0, $this->cua('serve', '--daemon', "--address={$this->address}")[0]);
+        $pid = $this->pid();
+        $request = $this->slowRequest();
+        $this->drainSetting('abc');
+        try {
+            [$status, $output] = $this->stopDuringRequest('restart', "--address={$this->address}");
+            self::assertSame(1, $status, $output);
+            self::assertStringContainsString("Stopped the server, pid {$pid}.", $output);
+            self::assertStringContainsString('server.drain', $output);
+            self::assertStringEndsWith('one finished', (string) stream_get_contents($request));
+            self::assertFalse(posix_kill($pid, 0));
+        } finally {
+            fclose($request);
+        }
+    }
+
+    /**
+     * The held request must finish using the running generation's setting,
+     * even though the command loads different configuration from disk.
+     */
+    private function checkChangedConfigurationStop(mixed $drain, float $seconds): void
+    {
+        $this->drainSetting(30.0);
+        $this->slowVersion('one', $seconds);
+        self::assertSame(0, $this->cua('serve', '--daemon', "--address={$this->address}")[0]);
+        $pid = $this->pid();
+        $request = $this->slowRequest();
+        $this->drainSetting($drain);
+        try {
+            $keeper = new \Crab\Engine\Process\Keeper(new \Crab\Engine\Process\PidFile($this->directory . '/storage/crab.pid'), '');
+            self::assertGreaterThanOrEqual(36.0, $keeper->allowance($pid));
+            [$status, $output] = $this->stopDuringRequest();
+            self::assertSame(0, $status, $output);
+            $response = (string) stream_get_contents($request);
+            self::assertStringContainsString('200 OK', $response);
+            self::assertStringEndsWith('one finished', $response);
+            self::assertStringNotContainsString('WARNING', $this->drainLog());
+        } finally {
+            fclose($request);
+        }
+    }
+
+    /**
+     * Reads pids observed by this test's provider, including old workers
+     * after their generation crashed. Production keeps no worker record.
+     *
+     * @return list<array{pid: int, workers: list<int>}>
+     */
+    private function observedProcesses(int $pid): array
+    {
+        $generations = [];
+        foreach (file($this->directory . '/test-processes', FILE_IGNORE_NEW_LINES) as $line) {
+            $worker = json_decode($line, true);
+            if ($worker['group'] !== $pid) {
+                continue;
+            }
+            $generation = $worker['generation'];
+            $generations[$generation]['pid'] = $generation;
+            $generations[$generation]['workers'][] = $worker['pid'];
+        }
+        return array_values($generations);
+    }
+
+    /**
+     * Success from force means every generation and worker the fixture
+     * observed is gone, including a worker whose supervisor crashed.
+     *
+     * @param list<array{pid: int, workers: list<int>}> $processes
+     */
+    private function assertProcessesGone(int $keeper, array $processes): void
+    {
+        self::assertFalse(posix_kill($keeper, 0));
+        foreach ($processes as $generation) {
+            foreach ([$generation['pid'], ...$generation['workers']] as $pid) {
+                self::assertFalse(posix_kill($pid, 0), "Server process {$pid} remains alive after force.");
+            }
+        }
+    }
+
+    public function testAThrowingFailureLoggerStillLeavesTheCountAndFailureOnStderr(): void
+    {
+        $this->checkThrowingLogger(true);
+    }
+
+    /**
+     * Exercises both the configured warning sink and the failure sink;
+     * neither is allowed to prevent the worker's providers from stopping.
+     */
+    private function checkThrowingLogger(bool $failErrors): void
+    {
+        $this->drainSetting(0.1);
+        $this->slowVersion('one', 2.0);
+        $path = $this->directory . '/app.php';
+        $source = (string) file_get_contents($path);
+        $source = str_replace('public function register(Crab\\Contracts\\Container\\Container $container): void {}',
+            'public function register(Crab\\Contracts\\Container\\Container $container): void { $container->instance(Crab\\Contracts\\Log\\Logger::class, new ThrowingLogger()); }', $source);
+        $logger = <<<'PHP'
+
+            /**
+             * Records attempted messages before refusing the configured sink.
+             */
+            final class ThrowingLogger extends Psr\Log\AbstractLogger implements Crab\Contracts\Log\Logger
+            {
+                public function log($level, string|Stringable $message, array $context = []): void
+                {
+                    $message = strtr((string) $message, ['{message}' => $context['message'] ?? '']);
+                    file_put_contents(__DIR__ . '/logger-calls', $level . ': ' . $message . "\n", FILE_APPEND);
+                    if ($level === 'warning' || (FAIL_ERRORS && $level === 'error')) {
+                        throw new RuntimeException($level . ' sink failed');
+                    }
+                }
+            }
+
+            PHP;
+        $logger = str_replace('FAIL_ERRORS', var_export($failErrors, true), $logger);
+        file_put_contents($path, str_replace('<?php', '<?php' . $logger, $source));
+        self::assertSame(0, $this->cua('serve', '--daemon', "--address={$this->address}")[0]);
+        $request = $this->slowRequest();
+        try {
+            [$status, $output] = $this->stopDuringRequest();
+            self::assertSame(0, $status, $output);
+            self::assertSame('', stream_get_contents($request));
+            $stderr = (string) file_get_contents($this->directory . '/storage/logs/server.log');
+            self::assertSame(1, substr_count($stderr, 'WARNING HTTP worker '), $stderr);
+            self::assertMatchesRegularExpression('/WARNING HTTP worker \d+ reached server\.drain; cut 1 connections\./', $stderr);
+            $calls = (string) file_get_contents($this->directory . '/logger-calls');
+            self::assertSame(1, substr_count($calls, 'warning: HTTP worker '));
+            self::assertSame(1, substr_count($calls, 'error: Unhandled failure: warning sink failed'), $calls);
+            if ($failErrors) {
+                self::assertStringContainsString('HTTP drain warning logger failed', $stderr);
+                self::assertStringContainsString('warning sink failed', $stderr);
+                self::assertStringContainsString('error sink failed', $stderr);
+            }
+            self::assertFileExists($this->directory . '/providers-stopped');
+        } finally {
+            fclose($request);
+        }
+    }
+
+    /**
+     * Gives the application's server a drain setting and a separate log
+     * whose warning count is unaffected by the keeper's process messages.
+     */
+    private function drainSetting(mixed $drain): void
+    {
+        if (!is_dir($this->directory . '/config')) {
+            mkdir($this->directory . '/config');
+        }
+        file_put_contents($this->directory . '/config/server.php', '<?php return ' . var_export(['drain' => $drain], true) . ';');
+        file_put_contents($this->directory . '/config/log.php', "<?php return ['path' => 'storage/drain.log'];");
+    }
+
+    /**
+     * Holds the handler until its worker observes draining. Releasing it
+     * then measures request work inside the drain, independent of CLI startup.
+     */
+    private function slowVersion(string $version, float $seconds): void
+    {
+        $this->observeDrain();
+        $this->version($version);
+        file_put_contents($this->directory . '/app/routes.php', "\nCrab\\Route::get('/slow', static function (): Psr\\Http\\Message\\ResponseInterface {"
+            . 'file_put_contents(dirname(__DIR__) . \'/in-flight\', (string) getmypid());'
+            . '$worker = Crab\\App::current()->container->get(Crab\\Engine\\Process\\Worker::class);'
+            . 'while (!is_file(dirname(__DIR__) . \'/release\')) {'
+            . 'if ($worker->isDraining()) { file_put_contents(dirname(__DIR__) . \'/draining\', \'yes\'); }'
+            . 'Crab\\Engine\\Async\\Async::sleep($worker->loop, 0.005); }'
+            . 'Crab\\Engine\\Async\\Async::sleep(Crab\\Engine\\EventLoop::current(), ' . var_export($seconds, true) . ');'
+            . 'return Crab\\Http\\Response::text(' . var_export($version . ' finished', true) . ');'
+            . '});', FILE_APPEND);
+    }
+
+    /**
+     * @return resource A request left waiting for its response.
+     */
+    private function slowRequest(): mixed
+    {
+        if (is_file($this->directory . '/in-flight')) {
+            unlink($this->directory . '/in-flight');
+        }
+        $request = stream_socket_client($this->address, $code, $message, 1);
+        self::assertIsResource($request);
+        stream_set_timeout($request, 30);
+        fwrite($request, "GET /slow HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n");
+        $deadline = microtime(true) + 3.0;
+        while (!is_file($this->directory . '/in-flight') && microtime(true) < $deadline) {
+            usleep(5_000);
+        }
+        self::assertFileExists($this->directory . '/in-flight');
+        return $request;
+    }
+
+    /**
+     * A graceful drain writes no warning and need not create a log file.
+     */
+    private function drainLog(): string
+    {
+        $log = $this->directory . '/storage/drain.log';
+        return is_file($log) ? (string) file_get_contents($log) : '';
     }
 
     public function testAReloadBringsNewCodeWithoutRefusingAConnection(): void
@@ -193,6 +1166,7 @@ final class ServerTest extends TestCase
 
     public function testARestartStopsAndStartsAndForceEndsOneThatWillNotStop(): void
     {
+        $this->observeProcesses();
         [$status, $output] = $this->cua('restart', "--address={$this->address}");
         self::assertSame(0, $status, 'With nothing running, a restart is a start.');
         self::assertSame("Crab server running on {$this->url}\n", $output);
@@ -206,6 +1180,7 @@ final class ServerTest extends TestCase
         self::assertSame('two', $this->get());
 
         // A server that ignores being asked: stopped in its tracks, so it cannot answer the signal.
+        $processes = $this->observedProcesses($second);
         posix_kill($second, SIGSTOP);
         [$status, $output] = $this->cua('stop', '--timeout=0.3');
         self::assertSame(1, $status);
@@ -213,8 +1188,9 @@ final class ServerTest extends TestCase
         self::assertStringContainsString('`stop --force` ends it outright', $output);
         self::assertSame([0, "Stopped the server, pid {$second}.\n"], $this->cua('stop', '--timeout=0.3', '--force'));
         self::assertFalse(posix_kill($second, 0));
+        $this->assertProcessesGone($second, $processes);
         self::assertFileDoesNotExist($this->directory . '/storage/crab.pid', 'Its file is removed for it.');
-        // The server process under it notices that its keeper has gone and stops by itself.
+        // Force has already collected the server's workers and generations.
         for ($waited = 0; $waited < 200 && $this->get() !== null; ++$waited) {
             usleep(50_000);
         }
@@ -350,9 +1326,134 @@ final class ServerTest extends TestCase
      */
     private function cua(string ...$arguments): array
     {
+        [$process, $pipes] = $this->startCommand(...$arguments);
+        return $this->finishCommand($process, $pipes);
+    }
+
+    /**
+     * Starts a command without waiting, so a request can observe its stop signal.
+     *
+     * @return array{resource, array<int, resource>}
+     */
+    private function startCommand(string ...$arguments): array
+    {
         $process = proc_open([PHP_BINARY, $this->directory . '/cua', ...$arguments], [1 => ['pipe', 'w'], 2 => ['pipe', 'w']], $pipes, $this->directory);
+        self::assertIsResource($process);
+        return [$process, $pipes];
+    }
+
+    /**
+     * Collects and reaps only the command started by this test.
+     *
+     * @param resource $process
+     * @param array<int, resource> $pipes
+     * @return array{int, string}
+     */
+    private function finishCommand(mixed $process, array $pipes): array
+    {
         $output = stream_get_contents($pipes[1]) . stream_get_contents($pipes[2]);
+        fclose($pipes[1]);
+        fclose($pipes[2]);
         return [proc_close($process), $output];
+    }
+
+    /**
+     * Exposes the current worker to the fixture and records provider cleanup.
+     */
+    private function observeDrain(): void
+    {
+        $path = $this->directory . '/app.php';
+        $source = (string) file_get_contents($path);
+        if (str_contains($source, 'final class DrainObserver')) {
+            return;
+        }
+        $provider = <<<'PHP'
+
+            /**
+             * A fixture barrier and a record that worker providers were stopped.
+             */
+            final class DrainObserver implements Crab\Contracts\WorkerProvider
+            {
+                public function register(Crab\Contracts\Container\Container $container): void {}
+                public function start(Crab\Engine\Process\Worker $worker, Crab\Contracts\Container\Container $container): void
+                {
+                    $container->instance(Crab\Engine\Process\Worker::class, $worker);
+                }
+                public function stop(Crab\Engine\Process\Worker $worker, Crab\Contracts\Container\Container $container): void
+                {
+                    file_put_contents(__DIR__ . '/providers-stopped', 'yes');
+                }
+            }
+
+            PHP;
+        $source = str_replace('<?php', '<?php' . $provider, $source);
+        $source = str_replace('->create()', '->withProviders([DrainObserver::class])->create()', $source);
+        file_put_contents($path, $source);
+    }
+
+    /**
+     * Observes only this fixture's worker pids, group membership and streams.
+     * These observations are never read by the server's shutdown code.
+     */
+    private function observeProcesses(): void
+    {
+        $path = $this->directory . '/app.php';
+        $source = (string) file_get_contents($path);
+        $provider = <<<'PHP'
+
+            /**
+             * Reports worker ownership and inherited streams to its test.
+             */
+            final class ProcessObserver implements Crab\Contracts\WorkerProvider
+            {
+                public function register(Crab\Contracts\Container\Container $container): void {}
+                public function start(Crab\Engine\Process\Worker $worker, Crab\Contracts\Container\Container $container): void
+                {
+                    $streams = [];
+                    foreach (get_resources('stream') as $stream) {
+                        $streams[] = stream_get_meta_data($stream)['uri'] ?? '';
+                    }
+                    $observation = ['pid' => getmypid(), 'generation' => posix_getppid(),
+                        'group' => posix_getpgid(0), 'session' => posix_getsid(0), 'streams' => $streams];
+                    file_put_contents(__DIR__ . '/test-processes', json_encode($observation) . "\n", FILE_APPEND | LOCK_EX);
+                }
+                public function stop(Crab\Engine\Process\Worker $worker, Crab\Contracts\Container\Container $container): void {}
+            }
+
+            PHP;
+        $source = str_replace('<?php', '<?php' . $provider, $source);
+        $source = str_replace('->create()', '->withProviders([ProcessObserver::class])->create()', $source);
+        file_put_contents($path, $source);
+    }
+
+    /**
+     * Opens the release barrier only after the old worker is draining.
+     */
+    private function releaseRequest(): void
+    {
+        $deadline = microtime(true) + 10.0;
+        while (!is_file($this->directory . '/draining') && microtime(true) < $deadline) {
+            usleep(5_000);
+        }
+        self::assertFileExists($this->directory . '/draining');
+        file_put_contents($this->directory . '/release', 'yes');
+    }
+
+    /**
+     * Stops concurrently with the held request and always reaps the CLI.
+     *
+     * @return array{int, string}
+     */
+    private function stopDuringRequest(string ...$arguments): array
+    {
+        [$process, $pipes] = $this->startCommand(...($arguments === [] ? ['stop'] : $arguments));
+        try {
+            $this->releaseRequest();
+        } finally {
+            file_put_contents($this->directory . '/release', 'yes');
+            $result = $this->finishCommand($process, $pipes);
+        }
+        return $result;
     }
 
     private function pid(): int

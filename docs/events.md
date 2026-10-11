@@ -64,6 +64,7 @@ Listeners are added in a provider's `register()`. That is the one place, so a re
 // app/Providers/AppProvider.php
 use App\Events\UserRegistered;
 use App\Actions\SendWelcomeEmail;
+use Crab\Contracts\Container\Container;
 use Crab\Contracts\Events\Dispatcher;
 
 public function register(Container $container): void
@@ -105,6 +106,8 @@ final readonly class SendWelcomeEmail
 For a line or two:
 
 ```php
+use Crab\Contracts\Log\Logger;
+
 $events->listen(UserRegistered::class, static function (UserRegistered $event) use ($container): void {
     $container->get(Logger::class)->info('User {id} registered', ['id' => $event->userId]);
 });
@@ -130,7 +133,11 @@ $events->listen(Audited::class, WriteAuditLog::class);       // hears both
 Ask for the dispatcher and hand it the event:
 
 ```php
+use App\Events\UserRegistered;
+use Crab\Contracts\Database\Database;
 use Crab\Contracts\Events\Dispatcher;
+use Crab\Http\Response;
+use Crab\Validation\Email;
 
 final readonly class RegisterUser
 {
@@ -162,6 +169,9 @@ So a failing listener fails the request. That is right when the reaction is part
 A listener that sends an email or calls another API makes the client wait for it. Have the listener push a [job](queues.md) and return:
 
 ```php
+use App\Events\UserRegistered;
+use Crab\Contracts\Queue\Queue;
+
 final readonly class SendWelcomeEmail
 {
     public function __construct(private Queue $queue)

@@ -25,6 +25,7 @@ use Crab\Queue\DatabaseStore;
 use Crab\Queue\MemoryStore;
 use Crab\Queue\Queue;
 use Crab\Queue\QueueProvider;
+use Crab\Queue\Retry;
 use Crab\Queue\Supervisor;
 use Crab\Testing\FrozenClock;
 use Crab\Testing\WorkerHarness;
@@ -106,6 +107,240 @@ final class FlakyJob
     }
 }
 
+/**
+ * Gives up on a failing job after one try, whatever the consumer allows.
+ */
+#[Retry(tries: 1)]
+final readonly class SingleTryJob
+{
+    public function handle(int $id): void
+    {
+        (new FlakyJob())->handle($id);
+    }
+}
+
+/**
+ * Lets a failing job outlast a consumer's smaller retry limit.
+ */
+#[Retry(tries: 5)]
+final readonly class FiveTryJob
+{
+    public function handle(int $id): void
+    {
+        (new FlakyJob())->handle($id);
+    }
+}
+
+/**
+ * Models a declaration lowered after four reservations under older code.
+ */
+#[Retry(tries: 2)]
+final readonly class LoweredRetryJob
+{
+    public function handle(int $id): void
+    {
+        (new FlakyJob())->handle($id);
+    }
+}
+
+/**
+ * Changes the retry limit while keeping the consumer's pauses.
+ */
+#[Retry(tries: 4)]
+final readonly class FourTryJob
+{
+    public function handle(int $id): void
+    {
+        (new FlakyJob())->handle($id);
+    }
+}
+
+/**
+ * Uses short pauses while keeping the consumer's retry limit.
+ */
+#[Retry(backoff: [1, 2])]
+final readonly class ShortBackoffJob
+{
+    public function handle(int $id): void
+    {
+        (new FlakyJob())->handle($id);
+    }
+}
+
+/**
+ * Repeats one pause while keeping the consumer's retry limit.
+ */
+#[Retry(backoff: [5])]
+final readonly class FiveSecondBackoffJob
+{
+    public function handle(int $id): void
+    {
+        (new FlakyJob())->handle($id);
+    }
+}
+
+/**
+ * Overrides both supervisor settings, allowing immediate retries.
+ */
+#[Retry(tries: 3, backoff: [])]
+final readonly class ImmediateRetryJob
+{
+    public function handle(int $id): void
+    {
+        (new FlakyJob())->handle($id);
+    }
+}
+
+/**
+ * A zero-second pause is valid and still keeps the consumer's retry limit.
+ */
+#[Retry(backoff: [0])]
+final readonly class ZeroBackoffJob
+{
+    public function handle(int $id): void
+    {
+        (new FlakyJob())->handle($id);
+    }
+}
+
+/**
+ * These jobs have callable methods so push refuses their retry settings.
+ */
+#[Retry(tries: 0)]
+final readonly class ZeroTriesJob
+{
+    public function handle(): void
+    {
+    }
+}
+
+/**
+ * A retry pause cannot be negative.
+ */
+#[Retry(backoff: [-1])]
+final readonly class NegativeBackoffJob
+{
+    public function handle(): void
+    {
+    }
+}
+
+/**
+ * A retry pause cannot be text.
+ */
+#[Retry(backoff: ['a'])]
+final readonly class TextBackoffJob
+{
+    public function handle(): void
+    {
+    }
+}
+
+/**
+ * A retry declaration must change at least one setting.
+ */
+#[Retry]
+final readonly class UnsetRetryJob
+{
+    public function handle(): void
+    {
+    }
+}
+
+/**
+ * Retry pauses are ordered as a list, without missing indexes.
+ */
+#[Retry(backoff: [1 => 5])]
+final readonly class SparseBackoffJob
+{
+    public function handle(): void
+    {
+    }
+}
+
+/**
+ * A retry pause is a whole number, even when a float has no fraction.
+ */
+#[Retry(backoff: [1.0])]
+final readonly class FloatBackoffJob
+{
+    public function handle(): void
+    {
+    }
+}
+
+/**
+ * A numeric string is not silently converted to a retry pause.
+ */
+#[Retry(backoff: ['1'])]
+final readonly class NumericTextBackoffJob
+{
+    public function handle(): void
+    {
+    }
+}
+
+/**
+ * A boolean is not silently converted to a retry pause.
+ */
+#[Retry(backoff: [true])]
+final readonly class BooleanBackoffJob
+{
+    public function handle(): void
+    {
+    }
+}
+
+/**
+ * Bypasses push validation to model a stored job whose retry settings
+ * became invalid after a deployment. Its handler must never run.
+ */
+#[Retry(tries: 0)]
+final readonly class InvalidStoredRetryJob
+{
+    public function handle(): void
+    {
+        Ledger::$lines[] = 'invalid stored job ran';
+    }
+}
+
+/**
+ * A wrong constructor argument must be refused before this handler runs.
+ */
+#[Retry(tries: 'bad')]
+final readonly class WrongRetryTriesJob
+{
+    public function handle(): void
+    {
+        Ledger::$lines[] = 'wrong retry tries job ran';
+    }
+}
+
+/**
+ * A backoff must be an array before its entries can be checked.
+ */
+#[Retry(backoff: 5)]
+final readonly class WrongRetryBackoffJob
+{
+    public function handle(): void
+    {
+        Ledger::$lines[] = 'wrong retry backoff job ran';
+    }
+}
+
+/**
+ * Repeating the attribute must name the job and never run its handler.
+ */
+#[Retry(tries: 1)]
+#[Retry(backoff: [5])]
+final readonly class RepeatedRetryJob
+{
+    public function handle(): void
+    {
+        Ledger::$lines[] = 'repeated retry job ran';
+    }
+}
+
 final class NotAJob
 {
 }
@@ -117,9 +352,17 @@ final class Records extends AbstractLogger
      */
     public array $records = [];
 
+    /**
+     * The settings and failure details passed to each log line.
+     *
+     * @var list<array<string, mixed>>
+     */
+    public array $contexts = [];
+
     public function log($level, string|\Stringable $message, array $context = []): void
     {
         $this->records[] = [(string) $level, strtr((string) $message, ['{job}' => $context['job'] ?? '', '{message}' => $context['message'] ?? ''])];
+        $this->contexts[] = $context;
     }
 }
 
@@ -304,6 +547,545 @@ final class QueueTest extends TestCase
     }
 
     #[DataProvider('stores')]
+    public function testAJobWithOneTryIsGivenUpOnAfterItsFirstFailure(string $kind): void
+    {
+        $store = $this->store($kind);
+        $consumer = $this->consumer($store, tries: 3, backoff: []);
+        (new Queue($store, clock: $this->clock))->push(SingleTryJob::class, id: 1);
+        Ledger::$failures = 1;
+
+        self::assertTrue($consumer->runNext());
+
+        self::assertCount(1, $store->failed());
+        self::assertSame([SingleTryJob::class, 1], [$store->failed()[0]->job, $store->failed()[0]->attempts]);
+        self::assertSame([], $store->jobs('default', 'pending', $this->clock->now()->getTimestamp()));
+        self::assertSame(0, $store->size('default'));
+        self::assertFalse($consumer->runNext());
+        self::assertSame([], Ledger::$lines);
+        self::assertSame(['error'], array_column($this->log->records, 0));
+        self::assertSame(1, $this->log->contexts[0]['attempt']);
+    }
+
+    #[DataProvider('stores')]
+    public function testAJobIsTriedAsOftenAsItSaysEvenWhenTheConsumerAllowsFewerTries(string $kind): void
+    {
+        $store = $this->store($kind);
+        $consumer = $this->consumer($store, tries: 2, backoff: []);
+        (new Queue($store, clock: $this->clock))->push(FiveTryJob::class, id: 5);
+        Ledger::$failures = 5;
+
+        for ($attempt = 1; $attempt <= 5; ++$attempt) {
+            self::assertTrue($consumer->runNext());
+            if ($attempt < 5) {
+                self::assertSame([], $store->failed());
+                $pending = $store->jobs('default', 'pending', $this->clock->now()->getTimestamp());
+                self::assertCount(1, $pending);
+                self::assertSame($attempt, $pending[0]->attempts);
+                self::assertSame(5, $this->log->contexts[$attempt - 1]['tries']);
+            }
+        }
+
+        self::assertCount(1, $store->failed());
+        self::assertSame(5, $store->failed()[0]->attempts);
+        self::assertSame(0, $store->size('default'));
+        self::assertFalse($consumer->runNext());
+        self::assertSame(['warning', 'warning', 'warning', 'warning', 'error'], array_column($this->log->records, 0));
+        self::assertSame(5, $this->log->contexts[4]['attempt']);
+    }
+
+    #[DataProvider('stores')]
+    public function testAJobsBackoffWaitsUntilEachPauseEndsAndRepeatsTheLastPause(string $kind): void
+    {
+        $store = $this->store($kind);
+        $consumer = $this->consumer($store, tries: 4, backoff: [99]);
+        (new Queue($store, clock: $this->clock))->push(ShortBackoffJob::class, id: 1);
+        Ledger::$failures = 3;
+
+        self::assertTrue($consumer->runNext());
+        foreach ([1, 2, 2] as $wait) {
+            $this->clock->advance('+' . ($wait - 1) . ' seconds');
+            self::assertFalse($consumer->runNext());
+            $this->clock->advance('+1 second');
+            self::assertTrue($consumer->runNext());
+        }
+
+        self::assertSame(['sent 1'], Ledger::$lines);
+        self::assertSame([], $store->failed());
+        self::assertSame(0, $store->size('default'));
+        self::assertSame([1, 2, 2], array_column($this->log->contexts, 'wait'));
+        self::assertSame([4, 4, 4], array_column($this->log->contexts, 'tries'));
+    }
+
+    #[DataProvider('stores')]
+    public function testAJobThatOnlySetsTriesKeepsTheConsumersBackoff(string $kind): void
+    {
+        $store = $this->store($kind);
+        $consumer = $this->consumer($store, tries: 2, backoff: [3, 7]);
+        (new Queue($store, clock: $this->clock))->push(FourTryJob::class, id: 4);
+        Ledger::$failures = 4;
+
+        self::assertTrue($consumer->runNext());
+        foreach ([3, 7, 7] as $wait) {
+            self::assertSame([], $store->failed());
+            $this->clock->advance('+' . ($wait - 1) . ' seconds');
+            self::assertFalse($consumer->runNext());
+            $this->clock->advance('+1 second');
+            self::assertTrue($consumer->runNext());
+        }
+
+        self::assertCount(1, $store->failed());
+        self::assertSame(4, $store->failed()[0]->attempts);
+        self::assertSame(0, $store->size('default'));
+        self::assertSame([3, 7, 7], array_column($this->log->contexts, 'wait'));
+    }
+
+    #[DataProvider('stores')]
+    public function testAJobThatOnlySetsBackoffKeepsTheConsumersTries(string $kind): void
+    {
+        $store = $this->store($kind);
+        $consumer = $this->consumer($store, tries: 2, backoff: [99]);
+        (new Queue($store, clock: $this->clock))->push(FiveSecondBackoffJob::class, id: 2);
+        Ledger::$failures = 2;
+
+        self::assertTrue($consumer->runNext());
+        self::assertSame([], $store->failed());
+        $this->clock->advance('+4 seconds');
+        self::assertFalse($consumer->runNext());
+        $this->clock->advance('+1 second');
+        self::assertTrue($consumer->runNext());
+
+        self::assertCount(1, $store->failed());
+        self::assertSame(2, $store->failed()[0]->attempts);
+        self::assertFalse($consumer->runNext());
+        self::assertSame(5, $this->log->contexts[0]['wait']);
+        self::assertSame(2, $this->log->contexts[0]['tries']);
+    }
+
+    #[DataProvider('stores')]
+    public function testAJobWhoseWorkersKeepDyingIsGivenUpOnByItsOwnTries(string $kind): void
+    {
+        $store = $this->store($kind);
+        $events = new Dispatcher();
+        $heard = [];
+        $events->listen(JobRan::class, static function (JobRan $event) use (&$heard, $store): void {
+            $heard[] = [$event, count($store->failed())];
+        });
+        $consumer = new Consumer($store, new Container(), $this->log, $this->clock, tries: 6, events: $events);
+        $id = (new Queue($store, clock: $this->clock))->push(FourTryJob::class, id: 4);
+
+        for ($attempt = 1; $attempt <= 4; ++$attempt) {
+            $message = $store->reserve(['default'], $this->clock->now()->getTimestamp(), 90);
+            self::assertNotNull($message);
+            self::assertSame([$id, $attempt], [$message->id, $message->attempts]);
+            $this->clock->advance('+91 seconds');
+        }
+        self::assertTrue($consumer->runNext());
+
+        self::assertSame([], Ledger::$lines);
+        self::assertCount(1, $store->failed());
+        self::assertStringContainsString('retry limit of 4 is exhausted; the job was taken 4 times before this check', (string) $store->failed()[0]->error);
+        self::assertSame(4, $this->log->contexts[0]['attempt']);
+        self::assertCount(1, $heard);
+        self::assertSame([$id, 5, true, 1], [$heard[0][0]->message->id, $heard[0][0]->message->attempts, $heard[0][0]->gaveUp, $heard[0][1]]);
+        self::assertInstanceOf(\RuntimeException::class, $heard[0][0]->error);
+        self::assertSame($this->log->contexts[0]['exception'], $heard[0][0]->error);
+        self::assertGreaterThanOrEqual(0.0, $heard[0][0]->seconds);
+        self::assertSame(0, $store->size('default'));
+        self::assertFalse($consumer->runNext());
+        self::assertCount(1, $heard);
+    }
+
+    #[DataProvider('stores')]
+    public function testAnAbandonedJobWithOneTryReportsItsFinalFailureAtTheRecoveryTime(string $kind): void
+    {
+        $store = $this->store($kind);
+        $events = new Dispatcher();
+        $heard = [];
+        $events->listen(JobRan::class, static function (JobRan $event) use (&$heard, $store): void {
+            $heard[] = [$event, count($store->failed())];
+        });
+        $consumer = new Consumer($store, new Container(), $this->log, $this->clock, events: $events);
+        $id = (new Queue($store, clock: $this->clock))->push(SingleTryJob::class, id: 1);
+        $first = $store->reserve(['default'], $this->clock->now()->getTimestamp(), 90);
+        self::assertSame([$id, 1], [$first?->id, $first?->attempts]);
+
+        $this->clock->advance('+89 seconds');
+        self::assertFalse($consumer->runNext());
+        self::assertSame([], $store->failed());
+        self::assertSame([], $heard);
+        $this->clock->advance('+1 second');
+        self::assertTrue($consumer->runNext());
+
+        self::assertSame([], Ledger::$lines);
+        self::assertCount(1, $store->failed());
+        self::assertSame([$id, 2], [$store->failed()[0]->id, $store->failed()[0]->attempts]);
+        $reason = 'The retry limit of 1 is exhausted; the job was taken once before this check. This can happen without a recorded failure when a worker stopped while running it or it ran longer than 90 seconds (queue.retry_after). It can also happen when its limit was lowered. Review the job before retrying it with queue:retry.';
+        self::assertSame(\RuntimeException::class . ': ' . $reason, $store->failed()[0]->error);
+        self::assertSame(1, $this->log->contexts[0]['attempt']);
+        self::assertCount(1, $heard);
+        [$event, $failedWhenTold] = $heard[0];
+        self::assertSame($id, $event->message->id);
+        self::assertTrue($event->gaveUp);
+        self::assertInstanceOf(\RuntimeException::class, $event->error);
+        self::assertSame($this->log->contexts[0]['exception'], $event->error);
+        self::assertSame(1, $failedWhenTold);
+        self::assertSame(\RuntimeException::class . ': ' . $event->error->getMessage(), $store->failed()[0]->error);
+        self::assertGreaterThanOrEqual(0.0, $event->seconds);
+        self::assertFalse($consumer->runNext());
+        $this->clock->advance('+90 seconds');
+        self::assertFalse($consumer->runNext());
+        self::assertCount(1, $heard);
+    }
+
+    #[DataProvider('stores')]
+    public function testALoweredRetryLimitKeepsThePriorReservationsWithoutClaimingAWorkerDied(string $kind): void
+    {
+        $store = $this->store($kind);
+        $id = (new Queue($store, clock: $this->clock))->push(LoweredRetryJob::class, id: 2);
+        $now = $this->clock->now()->getTimestamp();
+        // Four reported failures under the old limit of five, before the new worker starts.
+        for ($attempt = 1; $attempt <= 4; ++$attempt) {
+            $message = $store->reserve(['default'], $now, 90);
+            self::assertNotNull($message);
+            self::assertSame([$id, $attempt], [$message->id, $message->attempts]);
+            $store->release($message, $now);
+        }
+        $consumer = $this->consumer($store, tries: 6);
+
+        self::assertTrue($consumer->runNext());
+
+        self::assertSame([], Ledger::$lines);
+        self::assertCount(1, $store->failed());
+        self::assertSame([$id, 5], [$store->failed()[0]->id, $store->failed()[0]->attempts]);
+        $reason = 'The retry limit of 2 is exhausted; the job was taken 4 times before this check. This can happen without a recorded failure when a worker stopped while running it or it ran longer than 90 seconds (queue.retry_after). It can also happen when its limit was lowered. Review the job before retrying it with queue:retry.';
+        self::assertSame(\RuntimeException::class . ': ' . $reason, $store->failed()[0]->error);
+        self::assertSame(4, $this->log->contexts[0]['attempt']);
+        self::assertSame($this->log->contexts[0]['exception']::class . ': ' . $this->log->contexts[0]['message'], $store->failed()[0]->error);
+        self::assertSame($reason, $this->log->contexts[0]['message']);
+        self::assertStringContainsString($reason, $this->log->records[0][1]);
+        self::assertSame(0, $store->size('default'));
+        self::assertFalse($consumer->runNext());
+    }
+
+    #[DataProvider('stores')]
+    public function testAnInvalidRetryDeclarationIsRefusedWhereTheJobIsPushed(string $kind): void
+    {
+        $store = $this->store($kind);
+        $queue = new Queue($store, clock: $this->clock);
+        $mistakes = [
+            ZeroTriesJob::class => 'tries must be at least 1',
+            NegativeBackoffJob::class => 'backoff must be a list of whole numbers greater than or equal to 0',
+            TextBackoffJob::class => 'backoff must be a list of whole numbers greater than or equal to 0',
+            UnsetRetryJob::class => 'needs tries, backoff or both',
+            SparseBackoffJob::class => 'backoff must be a list of whole numbers greater than or equal to 0',
+            FloatBackoffJob::class => 'backoff must be a list of whole numbers greater than or equal to 0',
+            NumericTextBackoffJob::class => 'backoff must be a list of whole numbers greater than or equal to 0',
+            BooleanBackoffJob::class => 'backoff must be a list of whole numbers greater than or equal to 0',
+        ];
+
+        foreach ($mistakes as $job => $says) {
+            try {
+                $queue->push($job);
+                self::fail("The invalid retry declaration of {$job} was accepted.");
+            } catch (\InvalidArgumentException $error) {
+                self::assertStringContainsString($job, $error->getMessage());
+                self::assertStringContainsString($says, $error->getMessage());
+                self::assertInstanceOf(\InvalidArgumentException::class, $error->getPrevious());
+            }
+        }
+
+        self::assertSame(0, $store->size('default'));
+        self::assertSame([], $store->failed());
+    }
+
+    #[DataProvider('stores')]
+    public function testMalformedRetryArgumentsAndRepeatedDeclarationsAreRefusedWhereTheJobIsPushed(string $kind): void
+    {
+        $store = $this->store($kind);
+        $queue = new Queue($store, clock: $this->clock);
+        $mistakes = [
+            WrongRetryTriesJob::class => \TypeError::class,
+            WrongRetryBackoffJob::class => \TypeError::class,
+            RepeatedRetryJob::class => \Error::class,
+        ];
+
+        foreach ($mistakes as $job => $cause) {
+            try {
+                $queue->push($job);
+                self::fail("The malformed retry declaration of {$job} was accepted.");
+            } catch (\InvalidArgumentException $error) {
+                self::assertStringContainsString($job, $error->getMessage());
+                self::assertStringContainsString('Use one #[Retry] declaration', $error->getMessage());
+                self::assertStringContainsString('integer of at least 1', $error->getMessage());
+                self::assertStringContainsString('list of whole numbers greater than or equal to 0', $error->getMessage());
+                self::assertInstanceOf($cause, $error->getPrevious());
+            }
+        }
+
+        self::assertSame(0, $store->size('default'));
+        self::assertSame([], $store->failed());
+    }
+
+    #[DataProvider('stores')]
+    public function testAnInvalidRetryDeclarationAlreadyInTheStoreFailsTheJobForGood(string $kind): void
+    {
+        $store = $this->store($kind);
+        $events = new Dispatcher();
+        $heard = [];
+        $events->listen(JobRan::class, static function (JobRan $event) use (&$heard, $store): void {
+            $heard[] = [$event, count($store->failed())];
+        });
+        $consumer = new Consumer($store, new Container(), $this->log, $this->clock, tries: 3, events: $events);
+        $mistakes = [
+            InvalidStoredRetryJob::class => \InvalidArgumentException::class,
+            WrongRetryTriesJob::class => \TypeError::class,
+            WrongRetryBackoffJob::class => \TypeError::class,
+            RepeatedRetryJob::class => \Error::class,
+        ];
+        $failedCount = 0;
+        foreach ($mistakes as $job => $cause) {
+            $now = $this->clock->now()->getTimestamp();
+            $id = $store->push('default', $job, [], $now, $now);
+            self::assertTrue($consumer->runNext());
+
+            ++$failedCount;
+            self::assertCount($failedCount, $store->failed());
+            $failed = $store->failed(1)[0];
+            self::assertSame([$id, $job, 1, $now], [$failed->id, $failed->job, $failed->attempts, $failed->failedAt]);
+            self::assertStringContainsString($job, (string) $failed->error);
+            self::assertStringContainsString('Use one #[Retry] declaration', (string) $failed->error);
+            self::assertSame([], Ledger::$lines);
+            self::assertSame([], $store->jobs('default', 'pending', $now));
+            self::assertSame([], $store->jobs('default', 'processing', $now));
+            self::assertSame(0, $store->size('default'));
+            self::assertFalse($consumer->runNext());
+            $index = $failedCount - 1;
+            self::assertSame('error', $this->log->records[$index][0]);
+            self::assertStringContainsString('failed for good', $this->log->records[$index][1]);
+            // Invalid metadata must not cap or lose the actual reservation count.
+            self::assertSame(1, $this->log->contexts[$index]['attempt']);
+            self::assertSame($job, $this->log->contexts[$index]['job']);
+            self::assertCount($failedCount, $heard);
+            [$event, $failedWhenTold] = $heard[$index];
+            self::assertSame($id, $event->message->id);
+            self::assertTrue($event->gaveUp);
+            self::assertInstanceOf(\InvalidArgumentException::class, $event->error);
+            self::assertInstanceOf($cause, $event->error->getPrevious());
+            self::assertSame($this->log->contexts[$index]['exception'], $event->error);
+            self::assertGreaterThanOrEqual(0.0, $event->seconds);
+            self::assertSame($failedCount, $failedWhenTold);
+
+            $this->clock->advance('+91 seconds');
+            self::assertFalse($consumer->runNext());
+            self::assertCount($failedCount, $store->failed());
+            self::assertCount($failedCount, $heard);
+        }
+        // The same consumer can take the next valid job after refusing this one.
+        (new Queue($store, clock: $this->clock))->push(GreetJob::class, name: 'next');
+        self::assertTrue($consumer->runNext());
+        self::assertSame(['Hello, next!'], Ledger::$lines);
+        self::assertCount($failedCount + 1, $heard);
+        self::assertFalse($heard[$failedCount][0]->gaveUp);
+        self::assertFalse($consumer->runNext());
+    }
+
+    #[DataProvider('stores')]
+    public function testAJobsLastFailedTryIsTheOneThatTellsListenersItGaveUp(string $kind): void
+    {
+        $store = $this->store($kind);
+        $queue = new Queue($store, clock: $this->clock);
+        $events = new Dispatcher();
+        $heard = [];
+        $events->listen(JobRan::class, static function (JobRan $event) use (&$heard, $store): void {
+            $heard[] = [$event->message->attempts, $event->gaveUp, count($store->failed())];
+        });
+        $consumer = new Consumer($store, new Container(), $this->log, $this->clock, tries: 2, backoff: [], events: $events);
+        $queue->push(FiveTryJob::class, id: 5);
+        Ledger::$failures = 5;
+
+        for ($attempt = 1; $attempt <= 5; ++$attempt) {
+            self::assertTrue($consumer->runNext());
+        }
+        // A job that succeeds on its only try has not been given up on.
+        $queue->push(SingleTryJob::class, id: 1);
+        self::assertTrue($consumer->runNext());
+
+        self::assertSame([
+            [1, false, 0], [2, false, 0], [3, false, 0], [4, false, 0], [5, true, 1],
+            [1, false, 1],
+        ], $heard);
+        self::assertSame(['sent 1'], Ledger::$lines);
+        self::assertFalse($consumer->runNext());
+    }
+
+    #[DataProvider('stores')]
+    public function testAJobsTriesOverrideItsSupervisorsTries(string $kind): void
+    {
+        $store = $this->store($kind);
+        $supervisor = new Supervisor('mail', ['mail'], tries: 1, backoff: [2]);
+        $consumer = $this->consumer($store, tries: 2, backoff: [99])->within($supervisor);
+        (new Queue($store, clock: $this->clock))->on('mail')->push(FiveTryJob::class, id: 5);
+        Ledger::$failures = 5;
+
+        for ($attempt = 1; $attempt <= 5; ++$attempt) {
+            self::assertTrue($consumer->runNext($supervisor->queues));
+            if ($attempt < 5) {
+                self::assertSame([], $store->failed());
+                $this->clock->advance('+1 second');
+                self::assertFalse($consumer->runNext($supervisor->queues));
+                $this->clock->advance('+1 second');
+            }
+        }
+
+        self::assertCount(1, $store->failed());
+        self::assertSame(5, $store->failed()[0]->attempts);
+        self::assertSame([5, 5, 5, 5], array_column($this->log->contexts, 'tries'));
+        self::assertSame([2, 2, 2, 2], array_column($this->log->contexts, 'wait'));
+        self::assertFalse($consumer->runNext($supervisor->queues));
+    }
+
+    #[DataProvider('stores')]
+    public function testAJobCanOverrideBothSupervisorSettingsWithAnEmptyBackoff(string $kind): void
+    {
+        $store = $this->store($kind);
+        $supervisor = new Supervisor('mail', ['mail'], tries: 5, backoff: [99]);
+        $consumer = $this->consumer($store)->within($supervisor);
+        (new Queue($store, clock: $this->clock))->on('mail')->push(ImmediateRetryJob::class, id: 3);
+        Ledger::$failures = 3;
+
+        for ($attempt = 1; $attempt <= 3; ++$attempt) {
+            self::assertTrue($consumer->runNext($supervisor->queues));
+            self::assertCount($attempt === 3 ? 1 : 0, $store->failed());
+        }
+
+        self::assertSame(3, $store->failed()[0]->attempts);
+        self::assertSame([0, 0], array_column($this->log->contexts, 'wait'));
+        self::assertSame([3, 3], array_column($this->log->contexts, 'tries'));
+        self::assertFalse($consumer->runNext($supervisor->queues));
+    }
+
+    #[DataProvider('stores')]
+    public function testAJobCanAskForAZeroSecondBackoff(string $kind): void
+    {
+        $store = $this->store($kind);
+        $consumer = $this->consumer($store, tries: 2, backoff: [99]);
+        (new Queue($store, clock: $this->clock))->push(ZeroBackoffJob::class, id: 1);
+        Ledger::$failures = 1;
+
+        self::assertTrue($consumer->runNext());
+        self::assertTrue($consumer->runNext());
+
+        self::assertSame(['sent 1'], Ledger::$lines);
+        self::assertSame([], $store->failed());
+        self::assertSame(0, $this->log->contexts[0]['wait']);
+        self::assertFalse($consumer->runNext());
+    }
+
+    #[DataProvider('stores')]
+    public function testAJobWhoseClassIsGoneKeepsTheConsumersRetrySettings(string $kind): void
+    {
+        $store = $this->store($kind);
+        $now = $this->clock->now()->getTimestamp();
+        $store->push('default', 'App\\Actions\\RemovedRetryJob', [], $now, $now);
+        $consumer = $this->consumer($store, tries: 2, backoff: [3]);
+
+        self::assertTrue($consumer->runNext());
+        self::assertSame([], $store->failed());
+        $this->clock->advance('+2 seconds');
+        self::assertFalse($consumer->runNext());
+        $this->clock->advance('+1 second');
+        self::assertTrue($consumer->runNext());
+
+        self::assertCount(1, $store->failed());
+        self::assertSame(2, $store->failed()[0]->attempts);
+        self::assertStringContainsString('renamed or removed', (string) $store->failed()[0]->error);
+        self::assertSame(2, $this->log->contexts[0]['tries']);
+        self::assertSame(3, $this->log->contexts[0]['wait']);
+        self::assertFalse($consumer->runNext());
+    }
+
+    #[DataProvider('stores')]
+    public function testAClassLoadedAfterAMissingJobUsesItsOwnRetryDeclaration(string $kind): void
+    {
+        $store = $this->store($kind);
+        $job = __NAMESPACE__ . '\\LaterLoadedRetryJob' . bin2hex(random_bytes(6));
+        $now = $this->clock->now()->getTimestamp();
+        $store->push('missing', $job, ['id' => 1], $now, $now);
+        $consumer = $this->consumer($store, tries: 3, backoff: []);
+
+        self::assertTrue($consumer->runNext(['missing']));
+        self::assertSame([], $store->failed());
+        self::assertSame(3, $this->log->contexts[0]['tries']);
+        // Registering this existing fixture makes the previously missing name loadable.
+        self::assertTrue(class_alias(SingleTryJob::class, $job));
+        $id = (new Queue($store, clock: $this->clock))->on('fresh')->push($job, id: 1);
+        Ledger::$failures = 1;
+        self::assertTrue($consumer->runNext(['fresh']));
+
+        self::assertSame(1, Retry::for($job)?->tries);
+        self::assertCount(1, $store->failed());
+        self::assertSame([$id, $job, 1], [$store->failed()[0]->id, $store->failed()[0]->job, $store->failed()[0]->attempts]);
+        self::assertSame(0, $store->size('fresh'));
+        self::assertSame([], Ledger::$lines);
+        self::assertFalse($consumer->runNext(['fresh']));
+    }
+
+    #[DataProvider('stores')]
+    public function testAnInvalidClassLoadedAfterAMissingJobIsStillRefusedOnPush(string $kind): void
+    {
+        $store = $this->store($kind);
+        $job = __NAMESPACE__ . '\\LaterLoadedInvalidRetryJob' . bin2hex(random_bytes(6));
+        $now = $this->clock->now()->getTimestamp();
+        $store->push('missing', $job, [], $now, $now);
+        self::assertTrue($this->consumer($store)->runNext(['missing']));
+        self::assertSame([], $store->failed());
+        self::assertTrue(class_alias(ZeroTriesJob::class, $job));
+
+        try {
+            (new Queue($store, clock: $this->clock))->on('fresh')->push($job);
+            self::fail('The retry declaration of the newly loaded class was not checked.');
+        } catch (\InvalidArgumentException $error) {
+            self::assertStringContainsString($job, $error->getMessage());
+            self::assertStringContainsString('tries must be at least 1', $error->getMessage());
+            self::assertInstanceOf(\InvalidArgumentException::class, $error->getPrevious());
+        }
+
+        self::assertSame(0, $store->size('fresh'));
+        self::assertSame([], Ledger::$lines);
+    }
+
+    #[DataProvider('stores')]
+    public function testACachedRetryDeclarationKeepsEachConsumersDefaultTries(string $kind): void
+    {
+        $store = $this->store($kind);
+        $queue = new Queue($store, clock: $this->clock);
+        $retry = Retry::for(ShortBackoffJob::class);
+        self::assertNotNull($retry);
+        self::assertSame([null, [1, 2]], [$retry->tries, $retry->backoff]);
+        $queue->on('one')->push(ShortBackoffJob::class, id: 1);
+        $queue->on('three')->push(ShortBackoffJob::class, id: 3);
+        Ledger::$failures = 4;
+        $one = $this->consumer($store, tries: 1);
+        $three = $this->consumer($store, tries: 3);
+
+        self::assertTrue($one->runNext(['one']));
+        self::assertCount(1, $store->failed());
+        self::assertTrue($three->runNext(['three']));
+        $this->clock->advance('+1 second');
+        self::assertTrue($three->runNext(['three']));
+        self::assertCount(1, $store->failed());
+        $this->clock->advance('+2 seconds');
+        self::assertTrue($three->runNext(['three']));
+
+        self::assertSame([1, 3], array_column($store->failed(), 'attempts'));
+        self::assertSame($retry, Retry::for(ShortBackoffJob::class));
+        self::assertNull(Retry::for(FlakyJob::class));
+        self::assertNull(Retry::for('App\\Actions\\RemovedRetryJob'));
+        self::assertSame(0, $store->size('one'));
+        self::assertSame(0, $store->size('three'));
+    }
+
+    #[DataProvider('stores')]
     public function testAJobIsGivenToOneWorkerAtATimeAndAgainWhenItsWorkerDied(string $kind): void
     {
         $store = $this->store($kind);
@@ -331,7 +1113,7 @@ final class QueueTest extends TestCase
         self::assertTrue($consumer->runNext());
         self::assertSame([], Ledger::$lines);
         self::assertCount(1, $store->failed());
-        self::assertStringContainsString('never finished', (string) $store->failed()[0]->error);
+        self::assertStringContainsString('retry limit of 2 is exhausted; the job was taken 2 times before this check', (string) $store->failed()[0]->error);
     }
 
     #[DataProvider('stores')]

@@ -126,7 +126,7 @@ $db->transaction(function (Connection $tx) use ($from, $to, $amount): void {
 ```
 
 > [!WARNING]
-> Inside the callback use the connection it is given, `$tx`, not `$db`. A statement on `$db` runs on a different connection, outside the transaction.
+> Inside the callback use the connection it is given, `$tx`, not `$db`. Calling `$db` borrows another connection outside the transaction, or waits and can time out when none is free.
 
 `transaction()` returns what the callback returns. A transaction inside a transaction is a savepoint: the inner one can roll back alone.
 
@@ -164,7 +164,7 @@ A connection the server closed while it sat idle is replaced, and the statement 
 
 ## Errors
 
-A failed statement throws `Crab\Database\DatabaseException`. Its message and its `$sql` property hold the SQL and never the bound values, so it is safe to log.
+A failed statement throws `Crab\Database\DatabaseException`, which keeps the SQL and the driver's own message; the driver may quote a value (MySQL names a duplicate entry). Crab never adds bindings to messages or log lines, but SQL literals are logged as written, so pass values as bindings.
 
 Catch it where a failure means something to the client, such as a unique key:
 

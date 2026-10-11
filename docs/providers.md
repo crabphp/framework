@@ -25,6 +25,8 @@ You rarely call the container yourself. You declare what a class needs in its co
 Type-hint it in a constructor. This works in actions, middleware, commands, jobs, listeners and other services, because the container makes them all:
 
 ```php
+use Crab\Contracts\Database\Database;
+
 final readonly class SendInvoice
 {
     public function __construct(private Database $db, private Mailer $mailer)
@@ -119,6 +121,9 @@ A provider does everything through contracts in the container, so a package neve
 | Add a folder of migrations | `Crab\Contracts\Database\Migrator` | `path()` |
 
 ```php
+use Crab\Contracts\Console\Console;
+use Crab\Contracts\Routing\Router;
+
 public function register(Container $container): void
 {
     $container->get(Router::class)->get('/billing/status', ShowBillingStatus::class);
@@ -131,6 +136,7 @@ public function register(Container $container): void
 A provider that must open something in every worker, such as a connection kept for the worker's life or a timer, implements `WorkerProvider` as well:
 
 ```php
+use Crab\Contracts\Container\Container;
 use Crab\Contracts\WorkerProvider;
 use Crab\Engine\Process\Worker;
 
@@ -164,6 +170,9 @@ final class MetricsProvider implements WorkerProvider
 The queue and the scheduler run in processes apart from the ones serving HTTP. A package that needs the same, such as a consumer of another message broker, asks for `Crab\Contracts\Runner` in a command:
 
 ```php
+use Crab\Contracts\Console\Command;
+use Crab\Contracts\Console\Input;
+use Crab\Contracts\Console\Output;
 use Crab\Contracts\Runner;
 use Crab\Engine\Async\Async;
 use Crab\Engine\Async\Cancellation;
@@ -252,7 +261,7 @@ A group given to `add()` has a `setup`, which has it listen on an address of its
 
 ## Rules for a service
 
-- **No request state.** One object serves overlapping requests. Pass what belongs to a request as an argument. `final readonly class` enforces it.
+- **No request state.** One object serves overlapping requests. Pass what belongs to a request as an argument. `final readonly class` prevents property reassignment; also keep request state out of mutable objects those properties hold.
 - **Open nothing in the constructor.** Connect on first use, so the object is safe to make anywhere.
 - **Take values, not `config()`.** Read configuration in the provider and pass it in, so the class works without the framework.
 - **Depend on contracts.** Type-hint `Crab\Contracts\...` and PSR interfaces, never a framework class, so that an implementation can be replaced.

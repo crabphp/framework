@@ -48,6 +48,7 @@ final class Generation
      */
     public function attach(Runtime $runtime): void
     {
+        $runtime->onSignal(SIGQUIT, $runtime->force(...));
         $runtime->onReady(function (): void {
             $this->tell(true, (string) getmypid());
         });

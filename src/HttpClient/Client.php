@@ -56,7 +56,7 @@ class Client implements ClientContract
     /**
      * @param string $baseUrl What a path given to a request is added to: "https://api.example.com/v1".
      * @param array<string, string|list<string>> $headers Sent with every request, unless the request says otherwise.
-     * @param float $timeout Seconds a whole exchange may take, redirects included.
+     * @param float $timeout Seconds a whole call may take, redirects, retries and their pauses included.
      * @param float $connectTimeout Seconds connecting to a server may take.
      * @param int $redirects How many redirects are followed for one request; 0 to return the redirect itself.
      * @param int $connections How many requests may be on their way to one server at once.
@@ -143,7 +143,8 @@ class Client implements ClientContract
         }
         if (preg_match('~^[a-z][a-z0-9+.-]*://~i', $url) !== 1) {
             if ($this->baseUrl === '') {
-                throw new \LogicException("\"{$url}\" is not a whole URL, and this client has no base URL to add it to. Give \"https://...\", or make the client with a base URL.");
+                $shown = substr($url, 0, strcspn($url, '?#'));
+                throw new \LogicException("\"{$shown}\" is not a whole URL, and this client has no base URL to add it to. Give \"https://...\", or make the client with a base URL.");
             }
             $url = rtrim($this->baseUrl, '/') . '/' . ltrim($url, '/');
         }
@@ -220,6 +221,7 @@ class Client implements ClientContract
      */
     private function send(RequestInterface $request, ?Cancellation $cancellation): Response
     {
+        $deadline = hrtime(true) / 1_000_000_000 + $this->timeout;
         $body = $request->getBody();
         $resendable = $body->getSize() === 0 || $body->isSeekable();
         $safe = in_array($request->getMethod(), self::REPEATABLE, true);
@@ -227,7 +229,7 @@ class Client implements ClientContract
             $response = null;
             try {
                 $redirected = false;
-                $response = $this->once($request, $cancellation, $redirected);
+                $response = $this->once($request, $deadline, $cancellation, $redirected);
                 // An answer that redirected means the server acted on the request: what failed was
                 // where it sent us next, and sending a POST again would do its work a second time.
                 $again = ($safe || !$redirected) && in_array($response->getStatusCode(), $safe ? [429, 502, 503, 504] : [429, 503], true);
@@ -235,10 +237,14 @@ class Client implements ClientContract
                 $again = $safe || ($error->unsent && !$redirected);
             }
             $wait = $again && $resendable && $tried < $this->retries ? $this->wait($tried, $response) : null;
-            if ($wait === null) {
+            if ($wait === null || hrtime(true) / 1_000_000_000 + $wait >= $deadline) {
                 return $response ?? throw $error;
             }
             Async::sleep(EventLoop::current(), $wait, $cancellation);
+            // The worker may have been busy after the pause ended; do not send a late retry.
+            if (hrtime(true) / 1_000_000_000 >= $deadline) {
+                return $response ?? throw $error;
+            }
         }
     }
 
@@ -269,15 +275,18 @@ class Client implements ClientContract
      *
      * @param bool $redirected Set once an answer has redirected, whatever comes after.
      */
-    private function once(RequestInterface $request, ?Cancellation $cancellation, bool &$redirected = false): Response
+    private function once(RequestInterface $request, float $deadline, ?Cancellation $cancellation, bool &$redirected = false): Response
     {
-        $deadline = hrtime(true) / 1_000_000_000 + $this->timeout;
         for ($followed = 0; ; ++$followed) {
             $sending = $request;
             $cookies = $this->jar?->header($request->getUri()) ?? '';
             if ($cookies !== '') {
                 $own = $request->getHeaderLine('Cookie');
                 $sending = $request->withHeader('Cookie', $own === '' ? $cookies : "{$own}; {$cookies}");
+            }
+            $cancellation?->throwIfCancelled();
+            if (hrtime(true) / 1_000_000_000 >= $deadline) {
+                throw new NetworkException(Exchange::describe($sending) . " failed: it took more than {$this->timeout} seconds, and was preparing to send when given up.", $sending, new TimedOut('preparing to send'), unsent: true);
             }
             $response = $this->transport->exchange($sending, $deadline, $this->timeout, $cancellation);
             $this->jar?->store($request->getUri(), $response->getHeader('Set-Cookie'));

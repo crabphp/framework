@@ -6,6 +6,7 @@
     - [In a container](#in-a-container)
     - [On a server you manage](#on-a-server-you-manage)
 - [Deploying new code](#deploying-new-code)
+- [Finishing requests on stop](#finishing-requests-on-stop)
 - [How many workers](#how-many-workers)
 - [Behind a proxy](#behind-a-proxy)
 - [The other processes](#the-other-processes)
@@ -17,7 +18,7 @@
 
 A Crab application is its own server. There is no PHP-FPM and no web server to configure in front of it for PHP's sake: `php cua serve` listens on a port and answers. What you deploy is one command to keep running, and a way to give it new code.
 
-This page covers the three ways to run it, how to deploy without dropping a request, and what else must be running.
+This page covers the three ways to run it, how to replace code while requests are in flight, and what else must be running.
 
 ## Running the server
 
@@ -42,6 +43,8 @@ Plain `serve` is for your own machine. It starts the server again whenever a PHP
 
 Set `server.watch` to other paths, or to `false` to watch nothing.
 
+Foreground `serve` writes no background PID file; stop it through its terminal job or the process manager that started it.
+
 ### In a container
 
 Run the server in the foreground and let the platform keep it alive:
@@ -50,9 +53,9 @@ Run the server in the foreground and let the platform keep it alive:
 CMD ["php", "cua", "serve", "--no-watch", "--address=tcp://0.0.0.0:8080"]
 ```
 
-A container is replaced, not reloaded: a deploy starts new containers and stops the old ones, and the platform moves traffic between them. On SIGTERM the server finishes the requests it has and stops.
+A container is replaced, not reloaded: a deploy starts new containers and stops the old ones, and the platform moves traffic between them. On SIGTERM the server gives its requests up to `server.drain` seconds to finish, then cuts remaining connections and stops.
 
-Point the platform's health check at the [health path](configuration.md#a-health-check), `GET /up`.
+Point the platform's health check at the [health path](configuration.md#a-health-check), `GET /up`, after asking for it with `withRouting(health: '/up')` in `app.php`.
 
 ### On a server you manage
 
@@ -63,12 +66,19 @@ php cua serve --daemon       # start
 php cua status               # is it running? exit status 0 when it is
 php cua reload               # new code, without refusing a connection
 php cua restart              # stop, then start: a short gap
-php cua stop                 # finish the requests in hand, then stop
+php cua stop                 # allow server.drain seconds for requests, then stop
 ```
 
 `serve --daemon` returns when the server accepts connections, and fails with the reason when it cannot start, so a deploy script can trust its exit status.
 
-`stop` waits up to `--timeout=15` seconds for requests to finish; `--force` ends a server that has not stopped by then.
+`stop` uses the running server's longest remaining stop allowance, with time to deliver the signal and collect its processes. Changing `server.drain` on disk, even to an invalid value, does not shorten that wait. `restart` drains the old server the same way, then uses the new configuration to start its replacement. An older server without a recorded allowance uses the configuration fallback, at least 15 seconds by default.
+
+`--timeout` sets a graceful stop's wait exactly, including `--timeout=15`. A shorter explicit timeout can return before draining finishes. Use `--force` to cut requests and end the background server, including registered programs. When the keeper does not lead its own session, force ends only the keeper, reports that workers may remain and exits non-zero; whatever started the server must end them.
+
+```sh
+php cua stop --timeout=15     # give a graceful stop exactly this wait
+php cua stop --force          # cut requests and end the whole server now
+```
 
 The process id is in `server.pid` (`storage/crab.pid`) and everything the server prints goes to `server.log` (`storage/logs/server.log`).
 
@@ -93,17 +103,34 @@ A running server holds the code it started with. `reload` is how new code goes l
 php cua reload
 ```
 
-The server starts a new process, with the code and configuration as they are now, on the socket it already listens on. When every worker of the new process accepts connections, the old process finishes the requests it has and stops.
+The server starts a new process, with the code and configuration as they are now, on the socket it already listens on. When every worker of the new process accepts connections, the old process gives its requests up to its `server.drain` limit to finish and stops.
 
-- **No connection is refused or cut short.** The old and the new process accept from the same socket.
-- **A reload that fails changes nothing.** If the new code cannot start, because of a syntax error or a service that cannot be made, the old process goes on serving, and `reload` exits with a failure and shows what went wrong.
+- **Connections keep being accepted.** The old and the new process accept from the same socket. Requests already in flight finish within the old workers' `server.drain` limit; connections still open at that limit are cut.
+- **A reload that fails at startup leaves the old process serving.** Syntax errors, middleware construction and provider start hooks can fail here; lazily made action services can still fail after takeover.
 
 > [!NOTE]
 > Sending the server SIGUSR1 replaces its workers one at a time with the code it already has. It does not load new code; `reload` does.
 
+## Finishing requests on stop
+
+Set `server.drain` when a report request needs more than the default five seconds to finish during a deploy:
+
+```php
+// config/server.php
+'drain' => 30.0,
+```
+
+After an HTTP worker stops accepting connections, it has this many seconds to finish its in-flight requests. Stop, reload, restart and a watched restart use the same limit. The setting accepts a finite number of seconds greater than zero; an invalid value stops `serve` at startup.
+
+At the limit, the worker cuts its remaining connections and logs one warning with its process id and the number of connections still reading, handling or answering a request. Idle keep-alive connections do not add to that count. If the logger throws, the same warning goes to standard error and the logger's failure is reported separately; worker providers still stop.
+
+The HTTP supervisor allows `server.drain` plus one second for cleanup, regardless of another worker group's stop allowance. The background keeper and watcher allow additional time for the generation to exit. On reload, the old generation keeps its old allowance and the new generation uses the new setting. The keeper continues enforcing retiring generations' deadlines during startup and failed-start cleanup. A stop during startup includes the starting generation in the same shutdown pass. Request and response timeouts still apply while draining.
+
+Give your container or process manager enough termination time for the drain and process cleanup. Blocking PHP code holds the worker's event loop. If the worker cannot stop, its supervisor ends it and reports the group, process id and seconds allowed once. A worker blocked in PHP cannot count its connections, so that supervisor notice is the only record in that case.
+
 ## How many workers
 
-Start with one worker per CPU core:
+Start with one worker per CPU core; environment names such as `SERVER_WORKERS`, `APP_DEBUG` and `LOG_LEVEL` work only when your configuration files read them:
 
 ```text
 SERVER_WORKERS=4
@@ -181,7 +208,7 @@ Shop server running on http://127.0.0.1:8080
 Press Ctrl+C to stop
 ```
 
-Each server running under `serve` has an id: `http`, `queue`, `schedule`. They are started, stopped and reloaded together: `reload` after a deploy gives every one of them the new code, each finishing what it has in hand first. Each has processes of its own, so a slow job never holds up a request. A server that is registered and switched off is listed as `off`, so that no one waits for a job that nothing will run.
+Each server running under `serve` has an id: `http`, `queue`, `schedule`. They are started, stopped and reloaded together: `reload` after a deploy gives every one of them the new code, each given its shutdown period to finish the work in hand before remaining workers are ended. Each has processes of its own, so a slow job never holds up a request. A server that is registered and switched off is listed as `off`, so that no one waits for a job that nothing will run.
 
 | On | Switch on | Why |
 | --- | --- | --- |

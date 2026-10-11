@@ -7,7 +7,7 @@
 
 ## Introduction
 
-The skeleton is small on purpose: every file in it is one you will open. Nothing is found by convention. A file is loaded because `app.php` names it, so you can always answer "why does this run?" by reading one file.
+The skeleton is small on purpose: every file in it is one you will open. Providers and route and command files are named in `app.php`; configuration files and migrations are found inside their configured folders.
 
 ## The root
 
@@ -80,7 +80,7 @@ The framework does not look for folders, so these are suggestions that keep appl
 | A route | `routes/web.php` | Nothing; it is loaded by `app.php` |
 | An action class | `app/Actions/` | Name it in the route |
 | Middleware | `app/Http/` | Name it on a route, a group or in `app.php` |
-| A command | `routes/console.php`, or a class in `app/Console/` | `php cua <name>` |
+| A command | `routes/console.php`, or a class in `app/Console/` | Register it with `Command::add('area:action', YourCommand::class)` in `routes/console.php`, then `php cua area:action` |
 | A queue job | `app/Actions/` | Push it with the queue |
 | An event and its listeners | `app/Events/`, and the listeners in `app/Actions/` | Add the listener in `AppProvider` |
 | A scheduled task | `app/Providers/AppProvider.php` | Declare it on the schedule |

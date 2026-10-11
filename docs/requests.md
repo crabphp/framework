@@ -42,7 +42,9 @@ $all = $request->getParsedBody();              // the whole body, parsed
 $raw = (string) $request->getBody();           // the body as it was sent
 ```
 
-`input()` and `getParsedBody()` read JSON objects and arrays, urlencoded forms and `multipart/form-data`. A body that claims one of these and is malformed is answered `400`.
+`input()` and `getParsedBody()` read JSON objects and arrays, urlencoded forms and `multipart/form-data` on first use. Malformed JSON and multipart bodies are answered `400`; urlencoded forms use PHP's permissive `parse_str()`.
+
+PHP's `max_input_vars` can silently truncate query strings and urlencoded forms; multipart forms exceeding their field or part limits are answered `413`.
 
 Prefer declared fields to `input()`: a declared field is validated, an `input()` value is whatever the client sent.
 
@@ -119,7 +121,7 @@ return [
 ];
 ```
 
-These are the `server.max_body` and `server.body_timeout` settings. An uploaded file is never held in memory: the server keeps a large body on disk and `moveTo()` copies the file out of it, so a 40 MiB upload is handled within a few megabytes. Copying a large file does take the worker's time while it lasts.
+These are the `server.max_body` and `server.body_timeout` settings. The server keeps small bodies in memory and spills large ones to disk; `moveTo()` copies an upload without loading the whole file, while `getBody()` materializes the whole request body. Copying a large file does take the worker's time while it lasts.
 
 ## A client that has gone
 

@@ -100,6 +100,44 @@ final class ProcessToolsTest extends TestCase
         self::assertSame(1, $templates->count());
     }
 
+    public function testPidOneCannotBecomeABroadcastOrAGroupProbe(): void
+    {
+        $process = proc_open([PHP_BINARY, __DIR__ . '/Fixtures/drain.php', 'guard',
+            dirname(__DIR__, 2) . '/vendor/autoload.php', $this->directory],
+            [1 => ['pipe', 'w'], 2 => ['pipe', 'w']], $pipes);
+        self::assertIsResource($process);
+        $result = json_decode(stream_get_contents($pipes[1]), true);
+        $errors = stream_get_contents($pipes[2]);
+        foreach ($pipes as $pipe) {
+            fclose($pipe);
+        }
+        self::assertSame(0, proc_close($process), $errors);
+        self::assertCount(6, $result['errors']);
+        foreach ($result['errors'] as $error) {
+            self::assertStringContainsString('greater than one', $error);
+        }
+        self::assertSame([], $result['signals'], 'Even signal-zero must not receive a broadcast selector.');
+    }
+
+    public function testAStartIdentityChecksNewStateAndAllowsOlderState(): void
+    {
+        $file = new PidFile($this->directory . '/server.pid');
+        $identity = PidFile::identity(getmypid());
+        self::assertNotNull($identity);
+        self::assertSame($identity, PidFile::identity(getmypid()));
+        $file->verify(getmypid());
+        file_put_contents($file->path . '.state', json_encode(['pid' => getmypid()]));
+        $file->verify(getmypid());
+        file_put_contents($file->path . '.state', json_encode(['pid' => getmypid(), 'identity' => $identity]));
+        $file->verify(getmypid());
+        self::assertTrue(PidFile::running(getmypid()));
+        self::assertFalse(PidFile::zombie(getmypid()));
+        file_put_contents($file->path . '.state', json_encode(['pid' => getmypid(), 'identity' => 'another start']));
+        $this->expectException(\RuntimeException::class);
+        $this->expectExceptionMessage('is stale');
+        $file->verify(getmypid());
+    }
+
     public function testARuntimeSaysWhenItIsReady(): void
     {
         $events = [];

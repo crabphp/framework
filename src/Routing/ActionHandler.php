@@ -117,6 +117,7 @@ final class ActionHandler implements RequestHandlerInterface
             $this->signature = new \ReflectionMethod(...$this->method);
             $name = $this->method[1] === 'handle' ? $this->method[0] : implode('::', $this->method);
         }
+        $this->name = $name;
         $this->fromQuery = in_array($method, ['GET', 'HEAD', 'DELETE'], true);
 
         foreach ($this->signature->getParameters() as $parameter) {
@@ -137,7 +138,6 @@ final class ActionHandler implements RequestHandlerInterface
         } catch (\LogicException $error) {
             throw new \LogicException("The action of {$route} cannot take the request's data: {$error->getMessage()} If it is a service, it belongs in the constructor of an action class.", previous: $error);
         }
-        $this->name = $name;
     }
 
     public function handle(ServerRequestInterface $request): ResponseInterface
@@ -234,12 +234,15 @@ final class ActionHandler implements RequestHandlerInterface
     {
         $name = $parameter->getName();
         $type = $parameter->getType();
-        if ($parameter->isVariadic() || ($type !== null && !$type instanceof \ReflectionNamedType)) {
+        if ($type === null) {
+            // Check before route names, since a name alone cannot declare the parameter's type.
+            throw new \LogicException("The action {$this->name} of {$route} takes \${$name} with no type. Say what it is: a field by its type, such as string \${$name}, or the request, as " . ServerRequestInterface::class . '.');
+        }
+        if ($parameter->isVariadic() || !$type instanceof \ReflectionNamedType) {
             throw new \LogicException("The action of {$route} takes \${$name}, which must have one plain type.");
         }
-        $typeName = $type?->getName();
+        $typeName = $type->getName();
         if (in_array($name, $names, true)) {
-            $typeName ??= 'string';
             if (!in_array($typeName, ['string', 'int', 'float', 'bool'], true)) {
                 throw new \LogicException("The action of {$route} takes the route parameter \${$name} as {$typeName}; it can be string, int, float or bool.");
             }
@@ -248,9 +251,6 @@ final class ActionHandler implements RequestHandlerInterface
             foreach ($parameter->getAttributes(Rule::class, \ReflectionAttribute::IS_INSTANCEOF) as $attribute) {
                 $this->rules[$name][] = $attribute->newInstance();
             }
-        } elseif ($typeName === null) {
-            // Without a type there is no saying what it is: the request, a field, a service put in the wrong place.
-            throw new \LogicException("The action of {$route} takes \${$name} with no type. Say what it is: a field by its type, such as string \${$name}, or the request, as " . ServerRequestInterface::class . '.');
         } elseif (is_a($typeName, ServerRequestInterface::class, true)) {
             $this->requests[] = $name;
         } elseif (is_a($typeName, Identity::class, true)) {

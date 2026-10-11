@@ -20,7 +20,7 @@ Reach for it when you are building an API and want it to start fast, answer fast
 
 - PHP 8.4 or newer.
 - The `mbstring` extension, which comes with most installations of PHP.
-- The `pcntl` and `posix` extensions to run more than one worker or a server in the background. Both come with PHP on Linux and macOS. Without them, everything works in a single process with `--single`.
+- The `pcntl` and `posix` extensions to run more than one worker or a server in the background. Without them, `serve --single` runs HTTP alone; run `queue:work --single` and `schedule:work --single` separately when needed.
 - `pdo_sqlite` or `pdo_mysql` for the database, `openssl` for calling `https` APIs.
 
 ## Creating an application
@@ -28,8 +28,8 @@ Reach for it when you are building an API and want it to start fast, answer fast
 The starting point is the skeleton, `crabphp/crab`. Put it beside the framework and install it:
 
 ```sh
-git clone <the skeleton> crab
-git clone <the framework> framework
+git clone https://github.com/crabphp/crab.git crab
+git clone https://github.com/crabphp/framework.git framework
 cd crab
 composer install
 cp .env.example .env

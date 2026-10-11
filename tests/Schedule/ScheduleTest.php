@@ -19,6 +19,7 @@ use Crab\Contracts\Schedule\TaskRan;
 use Crab\Events\Dispatcher;
 use Crab\Engine\Async\Async;
 use Crab\Engine\Async\Cancellation;
+use Crab\Engine\FailureReporter;
 use Crab\Engine\Process\Worker;
 use Crab\Queue\MemoryStore;
 use Crab\Queue\QueueProvider;
@@ -361,6 +362,36 @@ final class ScheduleTest extends TestCase
         $this->expectException(\InvalidArgumentException::class);
         $this->expectExceptionMessage('at least 0.01');
         $schedule->call(Beat::class)->everySeconds(0);
+    }
+
+    public function testATimerThatFiresWhileTheWorkerStopsStartsNothingAndReportsNothing(): void
+    {
+        $schedule = new Schedule();
+        $schedule->call(Beat::class)->everySeconds(0.02);
+        $scheduler = new Scheduler($schedule, new Container(), $this->log);
+        $reports = [];
+        $previous = FailureReporter::handleWith(static function (string $what, ?\Throwable $error) use (&$reports): void {
+            $reports[] = $what . ': ' . $error?->getMessage();
+        });
+        $stopped = 0;
+
+        try {
+            WorkerHarness::run([], static function (Worker $worker) use ($scheduler, &$stopped): void {
+                $scheduler->repeat($worker);
+                Async::sleep($worker->loop, 0.05);
+                // The worker stops while this task is still going, and the timers go on firing meanwhile.
+                $worker->stop();
+                $stopped = Beat::$count;
+                Async::sleep($worker->loop, 0.1);
+                self::assertSame(0, $scheduler->tick($worker, new \DateTimeImmutable('2026-03-10 07:00:00')));
+            });
+        } finally {
+            FailureReporter::handleWith($previous);
+        }
+
+        self::assertGreaterThan(0, $stopped);
+        self::assertSame($stopped, Beat::$count);
+        self::assertSame([], $reports);
     }
 
     public function testTheSchedulerRunsATaskSeveralTimesASecondUntilCancelled(): void

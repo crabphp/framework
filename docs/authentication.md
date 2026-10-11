@@ -26,6 +26,9 @@ There is no `Auth::user()`. A worker serves requests that overlap, so the user t
 ## How it works
 
 ```php
+use App\User;
+use Crab\Auth\TokenAuth;
+
 Route::post('/login', [AuthController::class, 'login']);                  // open to all
 
 Route::group(middleware: [TokenAuth::class], routes: function () {
@@ -119,8 +122,11 @@ $container->singleton(IdentityResolver::class, Users::class);
 Check the password and issue a token:
 
 ```php
+use Crab\Contracts\Database\Database;
 use Crab\Contracts\Auth\PasswordHasher;
 use Crab\Contracts\Auth\TokenStore;
+use Crab\Http\HttpException;
+use Crab\Validation\Email;
 
 final readonly class AuthController
 {
@@ -163,7 +169,7 @@ Route::group(middleware: [TokenAuth::class], routes: function () {
 });
 ```
 
-A request without a valid token is answered `401` before the action runs.
+With the default `required: true`, a request without an existing `Identity` needs a valid token or receives `401`; an existing identity bypasses token parsing.
 
 ### Managing tokens
 
@@ -189,9 +195,11 @@ new TokenAuth($tokens, $users, scheme: 'Token');         // Authorization: Token
 new TokenAuth($tokens, $users, required: false);         // lets a request without a token through, with no user
 ```
 
+Use `required: false` for a route that serves both anonymous and logged-in callers. A valid token still supplies the user. An unknown or expired token, or one whose user no longer exists, is answered `401` with `WWW-Authenticate`, so the client knows to log in again. A header with another scheme, such as `Basic` when the scheme is `Bearer`, or an empty token (`Bearer `), counts as no token and goes through anonymously.
+
 ## Passwords
 
-`AuthProvider` binds the `PasswordHasher`, over PHP's own password hashing:
+`AuthProvider` binds the `PasswordHasher`, over PHP's own password hashing. Its PHP 8.4 bcrypt default uses only the first 72 bytes and rejects NUL bytes; validate passwords at registration and login, or bind a hasher with the limits your application needs:
 
 ```php
 $hash = $passwords->hash($password);                     // store this, never the password
@@ -206,9 +214,16 @@ if ($passwords->verify($password, $row['password'])) {
 
 ## A way of your own
 
-Any middleware can authenticate. It finds the user and passes the request on with it, or answers `401`:
+Any middleware can authenticate. It finds the user and passes the request on with it, or answers `401`; use this header example only behind a trusted proxy that overwrites `X-Authenticated-User` and prevents direct access to the application:
 
 ```php
+use App\Users;
+use Crab\Contracts\Http\Middleware;
+use Crab\Http\ErrorResponse;
+use Psr\Http\Message\ResponseInterface;
+use Psr\Http\Message\ServerRequestInterface;
+use Psr\Http\Server\RequestHandlerInterface;
+
 final readonly class ProxyAuth implements Middleware
 {
     public function __construct(private Users $users)
@@ -251,7 +266,9 @@ public function update(int $id, User $user, string $title): array
         throw new HttpException(403);
     }
 
-    // ...
+    $this->db->table('posts')->where('id', $id)->update(['title' => $title]);
+
+    return [...$post, 'title' => $title];
 }
 ```
 
@@ -260,6 +277,8 @@ public function update(int $id, User $user, string $title): array
 Issue a token and send it, as a client would:
 
 ```php
+use Crab\Http\Request;
+
 $token = $app->container->get(TokenStore::class)->issue(1);
 
 $response = $app->handle(new Request('GET', '/me', ['Authorization' => "Bearer {$token}"]));
