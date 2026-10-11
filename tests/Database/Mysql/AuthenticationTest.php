@@ -313,7 +313,8 @@ final class AuthenticationTest extends TestCase
 
     public function testCancellingAPartialResultClosesTheSocketForItsPeer(): void
     {
-        ScriptedServer::run(static function (ScriptedServer $server): void {
+        $token = new Cancellation();
+        ScriptedServer::run(static function (ScriptedServer $server) use ($token): void {
             $server->greeting('mysql_native_password');
             $server->receive();
             $server->ok();
@@ -324,12 +325,12 @@ final class AuthenticationTest extends TestCase
             $server->send(ScriptedServer::column('n'));
             $server->send("\xfe\0\0\x02\0");
             $server->send("\0\0" . pack('V', 42));
-            // The client has read a row but cannot return the connection without EOF.
+            // Start cancellation after the partial result, not during authentication
+            // or prepare, whose TCP round trips can take longer on another kernel.
+            \Crab\Engine\EventLoop::current()->delay(0.03, static fn () => $token->cancel());
             self::assertTrue($server->eof());
-        }, static function (string $dsn, Worker $worker): void {
-            $token = new Cancellation();
+        }, static function (string $dsn, Worker $worker) use ($token): void {
             $connection = new Connection(static fn () => null, $dsn, cancellation: $token);
-            $worker->loop->delay(0.03, static fn () => $token->cancel());
             try {
                 $connection->select('select 42 as n');
                 self::fail('A result without its terminator completed.');

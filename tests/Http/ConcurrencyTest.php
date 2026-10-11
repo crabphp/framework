@@ -42,6 +42,9 @@ final class ConcurrencyTest extends TestCase
         foreach ($tasks as $task) {
             self::assertSame(200, $task->await()->getStatusCode());
         }
+        // Awaiting from main pauses the driver to return the result. Finish
+        // its turn before another test installs its worker's loop.
+        $loop->run();
 
         self::assertSame(2, $most);
         self::assertSame(['/1', '/2', '/3', '/4', '/5'], $order);
@@ -67,6 +70,7 @@ final class ConcurrencyTest extends TestCase
         self::assertSame('1', $refused->getHeaderLine('Retry-After'));
         self::assertSame('The server is busy. Try again shortly.', json_decode((string) $refused->getBody(), true)['error']['message']);
         self::assertSame(200, $slow->await()->getStatusCode());
+        $loop->run();
         self::assertSame(['/slow'], $reached);
     }
 

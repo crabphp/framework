@@ -17,6 +17,13 @@ use Psr\Http\Message\RequestInterface;
 
 final class FakeClientTest extends TestCase
 {
+    protected function tearDown(): void
+    {
+        // A fake retry or redirect can suspend from main just like a real
+        // client. Finish the driver before the next test installs a loop.
+        \Crab\Engine\EventLoop::current()->run();
+    }
+
     public function testRepliesAreFoundByMethodAndUrlAndRequestsAreKept(): void
     {
         $http = new FakeClient([

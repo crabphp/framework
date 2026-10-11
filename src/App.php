@@ -512,9 +512,16 @@ final class App implements RequestHandlerInterface, Runner
             } catch (CancelledException) {
                 // The loop is stopping, so this waits the plain way, still passing on what the
                 // program says: one that cannot finish writing cannot finish.
-                $signal(15);
+                // A shell does not forward TERM. Signal its current tree,
+                // children before parents, then the shell itself.
+                foreach (self::descendants($group) as $pid) {
+                    @posix_kill($pid, SIGTERM);
+                }
+                @posix_kill($group, SIGTERM);
                 $until = microtime(true) + self::PROCESS_GRACE;
-                while (proc_get_status($process)['running'] && microtime(true) < $until) {
+                // A compound shell can finish before its children's TERM cleanup.
+                // Their inherited output stays open until that cleanup finishes.
+                while ((proc_get_status($process)['running'] || !feof($pipes[1]) || !feof($pipes[2])) && microtime(true) < $until) {
                     $pass(0);
                     $pass(1);
                     usleep(20_000);
@@ -532,6 +539,47 @@ final class App implements RequestHandlerInterface, Runner
                 proc_close($process);
             }
         };
+    }
+
+    /**
+     * Descendants sampled at shutdown, deepest first so their parents
+     * cannot exit before they receive TERM. Nothing is kept for later.
+     *
+     * @return list<int>
+     */
+    private static function descendants(int $pid): array
+    {
+        $children = [];
+        if (PHP_OS_FAMILY === 'Linux') {
+            foreach (glob('/proc/[0-9]*/stat') ?: [] as $file) {
+                $stat = @file_get_contents($file);
+                $end = $stat === false ? false : strrpos($stat, ')');
+                if ($end === false) {
+                    continue;
+                }
+                // The command name may itself contain spaces or parentheses.
+                $fields = explode(' ', trim(substr($stat, $end + 2)));
+                if (isset($fields[1])) {
+                    $children[(int) $fields[1]][] = (int) basename(dirname($file));
+                }
+            }
+        } elseif (function_exists('exec')) {
+            @exec('ps -axo pid=,ppid= 2>/dev/null', $lines, $status);
+            if ($status === 0) {
+                foreach ($lines as $line) {
+                    $fields = preg_split('/\s+/', trim($line));
+                    if (count($fields) === 2) {
+                        $children[(int) $fields[1]][] = (int) $fields[0];
+                    }
+                }
+            }
+        }
+        $descendants = $children[$pid] ?? [];
+        // Walking breadth first and reversing puts every child before its parent.
+        for ($index = 0; $index < count($descendants); ++$index) {
+            array_push($descendants, ...($children[$descendants[$index]] ?? []));
+        }
+        return array_reverse($descendants);
     }
 
     /**

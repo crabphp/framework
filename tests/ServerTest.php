@@ -611,6 +611,16 @@ final class ServerTest extends TestCase
         $this->checkRegisteredProgramStop(false);
     }
 
+    public function testACompoundRegisteredLineStopsEveryPipelineProgramWithoutRunningTheNextCommand(): void
+    {
+        $this->checkRegisteredProgramStop(false, compound: true);
+    }
+
+    public function testReloadLetsACompoundRegisteredProgramsCleanupFinish(): void
+    {
+        $this->checkRegisteredProgramStop(false, compound: true, reload: true);
+    }
+
     public function testForceEndsARegisteredProgramWhenItsKeeperIsSuspended(): void
     {
         $this->checkRegisteredProgramStop(true, suspended: true);
@@ -675,19 +685,28 @@ final class ServerTest extends TestCase
      * Keeps a registered program observable through both force and normal
      * cancellation; its SIGTERM marker verifies ordinary cleanup survives.
      */
-    private function checkRegisteredProgramStop(bool $force, bool $suspended = false): void
+    private function checkRegisteredProgramStop(bool $force, bool $suspended = false, bool $compound = false, bool $reload = false): void
     {
         mkdir($this->directory . '/config');
         file_put_contents($this->directory . '/config/server.php', "<?php return ['with' => ['aux']];");
         $source = file_get_contents($this->directory . '/app.php');
         $source = str_replace('return Crab\\App', '$app = Crab\\App', $source);
-        $source .= "\n\$app->servers->process('aux', PHP_BINARY . ' ' . escapeshellarg(__DIR__ . '/aux.php'));\nreturn \$app;\n";
+        $line = "PHP_BINARY . ' ' . escapeshellarg(__DIR__ . '/aux.php')";
+        if ($compound) {
+            $line = "'true && ' . {$line} . ' | cat; touch should-not-run'";
+        }
+        $source .= "\n\$app->servers->process('aux', {$line});\nreturn \$app;\n";
         file_put_contents($this->directory . '/app.php', $source);
         file_put_contents($this->directory . '/aux.php', <<<'PHP'
             <?php
             declare(strict_types=1);
+            if (is_dir('/proc/self')) {
+                // Linux stat must be read past the last command-name parenthesis.
+                file_put_contents('/proc/self/comm', 'aux (worker))');
+            }
             pcntl_async_signals(true);
             pcntl_signal(SIGTERM, static function (): void {
+                usleep(100_000);
                 file_put_contents(__DIR__ . '/aux-stopped', 'yes');
                 exit(0);
             });
@@ -710,11 +729,23 @@ final class ServerTest extends TestCase
             if ($suspended) {
                 posix_kill($pid, SIGSTOP);
             }
-            [$status, $output] = $this->cua('stop', ...($force ? ['--force'] : []));
+            [$status, $output] = $reload
+                ? $this->cua('reload', "--address={$this->address}")
+                : $this->cua('stop', ...($force ? ['--force'] : []));
             self::assertSame(0, $status, $output);
+            if ($reload) {
+                // Reload accepts new work while the old generation finishes.
+                $deadline = microtime(true) + 3.0;
+                while (\Crab\Engine\Process\PidFile::running($program['pid']) && microtime(true) < $deadline) {
+                    usleep(5_000);
+                }
+            }
             self::assertFalse(\Crab\Engine\Process\PidFile::running($program['pid']));
             if (!$force) {
                 self::assertFileExists($this->directory . '/aux-stopped');
+            }
+            if ($compound) {
+                self::assertFileDoesNotExist($this->directory . '/should-not-run');
             }
         } finally {
             if (\Crab\Engine\Process\PidFile::running($program['pid'])) {
