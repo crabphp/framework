@@ -549,9 +549,14 @@ $app->register(Crab\Database\DatabaseProvider::class);
 ~~~php
 // config/database.php
 return [
-    'dsn' => env('DB_DSN', 'sqlite:' . __DIR__ . '/../database.sqlite'),   // or mysql:host=127.0.0.1;dbname=app
-    'username' => env('DB_USERNAME'),
-    'password' => env('DB_PASSWORD'),
+    'default' => 'main',
+    'connections' => [
+        'main' => [
+            'dsn' => env('DB_DSN', 'sqlite:' . __DIR__ . '/../database.sqlite'),   // or mysql:host=127.0.0.1;dbname=app
+            'username' => env('DB_USERNAME'),
+            'password' => env('DB_PASSWORD'),
+        ],
+    ],
 ];
 ~~~
 
@@ -571,7 +576,7 @@ $db->transaction(function (Connection $tx) use ($from, $to, $amount) {
 
 - **Values are always bound.** Write `?` or `:name` and pass the values; never build them into the SQL. Integers, booleans, null, strings, floats and dates are bound with their type.
 - **Transactions** commit when the callback returns and roll back when it throws. Inside the callback use the connection it is given, `$tx`, not `$db`: `$db` would run on a different connection, outside the transaction. A transaction inside a transaction is a savepoint.
-- **Connections are pooled per worker.** Each statement on `$db` borrows one and returns it; `$db->run(fn (Connection $c) => ...)` keeps one for several statements. A worker opens them on first use, at most `database.pool` of them (10, or 1 for SQLite, which allows one writer), and a caller waits up to `database.timeout` seconds (5) for a free one.
+- **Connections are pooled per worker.** Each statement on `$db` borrows one and returns it; `$db->run(fn (Connection $c) => ...)` keeps one for several statements. A worker opens them on first use, at most the connection's `pool` of them (10, or 1 for SQLite, which allows one writer), and a caller waits up to `database.timeout` seconds (5) for a free one.
 - **A dropped connection is replaced.** When the server had already closed it, the statement runs once on a new connection. When it was lost mid-statement or inside a transaction, the failure is reported and nothing is retried, so nothing is applied twice.
 - **Failures** throw `Crab\Database\DatabaseException`, whose message and `$sql` hold the SQL but never the bound values.
 - **PDO blocks.** While a statement runs, its worker serves nothing else; run more workers for more concurrent queries.
@@ -635,7 +640,7 @@ $db->table('posts')
 
 ### Several databases
 
-Describe each under a name, and say which is the default:
+A database is always described under `connections`, by name; add another under a name of its own:
 
 ~~~php
 // config/database.php
@@ -669,7 +674,7 @@ $db->connection('reports')->table('daily_totals')->get();      // another, by na
 
 ### Migrations
 
-A migration is a file that changes the tables and knows how to take the change back. Set `database.migrations` to the folder that holds them, then:
+A migration is a file that changes the tables and knows how to take the change back. Set the connection's `migrations` to the folder that holds them, then:
 
 ~~~sh
 php bin/crab app.php make:migration create_users_table    # writes database/migrations/2026_10_06_101500_create_users_table.php

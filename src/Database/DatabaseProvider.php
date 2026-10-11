@@ -23,8 +23,9 @@ use Psr\Clock\ClockInterface;
 /**
  * Binds the default database, its schema builder and its migrator from
  * the "database" configuration section, and adds the migration commands.
- * The section describes one database, or several under "connections";
- * another than the default is reached with Database::connection(). Each
+ * The section describes each database under "connections", by name, one
+ * or several; another than the default is reached with
+ * Database::connection(). Each
  * worker opens its own connections when it first runs a statement and
  * closes them when it stops.
  */
@@ -33,32 +34,20 @@ final class DatabaseProvider implements WorkerProvider
     public function register(Container $container): void
     {
         $container->get(Config::class)->defaults('database', [
-            // One database: its settings go here. See DatabaseManager for each of them.
-            'dsn' => null,
-            'username' => null,
-            'password' => null,
-            'options' => [],
-            'pool' => null,
-            'timeout' => 5.0,
-            'migrations' => null,
-            'migration_lock_timeout' => 60,
-            // Several databases: the same settings for each, by a name of your choosing, and which one is the default.
+            // Each database by a name of your choosing; see DatabaseManager for its settings.
             'connections' => [],
+            // The name of the one used when none is named; the first when left out.
             'default' => null,
+            'migration_lock_timeout' => 60,
         ]);
         $container->singleton(DatabaseManager::class, static function (Container $container): DatabaseManager {
             $config = $container->get(Config::class);
-            $connections = (array) $config->get('database.connections');
-            if ($connections === []) {
-                $connections = ['default' => [
-                    'dsn' => $config->get('database.dsn'),
-                    'username' => $config->get('database.username'),
-                    'password' => $config->get('database.password'),
-                    'options' => $config->get('database.options'),
-                    'pool' => $config->get('database.pool'),
-                    'timeout' => $config->get('database.timeout'),
-                    'migrations' => $config->get('database.migrations'),
-                ]];
+            $connections = $config->get('database.connections');
+            if ($config->get('database.dsn') !== null) {
+                throw new DatabaseException('"database.dsn" is not read. A database is described under "database.connections", by name: \'connections\' => [\'main\' => [\'dsn\' => ...]].');
+            }
+            if (!is_array($connections) || $connections === []) {
+                throw new DatabaseException('No database is configured. Describe one under "database.connections", by name: \'connections\' => [\'main\' => [\'dsn\' => \'sqlite:/path/app.sqlite\']].');
             }
             $default = (string) ($config->get('database.default') ?? array_key_first($connections));
             $clock = $container->has(ClockInterface::class) ? $container->get(ClockInterface::class) : null;
@@ -84,10 +73,11 @@ final class DatabaseProvider implements WorkerProvider
 
     public function start(Worker $worker, Container $container): void
     {
+        $container->get(DatabaseManager::class)->start($worker);
     }
 
     public function stop(Worker $worker, Container $container): void
     {
-        $container->get(DatabaseManager::class)->close();
+        $container->get(DatabaseManager::class)->stop();
     }
 }

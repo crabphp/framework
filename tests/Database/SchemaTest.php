@@ -21,6 +21,8 @@ use PHPUnit\Framework\TestCase;
  */
 final class SchemaTest extends TestCase
 {
+    use \Crab\Tests\Database\Mysql\AsyncDriverMatrix;
+
     private const TABLES = ['schema_comments', 'schema_posts', 'schema_articles', 'schema_members', 'schema_users', 'schema_everything'];
 
     private string $file;
@@ -40,7 +42,7 @@ final class SchemaTest extends TestCase
 
     public static function drivers(): array
     {
-        return getenv('CRAB_TEST_MYSQL_DSN') === false ? [['sqlite']] : [['sqlite'], ['mysql']];
+        return getenv('CRAB_TEST_MYSQL_DSN') === false ? [['sqlite']] : [['sqlite'], ['mysql'], ['mysql-async']];
     }
 
     public function testATableIsWrittenInEachDialect(): void
@@ -308,7 +310,7 @@ final class SchemaTest extends TestCase
 
     private function database(string $driver): Database
     {
-        $db = new Database(fn (): \PDO => $this->pdo($driver), 1);
+        $db = new Database(fn (): \PDO => $this->pdo($driver), 1, factory: $this->mysqlFactory($driver));
         foreach (self::TABLES as $table) {
             $db->execute("drop table if exists {$table}");
         }

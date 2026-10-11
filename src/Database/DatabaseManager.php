@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace Crab\Database;
 
 use Crab\Contracts\Database\Migrators;
+use Crab\Engine\Network\DnsResolver;
+use Crab\Engine\Process\Worker;
 use Psr\Clock\ClockInterface;
 
 /**
@@ -18,13 +20,15 @@ use Psr\Clock\ClockInterface;
  *     dsn          "mysql:host=127.0.0.1;dbname=app" or "sqlite:/path/app.sqlite"
  *     username     for MySQL
  *     password     for MySQL
- *     options      further PDO attributes, as PDO's constructor takes them
+ *     options      integer PDO attributes, or the async driver's string ssl stream option
+ *     async        use the nonblocking MySQL driver inside a provider's worker; false
  *     pool         the most connections each worker opens; 1 for SQLite, which allows one writer, and 10 otherwise
  *     timeout      seconds to wait for a connection when all are in use; 5
  *     migrations   the folder that holds this database's migration files
  */
 final class DatabaseManager implements Migrators
 {
+    private ?Worker $worker = null;
     /**
      * @var array<string, Database>
      */
@@ -92,6 +96,24 @@ final class DatabaseManager implements Migrators
         }
     }
 
+    /**
+     * Provider lifecycle supplies the running worker without process-global state.
+     * Existing pools are replaced so a parent or previous worker's PDO is not lent.
+     */
+    public function start(Worker $worker): void
+    {
+        $this->close();
+        $this->worker = $worker;
+    }
+
+    public function stop(): void
+    {
+        foreach ($this->databases as $database) {
+            $database->stop();
+        }
+        $this->worker = null;
+    }
+
     private function make(string $name): Database
     {
         $settings = $this->connections[$name] ?? null;
@@ -107,7 +129,18 @@ final class DatabaseManager implements Migrators
         $options = (array) ($settings['options'] ?? []);
         $sqlite = str_starts_with($dsn, 'sqlite:');
         $connect = static function () use ($dsn, $username, $password, $options, $sqlite): \PDO {
-            $pdo = new \PDO($dsn, $username, $password, $options);
+            $mysql = str_starts_with($dsn, 'mysql:');
+            $pdoOptions = $mysql ? self::pdoOptions($options) : array_filter($options, static fn (int|string $key): bool => is_int($key), ARRAY_FILTER_USE_KEY);
+            $pdo = new \PDO($dsn, $username, $password, $pdoOptions);
+            if ($mysql && ($options['ssl'] ?? false) !== false) {
+                $pdo->setAttribute(\PDO::ATTR_ERRMODE, \PDO::ERRMODE_EXCEPTION);
+                $status = $pdo->query("SHOW SESSION STATUS LIKE 'Ssl_cipher'");
+                $cipher = $status->fetchColumn(1);
+                $status->closeCursor();
+                if (!is_string($cipher) || $cipher === '') {
+                    throw new DatabaseException('PDO did not establish the requested TLS session; check the MySQL client and server TLS configuration before retrying.');
+                }
+            }
             if ($sqlite) {
                 // SQLite checks foreign keys only on a connection that asks it to.
                 $pdo->exec('pragma foreign_keys = on');
@@ -121,6 +154,68 @@ final class DatabaseManager implements Migrators
         };
         $pool = (int) ($settings['pool'] ?? ($sqlite ? 1 : 10));
         $timeout = (float) ($settings['timeout'] ?? 5.0);
-        return new Database($connect, $pool, $timeout, $this);
+        $async = (bool) ($settings['async'] ?? false) && str_starts_with($dsn, 'mysql:');
+        $resolver = new DnsResolver(fallback: false);
+        $factory = fn (\Closure $owner): ManagedConnection => $async && $this->worker !== null
+            ? new Mysql\Connection($owner, $dsn, (string) $username, (string) $password, $options, $timeout, $this->worker, resolver: $resolver)
+            : new PdoConnection($owner);
+        return new Database($connect, $pool, $timeout, $this, $factory);
+    }
+
+    /**
+     * Maps only stream TLS policies PDO can preserve at construction time.
+     * mysqlnd couples certificate/name checks and needs an encryption option
+     * as well as its verification flag to send SSLRequest.
+     *
+     * @param array<int|string, mixed> $options
+     * @return array<int, mixed>
+     */
+    private static function pdoOptions(array $options): array
+    {
+        $pdo = array_filter($options, static fn (int|string $key): bool => is_int($key), ARRAY_FILTER_USE_KEY);
+        $ssl = $options['ssl'] ?? false;
+        if ($ssl === false) {
+            return $pdo;
+        }
+        if ($ssl !== true && !is_array($ssl)) {
+            throw new DatabaseException('Set options["ssl"] on the database connection to true, false or supported SSL context options.');
+        }
+        $ssl = $ssl === true ? [] : $ssl;
+        $attributes = [
+            'cafile' => \PDO::MYSQL_ATTR_SSL_CA,
+            'capath' => \PDO::MYSQL_ATTR_SSL_CAPATH,
+            'local_cert' => \PDO::MYSQL_ATTR_SSL_CERT,
+            'local_pk' => \PDO::MYSQL_ATTR_SSL_KEY,
+            'ciphers' => \PDO::MYSQL_ATTR_SSL_CIPHER,
+        ];
+        foreach ($ssl as $key => $value) {
+            if (!array_key_exists($key, $attributes) && !in_array($key, ['verify_peer', 'verify_peer_name'], true)) {
+                throw new DatabaseException("PDO cannot preserve SSL context option {$key}; remove it or configure an equivalent supported policy.");
+            }
+        }
+        $verify = array_key_exists('verify_peer', $ssl) ? $ssl['verify_peer'] : true;
+        $verifyName = array_key_exists('verify_peer_name', $ssl) ? $ssl['verify_peer_name'] : true;
+        if (!is_bool($verify) || !is_bool($verifyName) || $verify !== $verifyName) {
+            throw new DatabaseException('PDO couples certificate and name verification; set verify_peer and verify_peer_name to the same boolean.');
+        }
+        $mapped = [\PDO::MYSQL_ATTR_SSL_VERIFY_SERVER_CERT => $verify];
+        foreach ($attributes as $key => $attribute) {
+            if (array_key_exists($key, $ssl)) {
+                if (!is_string($ssl[$key]) || $ssl[$key] === '') {
+                    throw new DatabaseException("Set SSL context option {$key} to a non-empty string for PDO.");
+                }
+                $mapped[$attribute] = $ssl[$key];
+            }
+        }
+        foreach ($mapped as $attribute => $value) {
+            if (array_key_exists($attribute, $pdo) && $pdo[$attribute] !== $value) {
+                throw new DatabaseException("PDO SSL attribute {$attribute} conflicts with options[\"ssl\"]; use one consistent TLS policy.");
+            }
+            $pdo[$attribute] = $value;
+        }
+        if (array_intersect_key($pdo, array_flip($attributes)) === []) {
+            $pdo[\PDO::MYSQL_ATTR_SSL_CIPHER] = 'DEFAULT';
+        }
+        return $pdo;
     }
 }

@@ -180,8 +180,7 @@ final class Migrator implements MigratorContract
             return $work($connection);
         } catch (\Throwable $error) {
             // A writer-lock timeout belongs to the deployment, not to up() or down().
-            $previous = $error->getPrevious();
-            if ($error instanceof DatabaseException && $error->sql === 'BEGIN IMMEDIATE' && $previous instanceof \PDOException && ($previous->errorInfo[1] ?? null) === 5) {
+            if ($error instanceof DatabaseException && $error->sql === 'BEGIN IMMEDIATE' && $error->code() === 5) {
                 throw $error;
             }
             throw new DatabaseException("The migration \"{$name}\" could not be {$verb}: {$error->getMessage()}", previous: $error);
@@ -199,7 +198,7 @@ final class Migrator implements MigratorContract
      */
     private function locked(\Closure $work): array
     {
-        $lock = function (Connection $connection) use ($work): array {
+        $lockedSession = function (Connection $connection) use ($work): array {
             if ($connection->driver() === 'sqlite') {
                 return $this->lockedSqlite($connection, $work);
             }
@@ -221,7 +220,9 @@ final class Migrator implements MigratorContract
                 throw $error;
             } finally {
                 try {
-                    $connection->first('SELECT RELEASE_LOCK(?) AS released', [$name]);
+                    if (!$connection instanceof ManagedConnection || $connection->isOpen()) {
+                        $connection->first('SELECT RELEASE_LOCK(?) AS released', [$name]);
+                    }
                 } catch (\Throwable $error) {
                     if ($failure === null) {
                         throw $error;
@@ -229,6 +230,14 @@ final class Migrator implements MigratorContract
                     FailureReporter::report('The migration lock could not be released', $error);
                 }
             }
+        };
+        // A connection object may normally replace its session. An advisory
+        // lock must keep the physical session fixed through work and cleanup.
+        $lock = static function (Connection $connection) use ($lockedSession): array {
+            if ($connection instanceof ManagedConnection && $connection->driver() === 'mysql') {
+                return $connection->withoutReconnect($lockedSession);
+            }
+            return $lockedSession($connection);
         };
         if ($this->connection instanceof DatabaseContract) {
             return $this->connection->run($lock);
@@ -256,8 +265,7 @@ final class Migrator implements MigratorContract
         try {
             return $work($connection);
         } catch (DatabaseException $error) {
-            $previous = $error->getPrevious();
-            if ($previous instanceof \PDOException && ($previous->errorInfo[1] ?? null) === 5) {
+            if ($error->code() === 5) {
                 throw $this->lockTimedOut($error);
             }
             throw $error;
@@ -267,8 +275,8 @@ final class Migrator implements MigratorContract
     }
 
     /**
-     * PDO can reconnect after a pre-send failure. Its new session does not
-     * inherit the named lock, so stop before another migration can start.
+     * The fixed session prevents replacement on connection loss. This check
+     * also detects a migration that explicitly released its named lock.
      */
     private function assertLockHeld(Connection $connection): void
     {
@@ -336,8 +344,7 @@ final class Migrator implements MigratorContract
                 });
             } catch (DatabaseException $error) {
                 // Another SQLite writer can create it between hasTable() and create().
-                $previous = $error->getPrevious();
-                if ($connection->driver() !== 'sqlite' || !$previous instanceof \PDOException || ($previous->errorInfo[1] ?? null) !== 1 || !str_contains($previous->getMessage(), 'already exists') || !$schema->hasTable($this->table)) {
+                if ($connection->driver() !== 'sqlite' || $error->code() !== 1 || !str_contains($error->getMessage(), 'already exists') || !$schema->hasTable($this->table)) {
                     throw $error;
                 }
             }
@@ -370,7 +377,7 @@ final class Migrator implements MigratorContract
 
     private function unconfigured(): DatabaseException
     {
-        return new DatabaseException('No migration directory is configured. Set "database.migrations" to the folder that holds the migration files.');
+        return new DatabaseException('No migration directory is configured. Set "migrations" on its connection, under "database.connections", to the folder that holds the migration files.');
     }
 
     private static function stub(?string $creates): string

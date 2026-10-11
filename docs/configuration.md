@@ -62,6 +62,10 @@ To add a setting of your own, add a key to a file, or add a file. There is nothi
 
 ## Reading configuration
 
+| Setting | Default | Use |
+| --- | --- | --- |
+| `async`, on a database connection | `false` | Use the nonblocking MySQL driver inside workers; console commands and SQLite use PDO. See [Database](database.md#not-blocking-the-worker). |
+
 `config()` reads a value by its file name and key, with dots between the levels:
 
 ```php

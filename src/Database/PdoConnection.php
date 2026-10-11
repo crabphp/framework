@@ -4,13 +4,12 @@ declare(strict_types=1);
 
 namespace Crab\Database;
 
-use Crab\Contracts\Database\Connection;
 
 /**
  * One PDO connection, opened when it is first used. PDO blocks: while a
  * statement runs, its worker serves nothing else.
  */
-final class PdoConnection implements Connection
+final class PdoConnection implements ManagedConnection
 {
     /**
      * Failures that mean the connection is gone; it is reopened on next use.
@@ -50,12 +49,14 @@ final class PdoConnection implements Connection
      */
     private array $afterCommit = [];
     private ?string $driver = null;
+    private readonly SessionScope $scope;
 
     /**
      * @param \Closure(): \PDO $connect Opens the connection; called again after one is lost.
      */
     public function __construct(private readonly \Closure $connect)
     {
+        $this->scope = new SessionScope();
     }
 
     public function table(string $table): Query
@@ -115,7 +116,7 @@ final class PdoConnection implements Connection
         $this->begin();
         $level = $this->depth;
         try {
-            $result = $callback($this);
+            $result = $this->scope->transaction(fn (): mixed => $callback($this));
         } catch (\Throwable $error) {
             // A lost connection took the transaction with it; there is nothing left to roll back.
             if ($this->depth === $level) {
@@ -124,7 +125,7 @@ final class PdoConnection implements Connection
             throw $error;
         }
         if ($this->depth !== $level) {
-            throw new DatabaseException('The transaction was lost with its connection, so nothing was committed.');
+            throw new DatabaseException('The transaction lost its session; let this callback unwind before using the connection again.');
         }
         $this->commit();
         return $result;
@@ -132,6 +133,7 @@ final class PdoConnection implements Connection
 
     public function afterCommit(\Closure $callback): void
     {
+        $this->scope->check();
         if ($this->depth === 0) {
             $callback();
             return;
@@ -155,14 +157,31 @@ final class PdoConnection implements Connection
 
     /**
      * Drops the connection and everything prepared on it; an open
-     * transaction is lost with it. The next statement reconnects.
+     * transaction is lost with it. Reopening waits until any poisoned
+     * transaction or fixed-session callback has unwound.
      */
     public function close(): void
     {
+        $this->scope->lost();
         $this->statements = [];
+        $this->takes = [];
         $this->pdo = null;
         $this->depth = 0;
         $this->afterCommit = [];
+    }
+
+    /**
+     * Opens before entering the scope so its advisory lock has one owner.
+     */
+    public function withoutReconnect(\Closure $callback): mixed
+    {
+        $this->pdo();
+        return $this->scope->fixed(fn (): mixed => $callback($this));
+    }
+
+    public function isOpen(): bool
+    {
+        return $this->pdo !== null;
     }
 
     private function begin(): void
@@ -271,26 +290,32 @@ final class PdoConnection implements Connection
      */
     private function attempt(\Closure $operation, string $sql): mixed
     {
+        $this->scope->check($sql);
         for ($attempt = 0; ; ++$attempt) {
+            $inTransaction = $this->inTransaction();
             try {
                 return $operation();
             } catch (\PDOException $error) {
                 unset($this->statements[$sql]);
                 $message = $error->getMessage();
+                $failure = new DatabaseException($message, $sql, $error);
+                if (($error->errorInfo[1] ?? null) === 1213 && $this->driver === 'mysql') {
+                    $this->scope->failed($failure);
+                }
                 if (self::mentions($message, self::LOST)) {
-                    $inTransaction = $this->depth > 0;
                     $this->close();
-                    if ($attempt === 0 && !$inTransaction && self::mentions($message, self::NOT_SENT)) {
+                    if ($attempt === 0 && !$inTransaction && $this->scope->canReconnect() && self::mentions($message, self::NOT_SENT)) {
                         continue;
                     }
                 }
-                throw new DatabaseException($message, $sql, $error);
+                throw $failure;
             }
         }
     }
 
     private function pdo(): \PDO
     {
+        $this->scope->check();
         if ($this->pdo === null) {
             try {
                 $pdo = ($this->connect)();

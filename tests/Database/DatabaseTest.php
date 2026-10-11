@@ -45,6 +45,8 @@ final class FlakyPdo extends \PDO
  */
 final class DatabaseTest extends TestCase
 {
+    use \Crab\Tests\Database\Mysql\AsyncDriverMatrix;
+
     private string $file;
     /**
      * Connections opened by the database under test.
@@ -67,7 +69,7 @@ final class DatabaseTest extends TestCase
 
     public static function drivers(): array
     {
-        return getenv('CRAB_TEST_MYSQL_DSN') === false ? [['sqlite']] : [['sqlite'], ['mysql']];
+        return getenv('CRAB_TEST_MYSQL_DSN') === false ? [['sqlite']] : [['sqlite'], ['mysql'], ['mysql-async']];
     }
 
     #[DataProvider('drivers')]
@@ -290,9 +292,10 @@ final class DatabaseTest extends TestCase
             });
             self::fail('A lost transaction was reported as committed.');
         } catch (DatabaseException $error) {
-            self::assertStringContainsString('nothing was committed', $error->getMessage());
+            self::assertStringContainsString('transaction lost its session', $error->getMessage());
         }
-        self::assertSame(1, $db->transaction(static fn (Connection $tx): int => $tx->execute('delete from users')));
+        self::assertSame([], $db->select('select name from users'), 'No callback write may autocommit after losing its transaction.');
+        self::assertSame(0, $db->transaction(static fn (Connection $tx): int => $tx->execute('delete from users')));
         self::assertSame('kept', $db->transaction(static function (Connection $tx): string {
             $tx->insert('insert into users (name) values (?)', ['kept']);
             return 'kept';
@@ -334,12 +337,29 @@ final class DatabaseTest extends TestCase
         self::assertSame(4, $rejected);
     }
 
+    public function testADatabaseIsDescribedUnderConnectionsAndNowhereElse(): void
+    {
+        $flat = new App(new Config(['database' => ['dsn' => 'sqlite::memory:']]));
+        $flat->register(DatabaseProvider::class);
+        $none = new App(new Config([]));
+        $none->register(DatabaseProvider::class);
+        foreach ([[$flat, '"database.dsn" is not read'], [$none, 'No database is configured']] as [$app, $says]) {
+            try {
+                $app->container->get(DatabaseContract::class);
+                self::fail('A database outside "connections" must be refused.');
+            } catch (DatabaseException $error) {
+                self::assertStringContainsString($says, $error->getMessage());
+                self::assertStringContainsString("'connections' => ['main' => ['dsn' =>", $error->getMessage());
+            }
+        }
+    }
+
     public function testTheProviderBindsTheDatabaseFromConfigurationAndClosesItWithTheWorker(): void
     {
         $this->database('sqlite');
-        $app = new App(new Config(['database' => ['dsn' => 'sqlite:' . $this->file]]));
+        $app = new App(new Config(['database' => ['connections' => ['main' => ['dsn' => 'sqlite:' . $this->file]]]]));
         $app->register(DatabaseProvider::class);
-        self::assertSame([null, 5.0, null], [config('database.pool'), config('database.timeout'), config('database.username')]);
+        self::assertSame([null, 60], [config('database.default'), config('database.migration_lock_timeout')]);
 
         $db = $app->container->get(DatabaseContract::class);
         self::assertSame($db, $app->container->get(Connection::class));
@@ -374,7 +394,7 @@ final class DatabaseTest extends TestCase
         $unset = new App();
         $unset->register(DatabaseProvider::class);
         $this->expectException(DatabaseException::class);
-        $this->expectExceptionMessage('The database "default" has no "dsn" configured');
+        $this->expectExceptionMessage('No database is configured');
         $unset->container->get(DatabaseContract::class);
     }
 
@@ -384,7 +404,7 @@ final class DatabaseTest extends TestCase
         $db = new Database(function () use ($driver, $flaky): \PDO {
             ++$this->connects;
             return $this->pdo($driver, $flaky);
-        }, $max, $timeout);
+        }, $max, $timeout, factory: $this->mysqlFactory($driver, fn () => ++$this->connects));
         $db->execute('drop table if exists users');
         $db->execute($driver === 'mysql'
             ? 'create table users (id int auto_increment primary key, name varchar(100) not null, age int null, active tinyint(1) null, score double null, born datetime null) engine=InnoDB'

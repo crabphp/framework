@@ -18,7 +18,7 @@
 
 A migration is a file that changes your tables and knows how to take the change back. Migrations live in your repository and run in order, so every machine, yours, a colleague's, production, arrives at the same tables by the same steps.
 
-Set `database.migrations` to the folder that holds them; the skeleton sets it to `database/migrations`.
+Set the connection's `migrations` to the folder that holds them; the skeleton sets it to `database/migrations`.
 
 ## Writing a migration
 
@@ -82,8 +82,12 @@ During a rolling deploy, several machines may run `php cua migrate` together. A 
 ```php
 // config/database.php
 return [
-    'dsn' => env('DB_DSN'),
-    'migrations' => dirname(__DIR__) . '/database/migrations',
+    'connections' => [
+        'main' => [
+            'dsn' => env('DB_DSN'),
+            'migrations' => dirname(__DIR__) . '/database/migrations',
+        ],
+    ],
     'migration_lock_timeout' => 120,
 ];
 ```

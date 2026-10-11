@@ -6,6 +6,7 @@
 - [Running SQL](#running-sql)
 - [Transactions](#transactions)
 - [Connections](#connections)
+- [Not blocking the worker](#not-blocking-the-worker)
 - [Errors](#errors)
 - [What there is not](#what-there-is-not)
 
@@ -30,12 +31,20 @@ use Crab\Database\DatabaseProvider;
 ```php
 // config/database.php
 return [
-    'dsn' => env('DB_DSN', 'sqlite:' . dirname(__DIR__) . '/storage/database.sqlite'),
-    'username' => env('DB_USERNAME'),
-    'password' => env('DB_PASSWORD'),
-    'migrations' => dirname(__DIR__) . '/database/migrations',
+    'default' => 'main',
+
+    'connections' => [
+        'main' => [
+            'dsn' => env('DB_DSN', 'sqlite:' . dirname(__DIR__) . '/storage/database.sqlite'),
+            'username' => env('DB_USERNAME'),
+            'password' => env('DB_PASSWORD'),
+            'migrations' => dirname(__DIR__) . '/database/migrations',
+        ],
+    ],
 ];
 ```
+
+A database is always described under `database.connections`, by a name of your choosing, whether you have one or several. `database.default` names the one you get when you name none; left out, it is the first.
 
 ```text
 DB_DSN=mysql:host=127.0.0.1;dbname=orders;charset=utf8mb4
@@ -43,19 +52,21 @@ DB_USERNAME=orders
 DB_PASSWORD=secret
 ```
 
-| Setting | Default | |
+Each connection takes these keys:
+
+| Key | Default | |
 | --- | --- | --- |
-| `database.dsn` | none | `mysql:host=...;dbname=...` or `sqlite:/path/to/file.sqlite`. The kind of database is read from it. |
-| `database.username`, `database.password` | none | For MySQL |
-| `database.options` | `[]` | Further PDO attributes |
-| `database.pool` | 10, or 1 for SQLite | The most connections each worker opens |
-| `database.timeout` | `5.0` | Seconds to wait for a free connection |
-| `database.migrations` | none | The folder that holds the migration files |
-| `database.connections`, `database.default` | none | For several databases; see below |
+| `dsn` | none | `mysql:host=...;dbname=...` or `sqlite:/path/to/file.sqlite`. The kind of database is read from it. |
+| `username`, `password` | none | For MySQL |
+| `options` | `[]` | Further PDO attributes |
+| `async` | `false` | Use the nonblocking MySQL driver inside workers |
+| `pool` | 10, or 1 for SQLite | The most connections each worker opens |
+| `timeout` | `5.0` | Seconds to wait for a free connection |
+| `migrations` | none | The folder that holds this database's migration files |
 
 ### Several databases
 
-Describe each under a name, and say which is the default:
+Add another under a name of its own:
 
 ```php
 // config/database.php
@@ -146,7 +157,7 @@ Do not call another server from inside a transaction. The transaction holds a co
 
 ## Connections
 
-Connections are pooled per worker. Each statement on `$db` borrows one and returns it; a worker opens them on first use, at most `database.pool` of them.
+Connections are pooled per worker. Each statement on `$db` borrows one and returns it; a worker opens them on first use, at most `pool` of them.
 
 To run several statements on one connection without a transaction, borrow one for the length of a callback:
 
@@ -161,6 +172,49 @@ A connection the server closed while it sat idle is replaced, and the statement 
 
 > [!NOTE]
 > A query holds its worker until the database answers. Keep queries fast, give slow reports to a [queue](queues.md), and raise `server.workers` to run more queries at once.
+
+## Not blocking the worker
+
+Turn on `async` when MySQL queries keep your HTTP workers waiting while other requests could run. The driver suspends the calling fiber during socket I/O and lets the worker serve other requests. SQL, bound values, rows, transactions, migrations and the query builder keep their existing contracts.
+
+```php
+// config/database.php
+'connections' => [
+    'main' => [
+        'dsn' => env('DB_DSN'),
+        'username' => env('DB_USERNAME'),
+        'password' => env('DB_PASSWORD'),
+        'async' => (bool) env('DB_ASYNC', false),
+        'pool' => 10,
+    ],
+],
+```
+
+With this enabled, `pool` is the number of queries one worker can have in flight. A pool of one queues queries even though the driver waits on the event loop. Borrow a separate connection for each concurrent operation; two fibers using one borrowed connection at once are refused. `timeout` bounds connection setup and waiting for a free connection. Queries have no deadline of their own.
+
+`async` is each connection's own setting. SQLite and code outside a running provider worker, including ordinary console commands and `migrate`, keep using PDO.
+
+TLS is off by default. Enable it with `'options' => ['ssl' => true]`, or supply PHP SSL stream options:
+
+```php
+// Inside config/database.php
+'options' => ['ssl' => ['cafile' => '/etc/mysql/ca.pem']],
+```
+
+With `ssl => true`, `verify_peer` and `verify_peer_name` both default to true: the certificate and the DSN host name are verified. Explicit SSL context options can override those defaults. PHP's OpenSSL extension is needed for TLS and for full `caching_sha2_password` authentication over TCP without TLS. Unix sockets work through `unix_socket=/path/mysql.sock` in the DSN. Integer PDO options are ignored by the async driver.
+
+The RSA public-key path trusts the key the server sends; it does not authenticate that server. Use verified TLS across an untrusted network, or a trusted local transport. The async driver does not support pinning a public-key file through PDO's integer options.
+
+The driver is tested against MySQL 8.0, 8.4 and 9.7. Two things differ between them:
+
+- `VECTOR` columns need MySQL 9 or newer.
+- MySQL 8.4 and newer switch `mysql_native_password` off by default, and an account that still uses it is refused with error 1524. Move such accounts to `caching_sha2_password`.
+
+A certificate MySQL generates for itself names no host, so trusting its CA alone does not pass the host name check. Give the server a certificate for the host in your DSN; the async driver also takes the name to expect as `peer_name`, which console commands on PDO cannot.
+
+Console commands, including `migrate`, map `cafile`, `capath`, `local_cert`, `local_pk` and `ciphers` to PDO's SSL attributes. `ssl => true` requests TLS with the system's trust and both verification checks enabled. PDO couples certificate and name verification, so `verify_peer` and `verify_peer_name` must be equal; both default to true. Other context keys, including `peer_name`, and conflicting integer PDO SSL attributes are refused. Before lending the connection, Crab checks that the session reports a non-empty SSL cipher and refuses it if TLS was not established.
+
+The driver targets MySQL 8.0–9.x, including VECTOR values returned as binary strings, with `caching_sha2_password` or `mysql_native_password` authentication. MariaDB, other authentication plugins, compression and `LOCAL INFILE` are outside its supported scope. Bind SQL values normally; an unsupported prepared statement falls back to a text command only when it has no bindings. An abandoned exchange drops its session, and worker teardown closes outstanding sessions at the drain deadline. Ordinary pooled task cancellation is cooperative: it does not promptly interrupt a query without a supplied cancellation token.
 
 ## Errors
 

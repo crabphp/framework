@@ -373,6 +373,8 @@ final class Records extends AbstractLogger
  */
 final class QueueTest extends TestCase
 {
+    use \Crab\Tests\Database\Mysql\AsyncDriverMatrix;
+
     private string $directory;
     private FrozenClock $clock;
     private Records $log;
@@ -408,6 +410,7 @@ final class QueueTest extends TestCase
         $stores = [['memory'], ['sqlite']];
         if (getenv('CRAB_TEST_MYSQL_DSN') !== false) {
             $stores[] = ['mysql'];
+            $stores[] = ['mysql-async'];
         }
         return $stores;
     }
@@ -1138,7 +1141,7 @@ final class QueueTest extends TestCase
     public function testAJobPushedWithinATransactionIsStoredWithItOrNotAtAll(string $kind): void
     {
         $this->store($kind);
-        $db = new Database(fn (): \PDO => $this->pdo($kind), 1);
+        $db = new Database(fn (): \PDO => $this->pdo($kind), 1, factory: $this->mysqlFactory($kind));
         $store = new DatabaseStore($db, 'queue_test');
         $queue = new Queue($store, clock: $this->clock);
         $now = $this->clock->now()->getTimestamp();
@@ -1168,10 +1171,10 @@ final class QueueTest extends TestCase
     public function testAJobKeptElsewhereIsPushedOnceTheTransactionHasCommitted(string $kind): void
     {
         $this->store($kind);
-        $db = new Database(fn (): \PDO => $this->pdo($kind), 1);
+        $db = new Database(fn (): \PDO => $this->pdo($kind), 1, factory: $this->mysqlFactory($kind));
         $now = $this->clock->now()->getTimestamp();
         // In memory, and in a database that is not the transaction's own.
-        foreach ([new MemoryStore(), new DatabaseStore(new Database(fn (): \PDO => $this->pdo($kind), 1), 'queue_test')] as $store) {
+        foreach ([new MemoryStore(), new DatabaseStore(new Database(fn (): \PDO => $this->pdo($kind), 1, factory: $this->mysqlFactory($kind)), 'queue_test')] as $store) {
             $queue = new Queue($store, clock: $this->clock);
             $before = $store->size('default', $now);
 
@@ -1372,7 +1375,7 @@ final class QueueTest extends TestCase
         $app = new App(new Config([
             'queue' => ['tries' => 1],
             'log' => ['path' => $this->directory . '/app.log'],
-            'database' => ['dsn' => 'sqlite:' . $this->directory . '/app.sqlite', 'migrations' => $this->directory . '/migrations'],
+            'database' => ['connections' => ['main' => ['dsn' => 'sqlite:' . $this->directory . '/app.sqlite', 'migrations' => $this->directory . '/migrations']]],
         ]));
         $app->register(DatabaseProvider::class, QueueProvider::class);
         self::assertSame(['database', 'jobs', 'default', 90], [config('queue.store'), config('queue.table'), config('queue.queue'), config('queue.retry_after')]);
@@ -1557,7 +1560,7 @@ final class QueueTest extends TestCase
         if ($kind === 'memory') {
             return new MemoryStore();
         }
-        $database = new Database(fn (): \PDO => $this->pdo($kind), 1);
+        $database = new Database(fn (): \PDO => $this->pdo($kind), 1, factory: $this->mysqlFactory($kind));
         $database->execute('drop table if exists queue_test');
         (new Schema($database))->create('queue_test', static function (Table $table): void {
             $table->id();

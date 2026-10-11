@@ -27,6 +27,8 @@ use Crab\Contracts\Clock\Clock;
  */
 final class MigratorTest extends TestCase
 {
+    use \Crab\Tests\Database\Mysql\AsyncDriverMatrix;
+
     private const TABLES = ['migrator_posts', 'migrator_users', 'migrator_teams', 'migrator_half', 'migrations', 'migrator_log'];
 
     private string $directory;
@@ -70,7 +72,7 @@ final class MigratorTest extends TestCase
 
     public static function drivers(): array
     {
-        return getenv('CRAB_TEST_MYSQL_DSN') === false ? [['sqlite']] : [['sqlite'], ['mysql']];
+        return getenv('CRAB_TEST_MYSQL_DSN') === false ? [['sqlite']] : [['sqlite'], ['mysql'], ['mysql-async']];
     }
 
     #[DataProvider('drivers')]
@@ -152,7 +154,7 @@ final class MigratorTest extends TestCase
     {
         $db = $this->database('sqlite');
         $mistakes = [
-            'No migration directory is configured. Set "database.migrations"' => static fn () => (new Migrator($db))->run(),
+            'No migration directory is configured. Set "migrations" on its connection' => static fn () => (new Migrator($db))->run(),
             'No migration directory is configured' => static fn () => (new Migrator($db))->make('create users table'),
             'needs a name that says what it does' => fn () => (new Migrator($db, $this->directory . '/migrations'))->make(' !! '),
         ];
@@ -216,10 +218,10 @@ final class MigratorTest extends TestCase
 
     public function testTheProviderBindsTheSchemaAndMigratorAndAddsTheCommands(): void
     {
-        $app = new App(new Config(['database' => [
+        $app = new App(new Config(['database' => ['connections' => ['main' => [
             'dsn' => 'sqlite:' . $this->directory . '/app.sqlite',
             'migrations' => $this->directory . '/migrations',
-        ]]));
+        ]]]]));
         $app->container->instance(Clock::class, new FrozenClock('2026-01-31 12:00:00'));
         $app->register(DatabaseProvider::class);
         self::assertInstanceOf(Schema::class, $app->container->get(SchemaContract::class));
@@ -245,9 +247,9 @@ final class MigratorTest extends TestCase
         self::assertSame("Rolled back  2026_02_01_000000_create_posts\nRolled back  2026_01_31_120000_create_migrator_users_table\n", $this->run_($app, 'migrate:rollback'));
         $db->close();
 
-        $unset = new App(new Config(['database' => ['dsn' => 'sqlite::memory:']]));
+        $unset = new App(new Config(['database' => ['connections' => ['main' => ['dsn' => 'sqlite::memory:']]]]));
         $unset->register(DatabaseProvider::class);
-        self::assertStringContainsString('Set "database.migrations"', $this->run_($unset, 'migrate', expect: 1));
+        self::assertStringContainsString('Set "migrations" on its connection', $this->run_($unset, 'migrate', expect: 1));
     }
 
     public function testSeveralDatabasesAreConfiguredByNameAndReachedFromOneAnother(): void
@@ -668,9 +670,9 @@ final class MigratorTest extends TestCase
         });
         $this->waitForFile($started);
         try {
-            foreach ([false, true] as $named) {
+            foreach ([false, true] as $several) {
                 $settings = ['dsn' => 'sqlite:' . $this->directory . '/app.sqlite', 'migrations' => $this->directory . '/migrations'];
-                $configuration = $named ? ['connections' => ['main' => $settings, 'reports' => $settings], 'default' => 'main'] : $settings;
+                $configuration = ['connections' => $several ? ['main' => $settings, 'reports' => $settings] : ['main' => $settings]];
                 $configuration['migration_lock_timeout'] = 0;
                 $app = new App(new Config(['database' => $configuration]));
                 $app->register(DatabaseProvider::class);
@@ -691,7 +693,7 @@ final class MigratorTest extends TestCase
         }
         self::assertSame($names, $this->childResult($job));
 
-        $defaults = new Config(['database' => ['dsn' => 'sqlite::memory:']]);
+        $defaults = new Config(['database' => ['connections' => ['main' => ['dsn' => 'sqlite::memory:']]]]);
         $app = new App($defaults);
         $app->register(DatabaseProvider::class);
         self::assertSame(60, $defaults->get('database.migration_lock_timeout'));
@@ -713,7 +715,7 @@ final class MigratorTest extends TestCase
     public function testTheProviderRefusesInvalidLockTimeoutsAndCastsFractionsToWholeSeconds(): void
     {
         foreach ([-1, 'later', null, INF, NAN] as $timeout) {
-            $app = new App(new Config(['database' => ['dsn' => 'sqlite::memory:', 'migration_lock_timeout' => $timeout]]));
+            $app = new App(new Config(['database' => ['connections' => ['main' => ['dsn' => 'sqlite::memory:']], 'migration_lock_timeout' => $timeout]]));
             $app->register(DatabaseProvider::class);
             try {
                 $app->container->get(MigratorContract::class);
@@ -827,7 +829,12 @@ final class MigratorTest extends TestCase
     {
         $this->database($driver)->close();
         $names = $this->lockMigrations();
-        $connection = new PdoConnection(fn (): \PDO => $this->pdo($driver));
+        $owner = fn (): \PDO => $this->pdo($driver);
+        $factory = $this->mysqlFactory($driver);
+        $connection = $factory === null ? new PdoConnection($owner) : $factory($owner);
+        if ($this->matrixWorker !== null) {
+            self::assertInstanceOf(\Crab\Database\Mysql\Connection::class, $connection);
+        }
         try {
             $migrator = new Migrator($connection, $this->directory . '/migrations');
             self::assertSame($names, $migrator->run());
@@ -908,7 +915,7 @@ final class MigratorTest extends TestCase
                 $pdo->exec('PRAGMA busy_timeout = 5000');
             }
             return $pdo;
-        }, 1);
+        }, 1, factory: $this->mysqlFactory($driver));
     }
 
     /**
@@ -1056,7 +1063,7 @@ final class MigratorTest extends TestCase
 
     private function database(string $driver): Database
     {
-        $db = new Database(fn (): \PDO => $this->pdo($driver), 1);
+        $db = new Database(fn (): \PDO => $this->pdo($driver), 1, factory: $this->mysqlFactory($driver));
         foreach (self::TABLES as $table) {
             $db->execute("drop table if exists {$table}");
         }

@@ -11,7 +11,7 @@ use Crab\Engine\Async\PoolExhaustedException;
 use Crab\Engine\EventLoop;
 
 /**
- * A pool of PDO connections. Nothing is opened until a statement runs, so
+ * A pool of database connections. Nothing is opened until a statement runs, so
  * it is safe to create anywhere; each worker ends up with its own
  * connections.
  */
@@ -23,18 +23,26 @@ final class Database implements DatabaseContract
      */
     private ?EventLoop $loop = null;
     private ?string $driver = null;
+    /**
+     * Weak ownership lets worker shutdown close borrowed connections too.
+     *
+     * @var \WeakMap<ManagedConnection, bool>|null
+     */
+    private ?\WeakMap $connections = null;
 
     /**
      * @param \Closure(): \PDO $connect Opens one connection, for example `fn() => new PDO($dsn, $user, $password)`.
      * @param int $max The most connections this pool opens.
      * @param float $timeout Seconds to wait for a connection when all are in use.
      * @param DatabaseManager|null $manager The databases this one is among, which connection() chooses from.
+     * @param (\Closure(\Closure): ManagedConnection)|null $factory Selects a driver with the connect closure as its pool ownership token.
      */
     public function __construct(
         private readonly \Closure $connect,
         private readonly int $max = 10,
         private readonly float $timeout = 5.0,
         private readonly ?DatabaseManager $manager = null,
+        private readonly ?\Closure $factory = null,
     ) {
         if ($max < 1 || !is_finite($timeout) || $timeout <= 0) {
             throw new \InvalidArgumentException('A database needs a positive pool size and a finite, positive timeout.');
@@ -51,7 +59,7 @@ final class Database implements DatabaseContract
 
     public function owns(Connection $connection): bool
     {
-        return $connection === $this || ($connection instanceof PdoConnection && $connection->opensWith($this->connect));
+        return $connection === $this || ($connection instanceof ManagedConnection && $connection->opensWith($this->connect));
     }
 
     public function afterCommit(\Closure $callback): void
@@ -74,7 +82,7 @@ final class Database implements DatabaseContract
 
     public function release(Connection $connection): void
     {
-        if ($connection instanceof PdoConnection && $connection->inTransaction()) {
+        if ($connection instanceof ManagedConnection && $connection->inTransaction()) {
             // The next borrower must not inherit it.
             $connection->close();
             $this->pool()->release($connection);
@@ -84,7 +92,7 @@ final class Database implements DatabaseContract
             $this->pool()->release($connection);
         } catch (\LogicException) {
             // Its pool was closed while it was out: there is nowhere to put it back, so it is closed.
-            if ($connection instanceof PdoConnection) {
+            if ($connection instanceof ManagedConnection) {
                 $connection->close();
             }
         }
@@ -147,6 +155,28 @@ final class Database implements DatabaseContract
     }
 
     /**
+     * Worker teardown cuts outstanding commands as well as idle sessions.
+     * No abandoned socket or readiness watcher survives the worker deadline.
+     *
+     * @internal
+     */
+    public function stop(): void
+    {
+        $this->close();
+        foreach ($this->connections ?? [] as $connection => $_) {
+            $connection->close();
+        }
+    }
+
+    private function make(): ManagedConnection
+    {
+        $connection = $this->factory !== null ? ($this->factory)($this->connect) : new PdoConnection($this->connect);
+        $this->connections ??= new \WeakMap();
+        $this->connections[$connection] = true;
+        return $connection;
+    }
+
+    /**
      * The pool for the current event loop. A worker installs its own loop
      * after it is forked, so a pool made earlier, in the parent, would wait
      * on a loop that no longer runs; it is replaced, connections and all.
@@ -159,10 +189,10 @@ final class Database implements DatabaseContract
             $this->loop = $loop;
             $this->pool = new Pool(
                 $loop,
-                fn (): PdoConnection => new PdoConnection($this->connect),
+                $this->make(...),
                 $this->max,
                 $this->timeout,
-                static fn (PdoConnection $connection) => $connection->close(),
+                static fn (ManagedConnection $connection) => $connection->close(),
             );
         }
         return $this->pool;

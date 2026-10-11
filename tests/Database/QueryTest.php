@@ -22,6 +22,8 @@ use PHPUnit\Framework\TestCase;
  */
 final class QueryTest extends TestCase
 {
+    use \Crab\Tests\Database\Mysql\AsyncDriverMatrix;
+
     private string $file;
 
     protected function setUp(): void
@@ -39,7 +41,7 @@ final class QueryTest extends TestCase
 
     public static function drivers(): array
     {
-        return getenv('CRAB_TEST_MYSQL_DSN') === false ? [['sqlite']] : [['sqlite'], ['mysql']];
+        return getenv('CRAB_TEST_MYSQL_DSN') === false ? [['sqlite']] : [['sqlite'], ['mysql'], ['mysql-async']];
     }
 
     public function testASelectIsWrittenInEachDialectWithItsValuesInOrder(): void
@@ -523,7 +525,7 @@ final class QueryTest extends TestCase
 
     private function database(string $driver): Database
     {
-        $db = new Database(fn (): \PDO => $this->pdo($driver));
+        $db = new Database(fn (): \PDO => $this->pdo($driver), factory: $this->mysqlFactory($driver));
         $db->execute('drop table if exists posts');
         $db->execute('drop table if exists users');
         if ($driver === 'mysql') {

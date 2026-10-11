@@ -33,6 +33,8 @@ use Psr\SimpleCache\InvalidArgumentException;
  */
 final class CacheTest extends TestCase
 {
+    use \Crab\Tests\Database\Mysql\AsyncDriverMatrix;
+
     private string $directory;
     private FrozenClock $clock;
 
@@ -63,6 +65,7 @@ final class CacheTest extends TestCase
         $stores = [['array'], ['file'], ['sqlite']];
         if (getenv('CRAB_TEST_MYSQL_DSN') !== false) {
             $stores[] = ['mysql'];
+            $stores[] = ['mysql-async'];
         }
         return $stores;
     }
@@ -960,7 +963,7 @@ final class CacheTest extends TestCase
     {
         $app = new App(new Config([
             'cache' => ['store' => 'database'],
-            'database' => ['dsn' => 'sqlite:' . $this->directory . '/app.sqlite', 'migrations' => $this->directory . '/migrations'],
+            'database' => ['connections' => ['main' => ['dsn' => 'sqlite:' . $this->directory . '/app.sqlite', 'migrations' => $this->directory . '/migrations']]],
         ]));
         $app->register(DatabaseProvider::class, CacheProvider::class);
 
@@ -1008,7 +1011,7 @@ final class CacheTest extends TestCase
         if ($kind === 'file') {
             return new FileStore($this->directory . '/files');
         }
-        $database = new Database(fn (): \PDO => $this->pdo($kind), 1);
+        $database = new Database(fn (): \PDO => $this->pdo($kind), 1, factory: $this->mysqlFactory($kind));
         $database->execute('drop table if exists cache_test');
         (new Schema($database))->create('cache_test', static function (Table $table): void {
             $table->string('key')->unique();

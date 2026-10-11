@@ -320,7 +320,7 @@ final class AuthTest extends TestCase
 
     public function testRoutesAreProtectedAndHandlersReceiveTheUserByType(): void
     {
-        $app = new App(new Config(['database' => ['dsn' => 'sqlite:' . $this->file, 'migrations' => $this->migrations]]));
+        $app = new App(new Config(['database' => ['connections' => ['main' => ['dsn' => 'sqlite:' . $this->file, 'migrations' => $this->migrations]]]]));
         // In either order: nothing is needed from the database until a token is.
         $app->register(AuthProvider::class, TokenAuthProvider::class, DatabaseProvider::class);
         $app->container->instance(ClockInterface::class, new FrozenClock('2026-01-31 12:00:00'));
@@ -415,7 +415,7 @@ final class AuthTest extends TestCase
             self::assertStringContainsString('register the database provider, DatabaseProvider, as well as TokenAuthProvider', $error->getMessage());
         }
 
-        $app = new App(new Config(['database' => ['dsn' => 'sqlite:' . $this->file]]));
+        $app = new App(new Config(['database' => ['connections' => ['main' => ['dsn' => 'sqlite:' . $this->file]]]]));
         $app->register(DatabaseProvider::class, TokenAuthProvider::class);
         try {
             $app->container->get(TokenAuth::class);
