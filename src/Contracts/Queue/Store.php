@@ -81,4 +81,20 @@ interface Store
      * @return array{pending: int, delayed: int, processing: int, oldest: int|null}
      */
     public function counts(string $queue, int $now): array;
+
+    /**
+     * @return list<string> The names of the queues that hold a job, waiting, being run or failed, in no particular order.
+     */
+    public function queues(): array;
+
+    /**
+     * The jobs of a queue that stand in one state now, to be looked at:
+     * "pending" the one that has waited longest first, "delayed" the next
+     * to come due first, "processing" the one taken longest ago first.
+     * Looking takes nothing: no job is reserved by it.
+     *
+     * @param 'pending'|'delayed'|'processing' $state
+     * @return list<Message>
+     */
+    public function jobs(string $queue, string $state, int $now, int $limit = 50): array;
 }

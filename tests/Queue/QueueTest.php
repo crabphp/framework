@@ -199,6 +199,15 @@ final class QueueTest extends TestCase
         self::assertSame([1, 1, 1, $now + 600], $counts('default', $now + 900));
         self::assertSame(3, $store->size('default'));
         self::assertSame([0, 0, 0, null], $counts('other', $now));
+        self::assertSame(['default'], $store->queues());
+        // The same, job by job, to be looked at: nothing is taken by looking.
+        $listed = static fn (string $state, int $at): array => array_map(static fn ($message): array => [$message->data['name'], $message->availableAt, $message->reservedAt], $store->jobs('default', $state, $at));
+        self::assertSame([['now', $now, $now]], $listed('processing', $now));
+        self::assertSame([['seconds', $now + 600, null], ['interval', $now + 3600, null]], $listed('delayed', $now));
+        self::assertSame([['seconds', $now + 600, null]], $listed('pending', $now + 900));
+        self::assertSame([], $listed('pending', $now));
+        self::assertCount(1, $store->jobs('default', 'delayed', $now, 1));
+        self::assertSame([0, 2, 1, null], $counts('default', $now));
         // Its worker gone, it is given out again after a while and run with the others.
         $this->clock->advance('+2 minutes');
         self::assertTrue($consumer->runNext());
@@ -453,6 +462,16 @@ final class QueueTest extends TestCase
             public function counts(string $queue, int $now): array
             {
                 return ['pending' => 0, 'delayed' => 0, 'processing' => 0, 'oldest' => null];
+            }
+
+            public function jobs(string $queue, string $state, int $now, int $limit = 50): array
+            {
+                return [];
+            }
+
+            public function queues(): array
+            {
+                return [];
             }
         };
         $consumer = new Consumer($broken, null, $this->log);

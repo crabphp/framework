@@ -123,6 +123,27 @@ final class MemoryStore implements Store
         return $counts;
     }
 
+    public function queues(): array
+    {
+        return array_values(array_unique(array_column($this->jobs, 'queue')));
+    }
+
+    public function jobs(string $queue, string $state, int $now, int $limit = 50): array
+    {
+        $found = [];
+        foreach ($this->jobs as $id => $job) {
+            if ($job['queue'] !== $queue || $job['failed'] !== null) {
+                continue;
+            }
+            if (($job['reserved'] !== null ? 'processing' : ($job['available'] > $now ? 'delayed' : 'pending')) === $state) {
+                $found[] = $this->message($id);
+            }
+        }
+        // By the time that matters in each state: since when it waits, when it comes due, when it was taken.
+        usort($found, static fn (Message $a, Message $b): int => $state === 'processing' ? $a->reservedAt <=> $b->reservedAt : $a->availableAt <=> $b->availableAt);
+        return array_slice($found, 0, max(0, $limit));
+    }
+
     /**
      * The jobs that have not been done or given up on, in the order they
      * were pushed; those of one queue when it is named.
@@ -143,6 +164,6 @@ final class MemoryStore implements Store
     private function message(int $id): Message
     {
         $job = $this->jobs[$id];
-        return new Message($id, $job['queue'], $job['job'], $job['data'], $job['attempts'], $job['error'], $job['failed']);
+        return new Message($id, $job['queue'], $job['job'], $job['data'], $job['attempts'], $job['error'], $job['failed'], $job['available'], $job['reserved']);
     }
 }

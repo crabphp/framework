@@ -18,6 +18,8 @@ final readonly class Message
      * @param int $attempts How many times it has been started, this time included once a worker has taken it.
      * @param string|null $error Why it failed for good, when it has.
      * @param int|null $failedAt When it failed for good, as a Unix timestamp.
+     * @param int|null $availableAt Since when, or from when, it may run; where the store says.
+     * @param int|null $reservedAt When a worker took it, while one has it; where the store says.
      */
     public function __construct(
         public int|string $id,
@@ -27,6 +29,8 @@ final readonly class Message
         public int $attempts = 0,
         public ?string $error = null,
         public ?int $failedAt = null,
+        public ?int $availableAt = null,
+        public ?int $reservedAt = null,
     ) {
     }
 }

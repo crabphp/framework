@@ -140,6 +140,23 @@ final readonly class DatabaseStore implements Store
         ];
     }
 
+    public function queues(): array
+    {
+        return array_map(strval(...), $this->connection->table($this->table)->distinct()->pluck('queue'));
+    }
+
+    public function jobs(string $queue, string $state, int $now, int $limit = 50): array
+    {
+        $query = $this->connection->table($this->table)->where('queue', $queue)->whereNull('failed_at');
+        $query = match ($state) {
+            'pending' => $query->whereNull('reserved_at')->where('available_at', '<=', $now)->orderBy('available_at')->orderBy('id'),
+            'delayed' => $query->whereNull('reserved_at')->where('available_at', '>', $now)->orderBy('available_at')->orderBy('id'),
+            'processing' => $query->whereNotNull('reserved_at')->orderBy('reserved_at')->orderBy('id'),
+            default => throw new \InvalidArgumentException("\"{$state}\" is not a state a waiting job is in: pending, delayed or processing."),
+        };
+        return array_map(self::message(...), $query->limit(max(0, $limit))->get());
+    }
+
     private function failedRows(int|string|null $id): Query
     {
         $query = $this->connection->table($this->table)->whereNotNull('failed_at');
@@ -160,6 +177,8 @@ final readonly class DatabaseStore implements Store
             (int) $row['attempts'],
             $row['error'] === null ? null : (string) $row['error'],
             $row['failed_at'] === null ? null : (int) $row['failed_at'],
+            (int) $row['available_at'],
+            $row['reserved_at'] === null ? null : (int) $row['reserved_at'],
         );
     }
 }

@@ -199,7 +199,7 @@ php cua migrate --database=reports
 
 A package adds its own folder of migrations from its provider, through `Crab\Contracts\Database\Migrator::path()`.
 
-The framework itself ships no migrations. A component that needs a table writes the migration into your folder with an `install` command, where you own it:
+The framework itself ships no migrations. A component that needs a table writes the migration into your folder with an `install` command, where you own it. One that is told to keep its table in another database, with `queue.database` or `cache.database`, writes it into that database's folder; run `migrate --database=` for it.
 
 ```sh
 php cua tokens:install       # authentication tokens

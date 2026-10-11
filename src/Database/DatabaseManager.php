@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Crab\Database;
 
+use Crab\Contracts\Database\Migrators;
 use Psr\Clock\ClockInterface;
 
 /**
@@ -22,7 +23,7 @@ use Psr\Clock\ClockInterface;
  *     timeout      seconds to wait for a connection when all are in use; 5
  *     migrations   the folder that holds this database's migration files
  */
-final class DatabaseManager
+final class DatabaseManager implements Migrators
 {
     /**
      * @var array<string, Database>

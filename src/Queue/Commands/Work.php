@@ -64,7 +64,11 @@ final readonly class Work implements Command
         $ran = 0;
         if ($single) {
             // One process does the work of every supervisor, each within its own limits.
-            $this->runner->run('queue', function (Worker $worker, Cancellation $cancellation) use ($supervisors, $drain, &$ran): void {
+            // Named after the supervisors it does the work of, "queue:mail+default", so that whoever
+            // watches the workers knows these are served; the one of the queue's own settings is "queue".
+            $names = array_map(static fn (Supervisor $supervisor): string => $supervisor->name, $supervisors);
+            $group = $names === ['queue'] ? 'queue' : 'queue:' . implode('+', $names);
+            $this->runner->run($group, function (Worker $worker, Cancellation $cancellation) use ($supervisors, $drain, &$ran): void {
                 $tasks = [];
                 foreach ($supervisors as $supervisor) {
                     $tasks[] = $worker->spawn(function () use ($worker, $cancellation, $supervisor, $drain, &$ran): void {

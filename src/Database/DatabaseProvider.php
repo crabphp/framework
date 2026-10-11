@@ -10,6 +10,7 @@ use Crab\Contracts\Container\Container;
 use Crab\Contracts\Database\Connection;
 use Crab\Contracts\Database\Database as DatabaseContract;
 use Crab\Contracts\Database\Migrator as MigratorContract;
+use Crab\Contracts\Database\Migrators;
 use Crab\Contracts\Database\Schema as SchemaContract;
 use Crab\Contracts\WorkerProvider;
 use Crab\Database\Commands\MakeMigration;
@@ -66,6 +67,7 @@ final class DatabaseProvider implements WorkerProvider
         $container->singleton(Connection::class, DatabaseContract::class);
         $container->singleton(SchemaContract::class, static fn (Container $container): Schema => new Schema($container->get(DatabaseContract::class)));
         $container->singleton(MigratorContract::class, static fn (Container $container): Migrator => $container->get(DatabaseManager::class)->migrator());
+        $container->singleton(Migrators::class, DatabaseManager::class);
         if ($container->has(Console::class)) {
             $console = $container->get(Console::class);
             $console->add('migrate', Migrate::class);

@@ -8,7 +8,7 @@ use Crab\Contracts\Config\Config;
 use Crab\Contracts\Console\Command;
 use Crab\Contracts\Console\Input;
 use Crab\Contracts\Console\Output;
-use Crab\Contracts\Database\Migrator;
+use Crab\Contracts\Database\Migrators;
 
 /**
  * Writes the migration for the database store's table into the
@@ -16,7 +16,7 @@ use Crab\Contracts\Database\Migrator;
  */
 final readonly class InstallCache implements Command
 {
-    public function __construct(private Migrator $migrator, private Config $config)
+    public function __construct(private Migrators $migrators, private Config $config)
     {
     }
 
@@ -27,15 +27,18 @@ final readonly class InstallCache implements Command
 
     public function handle(Input $input, Output $output): int
     {
+        // Into the migrations of the database the table is kept in, which need not be the default one.
+        $database = $this->config->get('cache.database');
+        $migrator = $this->migrators->migrator(is_string($database) && $database !== '' ? $database : null);
         $table = (string) $this->config->get('cache.table');
         $name = "create_{$table}_table";
-        foreach (array_keys($this->migrator->status()) as $existing) {
+        foreach (array_keys($migrator->status()) as $existing) {
             if (str_ends_with($existing, $name)) {
                 $output->line("Your migrations already have {$existing}; nothing was written.");
                 return 0;
             }
         }
-        $file = $this->migrator->make($name);
+        $file = $migrator->make($name);
         file_put_contents($file, self::migration($table));
         $output->line("Created {$file}");
         $output->line('Run `migrate` to create the table, and set "cache.store" to "database".');
