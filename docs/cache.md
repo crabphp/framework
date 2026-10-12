@@ -8,6 +8,7 @@
     - [Remembering a value](#remembering-a-value)
     - [Storing and reading](#storing-and-reading)
     - [Removing](#removing)
+    - [Taking a value once](#taking-a-value-once)
     - [Several keys at once](#several-keys-at-once)
 - [Keys and time to live](#keys-and-time-to-live)
 - [Counting](#counting)
@@ -26,17 +27,7 @@ It is the PSR-16 cache, so a library that asks for `Psr\SimpleCache\CacheInterfa
 
 ## Configuration
 
-Register the provider:
-
-```php
-// app.php
-use Crab\Cache\CacheProvider;
-
-->withProviders([
-    CacheProvider::class,
-    AppProvider::class,
-])
-```
+The cache is registered by default by `App::configure()`, so it needs nothing in `app.php`.
 
 It works with no configuration, keeping entries in files. To change that, add `config/cache.php`:
 
@@ -80,7 +71,7 @@ php cua cache:install        # writes the cache table's migration into your migr
 php cua migrate
 ```
 
-Register `DatabaseProvider` as well. The migration is yours to read and change. An entry is stored as text, which on MySQL holds about 48 kB; keep larger values in files.
+Configure a [database connection](database.md#configuration) for this store. The migration is yours to read and change. An entry is stored as text, which on MySQL holds about 48 kB; keep larger values in files.
 
 > [!NOTE]
 > Reading the file or database store holds the worker for the moment it takes, as any file or database access does. That is far less than the work you are caching, but do not cache what is already fast.
@@ -150,6 +141,17 @@ empties the cache from the command line, for example after a deploy that changes
 
 > [!WARNING]
 > `clear()` and `cache:clear` remove active locks too. Do not clear a store whose locks are in use: another worker could take the same lock while its first holder is still working.
+
+### Taking a value once
+
+Use `take()` for a short-lived value that only one caller may consume, such as the identity id behind a browser authentication ticket:
+
+```php
+$cache->add('ticket.' . hash('sha256', $ticket), $user->id, 30);
+$id = $cache->take('ticket.' . hash('sha256', $ticket));
+```
+
+Taking returns the value and removes it atomically. Concurrent callers have at most one winner; a missing or expired entry returns `null`, or the default you pass as the second argument. A stored `null` is returned as `null` and still consumed. Use a shared database or Redis store across machines; file storage shares entries between workers on one machine, and array storage is local to one worker. For browser sockets, use the framework's [ticket authentication](websockets.md#authenticating-a-browser), which also creates the random ticket and resolves its user.
 
 ### Several keys at once
 
@@ -221,7 +223,7 @@ Expired file and database entries stop being returned, but still occupy space un
 php cua cache:prune
 ```
 
-It prints how many expired entries it removed and keeps live entries and those with no expiry. To run it hourly, register `ScheduleProvider` and declare it on the [schedule](scheduling.md):
+It prints how many expired entries it removed and keeps live entries and those with no expiry. To run it hourly, declare it on the [schedule](scheduling.md):
 
 ```php
 $schedule->command('cache:prune')->hourly();
@@ -231,7 +233,7 @@ Redis drops expired entries itself and needs no scheduled cleanup; its prune com
 
 ## A store of your own
 
-For Redis, install the `crabphp/redis` package, register its `RedisProvider` after `CacheProvider` and set `cache.store` to `redis`. To keep entries somewhere else again, implement `Crab\Contracts\Cache\Store` and bind it after the cache provider:
+For Redis, install the `crabphp/redis` package, add its `RedisProvider` in `app.php` and set `cache.store` to `redis`. To keep entries somewhere else again, implement `Crab\Contracts\Cache\Store` and bind it after the cache provider:
 
 ```php
 // app/Providers/AppProvider.php
@@ -241,7 +243,7 @@ use Crab\Contracts\Cache\Store;
 $container->singleton(Store::class, CacheStore::class);
 ```
 
-A store only stores text by key with an expiry time: `get()`, `set()`, `add()`, `increment()`, `delete()`, `deleteIf()`, `prune()` and `clear()`. Checking keys, serializing values and reading the clock stay with the cache in front of it. `add()`, `increment()` and `deleteIf()` must each be one step with respect to every other caller, or the locks and limits built on them do not hold. `deleteIf()` removes only a live entry holding the exact given text; `prune()` removes expired entries and returns the count.
+A store only stores text by key with an expiry time: `get()`, `take()`, `set()`, `add()`, `increment()`, `delete()`, `deleteIf()`, `prune()` and `clear()`. Checking keys, serializing values and reading the clock stay with the cache in front of it. `add()`, `take()`, `increment()` and `deleteIf()` must each be one step with respect to every other caller, or the credentials, locks and limits built on them do not hold. `take(string $key, int $now): ?string` returns and removes a live entry atomically, or returns null when missing or expired; never implement it as separate unlocked get and delete calls. `deleteIf()` removes only a live entry holding the exact given text; `prune()` removes expired entries and returns the count.
 
 ## In tests
 

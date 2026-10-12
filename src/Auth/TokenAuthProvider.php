@@ -45,5 +45,6 @@ final class TokenAuthProvider implements Provider
         if ($container->has(Console::class)) {
             $container->get(Console::class)->add('token:install', InstallTokens::class);
         }
+        $container->singleton(Ticket::class, static fn (Container $container): Ticket => (new Ticket())->withContainer($container));
     }
 }

@@ -5,10 +5,30 @@ declare(strict_types=1);
 namespace Crab\Tests;
 
 use Crab\App;
+use Crab\Auth\AuthProvider;
+use Crab\Broadcast\BroadcastProvider;
+use Crab\Cache\CacheProvider;
+use Crab\Commands\Serve;
+use Crab\Console\Output;
+use Crab\Contracts\Auth\PasswordHasher;
+use Crab\Contracts\Broadcast\Broadcaster;
+use Crab\Contracts\Cache\Cache;
 use Crab\Contracts\Container\Container;
+use Crab\Contracts\Database\Database;
+use Crab\Contracts\Events\Dispatcher;
+use Crab\Contracts\HttpClient\Client;
 use Crab\Contracts\Provider;
+use Crab\Contracts\Queue\Queue;
+use Crab\Contracts\Schedule\Schedule;
+use Crab\Database\DatabaseException;
+use Crab\Database\DatabaseProvider;
+use Crab\Engine\Process\Worker;
+use Crab\Events\EventsProvider;
 use Crab\Http\ErrorHandler;
 use Crab\Http\Request;
+use Crab\HttpClient\HttpClientProvider;
+use Crab\Queue\QueueProvider;
+use Crab\Schedule\ScheduleProvider;
 use PHPUnit\Framework\TestCase;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface;
@@ -47,6 +67,135 @@ final class Mark implements MiddlewareInterface
 final class AppBuilderTest extends TestCase
 {
     private string $directory;
+
+    public function testAFrameworkProviderNamedAgainIsRegisteredOnce(): void
+    {
+        $additions = new class implements Provider {
+            public function register(Container $container): void
+            {
+                $container->get(Dispatcher::class)->listen(Greeting::class, static function (Greeting $event): void {
+                    $event->text .= ' heard';
+                });
+                $container->get(Schedule::class)->command('hello')->daily('07:00');
+            }
+        };
+        foreach ([false, true] as $replace) {
+            $providers = [$additions, EventsProvider::class, new EventsProvider(), ScheduleProvider::class, new ScheduleProvider()];
+            $builder = App::configure();
+            if ($replace) {
+                $builder->withProviders(only: [EventsProvider::class, ScheduleProvider::class, ...$providers]);
+            } else {
+                $builder->withProviders($providers);
+            }
+            $app = $builder->create();
+            $event = new Greeting('hello');
+            $app->container->get(Dispatcher::class)->dispatch($event);
+            self::assertSame('hello heard', $event->text);
+            self::assertCount(1, $app->container->get(Schedule::class)->tasks());
+        }
+    }
+
+    public function testAnApplicationHasTheFrameworkProvidersWithoutNamingThem(): void
+    {
+        file_put_contents($this->directory . '/config/queue.php', "<?php return ['store' => 'memory'];");
+        file_put_contents($this->directory . '/config/cache.php', "<?php return ['store' => 'array'];");
+        try {
+            $app = App::configure($this->directory)->create();
+            self::assertSame([
+                DatabaseProvider::class, AuthProvider::class, CacheProvider::class,
+                EventsProvider::class, QueueProvider::class, ScheduleProvider::class,
+                HttpClientProvider::class, BroadcastProvider::class,
+            ], App::PROVIDERS);
+            foreach ([PasswordHasher::class, Queue::class, Cache::class, Schedule::class, Client::class, Dispatcher::class, Broadcaster::class] as $contract) {
+                self::assertInstanceOf($contract, $app->container->get($contract));
+            }
+            self::assertSame(['queue', 'schedule'], $app->servers->ids());
+            self::assertSame([], $app->with(), 'Registering a server does not switch it on.');
+            foreach (['migrate', 'cache:clear', 'queue:work', 'schedule:list'] as $command) {
+                self::assertTrue($app->console->has($command));
+            }
+            self::assertFalse($app->container->has(\Crab\Contracts\Auth\TokenStore::class));
+            $direct = new App();
+            foreach ([Database::class, PasswordHasher::class, Queue::class, Cache::class, Schedule::class, Client::class, Dispatcher::class, Broadcaster::class] as $contract) {
+                self::assertFalse($direct->container->has($contract), 'new App() registers no providers.');
+            }
+        } finally {
+            unlink($this->directory . '/config/queue.php');
+            unlink($this->directory . '/config/cache.php');
+        }
+    }
+
+    public function testAnApplicationWithNoConfigurationServesInAWorkerAndNamesTheMissingDatabaseSettings(): void
+    {
+        $app = App::configure()->create();
+        $app->router->get('/', static fn (): string => 'ready');
+        $served = false;
+        $app->run('test', static function (Worker $worker) use ($app, &$served): void {
+            $response = $app->handle(new Request('GET', '/'));
+            self::assertSame([200, 'ready'], [$response->getStatusCode(), (string) $response->getBody()]);
+            $served = true;
+            try {
+                $app->container->get(Database::class);
+                self::fail('An unconfigured database was returned.');
+            } catch (DatabaseException $error) {
+                self::assertStringContainsString('No database is configured', $error->getMessage());
+                self::assertStringContainsString('database.connections', $error->getMessage());
+                self::assertStringContainsString('sqlite:/path/app.sqlite', $error->getMessage());
+            }
+        }, single: true);
+        self::assertTrue($served, 'The worker started and served the request.');
+    }
+
+    public function testAFrameworkProviderCanBeLeftOutAndAnUnknownRemovalNamesTheList(): void
+    {
+        $app = App::configure()->withProviders(remove: ScheduleProvider::class)->create();
+        self::assertFalse($app->container->has(Schedule::class));
+        self::assertFalse($app->console->has('schedule:list'));
+        self::assertSame(['queue'], $app->servers->ids());
+        self::assertTrue($app->container->has(Dispatcher::class));
+        try {
+            App::configure()->withProviders(remove: [GreetingProvider::class]);
+            self::fail('An application provider was accepted as a framework provider.');
+        } catch (\LogicException $error) {
+            self::assertStringContainsString(GreetingProvider::class, $error->getMessage());
+            self::assertStringContainsString(implode(', ', App::PROVIDERS), $error->getMessage());
+        }
+    }
+
+    public function testOnlyReplacesTheFrameworkProvidersAndCannotBeCombinedWithRemove(): void
+    {
+        $app = App::configure()->withProviders(only: [EventsProvider::class])->create();
+        self::assertTrue($app->container->has(Dispatcher::class));
+        self::assertFalse($app->container->has(Schedule::class));
+        self::assertFalse($app->console->has('migrate'));
+        self::assertSame([], $app->servers->ids());
+        $empty = App::configure()->withProviders(only: [EventsProvider::class])->withProviders(only: [])->create();
+        self::assertFalse($empty->container->has(Dispatcher::class));
+        foreach ([
+            static fn () => App::configure()->withProviders(only: [], remove: ScheduleProvider::class),
+            static fn () => App::configure()->withProviders(only: [])->withProviders(remove: ScheduleProvider::class),
+            static fn () => App::configure()->withProviders(remove: ScheduleProvider::class)->withProviders(only: []),
+        ] as $mistake) {
+            try {
+                $mistake();
+                self::fail('only: and remove: were accepted together.');
+            } catch (\LogicException $error) {
+                self::assertStringContainsString('was given both only: and remove:', $error->getMessage());
+            }
+        }
+    }
+
+    public function testTheBackgroundAnnouncementIsOneLineWhenOnlyHttpIsSwitchedOn(): void
+    {
+        $stream = fopen('php://memory', 'w+');
+        try {
+            Serve::announceBackground(new Output($stream, $stream), App::configure()->create(), 'tcp://127.0.0.1:9000');
+            rewind($stream);
+            self::assertSame("Crab server running on http://127.0.0.1:9000\n", stream_get_contents($stream));
+        } finally {
+            fclose($stream);
+        }
+    }
 
     protected function setUp(): void
     {

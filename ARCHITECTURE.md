@@ -42,7 +42,7 @@ The last row is the rule that keeps the framework replaceable piece by piece: a 
 
 ### Enforcing the layers *(today)*
 
-`tests/LayerBoundaryTest.php` fails when a contract references a component, or when a component references the glue or a component it is not listed as built on. Today the listed pairs are `Routing` on `Http` and `Validation`, `Auth` on `Http`, `HttpClient` on `Http`, and `Testing` on `Container` and `Http`. The cache, the queue and the scheduler need none: where one uses the database, the queue or the cache, it asks for that component's contract. `tests/EngineBoundaryTest.php` does the same for the engine. A rule that is only written down drifts.
+`tests/LayerBoundaryTest.php` fails when a contract references a component, or when a component references the glue or a component it is not listed as built on. Today the listed pairs are `Routing` on `Http`, `Validation` and `WebSocket`, `WebSocket` on `Http`, `Auth` on `Http`, `HttpClient` on `Http`, and `Testing` on `Container` and `Http`. The cache, the queue and the scheduler need none: where one uses the database, the queue or the cache, it asks for that component's contract. `tests/EngineBoundaryTest.php` does the same for the engine. A rule that is only written down drifts.
 
 ## Contracts
 
@@ -72,6 +72,10 @@ A contract exists for everything a package touches, including where no PSR exist
 | `HttpClient\Response` | PSR-7 `ResponseInterface` | today |
 | `HttpClient\CookieJar` | none | today |
 | `HttpClient\File` | none; a value object | today |
+| `WebSocket\Socket`, `WebSocket\Binary` | none; what a socket action is given | today |
+| `Broadcast\Broadcaster` | none | today |
+| `Broadcast\Carrier` | none; what brings a message to every worker | today |
+| `WebSocket\Channels`, `WebSocket\Recipient` | none; how a socket joins without naming `Broadcast` | today |
 | `Cache\Cache` | PSR-16 `CacheInterface` | today |
 | `Cache\Store` | none; where a cache keeps its entries | today |
 | `Events\Dispatcher` | PSR-14 `EventDispatcherInterface` | today |
@@ -93,12 +97,16 @@ Every component has the same shape, so the tenth looks like the first.
 | Folder | `src/<Component>/`, namespace `Crab\<Component>` |
 | Standalone | Works with `new`, without `App`, the container or a provider |
 | Contract | In `src/Contracts/<Component>/` if packages touch it |
-| Provider *(proposed)* | An optional component ships `<Component>Provider` that binds its contract; core components are bound by `App` |
+| Provider | A component ships `<Component>Provider` that binds its contract; core components are bound by `App`, and `App::configure()` applies the framework's list `App::PROVIDERS` |
 | Helpers | `helpers.php` in the folder, only for functions that need this component alone |
 | Tests | `tests/<Component>/`, exercising the component without `App` |
 | Package *(proposed)* | Its own `composer.json`, published read-only from this repository as `crabphp/<component>`, the way the engine already is |
 
 Publishing components separately is what lets someone use the router or container without the framework. It costs a split step at release time and nothing day to day.
+
+An application made with `App::configure()` starts with `App::PROVIDERS`, in order: Database, Auth, Cache, Events, Queue, Schedule, HttpClient, Broadcast. Its own and its packages' providers follow through `withProviders()`. `remove:` leaves out a framework provider; `only:` replaces the framework's list, and the two cannot be combined. A framework provider named again is registered once. `TokenAuthProvider`, a concrete way of authenticating, and every package stay opt-in; nothing is found by convention. `new App()` used directly registers no providers.
+
+Registration declares bindings, commands and servers; it opens no connection and starts no job. With no database configured, a worker still starts and a database request names the settings to add. Queue and schedule servers run only when `server.with` switches them on.
 
 ## Actions *(today)*
 
@@ -242,7 +250,7 @@ Small and explicit; there are six, and no others are planned.
 | Per-worker work | `WorkerProvider::start(Worker)` / `stop(Worker)` | today |
 | Around requests | Middleware. Around every request: `withMiddleware()` in `app.php`, or the `MiddlewareStack` contract from a provider. Around some: `middleware:` on a route or a group. | today |
 | Commands | `Console` contract, `add()` | today |
-| Reacting to events | The `Events\Dispatcher` contract, PSR-14: `listen()` in a provider's `register()` | today, opt-in with `EventsProvider` |
+| Reacting to events | The `Events\Dispatcher` contract, PSR-14: `listen()` in a provider's `register()` | today, registered by default by `App::configure()` |
 | Worker processes | The `Runner` contract: `run($group, $work, $workers)` from a command, or `runAll()` for several groups under one parent | today |
 | Servers beside HTTP | The `Servers` contract: `add('chat', fn () => [new Workers(...)])` joins `serve` as its own workers, `command()` and `process()` run in a process of their own; `server.with` switches each on | today |
 

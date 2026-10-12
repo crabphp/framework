@@ -18,6 +18,12 @@ interface Store
     public function get(string $key, int $now): ?string;
 
     /**
+     * Returns and removes a live entry as one step with respect to every
+     * caller of this store. Missing or expired entries return null.
+     */
+    public function take(string $key, int $now): ?string;
+
+    /**
      * @param int|null $expiresAt When the entry expires; never when null.
      */
     public function set(string $key, string $value, ?int $expiresAt): void;

@@ -5,12 +5,15 @@ declare(strict_types=1);
 namespace Crab\Engine\WebSocket;
 
 use Closure;
+use Crab\Engine\Async\Cancellation;
+use Crab\Engine\Async\CancelledException;
 use Crab\Engine\Network\Connection;
 use Crab\Engine\Network\WriteResult;
 use SplQueue;
 
 /**
- * One RFC 6455 server session. Application callbacks must not suspend.
+ * One RFC 6455 server session. Message handlers may suspend; one connection
+ * delivers them in order and pauses transport reading until each returns.
  */
 final class WebSocketSession
 {
@@ -34,6 +37,7 @@ final class WebSocketSession
     private bool $readPaused = false;
     private bool $pressured = false;
     private bool $closing = false;
+    private bool $draining = false;
     private bool $closeSent = false;
     private bool $closeReceived = false;
     private bool $failed = false;
@@ -41,7 +45,14 @@ final class WebSocketSession
     private string $peerCloseReason = '';
     private ?string $parseContinuation = null;
     private ?string $writeContinuation = null;
-    private ?string $closeTimer = null;
+    private ?string $deadline = null;
+    private float $deadlineScheduledAt = 0;
+    private float $lastReceivedAt = 0;
+    private bool $heartbeatPaused = false;
+    private ?float $pingAt = null;
+    private ?float $closeAt = null;
+    private ?float $drainAt = null;
+    private readonly ?float $idleTimeout;
     private ?string $drainNotification = null;
     private readonly Closure $onMessage;
     private readonly ?Closure $onClose;
@@ -49,6 +60,11 @@ final class WebSocketSession
      * @var list<Closure>
      */
     private array $drainCallbacks = [];
+    /**
+     * @var array<int, array{int, Closure}>
+     */
+    private array $writableWaiters = [];
+    private int $nextWaiter = 0;
     private readonly int $outgoingFrameBytes;
 
     /**
@@ -67,6 +83,7 @@ final class WebSocketSession
         $this->output = new SplQueue();
         $this->control = new SplQueue();
         $this->outgoingFrameBytes = min($config->outgoingFrameBytes, $connection->maxWriteSize() - 10);
+        $this->idleTimeout = $config->idleTimeout ?? ($config->pingInterval === null ? null : 2 * $config->pingInterval);
         if ($connection->maxWriteSize() < 135) {
             throw new \InvalidArgumentException('WebSocket requires a transport write limit of at least 135 bytes.');
         }
@@ -74,8 +91,13 @@ final class WebSocketSession
         $connection->onDrain(fn () => $this->flush());
         $connection->onEof(fn () => $connection->close());
         $connection->onClose(fn () => $this->closed());
-        $connection->onDrainRequest(fn () => $this->close(1001, 'Server shutdown'));
+        $connection->onDrainRequest($this->requestDrain(...), static fn () => false);
         $connection->resumeRead();
+        if ($this->idleTimeout !== null) {
+            $this->lastReceivedAt = hrtime(true) / 1_000_000_000;
+            $this->pingAt = $config->pingInterval === null ? null : $this->lastReceivedAt + $config->pingInterval;
+            $this->armDeadline();
+        }
     }
 
     public function isClosed(): bool
@@ -85,7 +107,7 @@ final class WebSocketSession
 
     public function isClosing(): bool
     {
-        return $this->closing;
+        return $this->closing || $this->draining;
     }
 
     public function remoteAddress(): string
@@ -104,21 +126,127 @@ final class WebSocketSession
         return $this;
     }
 
+    /**
+     * Wait until queued bytes are strictly below the threshold and a frame slot
+     * is free. True permits a retry, without reserving room; false means closing.
+     * Cancellation removes this wait only and leaves accepted output intact.
+     */
+    public function awaitWritable(?Cancellation $cancellation = null, ?int $belowBytes = null): bool
+    {
+        $belowBytes ??= intdiv($this->config->maxQueuedOutputBytes, 2) + 1;
+        if ($belowBytes < 1 || $belowBytes > $this->config->maxQueuedOutputBytes) {
+            throw new \InvalidArgumentException('Set the writable threshold between one byte and the WebSocket output limit.');
+        }
+        $cancellation?->throwIfCancelled();
+        if ($this->isClosing() || $this->isClosed()) {
+            return false;
+        }
+        if ($this->isWritableBelow($belowBytes)) {
+            return true;
+        }
+        if (count($this->writableWaiters) >= $this->config->maxWritableWaiters) {
+            throw new \OverflowException('Too many WebSocket writers are waiting; reduce producers or increase maxWritableWaiters.');
+        }
+        $suspension = $this->connection->loop()->getSuspension();
+        $id = $this->nextWaiter++;
+        $settled = false;
+        $unsubscribe = null;
+        $finish = function (bool $writable = false, ?\Throwable $error = null) use ($suspension, $id, &$settled, &$unsubscribe): void {
+            if ($settled) {
+                return;
+            }
+            $settled = true;
+            unset($this->writableWaiters[$id]);
+            if ($this->writableWaiters === []) {
+                $this->connection->onWriteProgress(null);
+            }
+            $unsubscribe?->__invoke();
+            if ($error !== null) {
+                $suspension->throw($error);
+            } else {
+                $suspension->resume($writable);
+            }
+        };
+        $this->writableWaiters[$id] = [$belowBytes, $finish];
+        $this->connection->onWriteProgress($this->notifyWritable(...));
+        $unsubscribe = $cancellation?->subscribe(static fn (CancelledException $error) => $finish(false, $error));
+        try {
+            return $suspension->suspend();
+        } finally {
+            unset($this->writableWaiters[$id]);
+            if ($this->writableWaiters === []) {
+                $this->connection->onWriteProgress(null);
+            }
+            $settled = true;
+            $unsubscribe?->__invoke();
+        }
+    }
+
+    private function isWritableBelow(int $bytes): bool
+    {
+        return $this->bufferedBytes() < $bytes && $this->output->count() < $this->config->maxQueuedFrames
+            && $this->control->count() < 16;
+    }
+
+    private function notifyWritable(): void
+    {
+        foreach ($this->writableWaiters as [$bytes, $finish]) {
+            if ($this->isClosing() || $this->isClosed()) {
+                $finish(false);
+            } elseif ($this->isWritableBelow($bytes)) {
+                $finish(true);
+            } else {
+                // A session flush may have created a new transport output queue.
+                $this->connection->onWriteProgress($this->notifyWritable(...));
+            }
+        }
+    }
+
     public function pauseRead(): void
     {
         $this->readPaused = true;
-        $this->connection->pauseRead();
+        $this->pauseTransportRead();
     }
 
     public function resumeRead(): void
     {
         $this->readPaused = false;
-        if ($this->parseContinuation === null) {
+        if ($this->parseContinuation === null && $this->offset < strlen($this->input)) {
             $this->parse();
         }
-        if ($this->parseContinuation === null && !$this->failed && !$this->closeReceived && !$this->readPaused) {
-            $this->connection->resumeRead();
+        if (!$this->parsing && $this->parseContinuation === null && !$this->failed && !$this->closeReceived && !$this->readPaused) {
+            $this->resumeTransportRead();
         }
+    }
+
+    /**
+     * A peer cannot prove life while our own reader is paused. An existing
+     * deadline may wake once, but cannot ping or expire until reading resumes.
+     */
+    private function pauseTransportRead(): void
+    {
+        $this->connection->pauseRead();
+        $this->heartbeatPaused = $this->idleTimeout !== null;
+    }
+
+    /**
+     * Start a fresh silence interval when input can actually be read again.
+     * Retain an earlier timer registration, as for received activity.
+     */
+    private function resumeTransportRead(): void
+    {
+        $this->connection->resumeRead();
+        if ($this->heartbeatPaused) {
+            $this->resumeHeartbeat();
+        }
+    }
+
+    private function resumeHeartbeat(): void
+    {
+        $this->heartbeatPaused = false;
+        $this->lastReceivedAt = hrtime(true) / 1_000_000_000;
+        $this->pingAt = $this->config->pingInterval === null ? null : $this->lastReceivedAt + $this->config->pingInterval;
+        $this->armDeadline();
     }
 
     public function sendText(string $message): WriteResult
@@ -139,7 +267,7 @@ final class WebSocketSession
      */
     public function sendBinaryChunk(string $chunk, bool $final = false): WriteResult
     {
-        if ($this->closing || $this->isClosed()) {
+        if ($this->isClosing() || $this->isClosed()) {
             return WriteResult::Closed;
         }
         if (strlen($chunk) > $this->outgoingFrameBytes
@@ -160,7 +288,7 @@ final class WebSocketSession
         if (strlen($payload) > 125) {
             throw new \LengthException('WebSocket control payloads cannot exceed 125 bytes.');
         }
-        if ($this->closing || $this->isClosed()) {
+        if ($this->isClosing() || $this->isClosed()) {
             return WriteResult::Closed;
         }
         if ($this->enqueueControl(9, $payload)) {
@@ -197,6 +325,10 @@ final class WebSocketSession
         if ($this->isClosed() || $this->failed || $data === '') {
             return;
         }
+        if ($this->idleTimeout !== null) {
+            $this->lastReceivedAt = hrtime(true) / 1_000_000_000;
+            $this->pingAt = $this->config->pingInterval === null ? null : $this->lastReceivedAt + $this->config->pingInterval;
+        }
         if (strlen($this->input) - $this->offset + strlen($data) > $this->config->maxBufferedInputBytes) {
             $this->fail(1009, 'Input limit');
             return;
@@ -213,14 +345,24 @@ final class WebSocketSession
 
     private function parse(): void
     {
-        if ($this->parsing || $this->readPaused) {
+        if ($this->parsing || $this->readPaused || !$this->connection->enterActivity()) {
             return;
         }
         $this->parsing = true;
+        // Keep the default parser's direct transport calls; heartbeat work is optional.
+        $this->connection->pauseRead();
+        $this->heartbeatPaused = $this->idleTimeout !== null;
         try {
             $this->parseFrames();
         } finally {
             $this->parsing = false;
+            $this->connection->leaveActivity();
+            if ($this->parseContinuation === null && !$this->failed && !$this->closeReceived && !$this->readPaused) {
+                $this->connection->resumeRead();
+                if ($this->heartbeatPaused) {
+                    $this->resumeHeartbeat();
+                }
+            }
         }
     }
 
@@ -355,7 +497,7 @@ final class WebSocketSession
 
     private function sendMessage(string $message, MessageType $type): WriteResult
     {
-        if ($this->closing || $this->isClosed()) {
+        if ($this->isClosing() || $this->isClosed()) {
             return WriteResult::Closed;
         }
         if ($this->outgoingFragment) {
@@ -484,6 +626,7 @@ final class WebSocketSession
             }
         } finally {
             $this->pumping = false;
+            $this->notifyWritable();
         }
         if ($this->pressured && $this->bufferedBytes() <= intdiv($this->config->maxQueuedOutputBytes, 2)
             && $this->output->count() < $this->config->maxQueuedFrames && $this->control->count() < 16) {
@@ -492,7 +635,7 @@ final class WebSocketSession
                 $this->drainNotification = $this->connection->loop()->defer(function (): void {
                     $this->drainNotification = null;
                     foreach ($this->drainCallbacks as $callback) {
-                        if ($this->closing || $this->isClosed()) {
+                        if ($this->isClosing() || $this->isClosed()) {
                             break;
                         }
                         try {
@@ -527,7 +670,7 @@ final class WebSocketSession
         $this->peerCloseReason = $reason;
         $this->closeReceived = true;
         $this->beginClosing();
-        $this->connection->pauseRead();
+        $this->pauseTransportRead();
         $this->discardPendingFrames();
         if ($this->closeSent) {
             $this->connection->end();
@@ -543,7 +686,7 @@ final class WebSocketSession
         }
         $this->failed = true;
         $this->beginClosing();
-        $this->connection->pauseRead();
+        $this->pauseTransportRead();
         $this->input = $this->fragment = '';
         $this->offset = 0;
         $this->discardPendingFrames();
@@ -557,15 +700,89 @@ final class WebSocketSession
     private function beginClosing(): void
     {
         $this->closing = true;
-        if ($this->closeTimer === null && !$this->isClosed()) {
-            $this->closeTimer = $this->connection->loop()->delay(
-                $this->config->closeTimeout,
-                function (): void {
-                    $this->closeTimer = null;
-                    $this->connection->close();
-                },
-            );
+        $this->drainAt = null;
+        $this->notifyWritable();
+        if ($this->closeAt === null && !$this->isClosed()) {
+            $this->closeAt = hrtime(true) / 1_000_000_000 + $this->config->closeTimeout;
+            $this->armDeadline();
         }
+    }
+
+    /**
+     * Spread Close frames across at most one second, using a connection's
+     * object id rather than random state. Transport still owns the worker's
+     * hard deadline; reserve half its remaining allowance for the handshake.
+     * Physical close cancels a pending stagger timer.
+     */
+    private function requestDrain(): void
+    {
+        if ($this->closing || $this->isClosed()) {
+            return;
+        }
+        $this->draining = true;
+        $this->notifyWritable();
+        $fraction = ((spl_object_id($this->connection) * 2654435761) & 0xffff) / 65536;
+        $now = hrtime(true) / 1_000_000_000;
+        $window = min(1.0, $this->config->closeTimeout);
+        $cutoff = $this->connection->drainDeadline();
+        if ($cutoff !== null) {
+            $window = min($window, max(0, $cutoff - $now) / 2);
+        }
+        $this->drainAt = $now + $fraction * $window;
+        $this->armDeadline();
+    }
+
+    /**
+     * Keep an earlier wake-up as activity moves the expiry later, like HTTP.
+     * Heartbeat and close share one registration; no repeat timer is installed.
+     */
+    private function armDeadline(): void
+    {
+        if ($this->isClosed()) {
+            return;
+        }
+        $at = $this->closeAt;
+        if ($this->drainAt !== null) {
+            $at = $this->drainAt;
+        } elseif (!$this->closing && !$this->heartbeatPaused) {
+            $idleAt = $this->idleTimeout === null ? null : $this->lastReceivedAt + $this->idleTimeout;
+            $at = $this->pingAt === null ? $idleAt : ($idleAt === null ? $this->pingAt : min($this->pingAt, $idleAt));
+        }
+        if ($at === null || ($this->deadline !== null && $this->deadlineScheduledAt <= $at)) {
+            return;
+        }
+        if ($this->deadline !== null) {
+            $this->connection->loop()->cancel($this->deadline);
+        }
+        $this->deadlineScheduledAt = $at;
+        $this->deadline = $this->connection->loop()->delay(max(0, $at - hrtime(true) / 1_000_000_000), $this->checkDeadline(...));
+    }
+
+    private function checkDeadline(): void
+    {
+        $this->deadline = null;
+        if ($this->isClosed()) {
+            return;
+        }
+        $now = hrtime(true) / 1_000_000_000;
+        if ($this->drainAt !== null) {
+            if ($now >= $this->drainAt) {
+                $this->close(1001, 'Server shutdown');
+            }
+        } elseif ($this->closing) {
+            if ($this->closeAt !== null && $now >= $this->closeAt) {
+                $this->connection->close();
+                return;
+            }
+        } elseif ($this->heartbeatPaused) {
+            return;
+        } elseif ($this->idleTimeout !== null && $now >= $this->lastReceivedAt + $this->idleTimeout) {
+            $this->close(1001, 'Idle timeout');
+        } elseif ($this->pingAt !== null && $now >= $this->pingAt) {
+            $this->ping();
+            $this->pingAt = $now + $this->config->pingInterval;
+        }
+        $this->armDeadline();
     }
 
     private function discardPendingFrames(): void
@@ -577,16 +794,17 @@ final class WebSocketSession
 
     private function closed(): void
     {
-        foreach ([$this->parseContinuation, $this->writeContinuation, $this->closeTimer, $this->drainNotification] as $id) {
+        foreach ([$this->parseContinuation, $this->writeContinuation, $this->deadline, $this->drainNotification] as $id) {
             if ($id !== null) {
                 $this->connection->loop()->cancel($id);
             }
         }
-        $this->parseContinuation = $this->writeContinuation = $this->closeTimer = $this->drainNotification = null;
+        $this->parseContinuation = $this->writeContinuation = $this->deadline = $this->drainNotification = null;
         $this->input = $this->fragment = '';
         $this->offset = 0;
         $this->discardPendingFrames();
         $this->drainCallbacks = [];
+        $this->notifyWritable();
         if ($this->onClose !== null) {
             ($this->onClose)($this, $this->peerCloseCode, $this->peerCloseReason);
         }

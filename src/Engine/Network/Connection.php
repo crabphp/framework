@@ -25,6 +25,9 @@ final class Connection
     private ?string $readWatcher = null;
     private ?string $writeWatcher = null;
     private ?string $closeTimer = null;
+    private ?float $closeDeadline = null;
+    private ?string $observedWriteWatcher = null;
+    private ?Closure $writeProgressHandler = null;
     private ?string $drainNotification = null;
     private ?Closure $dataHandler = null;
     private ?Closure $eofHandler = null;
@@ -197,6 +200,32 @@ final class Connection
     }
 
     /**
+     * Observe the current output queue without changing the ordinary I/O path.
+     * Reapply after enqueueing more output; null restores the ordinary writer.
+     *
+     * @param null|callable(self): void $handler Low-level callback; must not suspend.
+     * @internal
+     */
+    public function onWriteProgress(?callable $handler): self
+    {
+        if ($this->closed) {
+            return $this;
+        }
+        $this->writeProgressHandler = $handler === null ? null : Closure::fromCallable($handler);
+        $observe = $handler !== null;
+        if ($this->writeWatcher !== null
+            && $observe !== ($this->observedWriteWatcher === $this->writeWatcher)) {
+            $this->driver->cancel($this->writeWatcher);
+            $this->writeWatcher = $this->driver->onWritable(
+                $this->stream,
+                $handler === null ? $this->flush(...) : $this->flushObserved(...),
+            );
+        }
+        $this->observedWriteWatcher = $handler === null ? null : $this->writeWatcher;
+        return $this;
+    }
+
+    /**
      * @param callable(self): void $handler May finish a reply after read EOF.
      */
     public function onEof(callable $handler): self
@@ -223,6 +252,16 @@ final class Connection
     public function hasPendingWork(): bool
     {
         return !$this->closed && ($this->pendingWork === null || ($this->pendingWork)($this));
+    }
+
+    /**
+     * Monotonic cutoff owned by the transport during worker drain.
+     *
+     * @internal
+     */
+    public function drainDeadline(): ?float
+    {
+        return $this->draining ? $this->closeDeadline : null;
     }
 
     /**
@@ -362,6 +401,9 @@ final class Connection
         }
         fclose($this->stream);
         $this->stream = null;
+        $this->closeDeadline = null;
+        $this->observedWriteWatcher = null;
+        $this->writeProgressHandler = null;
         $this->output = [];
         $this->buffered = 0;
         $handlers = $this->closeHandlers;
@@ -522,6 +564,15 @@ final class Connection
         }
     }
 
+    private function flushObserved(): void
+    {
+        $before = $this->buffered;
+        $this->flush();
+        if (!$this->closed && $this->buffered < $before && $this->writeProgressHandler !== null) {
+            $this->invoke($this->writeProgressHandler);
+        }
+    }
+
     private function notifyDrain(): void
     {
         $this->writeRejected = false;
@@ -568,7 +619,9 @@ final class Connection
     private function armCloseDeadline(?float $timeout = null): void
     {
         if ($this->closeTimer === null) {
-            $this->closeTimer = $this->driver->delay($timeout ?? $this->closeTimeout, function (): void {
+            $timeout ??= $this->closeTimeout;
+            $this->closeDeadline = hrtime(true) / 1_000_000_000 + $timeout;
+            $this->closeTimer = $this->driver->delay($timeout, function (): void {
                 $this->closeTimer = null;
                 $this->close();
             });

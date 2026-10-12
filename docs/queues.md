@@ -31,19 +31,7 @@ Queue workers are processes of their own, apart from the ones serving HTTP, so a
 
 ## Installation
 
-Jobs are kept in a table of your database. Register both providers:
-
-```php
-// app.php
-use Crab\Database\DatabaseProvider;
-use Crab\Queue\QueueProvider;
-
-->withProviders([
-    DatabaseProvider::class,
-    QueueProvider::class,
-    AppProvider::class,
-])
-```
+The queue is registered by default by `App::configure()`, so it needs nothing in `app.php`. Jobs are kept in a table of your database by default; configure a connection as described in [Database](database.md#configuration).
 
 ```sh
 php cua queue:install        # writes the jobs table's migration into your migrations
@@ -394,7 +382,7 @@ A job cannot be interrupted from outside. Give slow calls a timeout of their own
 
 ## A store of your own
 
-For Redis, which suits more workers than a database table hands jobs to comfortably, install the `crabphp/redis` package, register its `RedisProvider` after `QueueProvider` and set `queue.store` to `redis`. To keep jobs somewhere else again, implement `Crab\Contracts\Queue\Store` and bind it after the queue provider:
+For Redis, which suits more workers than a database table hands jobs to comfortably, install the `crabphp/redis` package, add its `RedisProvider` in `app.php` and set `queue.store` to `redis`. To keep jobs somewhere else again, implement `Crab\Contracts\Queue\Store` and bind it after the queue provider:
 
 ```php
 use Crab\Contracts\Queue\Store;

@@ -27,8 +27,10 @@ final class LayerBoundaryTest extends TestCase
         // It sends and returns PSR-7 messages, which are Crab's own.
         'HttpClient' => ['Http'],
         // A route's handler is called with an input the validator builds.
-        'Routing' => ['Http', 'Validation'],
+        'Routing' => ['Http', 'Validation', 'WebSocket'],
         'Testing' => ['Container', 'Http'],
+        // Socket admission returns an HTTP upgrade through the middleware.
+        'WebSocket' => ['Http'],
     ];
 
     public function testContractsReferenceOnlyContractsAndTheEngine(): void

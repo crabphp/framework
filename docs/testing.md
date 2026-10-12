@@ -5,6 +5,7 @@
     - [Sending JSON](#sending-json)
     - [Reading the answer](#reading-the-answer)
     - [As a logged-in user](#as-a-logged-in-user)
+    - [Socket routes](#socket-routes)
 - [Settings for tests](#settings-for-tests)
 - [The database](#the-database)
 - [Testing a class on its own](#testing-a-class-on-its-own)
@@ -127,6 +128,12 @@ $api->get('/me')->assertStatus(401);            // without it, still refused
 ```
 
 Use `$api->withToken($token)->get('/me')` when testing token authentication itself; use `actingAs()` when the test only needs a logged-in user. `withToken($token, 'Token')` changes the scheme, and `withToken($token, '')` sends the token alone.
+
+### Socket routes
+
+`$api->websocket('/live')` opens a real socket route over an in-process socket pair. Arrays travel as JSON, and `WebSocket\Binary` preserves binary messages. Keep Api as your fixture: it closes all sockets when it leaves scope, including after failed assertions. When your test case stores Api in a property, call `$this->api->closeSockets()` in `tearDown()`.
+
+`TestSocket::close()` waits for connection-owned action cleanup with a one-second bound and finishes the main-context loop. See [WebSockets](websockets.md#testing) for messages, close assertions and HTTP refusals.
 
 ## Settings for tests
 

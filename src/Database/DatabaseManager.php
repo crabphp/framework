@@ -50,7 +50,8 @@ final class DatabaseManager implements Migrators
         private readonly ?ClockInterface $clock = null,
         private readonly int $migrationLockTimeout = 60,
     ) {
-        if (!isset($connections[$default])) {
+        // With none configured there is nothing to check: an application that uses no database asks for none.
+        if ($connections !== [] && !isset($connections[$default])) {
             throw new DatabaseException("The default database is \"{$default}\", and no database of that name is configured.");
         }
     }
@@ -116,6 +117,9 @@ final class DatabaseManager implements Migrators
 
     private function make(string $name): Database
     {
+        if ($this->connections === []) {
+            throw new DatabaseException('No database is configured. Describe one under "database.connections", by name: \'connections\' => [\'main\' => [\'dsn\' => \'sqlite:/path/app.sqlite\']].');
+        }
         $settings = $this->connections[$name] ?? null;
         if ($settings === null) {
             throw new DatabaseException("There is no database named \"{$name}\"; the configured ones are: " . implode(', ', $this->names()) . '.');

@@ -6,6 +6,7 @@ namespace Crab\Http;
 
 use Crab\Engine\Http\Request as EngineRequest;
 use Crab\Engine\Http\Response as EngineResponse;
+use Crab\Engine\Http\Upgrade;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\StreamInterface;
 use Psr\Http\Server\RequestHandlerInterface;
@@ -25,13 +26,16 @@ final readonly class EngineHandler
         $this->handler = ($handler instanceof \Closure ? new ClosureHandler($handler) : $handler)->handle(...);
     }
 
-    public function __invoke(EngineRequest $request): EngineResponse
+    public function __invoke(EngineRequest $request): EngineResponse|Upgrade
     {
         return self::toEngine(($this->handler)(Request::fromEngine($request)));
     }
 
-    private static function toEngine(ResponseInterface $response): EngineResponse
+    private static function toEngine(ResponseInterface $response): EngineResponse|Upgrade
     {
+        if ($response instanceof UpgradeResponse && $response->getStatusCode() === 101) {
+            return $response->toUpgrade();
+        }
         $body = $response->getBody();
         $content = $body instanceof Stream ? $body->text() : null;
         $headers = $response->getHeaders();

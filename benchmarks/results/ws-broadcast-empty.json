@@ -1,0 +1,11 @@
+{
+    "mode": "empty",
+    "php": "8.4.19",
+    "jit": true,
+    "iterations": 100000,
+    "user_us_per_operation": [
+        0.18179,
+        0.18067,
+        0.17977
+    ]
+}

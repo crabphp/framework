@@ -262,7 +262,7 @@ Route::group(middleware: [TokenAuth::class], routes: function () {
 - **The user reaches an action by type.** A parameter whose class implements `Identity` receives the user that middleware put on the request's `user` attribute; a request with none is answered with `401`. Make the parameter nullable for a route that works either way.
 - **There is no `Auth::user()`.** A worker serves requests that overlap, so the user travels with the request and nowhere else.
 - **Any middleware can be a way of authenticating.** It finds the user, and either calls `$handler->handle($request->withAttribute('user', $user))` or answers `401`. A session cookie, a signed address, a JWT, a header a proxy sets: each is a few lines of middleware of your own, and needs nothing more from Crab.
-- **`AuthProvider`** binds what every way shares, the `PasswordHasher`: `hash()`, `verify()` and `needsRehash()`, over PHP's own password hashing.
+- **`AuthProvider`, registered by default,** binds what every way shares, the `PasswordHasher`: `hash()`, `verify()` and `needsRehash()`, over PHP's own password hashing.
 
 ### Tokens
 
@@ -270,7 +270,7 @@ One way ships, because nearly every API starts with it: a token in a header, kep
 
 ~~~php
 // app.php
-->withProviders([DatabaseProvider::class, AuthProvider::class, TokenAuthProvider::class, AppProvider::class])
+->withProviders([TokenAuthProvider::class, AppProvider::class])
 ~~~
 
 ~~~sh
@@ -316,6 +316,38 @@ new TokenAuth($tokens, $users, required: false);         // lets a request witho
 
 Roles and permissions, and sessions with cookies, are not built and not planned: each is a few lines of middleware over what an application already has.
 
+## WebSockets
+
+A socket route shares the API's port and middleware. Its action starts inside HTTP; ownership checks can still answer 403 or 404 until the first socket use accepts the connection:
+
+~~~php
+use Crab\Contracts\WebSocket\Socket;
+use Crab\Route;
+
+Route::websocket('/orders/{id}/live', static function (Socket $socket, int $id): void {
+    $socket->send(['order' => $id]);
+    foreach ($socket as $message) {
+        $socket->send($message);
+    }
+});
+~~~
+
+Arrays travel as JSON text; `WebSocket\Binary` preserves binary frames through the echo loop, and `sendBinary()` sends bytes. Returning closes with 1000, and stop or reload sends 1001. Use `accept()` to upgrade without sending and `cancellation()` to stop awaited work on socket closure. Header-based authentication and typed query fields use the same HTTP checks before upgrading. Browser authentication tickets come in a later release; delivery is at most once.
+
+Defaults are `websocket.ping = 25`, `websocket.max_message = 65536`, `websocket.send_timeout = 5.0`, and `websocket.max_connections = 256` per worker. `server.max_connections = 512` bounds all connections, and `server.loop = 'select'` can be changed to an installed `ev`, `uv` or `event` backend. `Testing\Api::websocket()` exercises the real action and protocol over a socket pair. See [WebSockets](docs/websockets.md) for limits, authentication, proxies and tests.
+
+## Broadcasting
+
+Join in a socket action, then inject `Crab\Contracts\Broadcast\Broadcaster` into an action, job, listener or command:
+
+```php
+$socket->join("orders.{$id}");
+$this->broadcast->to("orders.{$id}")->send(['status' => 'shipped']);
+$this->broadcast->within($transaction)->to("orders.{$id}")->send(['status' => 'shipped']);
+```
+
+`BroadcastProvider` is included by `App::configure()`; with `new App()`, register it explicitly. `broadcast.carrier = 'local'` reaches one HTTP process. Choose `'redis'` and register `Crab\Redis\RedisProvider` for multiple workers or console senders. Defaults are `broadcast.prefix = 'crab:broadcast:'`, `broadcast.max_channels = 64`, `broadcast.batch = 128`, and `broadcast.max_pending_bytes = 1048576`. Slow readers close with 1008; Redis gaps close joined sockets with 1012 so clients reconnect and refetch state. Delivery is at most once, with no replay. `Testing\FakeBroadcaster` records sends without sockets. See [Broadcasting](docs/broadcasting.md).
+
 ## Requests and responses
 
 An action that asks for the request receives `Contracts\Http\Request`, a PSR-7 server request with four additions. A PSR-15 `RequestHandlerInterface` can be a route's action too; it receives the request, with the route parameters as attributes.
@@ -342,9 +374,7 @@ Route::post('/users/{id}/avatar', static function (Request $request) {
 
 ## Calling other APIs
 
-~~~php
-->withProviders([HttpClientProvider::class])
-~~~
+The HTTP client is registered by default by `App::configure()`; nothing is needed in `app.php`.
 
 ~~~php
 use Crab\Contracts\HttpClient\Client;
@@ -497,12 +527,11 @@ Env::load(__DIR__ . '/.env');
 $app = new App(Config::load(__DIR__ . '/config'));
 ~~~
 
-An application with more than one file is usually described in one chain instead, which does the same and loads the route files too:
+An application with more than one file is usually described in one chain instead, which also registers the framework providers and loads the route files:
 
 ~~~php
 return App::configure(__DIR__)
     ->withProviders([
-        DatabaseProvider::class,
         AppProvider::class,
     ])
     ->withMiddleware(prepend: [new Cors(['https://app.example.com'])])
@@ -516,9 +545,18 @@ return App::configure(__DIR__)
 
 - **The base path** is the directory given to `configure()`. Its `.env` file and `config` folder are loaded by default, because `App::configure()` begins the chain with `withEnv('.env')` and `withConfig('config', required: false)`; call either again to name another. Nothing else is found by convention.
 - **Paths may be relative** to the base path, and `$app->path('storage/app.log')` gives one in full anywhere else.
-- **Providers** are given one by one or as a list; `routes:` and `commands:` each take one file or a list of files. `withMiddleware()` is described under [Middleware](#middleware).
+- **Providers** start with `App::PROVIDERS`: Database, Auth, Cache, Events, Queue, Schedule, HttpClient and Broadcast, in that order. Add your own and your packages' providers as one provider or a list; `routes:` and `commands:` each take one file or a list of files. `withMiddleware()` is described under [Middleware](#middleware).
 - **`health: '/up'`** makes `GET /up` answer 200 and `{"status":"up"}`, for a load balancer or a deploy script that needs to know the server takes requests. It says that this worker answers and asks nothing of the database, so that a slow store does not take every server out of rotation at once; route the path to an action of your own to check more.
 - **Each step is optional and they may come in any order:** `create()` loads the environment, then the configuration, makes the application, registers the providers and middleware, and then includes the route and command files, which declare with `Route::` and `Command::`.
+
+To leave out a framework provider or replace the default list, choose one form:
+
+~~~php
+->withProviders(remove: [ScheduleProvider::class])
+->withProviders(only: [AppProvider::class])
+~~~
+
+`remove:` accepts only classes from `App::PROVIDERS`; `only: []` leaves them all out. Do not combine `remove:` and `only:`. A framework provider named again is registered once. `TokenAuthProvider` and every package stay opt-in. `new App()` used directly registers no providers. See [Services and providers](docs/providers.md).
 
 `Config::load()` reads every PHP file of a directory, keyed by file name:
 
@@ -542,9 +580,7 @@ Inside a worker, a PHP warning or notice is thrown as an `ErrorException`, so it
 
 ## Database
 
-~~~php
-$app->register(Crab\Database\DatabaseProvider::class);
-~~~
+The database provider is registered by default by `App::configure()`; nothing is needed in `app.php`. An application with no database configuration starts, and asking for the database then says what to configure.
 
 ~~~php
 // config/database.php
@@ -728,9 +764,7 @@ return new class implements Migration {
 
 ## Cache
 
-~~~php
-->withProviders([CacheProvider::class])
-~~~
+The cache is registered by default by `App::configure()`; nothing is needed in `app.php`.
 
 ~~~php
 use Crab\Contracts\Cache\Cache;
@@ -757,9 +791,7 @@ It is PSR-16's cache under the contract `Contracts\Cache\Cache`, which adds `rem
 
 ## Events
 
-~~~php
-->withProviders([EventsProvider::class, AppProvider::class])
-~~~
+Events are registered by default by `App::configure()`; add your listeners in your own provider.
 
 ~~~php
 use Crab\Contracts\Events\Dispatcher;
@@ -775,9 +807,7 @@ An event is any object and a listener is a closure or a class with `handle()`, m
 
 ## Queue
 
-~~~php
-->withProviders([DatabaseProvider::class, QueueProvider::class])
-~~~
+The queue is registered by default by `App::configure()`; configure a database connection for its default store.
 
 ~~~sh
 php cua queue:install        # writes the jobs table's migration into your own migrations
@@ -815,9 +845,7 @@ See [docs/queues.md](docs/queues.md).
 
 ## Scheduling
 
-~~~php
-->withProviders([QueueProvider::class, ScheduleProvider::class, AppProvider::class])
-~~~
+The schedule is registered by default by `App::configure()`; declare tasks in your own provider.
 
 ~~~php
 use Crab\Contracts\Schedule\Schedule;
@@ -953,6 +981,7 @@ A provider that needs something open in every worker, such as a connection or a 
 | `src/Testing/` | Helpers for testing components. |
 | `src/Server.php` | Runs the server in the foreground, in the background and under a watcher, and controls a running one. |
 | `src/Routing/` | The router, itself a PSR-15 handler, and `ActionHandler`, which calls a route's action by its signature. |
+| `src/Broadcast/` | Channel memberships, bounded fan-out and local or package carriers behind contracts. |
 | `src/HttpClient/` | The HTTP client: PSR-18, on the event loop, HTTP/2 and HTTP/1.1. |
 | `src/Validation/` | Builds typed objects from request data, with rules as attributes. |
 | `src/Contracts/` | Every interface another package implements or type-hints; they extend the PSR ones where Crab adds methods. |

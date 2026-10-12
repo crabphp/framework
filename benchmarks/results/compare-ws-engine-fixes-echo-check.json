@@ -1,0 +1,3846 @@
+{
+  "label": "ws-engine-fixes-echo-check",
+  "started_utc": "2026-10-12T10:37:39Z",
+  "status": "passed",
+  "configuration": {
+    "label": "ws-engine-fixes-echo-check",
+    "protocol": "ws",
+    "targets": "crab-before-jit,crab-jit",
+    "baseline_source": "/private/var/folders/tg/pyt0jkx51cd1_8n1q01dvpjh0000gn/T/crab-ws-engine-fixes-glg33zhq/Engine",
+    "http_response": "reuse",
+    "http_request": "fixed",
+    "idle_connections": 0,
+    "bun": "bun",
+    "concurrency": "32",
+    "threads": 2,
+    "payloads": "64",
+    "duration": 5,
+    "trials": 6,
+    "warmup": 2
+  },
+  "environment": {
+    "platform": "macOS-26.7.1-arm64-arm-64bit-Mach-O",
+    "machine": "arm64",
+    "cpu_count": 8,
+    "python": "3.14.3",
+    "php": {
+      "command": [
+        "php",
+        "-v"
+      ],
+      "exit_code": 0,
+      "stdout": "PHP 8.4.19 (cli) (built: Mar 10 2026 15:51:04) (NTS)\nCopyright (c) The PHP Group\nBuilt by Homebrew\nZend Engine v4.4.19, Copyright (c) Zend Technologies\n    with Zend OPcache v8.4.19, Copyright (c), by Zend Technologies",
+      "stderr": ""
+    },
+    "php_ini": {
+      "command": [
+        "php",
+        "--ini"
+      ],
+      "exit_code": 0,
+      "stdout": "Configuration File (php.ini) Path: /opt/homebrew/etc/php/8.4\nLoaded Configuration File:         /opt/homebrew/etc/php/8.4/php.ini\nScan for additional .ini files in: /opt/homebrew/etc/php/8.4/conf.d\nAdditional .ini files parsed:      /opt/homebrew/etc/php/8.4/conf.d/20-xdebug.ini,\n/opt/homebrew/etc/php/8.4/conf.d/error_log.ini,\n/opt/homebrew/etc/php/8.4/conf.d/ext-opcache.ini,\n/opt/homebrew/etc/php/8.4/conf.d/max-execution.ini,\n/opt/homebrew/etc/php/8.4/conf.d/php-memory-limits.ini,\n/opt/homebrew/etc/php/8.4/conf.d/zlib.ini",
+      "stderr": ""
+    },
+    "bun": {
+      "command": [
+        "bun",
+        "--version"
+      ],
+      "exit_code": 0,
+      "stdout": "1.3.1",
+      "stderr": ""
+    },
+    "node": {
+      "command": [
+        "node",
+        "--version"
+      ],
+      "exit_code": 0,
+      "stdout": "v25.1.0",
+      "stderr": ""
+    },
+    "wrk": {
+      "command": [
+        "wrk",
+        "--version"
+      ],
+      "exit_code": 1,
+      "stdout": "wrk 4.2.0 [kqueue] Copyright (C) 2012 Will Glozer\nUsage: wrk <options> <url>                            \n  Options:                                            \n    -c, --connections <N>  Connections to keep open   \n    -d, --duration    <T>  Duration of test           \n    -t, --threads     <N>  Number of threads to use   \n                                                      \n    -s, --script      <S>  Load Lua script file       \n    -H, --header      <H>  Add header to request      \n        --latency          Print latency statistics   \n        --timeout     <T>  Socket/request timeout     \n    -v, --version          Print version details      \n                                                      \n  Numeric arguments may include a SI unit (1k, 1M, 1G)\n  Time arguments may include a time unit (2s, 2m, 2h)",
+      "stderr": ""
+    },
+    "revolt": "v1.0.9",
+    "php_configuration": {
+      "crab-before-jit": {
+        "command": [
+          "php",
+          "-d",
+          "opcache.enable_cli=1",
+          "-d",
+          "opcache.jit=tracing",
+          "-d",
+          "opcache.jit_buffer_size=128M",
+          "-r",
+          "echo json_encode([\"opcache.enable_cli\"=>ini_get(\"opcache.enable_cli\"),\"opcache.jit\"=>ini_get(\"opcache.jit\"),\"opcache.jit_buffer_size\"=>ini_get(\"opcache.jit_buffer_size\"),\"memory_limit\"=>ini_get(\"memory_limit\"),\"extensions\"=>get_loaded_extensions(),\"jit_status\"=>function_exists(\"opcache_get_status\")?(opcache_get_status(false)[\"jit\"]??null):null]);"
+        ],
+        "exit_code": 0,
+        "stdout": "{\"opcache.enable_cli\":\"1\",\"opcache.jit\":\"tracing\",\"opcache.jit_buffer_size\":\"128M\",\"memory_limit\":\"1024M\",\"extensions\":[\"Core\",\"date\",\"libxml\",\"openssl\",\"pcre\",\"sqlite3\",\"zlib\",\"bcmath\",\"bz2\",\"calendar\",\"ctype\",\"curl\",\"dba\",\"dom\",\"json\",\"FFI\",\"fileinfo\",\"filter\",\"ftp\",\"gd\",\"gettext\",\"gmp\",\"hash\",\"iconv\",\"intl\",\"SPL\",\"ldap\",\"mbstring\",\"session\",\"standard\",\"mysqlnd\",\"mysqli\",\"odbc\",\"pcntl\",\"PDO\",\"pdo_dblib\",\"pdo_mysql\",\"PDO_ODBC\",\"pdo_pgsql\",\"pdo_sqlite\",\"pgsql\",\"Phar\",\"posix\",\"random\",\"readline\",\"Reflection\",\"exif\",\"shmop\",\"SimpleXML\",\"snmp\",\"soap\",\"sockets\",\"sodium\",\"sysvmsg\",\"sysvsem\",\"sysvshm\",\"tidy\",\"tokenizer\",\"xml\",\"xmlreader\",\"xmlwriter\",\"xsl\",\"zip\",\"redis\",\"Zend OPcache\"],\"jit_status\":{\"enabled\":true,\"on\":true,\"kind\":5,\"opt_level\":4,\"opt_flags\":6,\"buffer_size\":134217712,\"buffer_free\":134213832}}",
+        "stderr": ""
+      },
+      "crab-jit": {
+        "command": [
+          "php",
+          "-d",
+          "opcache.enable_cli=1",
+          "-d",
+          "opcache.jit=tracing",
+          "-d",
+          "opcache.jit_buffer_size=128M",
+          "-r",
+          "echo json_encode([\"opcache.enable_cli\"=>ini_get(\"opcache.enable_cli\"),\"opcache.jit\"=>ini_get(\"opcache.jit\"),\"opcache.jit_buffer_size\"=>ini_get(\"opcache.jit_buffer_size\"),\"memory_limit\"=>ini_get(\"memory_limit\"),\"extensions\"=>get_loaded_extensions(),\"jit_status\"=>function_exists(\"opcache_get_status\")?(opcache_get_status(false)[\"jit\"]??null):null]);"
+        ],
+        "exit_code": 0,
+        "stdout": "{\"opcache.enable_cli\":\"1\",\"opcache.jit\":\"tracing\",\"opcache.jit_buffer_size\":\"128M\",\"memory_limit\":\"1024M\",\"extensions\":[\"Core\",\"date\",\"libxml\",\"openssl\",\"pcre\",\"sqlite3\",\"zlib\",\"bcmath\",\"bz2\",\"calendar\",\"ctype\",\"curl\",\"dba\",\"dom\",\"json\",\"FFI\",\"fileinfo\",\"filter\",\"ftp\",\"gd\",\"gettext\",\"gmp\",\"hash\",\"iconv\",\"intl\",\"SPL\",\"ldap\",\"mbstring\",\"session\",\"standard\",\"mysqlnd\",\"mysqli\",\"odbc\",\"pcntl\",\"PDO\",\"pdo_dblib\",\"pdo_mysql\",\"PDO_ODBC\",\"pdo_pgsql\",\"pdo_sqlite\",\"pgsql\",\"Phar\",\"posix\",\"random\",\"readline\",\"Reflection\",\"exif\",\"shmop\",\"SimpleXML\",\"snmp\",\"soap\",\"sockets\",\"sodium\",\"sysvmsg\",\"sysvsem\",\"sysvshm\",\"tidy\",\"tokenizer\",\"xml\",\"xmlreader\",\"xmlwriter\",\"xsl\",\"zip\",\"redis\",\"Zend OPcache\"],\"jit_status\":{\"enabled\":true,\"on\":true,\"kind\":5,\"opt_level\":4,\"opt_flags\":6,\"buffer_size\":134217712,\"buffer_free\":134213832}}",
+        "stderr": ""
+      }
+    },
+    "cpu": {
+      "command": [
+        "sysctl",
+        "-n",
+        "machdep.cpu.brand_string"
+      ],
+      "exit_code": 0,
+      "stdout": "Apple M1 Pro",
+      "stderr": ""
+    },
+    "bun_executable": {
+      "path": "/Users/daudau/.bun/bin/bun",
+      "sha256": "a37b1f89daea5e3ca9b0fb4ef71ec82acc5e4782548d7e8b9d75e91ca7489009"
+    },
+    "elysia_version": null
+  },
+  "source_sha256": {
+    "benchmarks/baselines/bun.ts": "22c72a4fe8af25a34c8d801de4e504c7718576f1b367cab7a68b0211dd05655f",
+    "benchmarks/baselines/php.php": "94e1c6b02cf0171d857cbb8a82de6dd4e5b578e557abfe2c0ff301810038839b",
+    "benchmarks/baselines/verify.py": "eb138816e126a36f2ace8daeeace7ef954a98800a43ab9c32f2c160813f056ee",
+    "benchmarks/compare.py": "2fe9ec96f11195bcf24e4468389e9d101eafd714abc05379314d4c65e1d20f2a",
+    "benchmarks/elysia/bun.lock": "f6f62efc8a645c8cf2c465d0d3be337c0e7edd8b31778c918c8a2393d787c987",
+    "benchmarks/elysia/package.json": "0398a8051e1cb8581ad4cfc7de0c118bec6defdf4e678edc12d5f9122921f0d3",
+    "benchmarks/elysia/server.ts": "4a2e96009030a8265c525bff2c62e20b4c8b08c146d7388d2fbd93c888c0250a",
+    "benchmarks/http.py": "b63721769c88294579eb9a6aba2025637f8728704a676c859a7a9ae4989bea14",
+    "benchmarks/server.php": "367a55b742c3ac2aada0e2c05edf65b8e661abda046725a99ad88ca8cb0b7e75",
+    "benchmarks/websocket.mjs": "789c5bc4ccb7f380c0b7043aa4528b1dee34ac6868bd079dfe4f6f7ff4bfc784",
+    "composer.json": "392675d44595eeae0cb601b142f368cd57b7304fd11422852be4bc9c1f944863",
+    "composer.lock": "75f7e7a2fbc2114cafe39df1f94d5812567d39e59e7704bdc29ede78df97bec2",
+    "src/Engine/Async/Async.php": "bde793249d2dbda77d68aa844ae6c054655e1d1cf85e03fa7898c17684257132",
+    "src/Engine/Async/Cancellation.php": "4ca203a17bbbe1956cacf7d0cbe4fe15e2fc7497bb009f2d5df0e43b1249d1f8",
+    "src/Engine/Async/CancelledException.php": "8204c5462beef2fe1ac613d07a9aa4d85a4ea894956cc67bc6b839607413a44b",
+    "src/Engine/Async/ConnectionStream.php": "34b6ebaa0a25b909c1466573d151281e6ee69acc922cc5640c86bf4c1e3c7c2d",
+    "src/Engine/Async/Pool.php": "57b9761d799aaa28e8aebd64d97c259f62ef85e7a5b9457c87265e22d14d02f8",
+    "src/Engine/Async/PoolExhaustedException.php": "c2dde9344e17ceecd7fb43727e35870f27d7d00c3e0e76dda74e7141de38494f",
+    "src/Engine/Async/Task.php": "4eaf75a134598e78ebe07364b2c3e03f0bf6dcba0127aa823c4d2b0069025ccf",
+    "src/Engine/EventLoop/RevoltEventLoop.php": "ebae6ee71a38e60dcef37e1d93fd668b5d2748f068f787a4401192c1938430c7",
+    "src/Engine/EventLoop/RevoltSuspension.php": "e44f2c8d8f4448fa62e7dea32a3e7f83f418671dab6fec84e949121c6cc91e87",
+    "src/Engine/EventLoop.php": "8dd87c16c673a1aeb3c91406e9e911d0dd84589bf55d44dbf02d593439e17b14",
+    "src/Engine/FailureReporter.php": "68fe8bfe2343493ce95335384b40f6f39a7d7d19d5eb9a40408f262df199e43f",
+    "src/Engine/Http/Body.php": "1c2bc45522693728152210bf7427715e704db9ff66d8360b5e7709c5a37a5da1",
+    "src/Engine/Http/HttpException.php": "937fe56951a46f213f339ca207bb22a8706c34cf93186ed6e2b04936fa568ddc",
+    "src/Engine/Http/HttpSession.php": "6cab584ad60418a880139a7b507f92e7141787ae474264db139f1d5dca762952",
+    "src/Engine/Http/Parser.php": "f816581daec24621dac1076cc5325cfa7201d33cbf08ec3add3ec9889a394d66",
+    "src/Engine/Http/Request.php": "c358b610cc6a5f5e24849b6597a289a1989adf67d12e839de9e9ced2fa89be25",
+    "src/Engine/Http/Response.php": "236f5dfe7c5603782eb057f8da42adb3d41ef99c1d1b26d45b2bd0bce9429b83",
+    "src/Engine/Http/ResponseEncoder.php": "69807653d6dac3705792608e85d01d9963cabbe8cf362d1a544028327cddd24d",
+    "src/Engine/Http/Upgrade.php": "b41c4a9cdc5b19b07287ec5fb39351a2355e88705e287878a2d4423efebf2dd8",
+    "src/Engine/Network/Connection.php": "849704b5e7901c39a164f7fe40ebb356afac4a3fceb0b7d0a7b1f26f30b1cfc7",
+    "src/Engine/Network/Connector.php": "aa0dfc95adab66d3ac506cb0c1435cb2f4b119b4ca6a159c571be7ad036b4b53",
+    "src/Engine/Network/DnsResolver.php": "39f20a87f67bb8a1b8599b83bf5d38819aedb37982c06572cef519171b696c83",
+    "src/Engine/Network/Listener.php": "723f8ee77a84898520e9ea450c9d4648f49c6d27d86b3aad6be072c6b6ecc44d",
+    "src/Engine/Network/UdpEndpoint.php": "5ad1621dbee4dd146d00ca63bfd17649da203ad589b016d2c5386066b9f7fe97",
+    "src/Engine/Network/WriteResult.php": "0ba70bbf7825fff54a10b5cab9c397127bb76ec6cedcccd13207175daef4e4db",
+    "src/Engine/Process/Daemon.php": "5cd178622eda5702b1dd93aae92dde7ff26bfe612d3266cb7e3c6a0ef0aed4d4",
+    "src/Engine/Process/FileWatcher.php": "cade6787549d08d1ac02863b08ec37f62c784911889df5f5261ac600dab8706d",
+    "src/Engine/Process/Generation.php": "e1700a0ba0d175a9dd25cdb2b3220637a6f29c6c4c6f8b30e89695e83d6ccb63",
+    "src/Engine/Process/Keeper.php": "86a7101f807788b7f0883a247928452848a17575ebc80dd101cb6e0208653535",
+    "src/Engine/Process/PidFile.php": "a04d103c5956c4ee8f3bd567f020fa377a820e5a3e92623a3fbe6de168fb54f2",
+    "src/Engine/Process/Supervisor.php": "b34a4f878449d8454d12cc9c00767039ddf4dc4ed365827290d4c3fd56ef5a98",
+    "src/Engine/Process/Worker.php": "1b12534c0953310f65d619f48915837ab658dc5f64d7c9ede6abee3429477f92",
+    "src/Engine/Runtime.php": "8ab7af3b10187fa5d8ffd052484a4807eff9cb1494fc5fa3fa8343490317e27e",
+    "src/Engine/Server/HttpServer.php": "03b6f676e4bb1071b02b1f896672a021723b324c43065e9cf7bd486a814cd140",
+    "src/Engine/Server/TcpServer.php": "e057200b16a002b991c5da12f6bec519f4d6174ddc5862b92d3f3d4de02b65af",
+    "src/Engine/Server/UdpServer.php": "a372e5daa02c28c42563923678891f66a9443851c3c627c3d4a8aca4289a36eb",
+    "src/Engine/Server/WebSocketServer.php": "dae6d72fe217d2acb2baa6e80d3b6adf3674124de3c6623a541aa6b752f85353",
+    "src/Engine/Suspension.php": "1c0c69f6ede57d2ccc1ce172adde1a9dd811439c8933f0e8666d64b457db9744",
+    "src/Engine/WebSocket/Config.php": "32c579c7e4591964c5b9183060fdf8ae8580a131599928fcaf85c4da54eb267a",
+    "src/Engine/WebSocket/Handshake.php": "c4f8a3d2e3e1d9538f1b5348f85292ead6889ef507f14ef8d0d4fd648028ea06",
+    "src/Engine/WebSocket/MessageType.php": "7175e1c67355c289ced159167d5b8e3f5971922a3c05664763c6b0f33e548706",
+    "src/Engine/WebSocket/WebSocketSession.php": "8aa36ced84c39af1fd34d08de3bd33b22fe06043aa6536ab809f2af5f13d9128",
+    "src/Engine/WorkerGroup.php": "261c1c205c71d5b4e4c9f534ba7d7f3f25e6122c779677f2eebbd01ba78bdf9a"
+  },
+  "baseline_source_sha256": {
+    "src/Async/Async.php": "bde793249d2dbda77d68aa844ae6c054655e1d1cf85e03fa7898c17684257132",
+    "src/Async/Cancellation.php": "4ca203a17bbbe1956cacf7d0cbe4fe15e2fc7497bb009f2d5df0e43b1249d1f8",
+    "src/Async/CancelledException.php": "8204c5462beef2fe1ac613d07a9aa4d85a4ea894956cc67bc6b839607413a44b",
+    "src/Async/ConnectionStream.php": "34b6ebaa0a25b909c1466573d151281e6ee69acc922cc5640c86bf4c1e3c7c2d",
+    "src/Async/Pool.php": "57b9761d799aaa28e8aebd64d97c259f62ef85e7a5b9457c87265e22d14d02f8",
+    "src/Async/PoolExhaustedException.php": "c2dde9344e17ceecd7fb43727e35870f27d7d00c3e0e76dda74e7141de38494f",
+    "src/Async/Task.php": "4eaf75a134598e78ebe07364b2c3e03f0bf6dcba0127aa823c4d2b0069025ccf",
+    "src/EventLoop/RevoltEventLoop.php": "ebae6ee71a38e60dcef37e1d93fd668b5d2748f068f787a4401192c1938430c7",
+    "src/EventLoop/RevoltSuspension.php": "e44f2c8d8f4448fa62e7dea32a3e7f83f418671dab6fec84e949121c6cc91e87",
+    "src/EventLoop.php": "8dd87c16c673a1aeb3c91406e9e911d0dd84589bf55d44dbf02d593439e17b14",
+    "src/FailureReporter.php": "68fe8bfe2343493ce95335384b40f6f39a7d7d19d5eb9a40408f262df199e43f",
+    "src/Http/Body.php": "1c2bc45522693728152210bf7427715e704db9ff66d8360b5e7709c5a37a5da1",
+    "src/Http/HttpException.php": "937fe56951a46f213f339ca207bb22a8706c34cf93186ed6e2b04936fa568ddc",
+    "src/Http/HttpSession.php": "6cab584ad60418a880139a7b507f92e7141787ae474264db139f1d5dca762952",
+    "src/Http/Parser.php": "f816581daec24621dac1076cc5325cfa7201d33cbf08ec3add3ec9889a394d66",
+    "src/Http/Request.php": "c358b610cc6a5f5e24849b6597a289a1989adf67d12e839de9e9ced2fa89be25",
+    "src/Http/Response.php": "236f5dfe7c5603782eb057f8da42adb3d41ef99c1d1b26d45b2bd0bce9429b83",
+    "src/Http/ResponseEncoder.php": "69807653d6dac3705792608e85d01d9963cabbe8cf362d1a544028327cddd24d",
+    "src/Http/Upgrade.php": "b41c4a9cdc5b19b07287ec5fb39351a2355e88705e287878a2d4423efebf2dd8",
+    "src/Network/Connection.php": "a7a20e1d1e83392cff435d7a6ba8b9438715eaa6314f76b05e029748064e707b",
+    "src/Network/Connector.php": "aa0dfc95adab66d3ac506cb0c1435cb2f4b119b4ca6a159c571be7ad036b4b53",
+    "src/Network/DnsResolver.php": "39f20a87f67bb8a1b8599b83bf5d38819aedb37982c06572cef519171b696c83",
+    "src/Network/Listener.php": "723f8ee77a84898520e9ea450c9d4648f49c6d27d86b3aad6be072c6b6ecc44d",
+    "src/Network/UdpEndpoint.php": "5ad1621dbee4dd146d00ca63bfd17649da203ad589b016d2c5386066b9f7fe97",
+    "src/Network/WriteResult.php": "0ba70bbf7825fff54a10b5cab9c397127bb76ec6cedcccd13207175daef4e4db",
+    "src/Process/Daemon.php": "5cd178622eda5702b1dd93aae92dde7ff26bfe612d3266cb7e3c6a0ef0aed4d4",
+    "src/Process/FileWatcher.php": "cade6787549d08d1ac02863b08ec37f62c784911889df5f5261ac600dab8706d",
+    "src/Process/Generation.php": "e1700a0ba0d175a9dd25cdb2b3220637a6f29c6c4c6f8b30e89695e83d6ccb63",
+    "src/Process/Keeper.php": "86a7101f807788b7f0883a247928452848a17575ebc80dd101cb6e0208653535",
+    "src/Process/PidFile.php": "a04d103c5956c4ee8f3bd567f020fa377a820e5a3e92623a3fbe6de168fb54f2",
+    "src/Process/Supervisor.php": "b34a4f878449d8454d12cc9c00767039ddf4dc4ed365827290d4c3fd56ef5a98",
+    "src/Process/Worker.php": "1b12534c0953310f65d619f48915837ab658dc5f64d7c9ede6abee3429477f92",
+    "src/Runtime.php": "8ab7af3b10187fa5d8ffd052484a4807eff9cb1494fc5fa3fa8343490317e27e",
+    "src/Server/HttpServer.php": "03b6f676e4bb1071b02b1f896672a021723b324c43065e9cf7bd486a814cd140",
+    "src/Server/TcpServer.php": "e057200b16a002b991c5da12f6bec519f4d6174ddc5862b92d3f3d4de02b65af",
+    "src/Server/UdpServer.php": "a372e5daa02c28c42563923678891f66a9443851c3c627c3d4a8aca4289a36eb",
+    "src/Server/WebSocketServer.php": "dae6d72fe217d2acb2baa6e80d3b6adf3674124de3c6623a541aa6b752f85353",
+    "src/Suspension.php": "1c0c69f6ede57d2ccc1ce172adde1a9dd811439c8933f0e8666d64b457db9744",
+    "src/WebSocket/Config.php": "d5565ace75a380486a1a65ef54bd8c4b4ff8a022ff3504450e36221ddba3b96e",
+    "src/WebSocket/Handshake.php": "c4f8a3d2e3e1d9538f1b5348f85292ead6889ef507f14ef8d0d4fd648028ea06",
+    "src/WebSocket/MessageType.php": "7175e1c67355c289ced159167d5b8e3f5971922a3c05664763c6b0f33e548706",
+    "src/WebSocket/WebSocketSession.php": "1812398c493fee318ebf56f194e8de8236c4348a6dc7358ced8729bcf8af6019",
+    "src/WorkerGroup.php": "261c1c205c71d5b4e4c9f534ba7d7f3f25e6122c779677f2eebbd01ba78bdf9a"
+  },
+  "http_body_bytes": 16,
+  "notes": [
+    "One serving process per target, fresh server per trial; Crab uses StreamSelectDriver unless the target names ev, event or uv.",
+    "Target order rotates through evenly spaced starting positions; every server receives its own identical warmup before measurement.",
+    "Loopback closed-loop workloads share host CPUs; client limits and thermal drift affect results.",
+    "HTTP uses up to 2 wrk threads, capped by concurrency; WebSocket uses one Node process and one in-flight echo per connection.",
+    "ps CPU percentages are OS estimates; aggregate RSS can double-count shared pages.",
+    "Cumulative serving-process ps CPU deltas are separate from sampled percentages; resolution depends on the OS.",
+    "PHP baseline fixtures isolate HTTP/networking layers and implement a limited GET workload; they are not full HTTP servers.",
+    "WebSocket ps samples include warmup/handshake/drain; its client CPU/latency metrics cover measurement.",
+    "HTTP body is checked at readiness; wrk checks socket/status errors, not each response body.",
+    "Crab HTTP response mode: reuse; Bun/Elysia handlers and WebSocket echo behavior are unchanged.",
+    "HTTP request mode: fixed; varied and browser modes rotate 997 query strings on the same route, browser modes add 14 request fields, browser-unique also changes one field value per request.",
+    "Idle connections held open beside the load: 0; Crab then runs with a raised connection limit and a 300-second header deadline.",
+    "crab-before targets load the provided source snapshot with the same benchmark fixture and installed dependencies.",
+    "Processes are owned groups; cleanup sends SIGTERM only, and unsuccessful cleanup fails the run."
+  ],
+  "trials": [
+    {
+      "protocol": "ws",
+      "concurrency": 32,
+      "payload_bytes": 64,
+      "http_response_mode": null,
+      "trial": 1,
+      "target": "crab-before-jit",
+      "target_order": [
+        "crab-before-jit",
+        "crab-jit"
+      ],
+      "started_utc": "2026-10-12T10:37:40Z",
+      "server_command": [
+        "php",
+        "-d",
+        "opcache.enable_cli=1",
+        "-d",
+        "opcache.jit=tracing",
+        "-d",
+        "opcache.jit_buffer_size=128M",
+        "/Users/daudau/Code/crabphp/framework/benchmarks/server.php",
+        "--host=127.0.0.1",
+        "--workers=1",
+        "--metadata",
+        "--source=/private/var/folders/tg/pyt0jkx51cd1_8n1q01dvpjh0000gn/T/crab-ws-engine-fixes-glg33zhq/Engine",
+        "--protocol=ws",
+        "--port=60106"
+      ],
+      "port": 60106,
+      "errors": [],
+      "status": "passed",
+      "server_pid": 21642,
+      "readiness": "TCP readiness; client validates WebSocket handshake and every binary echo.",
+      "measurement": {
+        "command": [
+          "node",
+          "/Users/daudau/Code/crabphp/framework/benchmarks/websocket.mjs",
+          "--port=60106",
+          "--concurrency=32",
+          "--payload=64",
+          "--duration=5",
+          "--warmup=2"
+        ],
+        "timeout_seconds": 22,
+        "timed_out": false,
+        "samples": [
+          {
+            "server_cpu_percent": 27.7,
+            "server_rss_bytes": 34635776,
+            "load_cpu_percent": 0.0,
+            "load_rss_bytes": 1163264
+          },
+          {
+            "server_cpu_percent": 37.3,
+            "server_rss_bytes": 36290560,
+            "load_cpu_percent": 43.7,
+            "load_rss_bytes": 59621376
+          },
+          {
+            "server_cpu_percent": 63.7,
+            "server_rss_bytes": 36290560,
+            "load_cpu_percent": 86.5,
+            "load_rss_bytes": 62734336
+          },
+          {
+            "server_cpu_percent": 72.1,
+            "server_rss_bytes": 36290560,
+            "load_cpu_percent": 92.7,
+            "load_rss_bytes": 62734336
+          },
+          {
+            "server_cpu_percent": 81.3,
+            "server_rss_bytes": 36290560,
+            "load_cpu_percent": 97.5,
+            "load_rss_bytes": 62734336
+          },
+          {
+            "server_cpu_percent": 77.6,
+            "server_rss_bytes": 36290560,
+            "load_cpu_percent": 87.5,
+            "load_rss_bytes": 62734336
+          },
+          {
+            "server_cpu_percent": 79.4,
+            "server_rss_bytes": 36290560,
+            "load_cpu_percent": 89.8,
+            "load_rss_bytes": 62734336
+          },
+          {
+            "server_cpu_percent": 83.0,
+            "server_rss_bytes": 36290560,
+            "load_cpu_percent": 92.6,
+            "load_rss_bytes": 62734336
+          },
+          {
+            "server_cpu_percent": 84.0,
+            "server_rss_bytes": 36290560,
+            "load_cpu_percent": 95.2,
+            "load_rss_bytes": 62734336
+          },
+          {
+            "server_cpu_percent": 83.7,
+            "server_rss_bytes": 36290560,
+            "load_cpu_percent": 93.7,
+            "load_rss_bytes": 62734336
+          },
+          {
+            "server_cpu_percent": 84.7,
+            "server_rss_bytes": 36290560,
+            "load_cpu_percent": 96.9,
+            "load_rss_bytes": 63094784
+          },
+          {
+            "server_cpu_percent": 84.3,
+            "server_rss_bytes": 36290560,
+            "load_cpu_percent": 97.9,
+            "load_rss_bytes": 63094784
+          },
+          {
+            "server_cpu_percent": 83.7,
+            "server_rss_bytes": 36290560,
+            "load_cpu_percent": 95.8,
+            "load_rss_bytes": 63094784
+          },
+          {
+            "server_cpu_percent": 81.9,
+            "server_rss_bytes": 36290560,
+            "load_cpu_percent": 93.0,
+            "load_rss_bytes": 63094784
+          },
+          {
+            "server_cpu_percent": 84.4,
+            "server_rss_bytes": 36290560,
+            "load_cpu_percent": 94.9,
+            "load_rss_bytes": 63094784
+          },
+          {
+            "server_cpu_percent": 85.2,
+            "server_rss_bytes": 36290560,
+            "load_cpu_percent": 95.9,
+            "load_rss_bytes": 65421312
+          },
+          {
+            "server_cpu_percent": 84.7,
+            "server_rss_bytes": 36290560,
+            "load_cpu_percent": 95.8,
+            "load_rss_bytes": 67239936
+          },
+          {
+            "server_cpu_percent": 85.0,
+            "server_rss_bytes": 36290560,
+            "load_cpu_percent": 97.0,
+            "load_rss_bytes": 67239936
+          },
+          {
+            "server_cpu_percent": 88.8,
+            "server_rss_bytes": 36290560,
+            "load_cpu_percent": 99.1,
+            "load_rss_bytes": 67239936
+          },
+          {
+            "server_cpu_percent": 87.3,
+            "server_rss_bytes": 36290560,
+            "load_cpu_percent": 98.0,
+            "load_rss_bytes": 67239936
+          },
+          {
+            "server_cpu_percent": 87.1,
+            "server_rss_bytes": 36290560,
+            "load_cpu_percent": 100.4,
+            "load_rss_bytes": 67239936
+          },
+          {
+            "server_cpu_percent": 87.1,
+            "server_rss_bytes": 36290560,
+            "load_cpu_percent": 98.8,
+            "load_rss_bytes": 67239936
+          },
+          {
+            "server_cpu_percent": 86.0,
+            "server_rss_bytes": 36290560,
+            "load_cpu_percent": 97.2,
+            "load_rss_bytes": 67239936
+          },
+          {
+            "server_cpu_percent": 83.6,
+            "server_rss_bytes": 36290560,
+            "load_cpu_percent": 94.3,
+            "load_rss_bytes": 67256320
+          },
+          {
+            "server_cpu_percent": 85.8,
+            "server_rss_bytes": 36257792,
+            "load_cpu_percent": 97.5,
+            "load_rss_bytes": 67256320
+          },
+          {
+            "server_cpu_percent": 86.4,
+            "server_rss_bytes": 36257792,
+            "load_cpu_percent": 97.8,
+            "load_rss_bytes": 67256320
+          },
+          {
+            "server_cpu_percent": 86.1,
+            "server_rss_bytes": 36257792,
+            "load_cpu_percent": 100.0,
+            "load_rss_bytes": 67256320
+          },
+          {
+            "server_cpu_percent": 86.1,
+            "server_rss_bytes": 36257792,
+            "load_cpu_percent": 99.1,
+            "load_rss_bytes": 67256320
+          },
+          {
+            "server_cpu_percent": 86.8,
+            "server_rss_bytes": 36257792,
+            "load_cpu_percent": 98.7,
+            "load_rss_bytes": 67256320
+          },
+          {
+            "server_cpu_percent": 86.2,
+            "server_rss_bytes": 36257792,
+            "load_cpu_percent": 98.2,
+            "load_rss_bytes": 67256320
+          },
+          {
+            "server_cpu_percent": 87.1,
+            "server_rss_bytes": 36257792,
+            "load_cpu_percent": 98.7,
+            "load_rss_bytes": 67256320
+          },
+          {
+            "server_cpu_percent": 87.7,
+            "server_rss_bytes": 36257792,
+            "load_cpu_percent": 99.2,
+            "load_rss_bytes": 67256320
+          }
+        ],
+        "errors": [],
+        "pid": 21651,
+        "exit_code": 0,
+        "raw_output": "{\"protocol\":\"websocket\",\"concurrency\":32,\"payload_bytes\":64,\"inflight_per_connection\":1,\"warmup_seconds\":2,\"requested_seconds\":5,\"elapsed_seconds\":4.999887834000001,\"offered_messages\":411153,\"completed_messages\":411121,\"messages_per_second\":82226.04459330355,\"errors\":0,\"first_error\":null,\"latency_ms\":{\"p50\":0.3382605806488938,\"p95\":0.6775211612977876,\"p99\":0.8416268048148301,\"mean\":0.3873892354246254,\"max\":4.466792000000169},\"latency_histogram\":\"64 log2 buckets per doubling; reported upper bound, about 1.1% resolution\",\"client\":{\"node\":\"v25.1.0\",\"cpu_user_seconds\":1.873515,\"cpu_system_seconds\":3.026469,\"rss_bytes\":67420160}}\n",
+        "elapsed_wall_seconds": 7.283455832861364,
+        "metrics": {
+          "protocol": "websocket",
+          "concurrency": 32,
+          "payload_bytes": 64,
+          "inflight_per_connection": 1,
+          "warmup_seconds": 2,
+          "requested_seconds": 5,
+          "elapsed_seconds": 4.999887834000001,
+          "offered_messages": 411153,
+          "completed_messages": 411121,
+          "messages_per_second": 82226.04459330355,
+          "errors": 0,
+          "first_error": null,
+          "latency_ms": {
+            "p50": 0.3382605806488938,
+            "p95": 0.6775211612977876,
+            "p99": 0.8416268048148301,
+            "mean": 0.3873892354246254,
+            "max": 4.466792000000169
+          },
+          "latency_histogram": "64 log2 buckets per doubling; reported upper bound, about 1.1% resolution",
+          "client": {
+            "node": "v25.1.0",
+            "cpu_user_seconds": 1.873515,
+            "cpu_system_seconds": 3.026469,
+            "rss_bytes": 67420160
+          }
+        },
+        "peak_server_rss_bytes": 36290560,
+        "status": "passed"
+      },
+      "server_exit_code": 0,
+      "server_log": "CRAB_SERVER_METADATA {\"source_root\":\"\\/private\\/var\\/folders\\/tg\\/pyt0jkx51cd1_8n1q01dvpjh0000gn\\/T\\/crab-ws-engine-fixes-glg33zhq\\/Engine\",\"loaded_classes\":{\"Crab\\\\Engine\\\\Runtime\":\"\\/private\\/var\\/folders\\/tg\\/pyt0jkx51cd1_8n1q01dvpjh0000gn\\/T\\/crab-ws-engine-fixes-glg33zhq\\/Engine\\/Runtime.php\",\"Crab\\\\Engine\\\\Network\\\\Connection\":\"\\/private\\/var\\/folders\\/tg\\/pyt0jkx51cd1_8n1q01dvpjh0000gn\\/T\\/crab-ws-engine-fixes-glg33zhq\\/Engine\\/Network\\/Connection.php\",\"Crab\\\\Engine\\\\Http\\\\Parser\":\"\\/private\\/var\\/folders\\/tg\\/pyt0jkx51cd1_8n1q01dvpjh0000gn\\/T\\/crab-ws-engine-fixes-glg33zhq\\/Engine\\/Http\\/Parser.php\",\"Crab\\\\Engine\\\\Http\\\\ResponseEncoder\":\"\\/private\\/var\\/folders\\/tg\\/pyt0jkx51cd1_8n1q01dvpjh0000gn\\/T\\/crab-ws-engine-fixes-glg33zhq\\/Engine\\/Http\\/ResponseEncoder.php\",\"Crab\\\\Engine\\\\Http\\\\HttpSession\":\"\\/private\\/var\\/folders\\/tg\\/pyt0jkx51cd1_8n1q01dvpjh0000gn\\/T\\/crab-ws-engine-fixes-glg33zhq\\/Engine\\/Http\\/HttpSession.php\",\"Crab\\\\Engine\\\\Http\\\\Request\":\"\\/private\\/var\\/folders\\/tg\\/pyt0jkx51cd1_8n1q01dvpjh0000gn\\/T\\/crab-ws-engine-fixes-glg33zhq\\/Engine\\/Http\\/Request.php\",\"Crab\\\\Engine\\\\Http\\\\Response\":\"\\/private\\/var\\/folders\\/tg\\/pyt0jkx51cd1_8n1q01dvpjh0000gn\\/T\\/crab-ws-engine-fixes-glg33zhq\\/Engine\\/Http\\/Response.php\",\"Crab\\\\Engine\\\\Server\\\\WebSocketServer\":\"\\/private\\/var\\/folders\\/tg\\/pyt0jkx51cd1_8n1q01dvpjh0000gn\\/T\\/crab-ws-engine-fixes-glg33zhq\\/Engine\\/Server\\/WebSocketServer.php\"},\"http_response\":null,\"driver\":\"Revolt\\\\EventLoop\\\\Driver\\\\StreamSelectDriver\"}\n",
+      "engine_source": {
+        "source_root": "/private/var/folders/tg/pyt0jkx51cd1_8n1q01dvpjh0000gn/T/crab-ws-engine-fixes-glg33zhq/Engine",
+        "loaded_classes": {
+          "Crab\\Engine\\Runtime": "/private/var/folders/tg/pyt0jkx51cd1_8n1q01dvpjh0000gn/T/crab-ws-engine-fixes-glg33zhq/Engine/Runtime.php",
+          "Crab\\Engine\\Network\\Connection": "/private/var/folders/tg/pyt0jkx51cd1_8n1q01dvpjh0000gn/T/crab-ws-engine-fixes-glg33zhq/Engine/Network/Connection.php",
+          "Crab\\Engine\\Http\\Parser": "/private/var/folders/tg/pyt0jkx51cd1_8n1q01dvpjh0000gn/T/crab-ws-engine-fixes-glg33zhq/Engine/Http/Parser.php",
+          "Crab\\Engine\\Http\\ResponseEncoder": "/private/var/folders/tg/pyt0jkx51cd1_8n1q01dvpjh0000gn/T/crab-ws-engine-fixes-glg33zhq/Engine/Http/ResponseEncoder.php",
+          "Crab\\Engine\\Http\\HttpSession": "/private/var/folders/tg/pyt0jkx51cd1_8n1q01dvpjh0000gn/T/crab-ws-engine-fixes-glg33zhq/Engine/Http/HttpSession.php",
+          "Crab\\Engine\\Http\\Request": "/private/var/folders/tg/pyt0jkx51cd1_8n1q01dvpjh0000gn/T/crab-ws-engine-fixes-glg33zhq/Engine/Http/Request.php",
+          "Crab\\Engine\\Http\\Response": "/private/var/folders/tg/pyt0jkx51cd1_8n1q01dvpjh0000gn/T/crab-ws-engine-fixes-glg33zhq/Engine/Http/Response.php",
+          "Crab\\Engine\\Server\\WebSocketServer": "/private/var/folders/tg/pyt0jkx51cd1_8n1q01dvpjh0000gn/T/crab-ws-engine-fixes-glg33zhq/Engine/Server/WebSocketServer.php"
+        },
+        "http_response": null,
+        "driver": "Revolt\\EventLoop\\Driver\\StreamSelectDriver"
+      }
+    },
+    {
+      "protocol": "ws",
+      "concurrency": 32,
+      "payload_bytes": 64,
+      "http_response_mode": null,
+      "trial": 1,
+      "target": "crab-jit",
+      "target_order": [
+        "crab-before-jit",
+        "crab-jit"
+      ],
+      "started_utc": "2026-10-12T10:37:47Z",
+      "server_command": [
+        "php",
+        "-d",
+        "opcache.enable_cli=1",
+        "-d",
+        "opcache.jit=tracing",
+        "-d",
+        "opcache.jit_buffer_size=128M",
+        "/Users/daudau/Code/crabphp/framework/benchmarks/server.php",
+        "--host=127.0.0.1",
+        "--workers=1",
+        "--metadata",
+        "--protocol=ws",
+        "--port=60178"
+      ],
+      "port": 60178,
+      "errors": [],
+      "status": "passed",
+      "server_pid": 21735,
+      "readiness": "TCP readiness; client validates WebSocket handshake and every binary echo.",
+      "measurement": {
+        "command": [
+          "node",
+          "/Users/daudau/Code/crabphp/framework/benchmarks/websocket.mjs",
+          "--port=60178",
+          "--concurrency=32",
+          "--payload=64",
+          "--duration=5",
+          "--warmup=2"
+        ],
+        "timeout_seconds": 22,
+        "timed_out": false,
+        "samples": [
+          {
+            "server_cpu_percent": 15.5,
+            "server_rss_bytes": 34783232,
+            "load_cpu_percent": 0.0,
+            "load_rss_bytes": 1163264
+          },
+          {
+            "server_cpu_percent": 49.3,
+            "server_rss_bytes": 36470784,
+            "load_cpu_percent": 49.2,
+            "load_rss_bytes": 59047936
+          },
+          {
+            "server_cpu_percent": 70.2,
+            "server_rss_bytes": 36470784,
+            "load_cpu_percent": 88.1,
+            "load_rss_bytes": 61194240
+          },
+          {
+            "server_cpu_percent": 78.4,
+            "server_rss_bytes": 36470784,
+            "load_cpu_percent": 91.8,
+            "load_rss_bytes": 61194240
+          },
+          {
+            "server_cpu_percent": 83.8,
+            "server_rss_bytes": 36470784,
+            "load_cpu_percent": 96.7,
+            "load_rss_bytes": 61227008
+          },
+          {
+            "server_cpu_percent": 85.9,
+            "server_rss_bytes": 36470784,
+            "load_cpu_percent": 98.2,
+            "load_rss_bytes": 61227008
+          },
+          {
+            "server_cpu_percent": 86.7,
+            "server_rss_bytes": 36470784,
+            "load_cpu_percent": 99.4,
+            "load_rss_bytes": 61227008
+          },
+          {
+            "server_cpu_percent": 87.7,
+            "server_rss_bytes": 36470784,
+            "load_cpu_percent": 99.9,
+            "load_rss_bytes": 61227008
+          },
+          {
+            "server_cpu_percent": 87.1,
+            "server_rss_bytes": 36470784,
+            "load_cpu_percent": 98.1,
+            "load_rss_bytes": 61227008
+          },
+          {
+            "server_cpu_percent": 88.1,
+            "server_rss_bytes": 36470784,
+            "load_cpu_percent": 98.1,
+            "load_rss_bytes": 61227008
+          },
+          {
+            "server_cpu_percent": 90.3,
+            "server_rss_bytes": 36470784,
+            "load_cpu_percent": 100.1,
+            "load_rss_bytes": 61505536
+          },
+          {
+            "server_cpu_percent": 93.2,
+            "server_rss_bytes": 36470784,
+            "load_cpu_percent": 102.4,
+            "load_rss_bytes": 61521920
+          },
+          {
+            "server_cpu_percent": 89.5,
+            "server_rss_bytes": 36470784,
+            "load_cpu_percent": 99.2,
+            "load_rss_bytes": 61521920
+          },
+          {
+            "server_cpu_percent": 88.8,
+            "server_rss_bytes": 36470784,
+            "load_cpu_percent": 99.3,
+            "load_rss_bytes": 61521920
+          },
+          {
+            "server_cpu_percent": 87.4,
+            "server_rss_bytes": 36470784,
+            "load_cpu_percent": 99.9,
+            "load_rss_bytes": 65585152
+          },
+          {
+            "server_cpu_percent": 87.4,
+            "server_rss_bytes": 36470784,
+            "load_cpu_percent": 96.5,
+            "load_rss_bytes": 65601536
+          },
+          {
+            "server_cpu_percent": 87.4,
+            "server_rss_bytes": 36470784,
+            "load_cpu_percent": 99.0,
+            "load_rss_bytes": 65601536
+          },
+          {
+            "server_cpu_percent": 86.8,
+            "server_rss_bytes": 36470784,
+            "load_cpu_percent": 98.0,
+            "load_rss_bytes": 65601536
+          },
+          {
+            "server_cpu_percent": 87.1,
+            "server_rss_bytes": 36470784,
+            "load_cpu_percent": 99.3,
+            "load_rss_bytes": 65617920
+          },
+          {
+            "server_cpu_percent": 86.4,
+            "server_rss_bytes": 36470784,
+            "load_cpu_percent": 98.4,
+            "load_rss_bytes": 65650688
+          },
+          {
+            "server_cpu_percent": 86.4,
+            "server_rss_bytes": 36470784,
+            "load_cpu_percent": 98.8,
+            "load_rss_bytes": 65650688
+          },
+          {
+            "server_cpu_percent": 87.3,
+            "server_rss_bytes": 36470784,
+            "load_cpu_percent": 98.6,
+            "load_rss_bytes": 65667072
+          },
+          {
+            "server_cpu_percent": 85.9,
+            "server_rss_bytes": 36470784,
+            "load_cpu_percent": 98.4,
+            "load_rss_bytes": 65667072
+          },
+          {
+            "server_cpu_percent": 85.6,
+            "server_rss_bytes": 36470784,
+            "load_cpu_percent": 97.4,
+            "load_rss_bytes": 65667072
+          },
+          {
+            "server_cpu_percent": 85.9,
+            "server_rss_bytes": 36454400,
+            "load_cpu_percent": 97.3,
+            "load_rss_bytes": 65667072
+          },
+          {
+            "server_cpu_percent": 86.1,
+            "server_rss_bytes": 36454400,
+            "load_cpu_percent": 98.0,
+            "load_rss_bytes": 65667072
+          },
+          {
+            "server_cpu_percent": 86.4,
+            "server_rss_bytes": 36454400,
+            "load_cpu_percent": 98.5,
+            "load_rss_bytes": 65667072
+          },
+          {
+            "server_cpu_percent": 87.3,
+            "server_rss_bytes": 36454400,
+            "load_cpu_percent": 98.6,
+            "load_rss_bytes": 65667072
+          },
+          {
+            "server_cpu_percent": 87.1,
+            "server_rss_bytes": 36454400,
+            "load_cpu_percent": 98.7,
+            "load_rss_bytes": 65667072
+          },
+          {
+            "server_cpu_percent": 86.9,
+            "server_rss_bytes": 31965184,
+            "load_cpu_percent": 99.2,
+            "load_rss_bytes": 64176128
+          },
+          {
+            "server_cpu_percent": 87.6,
+            "server_rss_bytes": 24346624,
+            "load_cpu_percent": 99.0,
+            "load_rss_bytes": 58818560
+          },
+          {
+            "server_cpu_percent": 86.6,
+            "server_rss_bytes": 24346624,
+            "load_cpu_percent": 98.2,
+            "load_rss_bytes": 58769408
+          }
+        ],
+        "errors": [],
+        "pid": 21736,
+        "exit_code": 0,
+        "raw_output": "{\"protocol\":\"websocket\",\"concurrency\":32,\"payload_bytes\":64,\"inflight_per_connection\":1,\"warmup_seconds\":2,\"requested_seconds\":5,\"elapsed_seconds\":5.000342000000001,\"offered_messages\":411935,\"completed_messages\":411903,\"messages_per_second\":82374.96555235621,\"errors\":0,\"first_error\":null,\"latency_ms\":{\"p50\":0.3419548861576455,\"p95\":0.6702121403006793,\"p99\":0.8059021926952379,\"mean\":0.3867036316705588,\"max\":2.589708999999857},\"latency_histogram\":\"64 log2 buckets per doubling; reported upper bound, about 1.1% resolution\",\"client\":{\"node\":\"v25.1.0\",\"cpu_user_seconds\":1.870758,\"cpu_system_seconds\":3.077439,\"rss_bytes\":60358656}}\n",
+        "elapsed_wall_seconds": 7.267557458020747,
+        "metrics": {
+          "protocol": "websocket",
+          "concurrency": 32,
+          "payload_bytes": 64,
+          "inflight_per_connection": 1,
+          "warmup_seconds": 2,
+          "requested_seconds": 5,
+          "elapsed_seconds": 5.000342000000001,
+          "offered_messages": 411935,
+          "completed_messages": 411903,
+          "messages_per_second": 82374.96555235621,
+          "errors": 0,
+          "first_error": null,
+          "latency_ms": {
+            "p50": 0.3419548861576455,
+            "p95": 0.6702121403006793,
+            "p99": 0.8059021926952379,
+            "mean": 0.3867036316705588,
+            "max": 2.589708999999857
+          },
+          "latency_histogram": "64 log2 buckets per doubling; reported upper bound, about 1.1% resolution",
+          "client": {
+            "node": "v25.1.0",
+            "cpu_user_seconds": 1.870758,
+            "cpu_system_seconds": 3.077439,
+            "rss_bytes": 60358656
+          }
+        },
+        "peak_server_rss_bytes": 36470784,
+        "status": "passed"
+      },
+      "server_exit_code": 0,
+      "server_log": "CRAB_SERVER_METADATA {\"source_root\":\"\\/Users\\/daudau\\/Code\\/crabphp\\/framework\\/src\\/Engine\",\"loaded_classes\":{\"Crab\\\\Engine\\\\Runtime\":\"\\/Users\\/daudau\\/Code\\/crabphp\\/framework\\/src\\/Engine\\/Runtime.php\",\"Crab\\\\Engine\\\\Network\\\\Connection\":\"\\/Users\\/daudau\\/Code\\/crabphp\\/framework\\/src\\/Engine\\/Network\\/Connection.php\",\"Crab\\\\Engine\\\\Http\\\\Parser\":\"\\/Users\\/daudau\\/Code\\/crabphp\\/framework\\/src\\/Engine\\/Http\\/Parser.php\",\"Crab\\\\Engine\\\\Http\\\\ResponseEncoder\":\"\\/Users\\/daudau\\/Code\\/crabphp\\/framework\\/src\\/Engine\\/Http\\/ResponseEncoder.php\",\"Crab\\\\Engine\\\\Http\\\\HttpSession\":\"\\/Users\\/daudau\\/Code\\/crabphp\\/framework\\/src\\/Engine\\/Http\\/HttpSession.php\",\"Crab\\\\Engine\\\\Http\\\\Request\":\"\\/Users\\/daudau\\/Code\\/crabphp\\/framework\\/src\\/Engine\\/Http\\/Request.php\",\"Crab\\\\Engine\\\\Http\\\\Response\":\"\\/Users\\/daudau\\/Code\\/crabphp\\/framework\\/src\\/Engine\\/Http\\/Response.php\",\"Crab\\\\Engine\\\\Server\\\\WebSocketServer\":\"\\/Users\\/daudau\\/Code\\/crabphp\\/framework\\/src\\/Engine\\/Server\\/WebSocketServer.php\"},\"http_response\":null,\"driver\":\"Revolt\\\\EventLoop\\\\Driver\\\\StreamSelectDriver\"}\n",
+      "engine_source": {
+        "source_root": "/Users/daudau/Code/crabphp/framework/src/Engine",
+        "loaded_classes": {
+          "Crab\\Engine\\Runtime": "/Users/daudau/Code/crabphp/framework/src/Engine/Runtime.php",
+          "Crab\\Engine\\Network\\Connection": "/Users/daudau/Code/crabphp/framework/src/Engine/Network/Connection.php",
+          "Crab\\Engine\\Http\\Parser": "/Users/daudau/Code/crabphp/framework/src/Engine/Http/Parser.php",
+          "Crab\\Engine\\Http\\ResponseEncoder": "/Users/daudau/Code/crabphp/framework/src/Engine/Http/ResponseEncoder.php",
+          "Crab\\Engine\\Http\\HttpSession": "/Users/daudau/Code/crabphp/framework/src/Engine/Http/HttpSession.php",
+          "Crab\\Engine\\Http\\Request": "/Users/daudau/Code/crabphp/framework/src/Engine/Http/Request.php",
+          "Crab\\Engine\\Http\\Response": "/Users/daudau/Code/crabphp/framework/src/Engine/Http/Response.php",
+          "Crab\\Engine\\Server\\WebSocketServer": "/Users/daudau/Code/crabphp/framework/src/Engine/Server/WebSocketServer.php"
+        },
+        "http_response": null,
+        "driver": "Revolt\\EventLoop\\Driver\\StreamSelectDriver"
+      }
+    },
+    {
+      "protocol": "ws",
+      "concurrency": 32,
+      "payload_bytes": 64,
+      "http_response_mode": null,
+      "trial": 2,
+      "target": "crab-jit",
+      "target_order": [
+        "crab-jit",
+        "crab-before-jit"
+      ],
+      "started_utc": "2026-10-12T10:37:54Z",
+      "server_command": [
+        "php",
+        "-d",
+        "opcache.enable_cli=1",
+        "-d",
+        "opcache.jit=tracing",
+        "-d",
+        "opcache.jit_buffer_size=128M",
+        "/Users/daudau/Code/crabphp/framework/benchmarks/server.php",
+        "--host=127.0.0.1",
+        "--workers=1",
+        "--metadata",
+        "--protocol=ws",
+        "--port=60254"
+      ],
+      "port": 60254,
+      "errors": [],
+      "status": "passed",
+      "server_pid": 21860,
+      "readiness": "TCP readiness; client validates WebSocket handshake and every binary echo.",
+      "measurement": {
+        "command": [
+          "node",
+          "/Users/daudau/Code/crabphp/framework/benchmarks/websocket.mjs",
+          "--port=60254",
+          "--concurrency=32",
+          "--payload=64",
+          "--duration=5",
+          "--warmup=2"
+        ],
+        "timeout_seconds": 22,
+        "timed_out": false,
+        "samples": [
+          {
+            "server_cpu_percent": 36.2,
+            "server_rss_bytes": 34996224,
+            "load_cpu_percent": 0.0,
+            "load_rss_bytes": 1441792
+          },
+          {
+            "server_cpu_percent": 39.7,
+            "server_rss_bytes": 36339712,
+            "load_cpu_percent": 33.5,
+            "load_rss_bytes": 60407808
+          },
+          {
+            "server_cpu_percent": 66.8,
+            "server_rss_bytes": 36339712,
+            "load_cpu_percent": 83.3,
+            "load_rss_bytes": 61849600
+          },
+          {
+            "server_cpu_percent": 77.2,
+            "server_rss_bytes": 36339712,
+            "load_cpu_percent": 91.3,
+            "load_rss_bytes": 61849600
+          },
+          {
+            "server_cpu_percent": 82.5,
+            "server_rss_bytes": 36339712,
+            "load_cpu_percent": 94.7,
+            "load_rss_bytes": 61865984
+          },
+          {
+            "server_cpu_percent": 84.6,
+            "server_rss_bytes": 36339712,
+            "load_cpu_percent": 98.1,
+            "load_rss_bytes": 61865984
+          },
+          {
+            "server_cpu_percent": 83.2,
+            "server_rss_bytes": 36339712,
+            "load_cpu_percent": 93.5,
+            "load_rss_bytes": 61865984
+          },
+          {
+            "server_cpu_percent": 84.4,
+            "server_rss_bytes": 36339712,
+            "load_cpu_percent": 95.0,
+            "load_rss_bytes": 61865984
+          },
+          {
+            "server_cpu_percent": 86.4,
+            "server_rss_bytes": 36339712,
+            "load_cpu_percent": 96.1,
+            "load_rss_bytes": 61865984
+          },
+          {
+            "server_cpu_percent": 75.6,
+            "server_rss_bytes": 36339712,
+            "load_cpu_percent": 85.1,
+            "load_rss_bytes": 61915136
+          },
+          {
+            "server_cpu_percent": 80.6,
+            "server_rss_bytes": 36339712,
+            "load_cpu_percent": 95.0,
+            "load_rss_bytes": 62210048
+          },
+          {
+            "server_cpu_percent": 82.9,
+            "server_rss_bytes": 36339712,
+            "load_cpu_percent": 98.0,
+            "load_rss_bytes": 62210048
+          },
+          {
+            "server_cpu_percent": 85.6,
+            "server_rss_bytes": 36339712,
+            "load_cpu_percent": 97.9,
+            "load_rss_bytes": 62210048
+          },
+          {
+            "server_cpu_percent": 77.8,
+            "server_rss_bytes": 27590656,
+            "load_cpu_percent": 87.2,
+            "load_rss_bytes": 56852480
+          },
+          {
+            "server_cpu_percent": 80.5,
+            "server_rss_bytes": 27590656,
+            "load_cpu_percent": 90.7,
+            "load_rss_bytes": 56852480
+          },
+          {
+            "server_cpu_percent": 83.4,
+            "server_rss_bytes": 27492352,
+            "load_cpu_percent": 94.3,
+            "load_rss_bytes": 58015744
+          },
+          {
+            "server_cpu_percent": 84.9,
+            "server_rss_bytes": 27492352,
+            "load_cpu_percent": 98.5,
+            "load_rss_bytes": 60112896
+          },
+          {
+            "server_cpu_percent": 85.8,
+            "server_rss_bytes": 27492352,
+            "load_cpu_percent": 98.5,
+            "load_rss_bytes": 60112896
+          },
+          {
+            "server_cpu_percent": 85.3,
+            "server_rss_bytes": 27492352,
+            "load_cpu_percent": 97.2,
+            "load_rss_bytes": 60112896
+          },
+          {
+            "server_cpu_percent": 86.0,
+            "server_rss_bytes": 27492352,
+            "load_cpu_percent": 97.9,
+            "load_rss_bytes": 60112896
+          },
+          {
+            "server_cpu_percent": 85.7,
+            "server_rss_bytes": 27492352,
+            "load_cpu_percent": 97.7,
+            "load_rss_bytes": 60112896
+          },
+          {
+            "server_cpu_percent": 87.2,
+            "server_rss_bytes": 27492352,
+            "load_cpu_percent": 99.2,
+            "load_rss_bytes": 60112896
+          },
+          {
+            "server_cpu_percent": 86.7,
+            "server_rss_bytes": 27492352,
+            "load_cpu_percent": 99.4,
+            "load_rss_bytes": 60112896
+          },
+          {
+            "server_cpu_percent": 86.4,
+            "server_rss_bytes": 27492352,
+            "load_cpu_percent": 100.4,
+            "load_rss_bytes": 60112896
+          },
+          {
+            "server_cpu_percent": 86.2,
+            "server_rss_bytes": 27557888,
+            "load_cpu_percent": 99.7,
+            "load_rss_bytes": 60112896
+          },
+          {
+            "server_cpu_percent": 85.9,
+            "server_rss_bytes": 27557888,
+            "load_cpu_percent": 97.6,
+            "load_rss_bytes": 60112896
+          },
+          {
+            "server_cpu_percent": 85.7,
+            "server_rss_bytes": 27557888,
+            "load_cpu_percent": 97.6,
+            "load_rss_bytes": 60112896
+          },
+          {
+            "server_cpu_percent": 85.8,
+            "server_rss_bytes": 27557888,
+            "load_cpu_percent": 98.2,
+            "load_rss_bytes": 59932672
+          },
+          {
+            "server_cpu_percent": 86.0,
+            "server_rss_bytes": 27557888,
+            "load_cpu_percent": 97.3,
+            "load_rss_bytes": 59932672
+          },
+          {
+            "server_cpu_percent": 85.9,
+            "server_rss_bytes": 27557888,
+            "load_cpu_percent": 97.6,
+            "load_rss_bytes": 59932672
+          },
+          {
+            "server_cpu_percent": 86.2,
+            "server_rss_bytes": 27557888,
+            "load_cpu_percent": 98.4,
+            "load_rss_bytes": 59932672
+          }
+        ],
+        "errors": [],
+        "pid": 21891,
+        "exit_code": 0,
+        "raw_output": "{\"protocol\":\"websocket\",\"concurrency\":32,\"payload_bytes\":64,\"inflight_per_connection\":1,\"warmup_seconds\":2,\"requested_seconds\":5,\"elapsed_seconds\":5.000099625,\"offered_messages\":411008,\"completed_messages\":410976,\"messages_per_second\":82193.56229327132,\"errors\":0,\"first_error\":null,\"latency_ms\":{\"p50\":0.3419548861576455,\"p95\":0.6775211612977876,\"p99\":0.850802409127289,\"mean\":0.38751313402243986,\"max\":4.804499999999734},\"latency_histogram\":\"64 log2 buckets per doubling; reported upper bound, about 1.1% resolution\",\"client\":{\"node\":\"v25.1.0\",\"cpu_user_seconds\":1.896576,\"cpu_system_seconds\":3.005404,\"rss_bytes\":60735488}}\n",
+        "elapsed_wall_seconds": 7.088567833881825,
+        "metrics": {
+          "protocol": "websocket",
+          "concurrency": 32,
+          "payload_bytes": 64,
+          "inflight_per_connection": 1,
+          "warmup_seconds": 2,
+          "requested_seconds": 5,
+          "elapsed_seconds": 5.000099625,
+          "offered_messages": 411008,
+          "completed_messages": 410976,
+          "messages_per_second": 82193.56229327132,
+          "errors": 0,
+          "first_error": null,
+          "latency_ms": {
+            "p50": 0.3419548861576455,
+            "p95": 0.6775211612977876,
+            "p99": 0.850802409127289,
+            "mean": 0.38751313402243986,
+            "max": 4.804499999999734
+          },
+          "latency_histogram": "64 log2 buckets per doubling; reported upper bound, about 1.1% resolution",
+          "client": {
+            "node": "v25.1.0",
+            "cpu_user_seconds": 1.896576,
+            "cpu_system_seconds": 3.005404,
+            "rss_bytes": 60735488
+          }
+        },
+        "peak_server_rss_bytes": 36339712,
+        "status": "passed"
+      },
+      "server_exit_code": 0,
+      "server_log": "CRAB_SERVER_METADATA {\"source_root\":\"\\/Users\\/daudau\\/Code\\/crabphp\\/framework\\/src\\/Engine\",\"loaded_classes\":{\"Crab\\\\Engine\\\\Runtime\":\"\\/Users\\/daudau\\/Code\\/crabphp\\/framework\\/src\\/Engine\\/Runtime.php\",\"Crab\\\\Engine\\\\Network\\\\Connection\":\"\\/Users\\/daudau\\/Code\\/crabphp\\/framework\\/src\\/Engine\\/Network\\/Connection.php\",\"Crab\\\\Engine\\\\Http\\\\Parser\":\"\\/Users\\/daudau\\/Code\\/crabphp\\/framework\\/src\\/Engine\\/Http\\/Parser.php\",\"Crab\\\\Engine\\\\Http\\\\ResponseEncoder\":\"\\/Users\\/daudau\\/Code\\/crabphp\\/framework\\/src\\/Engine\\/Http\\/ResponseEncoder.php\",\"Crab\\\\Engine\\\\Http\\\\HttpSession\":\"\\/Users\\/daudau\\/Code\\/crabphp\\/framework\\/src\\/Engine\\/Http\\/HttpSession.php\",\"Crab\\\\Engine\\\\Http\\\\Request\":\"\\/Users\\/daudau\\/Code\\/crabphp\\/framework\\/src\\/Engine\\/Http\\/Request.php\",\"Crab\\\\Engine\\\\Http\\\\Response\":\"\\/Users\\/daudau\\/Code\\/crabphp\\/framework\\/src\\/Engine\\/Http\\/Response.php\",\"Crab\\\\Engine\\\\Server\\\\WebSocketServer\":\"\\/Users\\/daudau\\/Code\\/crabphp\\/framework\\/src\\/Engine\\/Server\\/WebSocketServer.php\"},\"http_response\":null,\"driver\":\"Revolt\\\\EventLoop\\\\Driver\\\\StreamSelectDriver\"}\n",
+      "engine_source": {
+        "source_root": "/Users/daudau/Code/crabphp/framework/src/Engine",
+        "loaded_classes": {
+          "Crab\\Engine\\Runtime": "/Users/daudau/Code/crabphp/framework/src/Engine/Runtime.php",
+          "Crab\\Engine\\Network\\Connection": "/Users/daudau/Code/crabphp/framework/src/Engine/Network/Connection.php",
+          "Crab\\Engine\\Http\\Parser": "/Users/daudau/Code/crabphp/framework/src/Engine/Http/Parser.php",
+          "Crab\\Engine\\Http\\ResponseEncoder": "/Users/daudau/Code/crabphp/framework/src/Engine/Http/ResponseEncoder.php",
+          "Crab\\Engine\\Http\\HttpSession": "/Users/daudau/Code/crabphp/framework/src/Engine/Http/HttpSession.php",
+          "Crab\\Engine\\Http\\Request": "/Users/daudau/Code/crabphp/framework/src/Engine/Http/Request.php",
+          "Crab\\Engine\\Http\\Response": "/Users/daudau/Code/crabphp/framework/src/Engine/Http/Response.php",
+          "Crab\\Engine\\Server\\WebSocketServer": "/Users/daudau/Code/crabphp/framework/src/Engine/Server/WebSocketServer.php"
+        },
+        "http_response": null,
+        "driver": "Revolt\\EventLoop\\Driver\\StreamSelectDriver"
+      }
+    },
+    {
+      "protocol": "ws",
+      "concurrency": 32,
+      "payload_bytes": 64,
+      "http_response_mode": null,
+      "trial": 2,
+      "target": "crab-before-jit",
+      "target_order": [
+        "crab-jit",
+        "crab-before-jit"
+      ],
+      "started_utc": "2026-10-12T10:38:02Z",
+      "server_command": [
+        "php",
+        "-d",
+        "opcache.enable_cli=1",
+        "-d",
+        "opcache.jit=tracing",
+        "-d",
+        "opcache.jit_buffer_size=128M",
+        "/Users/daudau/Code/crabphp/framework/benchmarks/server.php",
+        "--host=127.0.0.1",
+        "--workers=1",
+        "--metadata",
+        "--source=/private/var/folders/tg/pyt0jkx51cd1_8n1q01dvpjh0000gn/T/crab-ws-engine-fixes-glg33zhq/Engine",
+        "--protocol=ws",
+        "--port=60326"
+      ],
+      "port": 60326,
+      "errors": [],
+      "status": "passed",
+      "server_pid": 22050,
+      "readiness": "TCP readiness; client validates WebSocket handshake and every binary echo.",
+      "measurement": {
+        "command": [
+          "node",
+          "/Users/daudau/Code/crabphp/framework/benchmarks/websocket.mjs",
+          "--port=60326",
+          "--concurrency=32",
+          "--payload=64",
+          "--duration=5",
+          "--warmup=2"
+        ],
+        "timeout_seconds": 22,
+        "timed_out": false,
+        "samples": [
+          {
+            "server_cpu_percent": 31.3,
+            "server_rss_bytes": 34881536,
+            "load_cpu_percent": 1.6,
+            "load_rss_bytes": 1835008
+          },
+          {
+            "server_cpu_percent": 41.6,
+            "server_rss_bytes": 36421632,
+            "load_cpu_percent": 38.8,
+            "load_rss_bytes": 60178432
+          },
+          {
+            "server_cpu_percent": 68.5,
+            "server_rss_bytes": 36421632,
+            "load_cpu_percent": 84.9,
+            "load_rss_bytes": 61652992
+          },
+          {
+            "server_cpu_percent": 78.4,
+            "server_rss_bytes": 36421632,
+            "load_cpu_percent": 94.1,
+            "load_rss_bytes": 61652992
+          },
+          {
+            "server_cpu_percent": 83.0,
+            "server_rss_bytes": 36421632,
+            "load_cpu_percent": 97.7,
+            "load_rss_bytes": 61652992
+          },
+          {
+            "server_cpu_percent": 85.0,
+            "server_rss_bytes": 36421632,
+            "load_cpu_percent": 97.8,
+            "load_rss_bytes": 61652992
+          },
+          {
+            "server_cpu_percent": 85.0,
+            "server_rss_bytes": 36421632,
+            "load_cpu_percent": 96.1,
+            "load_rss_bytes": 61652992
+          },
+          {
+            "server_cpu_percent": 85.6,
+            "server_rss_bytes": 36421632,
+            "load_cpu_percent": 97.6,
+            "load_rss_bytes": 61652992
+          },
+          {
+            "server_cpu_percent": 85.6,
+            "server_rss_bytes": 36421632,
+            "load_cpu_percent": 98.0,
+            "load_rss_bytes": 61652992
+          },
+          {
+            "server_cpu_percent": 85.9,
+            "server_rss_bytes": 36421632,
+            "load_cpu_percent": 99.3,
+            "load_rss_bytes": 61652992
+          },
+          {
+            "server_cpu_percent": 84.9,
+            "server_rss_bytes": 36421632,
+            "load_cpu_percent": 100.7,
+            "load_rss_bytes": 61915136
+          },
+          {
+            "server_cpu_percent": 85.0,
+            "server_rss_bytes": 36421632,
+            "load_cpu_percent": 101.6,
+            "load_rss_bytes": 61915136
+          },
+          {
+            "server_cpu_percent": 85.5,
+            "server_rss_bytes": 36421632,
+            "load_cpu_percent": 98.0,
+            "load_rss_bytes": 61915136
+          },
+          {
+            "server_cpu_percent": 86.0,
+            "server_rss_bytes": 36421632,
+            "load_cpu_percent": 100.7,
+            "load_rss_bytes": 61915136
+          },
+          {
+            "server_cpu_percent": 86.3,
+            "server_rss_bytes": 36421632,
+            "load_cpu_percent": 99.9,
+            "load_rss_bytes": 65978368
+          },
+          {
+            "server_cpu_percent": 85.5,
+            "server_rss_bytes": 36421632,
+            "load_cpu_percent": 97.4,
+            "load_rss_bytes": 66027520
+          },
+          {
+            "server_cpu_percent": 85.8,
+            "server_rss_bytes": 36421632,
+            "load_cpu_percent": 97.2,
+            "load_rss_bytes": 66093056
+          },
+          {
+            "server_cpu_percent": 86.2,
+            "server_rss_bytes": 36421632,
+            "load_cpu_percent": 98.2,
+            "load_rss_bytes": 66093056
+          },
+          {
+            "server_cpu_percent": 86.4,
+            "server_rss_bytes": 36421632,
+            "load_cpu_percent": 100.1,
+            "load_rss_bytes": 66093056
+          },
+          {
+            "server_cpu_percent": 85.5,
+            "server_rss_bytes": 36421632,
+            "load_cpu_percent": 96.8,
+            "load_rss_bytes": 66093056
+          },
+          {
+            "server_cpu_percent": 85.7,
+            "server_rss_bytes": 36421632,
+            "load_cpu_percent": 98.2,
+            "load_rss_bytes": 66093056
+          },
+          {
+            "server_cpu_percent": 86.2,
+            "server_rss_bytes": 36421632,
+            "load_cpu_percent": 98.4,
+            "load_rss_bytes": 66093056
+          },
+          {
+            "server_cpu_percent": 85.8,
+            "server_rss_bytes": 36421632,
+            "load_cpu_percent": 98.0,
+            "load_rss_bytes": 66093056
+          },
+          {
+            "server_cpu_percent": 85.6,
+            "server_rss_bytes": 36421632,
+            "load_cpu_percent": 98.0,
+            "load_rss_bytes": 66093056
+          },
+          {
+            "server_cpu_percent": 86.5,
+            "server_rss_bytes": 36405248,
+            "load_cpu_percent": 98.9,
+            "load_rss_bytes": 66093056
+          },
+          {
+            "server_cpu_percent": 86.6,
+            "server_rss_bytes": 36405248,
+            "load_cpu_percent": 99.3,
+            "load_rss_bytes": 66093056
+          },
+          {
+            "server_cpu_percent": 88.3,
+            "server_rss_bytes": 36405248,
+            "load_cpu_percent": 98.4,
+            "load_rss_bytes": 66093056
+          },
+          {
+            "server_cpu_percent": 87.9,
+            "server_rss_bytes": 36405248,
+            "load_cpu_percent": 98.7,
+            "load_rss_bytes": 66093056
+          },
+          {
+            "server_cpu_percent": 86.7,
+            "server_rss_bytes": 36405248,
+            "load_cpu_percent": 99.0,
+            "load_rss_bytes": 66093056
+          },
+          {
+            "server_cpu_percent": 87.4,
+            "server_rss_bytes": 36405248,
+            "load_cpu_percent": 97.9,
+            "load_rss_bytes": 66093056
+          },
+          {
+            "server_cpu_percent": 87.0,
+            "server_rss_bytes": 36405248,
+            "load_cpu_percent": 97.6,
+            "load_rss_bytes": 66093056
+          },
+          {
+            "server_cpu_percent": 88.1,
+            "server_rss_bytes": 36405248,
+            "load_cpu_percent": 97.7,
+            "load_rss_bytes": 66093056
+          }
+        ],
+        "errors": [],
+        "pid": 22059,
+        "exit_code": 0,
+        "raw_output": "{\"protocol\":\"websocket\",\"concurrency\":32,\"payload_bytes\":64,\"inflight_per_connection\":1,\"warmup_seconds\":2,\"requested_seconds\":5,\"elapsed_seconds\":5.00027275,\"offered_messages\":411614,\"completed_messages\":411582,\"messages_per_second\":82311.90988531576,\"errors\":0,\"first_error\":null,\"latency_ms\":{\"p50\":0.3419548861576455,\"p95\":0.6702121403006793,\"p99\":0.7972102529217725,\"mean\":0.3870206328459419,\"max\":1.56445900000017},\"latency_histogram\":\"64 log2 buckets per doubling; reported upper bound, about 1.1% resolution\",\"client\":{\"node\":\"v25.1.0\",\"cpu_user_seconds\":1.870146,\"cpu_system_seconds\":3.070013,\"rss_bytes\":66224128}}\n",
+        "elapsed_wall_seconds": 7.261551917064935,
+        "metrics": {
+          "protocol": "websocket",
+          "concurrency": 32,
+          "payload_bytes": 64,
+          "inflight_per_connection": 1,
+          "warmup_seconds": 2,
+          "requested_seconds": 5,
+          "elapsed_seconds": 5.00027275,
+          "offered_messages": 411614,
+          "completed_messages": 411582,
+          "messages_per_second": 82311.90988531576,
+          "errors": 0,
+          "first_error": null,
+          "latency_ms": {
+            "p50": 0.3419548861576455,
+            "p95": 0.6702121403006793,
+            "p99": 0.7972102529217725,
+            "mean": 0.3870206328459419,
+            "max": 1.56445900000017
+          },
+          "latency_histogram": "64 log2 buckets per doubling; reported upper bound, about 1.1% resolution",
+          "client": {
+            "node": "v25.1.0",
+            "cpu_user_seconds": 1.870146,
+            "cpu_system_seconds": 3.070013,
+            "rss_bytes": 66224128
+          }
+        },
+        "peak_server_rss_bytes": 36421632,
+        "status": "passed"
+      },
+      "server_exit_code": 0,
+      "server_log": "CRAB_SERVER_METADATA {\"source_root\":\"\\/private\\/var\\/folders\\/tg\\/pyt0jkx51cd1_8n1q01dvpjh0000gn\\/T\\/crab-ws-engine-fixes-glg33zhq\\/Engine\",\"loaded_classes\":{\"Crab\\\\Engine\\\\Runtime\":\"\\/private\\/var\\/folders\\/tg\\/pyt0jkx51cd1_8n1q01dvpjh0000gn\\/T\\/crab-ws-engine-fixes-glg33zhq\\/Engine\\/Runtime.php\",\"Crab\\\\Engine\\\\Network\\\\Connection\":\"\\/private\\/var\\/folders\\/tg\\/pyt0jkx51cd1_8n1q01dvpjh0000gn\\/T\\/crab-ws-engine-fixes-glg33zhq\\/Engine\\/Network\\/Connection.php\",\"Crab\\\\Engine\\\\Http\\\\Parser\":\"\\/private\\/var\\/folders\\/tg\\/pyt0jkx51cd1_8n1q01dvpjh0000gn\\/T\\/crab-ws-engine-fixes-glg33zhq\\/Engine\\/Http\\/Parser.php\",\"Crab\\\\Engine\\\\Http\\\\ResponseEncoder\":\"\\/private\\/var\\/folders\\/tg\\/pyt0jkx51cd1_8n1q01dvpjh0000gn\\/T\\/crab-ws-engine-fixes-glg33zhq\\/Engine\\/Http\\/ResponseEncoder.php\",\"Crab\\\\Engine\\\\Http\\\\HttpSession\":\"\\/private\\/var\\/folders\\/tg\\/pyt0jkx51cd1_8n1q01dvpjh0000gn\\/T\\/crab-ws-engine-fixes-glg33zhq\\/Engine\\/Http\\/HttpSession.php\",\"Crab\\\\Engine\\\\Http\\\\Request\":\"\\/private\\/var\\/folders\\/tg\\/pyt0jkx51cd1_8n1q01dvpjh0000gn\\/T\\/crab-ws-engine-fixes-glg33zhq\\/Engine\\/Http\\/Request.php\",\"Crab\\\\Engine\\\\Http\\\\Response\":\"\\/private\\/var\\/folders\\/tg\\/pyt0jkx51cd1_8n1q01dvpjh0000gn\\/T\\/crab-ws-engine-fixes-glg33zhq\\/Engine\\/Http\\/Response.php\",\"Crab\\\\Engine\\\\Server\\\\WebSocketServer\":\"\\/private\\/var\\/folders\\/tg\\/pyt0jkx51cd1_8n1q01dvpjh0000gn\\/T\\/crab-ws-engine-fixes-glg33zhq\\/Engine\\/Server\\/WebSocketServer.php\"},\"http_response\":null,\"driver\":\"Revolt\\\\EventLoop\\\\Driver\\\\StreamSelectDriver\"}\n",
+      "engine_source": {
+        "source_root": "/private/var/folders/tg/pyt0jkx51cd1_8n1q01dvpjh0000gn/T/crab-ws-engine-fixes-glg33zhq/Engine",
+        "loaded_classes": {
+          "Crab\\Engine\\Runtime": "/private/var/folders/tg/pyt0jkx51cd1_8n1q01dvpjh0000gn/T/crab-ws-engine-fixes-glg33zhq/Engine/Runtime.php",
+          "Crab\\Engine\\Network\\Connection": "/private/var/folders/tg/pyt0jkx51cd1_8n1q01dvpjh0000gn/T/crab-ws-engine-fixes-glg33zhq/Engine/Network/Connection.php",
+          "Crab\\Engine\\Http\\Parser": "/private/var/folders/tg/pyt0jkx51cd1_8n1q01dvpjh0000gn/T/crab-ws-engine-fixes-glg33zhq/Engine/Http/Parser.php",
+          "Crab\\Engine\\Http\\ResponseEncoder": "/private/var/folders/tg/pyt0jkx51cd1_8n1q01dvpjh0000gn/T/crab-ws-engine-fixes-glg33zhq/Engine/Http/ResponseEncoder.php",
+          "Crab\\Engine\\Http\\HttpSession": "/private/var/folders/tg/pyt0jkx51cd1_8n1q01dvpjh0000gn/T/crab-ws-engine-fixes-glg33zhq/Engine/Http/HttpSession.php",
+          "Crab\\Engine\\Http\\Request": "/private/var/folders/tg/pyt0jkx51cd1_8n1q01dvpjh0000gn/T/crab-ws-engine-fixes-glg33zhq/Engine/Http/Request.php",
+          "Crab\\Engine\\Http\\Response": "/private/var/folders/tg/pyt0jkx51cd1_8n1q01dvpjh0000gn/T/crab-ws-engine-fixes-glg33zhq/Engine/Http/Response.php",
+          "Crab\\Engine\\Server\\WebSocketServer": "/private/var/folders/tg/pyt0jkx51cd1_8n1q01dvpjh0000gn/T/crab-ws-engine-fixes-glg33zhq/Engine/Server/WebSocketServer.php"
+        },
+        "http_response": null,
+        "driver": "Revolt\\EventLoop\\Driver\\StreamSelectDriver"
+      }
+    },
+    {
+      "protocol": "ws",
+      "concurrency": 32,
+      "payload_bytes": 64,
+      "http_response_mode": null,
+      "trial": 3,
+      "target": "crab-before-jit",
+      "target_order": [
+        "crab-before-jit",
+        "crab-jit"
+      ],
+      "started_utc": "2026-10-12T10:38:09Z",
+      "server_command": [
+        "php",
+        "-d",
+        "opcache.enable_cli=1",
+        "-d",
+        "opcache.jit=tracing",
+        "-d",
+        "opcache.jit_buffer_size=128M",
+        "/Users/daudau/Code/crabphp/framework/benchmarks/server.php",
+        "--host=127.0.0.1",
+        "--workers=1",
+        "--metadata",
+        "--source=/private/var/folders/tg/pyt0jkx51cd1_8n1q01dvpjh0000gn/T/crab-ws-engine-fixes-glg33zhq/Engine",
+        "--protocol=ws",
+        "--port=60396"
+      ],
+      "port": 60396,
+      "errors": [],
+      "status": "passed",
+      "server_pid": 22210,
+      "readiness": "TCP readiness; client validates WebSocket handshake and every binary echo.",
+      "measurement": {
+        "command": [
+          "node",
+          "/Users/daudau/Code/crabphp/framework/benchmarks/websocket.mjs",
+          "--port=60396",
+          "--concurrency=32",
+          "--payload=64",
+          "--duration=5",
+          "--warmup=2"
+        ],
+        "timeout_seconds": 22,
+        "timed_out": false,
+        "samples": [
+          {
+            "server_cpu_percent": 30.6,
+            "server_rss_bytes": 34914304,
+            "load_cpu_percent": 0.0,
+            "load_rss_bytes": 1163264
+          },
+          {
+            "server_cpu_percent": 38.6,
+            "server_rss_bytes": 36257792,
+            "load_cpu_percent": 33.7,
+            "load_rss_bytes": 60243968
+          },
+          {
+            "server_cpu_percent": 64.6,
+            "server_rss_bytes": 36257792,
+            "load_cpu_percent": 84.4,
+            "load_rss_bytes": 61440000
+          },
+          {
+            "server_cpu_percent": 78.3,
+            "server_rss_bytes": 36257792,
+            "load_cpu_percent": 93.4,
+            "load_rss_bytes": 61440000
+          },
+          {
+            "server_cpu_percent": 83.6,
+            "server_rss_bytes": 36257792,
+            "load_cpu_percent": 96.9,
+            "load_rss_bytes": 61456384
+          },
+          {
+            "server_cpu_percent": 85.2,
+            "server_rss_bytes": 36257792,
+            "load_cpu_percent": 97.8,
+            "load_rss_bytes": 61456384
+          },
+          {
+            "server_cpu_percent": 85.9,
+            "server_rss_bytes": 36257792,
+            "load_cpu_percent": 98.5,
+            "load_rss_bytes": 61456384
+          },
+          {
+            "server_cpu_percent": 85.9,
+            "server_rss_bytes": 36257792,
+            "load_cpu_percent": 100.2,
+            "load_rss_bytes": 61456384
+          },
+          {
+            "server_cpu_percent": 86.0,
+            "server_rss_bytes": 36257792,
+            "load_cpu_percent": 97.5,
+            "load_rss_bytes": 61456384
+          },
+          {
+            "server_cpu_percent": 86.3,
+            "server_rss_bytes": 36257792,
+            "load_cpu_percent": 98.5,
+            "load_rss_bytes": 61456384
+          },
+          {
+            "server_cpu_percent": 85.8,
+            "server_rss_bytes": 36257792,
+            "load_cpu_percent": 100.4,
+            "load_rss_bytes": 61685760
+          },
+          {
+            "server_cpu_percent": 85.5,
+            "server_rss_bytes": 36257792,
+            "load_cpu_percent": 99.4,
+            "load_rss_bytes": 61702144
+          },
+          {
+            "server_cpu_percent": 84.6,
+            "server_rss_bytes": 36257792,
+            "load_cpu_percent": 96.9,
+            "load_rss_bytes": 61702144
+          },
+          {
+            "server_cpu_percent": 84.7,
+            "server_rss_bytes": 36257792,
+            "load_cpu_percent": 99.4,
+            "load_rss_bytes": 61702144
+          },
+          {
+            "server_cpu_percent": 85.3,
+            "server_rss_bytes": 36257792,
+            "load_cpu_percent": 97.7,
+            "load_rss_bytes": 65912832
+          },
+          {
+            "server_cpu_percent": 85.9,
+            "server_rss_bytes": 36257792,
+            "load_cpu_percent": 98.8,
+            "load_rss_bytes": 65961984
+          },
+          {
+            "server_cpu_percent": 86.1,
+            "server_rss_bytes": 36257792,
+            "load_cpu_percent": 97.7,
+            "load_rss_bytes": 65978368
+          },
+          {
+            "server_cpu_percent": 86.3,
+            "server_rss_bytes": 36257792,
+            "load_cpu_percent": 97.9,
+            "load_rss_bytes": 65978368
+          },
+          {
+            "server_cpu_percent": 86.5,
+            "server_rss_bytes": 36257792,
+            "load_cpu_percent": 98.7,
+            "load_rss_bytes": 65978368
+          },
+          {
+            "server_cpu_percent": 86.1,
+            "server_rss_bytes": 36257792,
+            "load_cpu_percent": 98.6,
+            "load_rss_bytes": 65978368
+          },
+          {
+            "server_cpu_percent": 85.7,
+            "server_rss_bytes": 36257792,
+            "load_cpu_percent": 98.1,
+            "load_rss_bytes": 65978368
+          },
+          {
+            "server_cpu_percent": 86.1,
+            "server_rss_bytes": 36257792,
+            "load_cpu_percent": 98.8,
+            "load_rss_bytes": 65978368
+          },
+          {
+            "server_cpu_percent": 85.6,
+            "server_rss_bytes": 36257792,
+            "load_cpu_percent": 98.8,
+            "load_rss_bytes": 65978368
+          },
+          {
+            "server_cpu_percent": 85.9,
+            "server_rss_bytes": 36241408,
+            "load_cpu_percent": 99.3,
+            "load_rss_bytes": 65978368
+          },
+          {
+            "server_cpu_percent": 86.4,
+            "server_rss_bytes": 36241408,
+            "load_cpu_percent": 97.9,
+            "load_rss_bytes": 65978368
+          },
+          {
+            "server_cpu_percent": 86.3,
+            "server_rss_bytes": 36241408,
+            "load_cpu_percent": 98.7,
+            "load_rss_bytes": 65978368
+          },
+          {
+            "server_cpu_percent": 85.8,
+            "server_rss_bytes": 36241408,
+            "load_cpu_percent": 98.0,
+            "load_rss_bytes": 65978368
+          },
+          {
+            "server_cpu_percent": 85.4,
+            "server_rss_bytes": 36241408,
+            "load_cpu_percent": 97.3,
+            "load_rss_bytes": 65978368
+          },
+          {
+            "server_cpu_percent": 85.5,
+            "server_rss_bytes": 36241408,
+            "load_cpu_percent": 99.3,
+            "load_rss_bytes": 65978368
+          },
+          {
+            "server_cpu_percent": 86.2,
+            "server_rss_bytes": 36241408,
+            "load_cpu_percent": 100.6,
+            "load_rss_bytes": 65978368
+          },
+          {
+            "server_cpu_percent": 86.3,
+            "server_rss_bytes": 36241408,
+            "load_cpu_percent": 98.3,
+            "load_rss_bytes": 65978368
+          },
+          {
+            "server_cpu_percent": 86.8,
+            "server_rss_bytes": 36241408,
+            "load_cpu_percent": 99.0,
+            "load_rss_bytes": 65978368
+          }
+        ],
+        "errors": [],
+        "pid": 22220,
+        "exit_code": 0,
+        "raw_output": "{\"protocol\":\"websocket\",\"concurrency\":32,\"payload_bytes\":64,\"inflight_per_connection\":1,\"warmup_seconds\":2,\"requested_seconds\":5,\"elapsed_seconds\":4.9994929169999995,\"offered_messages\":420098,\"completed_messages\":420066,\"messages_per_second\":84021.72119728998,\"errors\":0,\"first_error\":null,\"latency_ms\":{\"p50\":0.33460607015033966,\"p95\":0.662981851981317,\"p99\":0.7886119426088657,\"mean\":0.3791069856927134,\"max\":2.3174589999998716},\"latency_histogram\":\"64 log2 buckets per doubling; reported upper bound, about 1.1% resolution\",\"client\":{\"node\":\"v25.1.0\",\"cpu_user_seconds\":1.876253,\"cpu_system_seconds\":3.069775,\"rss_bytes\":66125824}}\n",
+        "elapsed_wall_seconds": 7.244863040978089,
+        "metrics": {
+          "protocol": "websocket",
+          "concurrency": 32,
+          "payload_bytes": 64,
+          "inflight_per_connection": 1,
+          "warmup_seconds": 2,
+          "requested_seconds": 5,
+          "elapsed_seconds": 4.9994929169999995,
+          "offered_messages": 420098,
+          "completed_messages": 420066,
+          "messages_per_second": 84021.72119728998,
+          "errors": 0,
+          "first_error": null,
+          "latency_ms": {
+            "p50": 0.33460607015033966,
+            "p95": 0.662981851981317,
+            "p99": 0.7886119426088657,
+            "mean": 0.3791069856927134,
+            "max": 2.3174589999998716
+          },
+          "latency_histogram": "64 log2 buckets per doubling; reported upper bound, about 1.1% resolution",
+          "client": {
+            "node": "v25.1.0",
+            "cpu_user_seconds": 1.876253,
+            "cpu_system_seconds": 3.069775,
+            "rss_bytes": 66125824
+          }
+        },
+        "peak_server_rss_bytes": 36257792,
+        "status": "passed"
+      },
+      "server_exit_code": 0,
+      "server_log": "CRAB_SERVER_METADATA {\"source_root\":\"\\/private\\/var\\/folders\\/tg\\/pyt0jkx51cd1_8n1q01dvpjh0000gn\\/T\\/crab-ws-engine-fixes-glg33zhq\\/Engine\",\"loaded_classes\":{\"Crab\\\\Engine\\\\Runtime\":\"\\/private\\/var\\/folders\\/tg\\/pyt0jkx51cd1_8n1q01dvpjh0000gn\\/T\\/crab-ws-engine-fixes-glg33zhq\\/Engine\\/Runtime.php\",\"Crab\\\\Engine\\\\Network\\\\Connection\":\"\\/private\\/var\\/folders\\/tg\\/pyt0jkx51cd1_8n1q01dvpjh0000gn\\/T\\/crab-ws-engine-fixes-glg33zhq\\/Engine\\/Network\\/Connection.php\",\"Crab\\\\Engine\\\\Http\\\\Parser\":\"\\/private\\/var\\/folders\\/tg\\/pyt0jkx51cd1_8n1q01dvpjh0000gn\\/T\\/crab-ws-engine-fixes-glg33zhq\\/Engine\\/Http\\/Parser.php\",\"Crab\\\\Engine\\\\Http\\\\ResponseEncoder\":\"\\/private\\/var\\/folders\\/tg\\/pyt0jkx51cd1_8n1q01dvpjh0000gn\\/T\\/crab-ws-engine-fixes-glg33zhq\\/Engine\\/Http\\/ResponseEncoder.php\",\"Crab\\\\Engine\\\\Http\\\\HttpSession\":\"\\/private\\/var\\/folders\\/tg\\/pyt0jkx51cd1_8n1q01dvpjh0000gn\\/T\\/crab-ws-engine-fixes-glg33zhq\\/Engine\\/Http\\/HttpSession.php\",\"Crab\\\\Engine\\\\Http\\\\Request\":\"\\/private\\/var\\/folders\\/tg\\/pyt0jkx51cd1_8n1q01dvpjh0000gn\\/T\\/crab-ws-engine-fixes-glg33zhq\\/Engine\\/Http\\/Request.php\",\"Crab\\\\Engine\\\\Http\\\\Response\":\"\\/private\\/var\\/folders\\/tg\\/pyt0jkx51cd1_8n1q01dvpjh0000gn\\/T\\/crab-ws-engine-fixes-glg33zhq\\/Engine\\/Http\\/Response.php\",\"Crab\\\\Engine\\\\Server\\\\WebSocketServer\":\"\\/private\\/var\\/folders\\/tg\\/pyt0jkx51cd1_8n1q01dvpjh0000gn\\/T\\/crab-ws-engine-fixes-glg33zhq\\/Engine\\/Server\\/WebSocketServer.php\"},\"http_response\":null,\"driver\":\"Revolt\\\\EventLoop\\\\Driver\\\\StreamSelectDriver\"}\n",
+      "engine_source": {
+        "source_root": "/private/var/folders/tg/pyt0jkx51cd1_8n1q01dvpjh0000gn/T/crab-ws-engine-fixes-glg33zhq/Engine",
+        "loaded_classes": {
+          "Crab\\Engine\\Runtime": "/private/var/folders/tg/pyt0jkx51cd1_8n1q01dvpjh0000gn/T/crab-ws-engine-fixes-glg33zhq/Engine/Runtime.php",
+          "Crab\\Engine\\Network\\Connection": "/private/var/folders/tg/pyt0jkx51cd1_8n1q01dvpjh0000gn/T/crab-ws-engine-fixes-glg33zhq/Engine/Network/Connection.php",
+          "Crab\\Engine\\Http\\Parser": "/private/var/folders/tg/pyt0jkx51cd1_8n1q01dvpjh0000gn/T/crab-ws-engine-fixes-glg33zhq/Engine/Http/Parser.php",
+          "Crab\\Engine\\Http\\ResponseEncoder": "/private/var/folders/tg/pyt0jkx51cd1_8n1q01dvpjh0000gn/T/crab-ws-engine-fixes-glg33zhq/Engine/Http/ResponseEncoder.php",
+          "Crab\\Engine\\Http\\HttpSession": "/private/var/folders/tg/pyt0jkx51cd1_8n1q01dvpjh0000gn/T/crab-ws-engine-fixes-glg33zhq/Engine/Http/HttpSession.php",
+          "Crab\\Engine\\Http\\Request": "/private/var/folders/tg/pyt0jkx51cd1_8n1q01dvpjh0000gn/T/crab-ws-engine-fixes-glg33zhq/Engine/Http/Request.php",
+          "Crab\\Engine\\Http\\Response": "/private/var/folders/tg/pyt0jkx51cd1_8n1q01dvpjh0000gn/T/crab-ws-engine-fixes-glg33zhq/Engine/Http/Response.php",
+          "Crab\\Engine\\Server\\WebSocketServer": "/private/var/folders/tg/pyt0jkx51cd1_8n1q01dvpjh0000gn/T/crab-ws-engine-fixes-glg33zhq/Engine/Server/WebSocketServer.php"
+        },
+        "http_response": null,
+        "driver": "Revolt\\EventLoop\\Driver\\StreamSelectDriver"
+      }
+    },
+    {
+      "protocol": "ws",
+      "concurrency": 32,
+      "payload_bytes": 64,
+      "http_response_mode": null,
+      "trial": 3,
+      "target": "crab-jit",
+      "target_order": [
+        "crab-before-jit",
+        "crab-jit"
+      ],
+      "started_utc": "2026-10-12T10:38:16Z",
+      "server_command": [
+        "php",
+        "-d",
+        "opcache.enable_cli=1",
+        "-d",
+        "opcache.jit=tracing",
+        "-d",
+        "opcache.jit_buffer_size=128M",
+        "/Users/daudau/Code/crabphp/framework/benchmarks/server.php",
+        "--host=127.0.0.1",
+        "--workers=1",
+        "--metadata",
+        "--protocol=ws",
+        "--port=60464"
+      ],
+      "port": 60464,
+      "errors": [],
+      "status": "passed",
+      "server_pid": 22291,
+      "readiness": "TCP readiness; client validates WebSocket handshake and every binary echo.",
+      "measurement": {
+        "command": [
+          "node",
+          "/Users/daudau/Code/crabphp/framework/benchmarks/websocket.mjs",
+          "--port=60464",
+          "--concurrency=32",
+          "--payload=64",
+          "--duration=5",
+          "--warmup=2"
+        ],
+        "timeout_seconds": 22,
+        "timed_out": false,
+        "samples": [
+          {
+            "server_cpu_percent": 30.0,
+            "server_rss_bytes": 34701312,
+            "load_cpu_percent": 0.0,
+            "load_rss_bytes": 1228800
+          },
+          {
+            "server_cpu_percent": 50.0,
+            "server_rss_bytes": 36306944,
+            "load_cpu_percent": 53.2,
+            "load_rss_bytes": 59031552
+          },
+          {
+            "server_cpu_percent": 70.5,
+            "server_rss_bytes": 36306944,
+            "load_cpu_percent": 90.1,
+            "load_rss_bytes": 60866560
+          },
+          {
+            "server_cpu_percent": 76.3,
+            "server_rss_bytes": 36306944,
+            "load_cpu_percent": 94.8,
+            "load_rss_bytes": 60882944
+          },
+          {
+            "server_cpu_percent": 81.7,
+            "server_rss_bytes": 36306944,
+            "load_cpu_percent": 97.4,
+            "load_rss_bytes": 60899328
+          },
+          {
+            "server_cpu_percent": 85.9,
+            "server_rss_bytes": 36306944,
+            "load_cpu_percent": 97.0,
+            "load_rss_bytes": 60932096
+          },
+          {
+            "server_cpu_percent": 87.0,
+            "server_rss_bytes": 36306944,
+            "load_cpu_percent": 98.0,
+            "load_rss_bytes": 60932096
+          },
+          {
+            "server_cpu_percent": 87.3,
+            "server_rss_bytes": 36306944,
+            "load_cpu_percent": 98.3,
+            "load_rss_bytes": 60932096
+          },
+          {
+            "server_cpu_percent": 86.6,
+            "server_rss_bytes": 36306944,
+            "load_cpu_percent": 98.6,
+            "load_rss_bytes": 60932096
+          },
+          {
+            "server_cpu_percent": 86.7,
+            "server_rss_bytes": 36306944,
+            "load_cpu_percent": 99.9,
+            "load_rss_bytes": 60932096
+          },
+          {
+            "server_cpu_percent": 85.5,
+            "server_rss_bytes": 36306944,
+            "load_cpu_percent": 100.8,
+            "load_rss_bytes": 61177856
+          },
+          {
+            "server_cpu_percent": 85.9,
+            "server_rss_bytes": 36306944,
+            "load_cpu_percent": 101.7,
+            "load_rss_bytes": 61194240
+          },
+          {
+            "server_cpu_percent": 85.8,
+            "server_rss_bytes": 36306944,
+            "load_cpu_percent": 98.8,
+            "load_rss_bytes": 61194240
+          },
+          {
+            "server_cpu_percent": 86.0,
+            "server_rss_bytes": 36306944,
+            "load_cpu_percent": 98.9,
+            "load_rss_bytes": 61194240
+          },
+          {
+            "server_cpu_percent": 86.2,
+            "server_rss_bytes": 36306944,
+            "load_cpu_percent": 98.4,
+            "load_rss_bytes": 65290240
+          },
+          {
+            "server_cpu_percent": 84.3,
+            "server_rss_bytes": 36306944,
+            "load_cpu_percent": 95.8,
+            "load_rss_bytes": 65306624
+          },
+          {
+            "server_cpu_percent": 84.6,
+            "server_rss_bytes": 36306944,
+            "load_cpu_percent": 96.3,
+            "load_rss_bytes": 65355776
+          },
+          {
+            "server_cpu_percent": 85.0,
+            "server_rss_bytes": 36306944,
+            "load_cpu_percent": 97.2,
+            "load_rss_bytes": 65372160
+          },
+          {
+            "server_cpu_percent": 87.1,
+            "server_rss_bytes": 36306944,
+            "load_cpu_percent": 99.7,
+            "load_rss_bytes": 65372160
+          },
+          {
+            "server_cpu_percent": 87.4,
+            "server_rss_bytes": 36306944,
+            "load_cpu_percent": 97.4,
+            "load_rss_bytes": 65372160
+          },
+          {
+            "server_cpu_percent": 86.3,
+            "server_rss_bytes": 36306944,
+            "load_cpu_percent": 98.8,
+            "load_rss_bytes": 65372160
+          },
+          {
+            "server_cpu_percent": 85.9,
+            "server_rss_bytes": 36306944,
+            "load_cpu_percent": 99.3,
+            "load_rss_bytes": 65372160
+          },
+          {
+            "server_cpu_percent": 86.3,
+            "server_rss_bytes": 36306944,
+            "load_cpu_percent": 98.0,
+            "load_rss_bytes": 65372160
+          },
+          {
+            "server_cpu_percent": 86.6,
+            "server_rss_bytes": 36290560,
+            "load_cpu_percent": 98.2,
+            "load_rss_bytes": 65372160
+          },
+          {
+            "server_cpu_percent": 86.3,
+            "server_rss_bytes": 36290560,
+            "load_cpu_percent": 98.9,
+            "load_rss_bytes": 65372160
+          },
+          {
+            "server_cpu_percent": 85.8,
+            "server_rss_bytes": 36290560,
+            "load_cpu_percent": 98.3,
+            "load_rss_bytes": 65372160
+          },
+          {
+            "server_cpu_percent": 85.9,
+            "server_rss_bytes": 36290560,
+            "load_cpu_percent": 98.3,
+            "load_rss_bytes": 65372160
+          },
+          {
+            "server_cpu_percent": 85.7,
+            "server_rss_bytes": 32948224,
+            "load_cpu_percent": 98.5,
+            "load_rss_bytes": 65372160
+          },
+          {
+            "server_cpu_percent": 85.7,
+            "server_rss_bytes": 32948224,
+            "load_cpu_percent": 98.8,
+            "load_rss_bytes": 65372160
+          },
+          {
+            "server_cpu_percent": 85.5,
+            "server_rss_bytes": 32948224,
+            "load_cpu_percent": 98.6,
+            "load_rss_bytes": 65372160
+          },
+          {
+            "server_cpu_percent": 85.4,
+            "server_rss_bytes": 26230784,
+            "load_cpu_percent": 98.8,
+            "load_rss_bytes": 59949056
+          },
+          {
+            "server_cpu_percent": 85.8,
+            "server_rss_bytes": 26230784,
+            "load_cpu_percent": 97.7,
+            "load_rss_bytes": 58376192
+          }
+        ],
+        "errors": [],
+        "pid": 22302,
+        "exit_code": 0,
+        "raw_output": "{\"protocol\":\"websocket\",\"concurrency\":32,\"payload_bytes\":64,\"inflight_per_connection\":1,\"warmup_seconds\":2,\"requested_seconds\":5,\"elapsed_seconds\":4.999871667,\"offered_messages\":417819,\"completed_messages\":417787,\"messages_per_second\":83559.54468940973,\"errors\":0,\"first_error\":null,\"latency_ms\":{\"p50\":0.3382605806488938,\"p95\":0.6702121403006793,\"p99\":0.7801062531812036,\"mean\":0.38122652158395437,\"max\":3.255374999999731},\"latency_histogram\":\"64 log2 buckets per doubling; reported upper bound, about 1.1% resolution\",\"client\":{\"node\":\"v25.1.0\",\"cpu_user_seconds\":1.914072,\"cpu_system_seconds\":3.029402,\"rss_bytes\":59244544}}\n",
+        "elapsed_wall_seconds": 7.266788624925539,
+        "metrics": {
+          "protocol": "websocket",
+          "concurrency": 32,
+          "payload_bytes": 64,
+          "inflight_per_connection": 1,
+          "warmup_seconds": 2,
+          "requested_seconds": 5,
+          "elapsed_seconds": 4.999871667,
+          "offered_messages": 417819,
+          "completed_messages": 417787,
+          "messages_per_second": 83559.54468940973,
+          "errors": 0,
+          "first_error": null,
+          "latency_ms": {
+            "p50": 0.3382605806488938,
+            "p95": 0.6702121403006793,
+            "p99": 0.7801062531812036,
+            "mean": 0.38122652158395437,
+            "max": 3.255374999999731
+          },
+          "latency_histogram": "64 log2 buckets per doubling; reported upper bound, about 1.1% resolution",
+          "client": {
+            "node": "v25.1.0",
+            "cpu_user_seconds": 1.914072,
+            "cpu_system_seconds": 3.029402,
+            "rss_bytes": 59244544
+          }
+        },
+        "peak_server_rss_bytes": 36306944,
+        "status": "passed"
+      },
+      "server_exit_code": 0,
+      "server_log": "CRAB_SERVER_METADATA {\"source_root\":\"\\/Users\\/daudau\\/Code\\/crabphp\\/framework\\/src\\/Engine\",\"loaded_classes\":{\"Crab\\\\Engine\\\\Runtime\":\"\\/Users\\/daudau\\/Code\\/crabphp\\/framework\\/src\\/Engine\\/Runtime.php\",\"Crab\\\\Engine\\\\Network\\\\Connection\":\"\\/Users\\/daudau\\/Code\\/crabphp\\/framework\\/src\\/Engine\\/Network\\/Connection.php\",\"Crab\\\\Engine\\\\Http\\\\Parser\":\"\\/Users\\/daudau\\/Code\\/crabphp\\/framework\\/src\\/Engine\\/Http\\/Parser.php\",\"Crab\\\\Engine\\\\Http\\\\ResponseEncoder\":\"\\/Users\\/daudau\\/Code\\/crabphp\\/framework\\/src\\/Engine\\/Http\\/ResponseEncoder.php\",\"Crab\\\\Engine\\\\Http\\\\HttpSession\":\"\\/Users\\/daudau\\/Code\\/crabphp\\/framework\\/src\\/Engine\\/Http\\/HttpSession.php\",\"Crab\\\\Engine\\\\Http\\\\Request\":\"\\/Users\\/daudau\\/Code\\/crabphp\\/framework\\/src\\/Engine\\/Http\\/Request.php\",\"Crab\\\\Engine\\\\Http\\\\Response\":\"\\/Users\\/daudau\\/Code\\/crabphp\\/framework\\/src\\/Engine\\/Http\\/Response.php\",\"Crab\\\\Engine\\\\Server\\\\WebSocketServer\":\"\\/Users\\/daudau\\/Code\\/crabphp\\/framework\\/src\\/Engine\\/Server\\/WebSocketServer.php\"},\"http_response\":null,\"driver\":\"Revolt\\\\EventLoop\\\\Driver\\\\StreamSelectDriver\"}\n",
+      "engine_source": {
+        "source_root": "/Users/daudau/Code/crabphp/framework/src/Engine",
+        "loaded_classes": {
+          "Crab\\Engine\\Runtime": "/Users/daudau/Code/crabphp/framework/src/Engine/Runtime.php",
+          "Crab\\Engine\\Network\\Connection": "/Users/daudau/Code/crabphp/framework/src/Engine/Network/Connection.php",
+          "Crab\\Engine\\Http\\Parser": "/Users/daudau/Code/crabphp/framework/src/Engine/Http/Parser.php",
+          "Crab\\Engine\\Http\\ResponseEncoder": "/Users/daudau/Code/crabphp/framework/src/Engine/Http/ResponseEncoder.php",
+          "Crab\\Engine\\Http\\HttpSession": "/Users/daudau/Code/crabphp/framework/src/Engine/Http/HttpSession.php",
+          "Crab\\Engine\\Http\\Request": "/Users/daudau/Code/crabphp/framework/src/Engine/Http/Request.php",
+          "Crab\\Engine\\Http\\Response": "/Users/daudau/Code/crabphp/framework/src/Engine/Http/Response.php",
+          "Crab\\Engine\\Server\\WebSocketServer": "/Users/daudau/Code/crabphp/framework/src/Engine/Server/WebSocketServer.php"
+        },
+        "http_response": null,
+        "driver": "Revolt\\EventLoop\\Driver\\StreamSelectDriver"
+      }
+    },
+    {
+      "protocol": "ws",
+      "concurrency": 32,
+      "payload_bytes": 64,
+      "http_response_mode": null,
+      "trial": 4,
+      "target": "crab-jit",
+      "target_order": [
+        "crab-jit",
+        "crab-before-jit"
+      ],
+      "started_utc": "2026-10-12T10:38:24Z",
+      "server_command": [
+        "php",
+        "-d",
+        "opcache.enable_cli=1",
+        "-d",
+        "opcache.jit=tracing",
+        "-d",
+        "opcache.jit_buffer_size=128M",
+        "/Users/daudau/Code/crabphp/framework/benchmarks/server.php",
+        "--host=127.0.0.1",
+        "--workers=1",
+        "--metadata",
+        "--protocol=ws",
+        "--port=60537"
+      ],
+      "port": 60537,
+      "errors": [],
+      "status": "passed",
+      "server_pid": 22381,
+      "readiness": "TCP readiness; client validates WebSocket handshake and every binary echo.",
+      "measurement": {
+        "command": [
+          "node",
+          "/Users/daudau/Code/crabphp/framework/benchmarks/websocket.mjs",
+          "--port=60537",
+          "--concurrency=32",
+          "--payload=64",
+          "--duration=5",
+          "--warmup=2"
+        ],
+        "timeout_seconds": 22,
+        "timed_out": false,
+        "samples": [
+          {
+            "server_cpu_percent": 17.8,
+            "server_rss_bytes": 34553856,
+            "load_cpu_percent": 0.0,
+            "load_rss_bytes": 1835008
+          },
+          {
+            "server_cpu_percent": 47.3,
+            "server_rss_bytes": 35962880,
+            "load_cpu_percent": 46.9,
+            "load_rss_bytes": 59277312
+          },
+          {
+            "server_cpu_percent": 68.3,
+            "server_rss_bytes": 35962880,
+            "load_cpu_percent": 88.9,
+            "load_rss_bytes": 61079552
+          },
+          {
+            "server_cpu_percent": 78.4,
+            "server_rss_bytes": 35962880,
+            "load_cpu_percent": 94.5,
+            "load_rss_bytes": 61079552
+          },
+          {
+            "server_cpu_percent": 80.2,
+            "server_rss_bytes": 35962880,
+            "load_cpu_percent": 95.2,
+            "load_rss_bytes": 61079552
+          },
+          {
+            "server_cpu_percent": 82.5,
+            "server_rss_bytes": 35962880,
+            "load_cpu_percent": 96.6,
+            "load_rss_bytes": 61079552
+          },
+          {
+            "server_cpu_percent": 83.0,
+            "server_rss_bytes": 35962880,
+            "load_cpu_percent": 96.1,
+            "load_rss_bytes": 61079552
+          },
+          {
+            "server_cpu_percent": 85.3,
+            "server_rss_bytes": 35962880,
+            "load_cpu_percent": 96.8,
+            "load_rss_bytes": 61079552
+          },
+          {
+            "server_cpu_percent": 85.6,
+            "server_rss_bytes": 35962880,
+            "load_cpu_percent": 99.1,
+            "load_rss_bytes": 61079552
+          },
+          {
+            "server_cpu_percent": 85.4,
+            "server_rss_bytes": 35962880,
+            "load_cpu_percent": 97.7,
+            "load_rss_bytes": 61079552
+          },
+          {
+            "server_cpu_percent": 84.9,
+            "server_rss_bytes": 35962880,
+            "load_cpu_percent": 99.3,
+            "load_rss_bytes": 61423616
+          },
+          {
+            "server_cpu_percent": 80.7,
+            "server_rss_bytes": 35962880,
+            "load_cpu_percent": 94.4,
+            "load_rss_bytes": 61423616
+          },
+          {
+            "server_cpu_percent": 84.4,
+            "server_rss_bytes": 35962880,
+            "load_cpu_percent": 93.6,
+            "load_rss_bytes": 61423616
+          },
+          {
+            "server_cpu_percent": 86.6,
+            "server_rss_bytes": 35962880,
+            "load_cpu_percent": 95.8,
+            "load_rss_bytes": 61423616
+          },
+          {
+            "server_cpu_percent": 85.9,
+            "server_rss_bytes": 35962880,
+            "load_cpu_percent": 96.3,
+            "load_rss_bytes": 61423616
+          },
+          {
+            "server_cpu_percent": 85.5,
+            "server_rss_bytes": 35962880,
+            "load_cpu_percent": 97.6,
+            "load_rss_bytes": 65388544
+          },
+          {
+            "server_cpu_percent": 84.9,
+            "server_rss_bytes": 24543232,
+            "load_cpu_percent": 97.1,
+            "load_rss_bytes": 61112320
+          },
+          {
+            "server_cpu_percent": 87.9,
+            "server_rss_bytes": 22462464,
+            "load_cpu_percent": 97.6,
+            "load_rss_bytes": 58966016
+          },
+          {
+            "server_cpu_percent": 88.6,
+            "server_rss_bytes": 22462464,
+            "load_cpu_percent": 97.3,
+            "load_rss_bytes": 58966016
+          },
+          {
+            "server_cpu_percent": 88.5,
+            "server_rss_bytes": 22462464,
+            "load_cpu_percent": 99.9,
+            "load_rss_bytes": 59031552
+          },
+          {
+            "server_cpu_percent": 87.4,
+            "server_rss_bytes": 22462464,
+            "load_cpu_percent": 97.1,
+            "load_rss_bytes": 59031552
+          },
+          {
+            "server_cpu_percent": 86.4,
+            "server_rss_bytes": 22462464,
+            "load_cpu_percent": 98.0,
+            "load_rss_bytes": 59031552
+          },
+          {
+            "server_cpu_percent": 86.4,
+            "server_rss_bytes": 22462464,
+            "load_cpu_percent": 98.0,
+            "load_rss_bytes": 59031552
+          },
+          {
+            "server_cpu_percent": 89.4,
+            "server_rss_bytes": 22462464,
+            "load_cpu_percent": 99.0,
+            "load_rss_bytes": 59031552
+          },
+          {
+            "server_cpu_percent": 83.8,
+            "server_rss_bytes": 22544384,
+            "load_cpu_percent": 91.6,
+            "load_rss_bytes": 59031552
+          },
+          {
+            "server_cpu_percent": 81.0,
+            "server_rss_bytes": 22544384,
+            "load_cpu_percent": 91.6,
+            "load_rss_bytes": 59031552
+          },
+          {
+            "server_cpu_percent": 83.1,
+            "server_rss_bytes": 22544384,
+            "load_cpu_percent": 92.5,
+            "load_rss_bytes": 59031552
+          },
+          {
+            "server_cpu_percent": 84.1,
+            "server_rss_bytes": 22544384,
+            "load_cpu_percent": 95.3,
+            "load_rss_bytes": 59031552
+          },
+          {
+            "server_cpu_percent": 84.9,
+            "server_rss_bytes": 22544384,
+            "load_cpu_percent": 96.8,
+            "load_rss_bytes": 59031552
+          },
+          {
+            "server_cpu_percent": 85.2,
+            "server_rss_bytes": 22544384,
+            "load_cpu_percent": 97.6,
+            "load_rss_bytes": 59031552
+          },
+          {
+            "server_cpu_percent": 85.2,
+            "server_rss_bytes": 22544384,
+            "load_cpu_percent": 97.4,
+            "load_rss_bytes": 59031552
+          },
+          {
+            "server_cpu_percent": 84.7,
+            "server_rss_bytes": 22544384,
+            "load_cpu_percent": 96.8,
+            "load_rss_bytes": 59031552
+          }
+        ],
+        "errors": [],
+        "pid": 22387,
+        "exit_code": 0,
+        "raw_output": "{\"protocol\":\"websocket\",\"concurrency\":32,\"payload_bytes\":64,\"inflight_per_connection\":1,\"warmup_seconds\":2,\"requested_seconds\":5,\"elapsed_seconds\":4.999833166,\"offered_messages\":385257,\"completed_messages\":385225,\"messages_per_second\":77047.5708308864,\"errors\":0,\"first_error\":null,\"latency_ms\":{\"p50\":0.3610386719675124,\"p95\":0.707561859565482,\"p99\":0.8982011061111294,\"mean\":0.41343298221300345,\"max\":21.419749999999112},\"latency_histogram\":\"64 log2 buckets per doubling; reported upper bound, about 1.1% resolution\",\"client\":{\"node\":\"v25.1.0\",\"cpu_user_seconds\":1.853268,\"cpu_system_seconds\":2.995411,\"rss_bytes\":60145664}}\n",
+        "elapsed_wall_seconds": 7.27521187486127,
+        "metrics": {
+          "protocol": "websocket",
+          "concurrency": 32,
+          "payload_bytes": 64,
+          "inflight_per_connection": 1,
+          "warmup_seconds": 2,
+          "requested_seconds": 5,
+          "elapsed_seconds": 4.999833166,
+          "offered_messages": 385257,
+          "completed_messages": 385225,
+          "messages_per_second": 77047.5708308864,
+          "errors": 0,
+          "first_error": null,
+          "latency_ms": {
+            "p50": 0.3610386719675124,
+            "p95": 0.707561859565482,
+            "p99": 0.8982011061111294,
+            "mean": 0.41343298221300345,
+            "max": 21.419749999999112
+          },
+          "latency_histogram": "64 log2 buckets per doubling; reported upper bound, about 1.1% resolution",
+          "client": {
+            "node": "v25.1.0",
+            "cpu_user_seconds": 1.853268,
+            "cpu_system_seconds": 2.995411,
+            "rss_bytes": 60145664
+          }
+        },
+        "peak_server_rss_bytes": 35962880,
+        "status": "passed"
+      },
+      "server_exit_code": 0,
+      "server_log": "CRAB_SERVER_METADATA {\"source_root\":\"\\/Users\\/daudau\\/Code\\/crabphp\\/framework\\/src\\/Engine\",\"loaded_classes\":{\"Crab\\\\Engine\\\\Runtime\":\"\\/Users\\/daudau\\/Code\\/crabphp\\/framework\\/src\\/Engine\\/Runtime.php\",\"Crab\\\\Engine\\\\Network\\\\Connection\":\"\\/Users\\/daudau\\/Code\\/crabphp\\/framework\\/src\\/Engine\\/Network\\/Connection.php\",\"Crab\\\\Engine\\\\Http\\\\Parser\":\"\\/Users\\/daudau\\/Code\\/crabphp\\/framework\\/src\\/Engine\\/Http\\/Parser.php\",\"Crab\\\\Engine\\\\Http\\\\ResponseEncoder\":\"\\/Users\\/daudau\\/Code\\/crabphp\\/framework\\/src\\/Engine\\/Http\\/ResponseEncoder.php\",\"Crab\\\\Engine\\\\Http\\\\HttpSession\":\"\\/Users\\/daudau\\/Code\\/crabphp\\/framework\\/src\\/Engine\\/Http\\/HttpSession.php\",\"Crab\\\\Engine\\\\Http\\\\Request\":\"\\/Users\\/daudau\\/Code\\/crabphp\\/framework\\/src\\/Engine\\/Http\\/Request.php\",\"Crab\\\\Engine\\\\Http\\\\Response\":\"\\/Users\\/daudau\\/Code\\/crabphp\\/framework\\/src\\/Engine\\/Http\\/Response.php\",\"Crab\\\\Engine\\\\Server\\\\WebSocketServer\":\"\\/Users\\/daudau\\/Code\\/crabphp\\/framework\\/src\\/Engine\\/Server\\/WebSocketServer.php\"},\"http_response\":null,\"driver\":\"Revolt\\\\EventLoop\\\\Driver\\\\StreamSelectDriver\"}\n",
+      "engine_source": {
+        "source_root": "/Users/daudau/Code/crabphp/framework/src/Engine",
+        "loaded_classes": {
+          "Crab\\Engine\\Runtime": "/Users/daudau/Code/crabphp/framework/src/Engine/Runtime.php",
+          "Crab\\Engine\\Network\\Connection": "/Users/daudau/Code/crabphp/framework/src/Engine/Network/Connection.php",
+          "Crab\\Engine\\Http\\Parser": "/Users/daudau/Code/crabphp/framework/src/Engine/Http/Parser.php",
+          "Crab\\Engine\\Http\\ResponseEncoder": "/Users/daudau/Code/crabphp/framework/src/Engine/Http/ResponseEncoder.php",
+          "Crab\\Engine\\Http\\HttpSession": "/Users/daudau/Code/crabphp/framework/src/Engine/Http/HttpSession.php",
+          "Crab\\Engine\\Http\\Request": "/Users/daudau/Code/crabphp/framework/src/Engine/Http/Request.php",
+          "Crab\\Engine\\Http\\Response": "/Users/daudau/Code/crabphp/framework/src/Engine/Http/Response.php",
+          "Crab\\Engine\\Server\\WebSocketServer": "/Users/daudau/Code/crabphp/framework/src/Engine/Server/WebSocketServer.php"
+        },
+        "http_response": null,
+        "driver": "Revolt\\EventLoop\\Driver\\StreamSelectDriver"
+      }
+    },
+    {
+      "protocol": "ws",
+      "concurrency": 32,
+      "payload_bytes": 64,
+      "http_response_mode": null,
+      "trial": 4,
+      "target": "crab-before-jit",
+      "target_order": [
+        "crab-jit",
+        "crab-before-jit"
+      ],
+      "started_utc": "2026-10-12T10:38:31Z",
+      "server_command": [
+        "php",
+        "-d",
+        "opcache.enable_cli=1",
+        "-d",
+        "opcache.jit=tracing",
+        "-d",
+        "opcache.jit_buffer_size=128M",
+        "/Users/daudau/Code/crabphp/framework/benchmarks/server.php",
+        "--host=127.0.0.1",
+        "--workers=1",
+        "--metadata",
+        "--source=/private/var/folders/tg/pyt0jkx51cd1_8n1q01dvpjh0000gn/T/crab-ws-engine-fixes-glg33zhq/Engine",
+        "--protocol=ws",
+        "--port=60611"
+      ],
+      "port": 60611,
+      "errors": [],
+      "status": "passed",
+      "server_pid": 22465,
+      "readiness": "TCP readiness; client validates WebSocket handshake and every binary echo.",
+      "measurement": {
+        "command": [
+          "node",
+          "/Users/daudau/Code/crabphp/framework/benchmarks/websocket.mjs",
+          "--port=60611",
+          "--concurrency=32",
+          "--payload=64",
+          "--duration=5",
+          "--warmup=2"
+        ],
+        "timeout_seconds": 22,
+        "timed_out": false,
+        "samples": [
+          {
+            "server_cpu_percent": 31.6,
+            "server_rss_bytes": 34684928,
+            "load_cpu_percent": 0.0,
+            "load_rss_bytes": 1212416
+          },
+          {
+            "server_cpu_percent": 53.5,
+            "server_rss_bytes": 36306944,
+            "load_cpu_percent": 55.7,
+            "load_rss_bytes": 60506112
+          },
+          {
+            "server_cpu_percent": 63.9,
+            "server_rss_bytes": 36306944,
+            "load_cpu_percent": 81.5,
+            "load_rss_bytes": 61784064
+          },
+          {
+            "server_cpu_percent": 79.5,
+            "server_rss_bytes": 36306944,
+            "load_cpu_percent": 92.2,
+            "load_rss_bytes": 61784064
+          },
+          {
+            "server_cpu_percent": 83.4,
+            "server_rss_bytes": 36306944,
+            "load_cpu_percent": 96.8,
+            "load_rss_bytes": 61800448
+          },
+          {
+            "server_cpu_percent": 85.0,
+            "server_rss_bytes": 36306944,
+            "load_cpu_percent": 97.8,
+            "load_rss_bytes": 61800448
+          },
+          {
+            "server_cpu_percent": 87.1,
+            "server_rss_bytes": 36306944,
+            "load_cpu_percent": 97.5,
+            "load_rss_bytes": 61800448
+          },
+          {
+            "server_cpu_percent": 86.6,
+            "server_rss_bytes": 36306944,
+            "load_cpu_percent": 97.4,
+            "load_rss_bytes": 61800448
+          },
+          {
+            "server_cpu_percent": 86.8,
+            "server_rss_bytes": 36306944,
+            "load_cpu_percent": 98.2,
+            "load_rss_bytes": 61800448
+          },
+          {
+            "server_cpu_percent": 86.7,
+            "server_rss_bytes": 36306944,
+            "load_cpu_percent": 97.7,
+            "load_rss_bytes": 61800448
+          },
+          {
+            "server_cpu_percent": 87.3,
+            "server_rss_bytes": 36306944,
+            "load_cpu_percent": 101.6,
+            "load_rss_bytes": 62046208
+          },
+          {
+            "server_cpu_percent": 42.2,
+            "server_rss_bytes": 36306944,
+            "load_cpu_percent": 49.7,
+            "load_rss_bytes": 62128128
+          },
+          {
+            "server_cpu_percent": 63.4,
+            "server_rss_bytes": 36306944,
+            "load_cpu_percent": 72.0,
+            "load_rss_bytes": 62128128
+          },
+          {
+            "server_cpu_percent": 78.0,
+            "server_rss_bytes": 36306944,
+            "load_cpu_percent": 87.2,
+            "load_rss_bytes": 62128128
+          },
+          {
+            "server_cpu_percent": 81.9,
+            "server_rss_bytes": 27885568,
+            "load_cpu_percent": 91.3,
+            "load_rss_bytes": 57589760
+          },
+          {
+            "server_cpu_percent": 86.1,
+            "server_rss_bytes": 26148864,
+            "load_cpu_percent": 94.7,
+            "load_rss_bytes": 61095936
+          },
+          {
+            "server_cpu_percent": 87.7,
+            "server_rss_bytes": 25559040,
+            "load_cpu_percent": 96.7,
+            "load_rss_bytes": 59670528
+          },
+          {
+            "server_cpu_percent": 86.4,
+            "server_rss_bytes": 25559040,
+            "load_cpu_percent": 98.2,
+            "load_rss_bytes": 59736064
+          },
+          {
+            "server_cpu_percent": 87.3,
+            "server_rss_bytes": 25559040,
+            "load_cpu_percent": 98.1,
+            "load_rss_bytes": 59736064
+          },
+          {
+            "server_cpu_percent": 89.1,
+            "server_rss_bytes": 25559040,
+            "load_cpu_percent": 98.6,
+            "load_rss_bytes": 59736064
+          },
+          {
+            "server_cpu_percent": 88.9,
+            "server_rss_bytes": 25559040,
+            "load_cpu_percent": 98.0,
+            "load_rss_bytes": 59736064
+          },
+          {
+            "server_cpu_percent": 87.4,
+            "server_rss_bytes": 25559040,
+            "load_cpu_percent": 97.8,
+            "load_rss_bytes": 59736064
+          },
+          {
+            "server_cpu_percent": 87.5,
+            "server_rss_bytes": 25559040,
+            "load_cpu_percent": 98.7,
+            "load_rss_bytes": 59736064
+          },
+          {
+            "server_cpu_percent": 87.0,
+            "server_rss_bytes": 25624576,
+            "load_cpu_percent": 99.2,
+            "load_rss_bytes": 59736064
+          },
+          {
+            "server_cpu_percent": 86.4,
+            "server_rss_bytes": 25624576,
+            "load_cpu_percent": 97.7,
+            "load_rss_bytes": 59736064
+          },
+          {
+            "server_cpu_percent": 86.3,
+            "server_rss_bytes": 25624576,
+            "load_cpu_percent": 99.5,
+            "load_rss_bytes": 59736064
+          },
+          {
+            "server_cpu_percent": 85.7,
+            "server_rss_bytes": 25624576,
+            "load_cpu_percent": 97.4,
+            "load_rss_bytes": 59736064
+          },
+          {
+            "server_cpu_percent": 86.2,
+            "server_rss_bytes": 25624576,
+            "load_cpu_percent": 96.6,
+            "load_rss_bytes": 58900480
+          },
+          {
+            "server_cpu_percent": 84.2,
+            "server_rss_bytes": 25624576,
+            "load_cpu_percent": 94.3,
+            "load_rss_bytes": 58884096
+          },
+          {
+            "server_cpu_percent": 84.6,
+            "server_rss_bytes": 25624576,
+            "load_cpu_percent": 95.9,
+            "load_rss_bytes": 58884096
+          },
+          {
+            "server_cpu_percent": 85.5,
+            "server_rss_bytes": 26935296,
+            "load_cpu_percent": 96.7,
+            "load_rss_bytes": 60702720
+          }
+        ],
+        "errors": [],
+        "pid": 22474,
+        "exit_code": 0,
+        "raw_output": "{\"protocol\":\"websocket\",\"concurrency\":32,\"payload_bytes\":64,\"inflight_per_connection\":1,\"warmup_seconds\":2,\"requested_seconds\":5,\"elapsed_seconds\":4.999998125,\"offered_messages\":376998,\"completed_messages\":376966,\"messages_per_second\":75393.2282724606,\"errors\":0,\"first_error\":null,\"latency_ms\":{\"p50\":0.34946462028149516,\"p95\":0.707561859565482,\"p99\":1.023,\"mean\":0.4224721855445908,\"max\":59.179375000000164},\"latency_histogram\":\"64 log2 buckets per doubling; reported upper bound, about 1.1% resolution\",\"client\":{\"node\":\"v25.1.0\",\"cpu_user_seconds\":1.770261,\"cpu_system_seconds\":2.855136,\"rss_bytes\":59867136}}\n",
+        "elapsed_wall_seconds": 7.288429457927123,
+        "metrics": {
+          "protocol": "websocket",
+          "concurrency": 32,
+          "payload_bytes": 64,
+          "inflight_per_connection": 1,
+          "warmup_seconds": 2,
+          "requested_seconds": 5,
+          "elapsed_seconds": 4.999998125,
+          "offered_messages": 376998,
+          "completed_messages": 376966,
+          "messages_per_second": 75393.2282724606,
+          "errors": 0,
+          "first_error": null,
+          "latency_ms": {
+            "p50": 0.34946462028149516,
+            "p95": 0.707561859565482,
+            "p99": 1.023,
+            "mean": 0.4224721855445908,
+            "max": 59.179375000000164
+          },
+          "latency_histogram": "64 log2 buckets per doubling; reported upper bound, about 1.1% resolution",
+          "client": {
+            "node": "v25.1.0",
+            "cpu_user_seconds": 1.770261,
+            "cpu_system_seconds": 2.855136,
+            "rss_bytes": 59867136
+          }
+        },
+        "peak_server_rss_bytes": 36306944,
+        "status": "passed"
+      },
+      "server_exit_code": 0,
+      "server_log": "CRAB_SERVER_METADATA {\"source_root\":\"\\/private\\/var\\/folders\\/tg\\/pyt0jkx51cd1_8n1q01dvpjh0000gn\\/T\\/crab-ws-engine-fixes-glg33zhq\\/Engine\",\"loaded_classes\":{\"Crab\\\\Engine\\\\Runtime\":\"\\/private\\/var\\/folders\\/tg\\/pyt0jkx51cd1_8n1q01dvpjh0000gn\\/T\\/crab-ws-engine-fixes-glg33zhq\\/Engine\\/Runtime.php\",\"Crab\\\\Engine\\\\Network\\\\Connection\":\"\\/private\\/var\\/folders\\/tg\\/pyt0jkx51cd1_8n1q01dvpjh0000gn\\/T\\/crab-ws-engine-fixes-glg33zhq\\/Engine\\/Network\\/Connection.php\",\"Crab\\\\Engine\\\\Http\\\\Parser\":\"\\/private\\/var\\/folders\\/tg\\/pyt0jkx51cd1_8n1q01dvpjh0000gn\\/T\\/crab-ws-engine-fixes-glg33zhq\\/Engine\\/Http\\/Parser.php\",\"Crab\\\\Engine\\\\Http\\\\ResponseEncoder\":\"\\/private\\/var\\/folders\\/tg\\/pyt0jkx51cd1_8n1q01dvpjh0000gn\\/T\\/crab-ws-engine-fixes-glg33zhq\\/Engine\\/Http\\/ResponseEncoder.php\",\"Crab\\\\Engine\\\\Http\\\\HttpSession\":\"\\/private\\/var\\/folders\\/tg\\/pyt0jkx51cd1_8n1q01dvpjh0000gn\\/T\\/crab-ws-engine-fixes-glg33zhq\\/Engine\\/Http\\/HttpSession.php\",\"Crab\\\\Engine\\\\Http\\\\Request\":\"\\/private\\/var\\/folders\\/tg\\/pyt0jkx51cd1_8n1q01dvpjh0000gn\\/T\\/crab-ws-engine-fixes-glg33zhq\\/Engine\\/Http\\/Request.php\",\"Crab\\\\Engine\\\\Http\\\\Response\":\"\\/private\\/var\\/folders\\/tg\\/pyt0jkx51cd1_8n1q01dvpjh0000gn\\/T\\/crab-ws-engine-fixes-glg33zhq\\/Engine\\/Http\\/Response.php\",\"Crab\\\\Engine\\\\Server\\\\WebSocketServer\":\"\\/private\\/var\\/folders\\/tg\\/pyt0jkx51cd1_8n1q01dvpjh0000gn\\/T\\/crab-ws-engine-fixes-glg33zhq\\/Engine\\/Server\\/WebSocketServer.php\"},\"http_response\":null,\"driver\":\"Revolt\\\\EventLoop\\\\Driver\\\\StreamSelectDriver\"}\n",
+      "engine_source": {
+        "source_root": "/private/var/folders/tg/pyt0jkx51cd1_8n1q01dvpjh0000gn/T/crab-ws-engine-fixes-glg33zhq/Engine",
+        "loaded_classes": {
+          "Crab\\Engine\\Runtime": "/private/var/folders/tg/pyt0jkx51cd1_8n1q01dvpjh0000gn/T/crab-ws-engine-fixes-glg33zhq/Engine/Runtime.php",
+          "Crab\\Engine\\Network\\Connection": "/private/var/folders/tg/pyt0jkx51cd1_8n1q01dvpjh0000gn/T/crab-ws-engine-fixes-glg33zhq/Engine/Network/Connection.php",
+          "Crab\\Engine\\Http\\Parser": "/private/var/folders/tg/pyt0jkx51cd1_8n1q01dvpjh0000gn/T/crab-ws-engine-fixes-glg33zhq/Engine/Http/Parser.php",
+          "Crab\\Engine\\Http\\ResponseEncoder": "/private/var/folders/tg/pyt0jkx51cd1_8n1q01dvpjh0000gn/T/crab-ws-engine-fixes-glg33zhq/Engine/Http/ResponseEncoder.php",
+          "Crab\\Engine\\Http\\HttpSession": "/private/var/folders/tg/pyt0jkx51cd1_8n1q01dvpjh0000gn/T/crab-ws-engine-fixes-glg33zhq/Engine/Http/HttpSession.php",
+          "Crab\\Engine\\Http\\Request": "/private/var/folders/tg/pyt0jkx51cd1_8n1q01dvpjh0000gn/T/crab-ws-engine-fixes-glg33zhq/Engine/Http/Request.php",
+          "Crab\\Engine\\Http\\Response": "/private/var/folders/tg/pyt0jkx51cd1_8n1q01dvpjh0000gn/T/crab-ws-engine-fixes-glg33zhq/Engine/Http/Response.php",
+          "Crab\\Engine\\Server\\WebSocketServer": "/private/var/folders/tg/pyt0jkx51cd1_8n1q01dvpjh0000gn/T/crab-ws-engine-fixes-glg33zhq/Engine/Server/WebSocketServer.php"
+        },
+        "http_response": null,
+        "driver": "Revolt\\EventLoop\\Driver\\StreamSelectDriver"
+      }
+    },
+    {
+      "protocol": "ws",
+      "concurrency": 32,
+      "payload_bytes": 64,
+      "http_response_mode": null,
+      "trial": 5,
+      "target": "crab-before-jit",
+      "target_order": [
+        "crab-before-jit",
+        "crab-jit"
+      ],
+      "started_utc": "2026-10-12T10:38:39Z",
+      "server_command": [
+        "php",
+        "-d",
+        "opcache.enable_cli=1",
+        "-d",
+        "opcache.jit=tracing",
+        "-d",
+        "opcache.jit_buffer_size=128M",
+        "/Users/daudau/Code/crabphp/framework/benchmarks/server.php",
+        "--host=127.0.0.1",
+        "--workers=1",
+        "--metadata",
+        "--source=/private/var/folders/tg/pyt0jkx51cd1_8n1q01dvpjh0000gn/T/crab-ws-engine-fixes-glg33zhq/Engine",
+        "--protocol=ws",
+        "--port=60689"
+      ],
+      "port": 60689,
+      "errors": [],
+      "status": "passed",
+      "server_pid": 22541,
+      "readiness": "TCP readiness; client validates WebSocket handshake and every binary echo.",
+      "measurement": {
+        "command": [
+          "node",
+          "/Users/daudau/Code/crabphp/framework/benchmarks/websocket.mjs",
+          "--port=60689",
+          "--concurrency=32",
+          "--payload=64",
+          "--duration=5",
+          "--warmup=2"
+        ],
+        "timeout_seconds": 22,
+        "timed_out": false,
+        "samples": [
+          {
+            "server_cpu_percent": 12.8,
+            "server_rss_bytes": 34750464,
+            "load_cpu_percent": 0.0,
+            "load_rss_bytes": 1212416
+          },
+          {
+            "server_cpu_percent": 40.3,
+            "server_rss_bytes": 35995648,
+            "load_cpu_percent": 38.8,
+            "load_rss_bytes": 59768832
+          },
+          {
+            "server_cpu_percent": 62.6,
+            "server_rss_bytes": 35995648,
+            "load_cpu_percent": 83.8,
+            "load_rss_bytes": 61816832
+          },
+          {
+            "server_cpu_percent": 76.9,
+            "server_rss_bytes": 35995648,
+            "load_cpu_percent": 92.4,
+            "load_rss_bytes": 61833216
+          },
+          {
+            "server_cpu_percent": 82.9,
+            "server_rss_bytes": 35995648,
+            "load_cpu_percent": 96.2,
+            "load_rss_bytes": 61833216
+          },
+          {
+            "server_cpu_percent": 83.8,
+            "server_rss_bytes": 35995648,
+            "load_cpu_percent": 97.3,
+            "load_rss_bytes": 61833216
+          },
+          {
+            "server_cpu_percent": 85.3,
+            "server_rss_bytes": 35995648,
+            "load_cpu_percent": 95.9,
+            "load_rss_bytes": 61833216
+          },
+          {
+            "server_cpu_percent": 86.5,
+            "server_rss_bytes": 35995648,
+            "load_cpu_percent": 97.0,
+            "load_rss_bytes": 61833216
+          },
+          {
+            "server_cpu_percent": 86.1,
+            "server_rss_bytes": 35995648,
+            "load_cpu_percent": 98.0,
+            "load_rss_bytes": 61833216
+          },
+          {
+            "server_cpu_percent": 81.2,
+            "server_rss_bytes": 27705344,
+            "load_cpu_percent": 93.7,
+            "load_rss_bytes": 57753600
+          },
+          {
+            "server_cpu_percent": 83.1,
+            "server_rss_bytes": 27705344,
+            "load_cpu_percent": 99.1,
+            "load_rss_bytes": 57917440
+          },
+          {
+            "server_cpu_percent": 84.2,
+            "server_rss_bytes": 27705344,
+            "load_cpu_percent": 98.3,
+            "load_rss_bytes": 57917440
+          },
+          {
+            "server_cpu_percent": 85.0,
+            "server_rss_bytes": 27705344,
+            "load_cpu_percent": 98.4,
+            "load_rss_bytes": 57917440
+          },
+          {
+            "server_cpu_percent": 85.8,
+            "server_rss_bytes": 27705344,
+            "load_cpu_percent": 97.8,
+            "load_rss_bytes": 57917440
+          },
+          {
+            "server_cpu_percent": 87.6,
+            "server_rss_bytes": 27705344,
+            "load_cpu_percent": 98.1,
+            "load_rss_bytes": 57917440
+          },
+          {
+            "server_cpu_percent": 87.1,
+            "server_rss_bytes": 27705344,
+            "load_cpu_percent": 99.2,
+            "load_rss_bytes": 62128128
+          },
+          {
+            "server_cpu_percent": 85.9,
+            "server_rss_bytes": 27705344,
+            "load_cpu_percent": 97.3,
+            "load_rss_bytes": 62160896
+          },
+          {
+            "server_cpu_percent": 86.1,
+            "server_rss_bytes": 27705344,
+            "load_cpu_percent": 97.1,
+            "load_rss_bytes": 62160896
+          },
+          {
+            "server_cpu_percent": 86.0,
+            "server_rss_bytes": 27705344,
+            "load_cpu_percent": 97.2,
+            "load_rss_bytes": 62160896
+          },
+          {
+            "server_cpu_percent": 86.5,
+            "server_rss_bytes": 27705344,
+            "load_cpu_percent": 98.4,
+            "load_rss_bytes": 62160896
+          },
+          {
+            "server_cpu_percent": 86.6,
+            "server_rss_bytes": 27705344,
+            "load_cpu_percent": 97.9,
+            "load_rss_bytes": 62259200
+          },
+          {
+            "server_cpu_percent": 87.0,
+            "server_rss_bytes": 27705344,
+            "load_cpu_percent": 97.5,
+            "load_rss_bytes": 62259200
+          },
+          {
+            "server_cpu_percent": 87.1,
+            "server_rss_bytes": 27705344,
+            "load_cpu_percent": 99.8,
+            "load_rss_bytes": 62259200
+          },
+          {
+            "server_cpu_percent": 86.5,
+            "server_rss_bytes": 27705344,
+            "load_cpu_percent": 97.9,
+            "load_rss_bytes": 62259200
+          },
+          {
+            "server_cpu_percent": 86.4,
+            "server_rss_bytes": 27770880,
+            "load_cpu_percent": 97.4,
+            "load_rss_bytes": 62259200
+          },
+          {
+            "server_cpu_percent": 86.1,
+            "server_rss_bytes": 27770880,
+            "load_cpu_percent": 98.9,
+            "load_rss_bytes": 62275584
+          },
+          {
+            "server_cpu_percent": 86.5,
+            "server_rss_bytes": 27770880,
+            "load_cpu_percent": 98.9,
+            "load_rss_bytes": 62275584
+          },
+          {
+            "server_cpu_percent": 86.3,
+            "server_rss_bytes": 27770880,
+            "load_cpu_percent": 97.1,
+            "load_rss_bytes": 62275584
+          },
+          {
+            "server_cpu_percent": 87.0,
+            "server_rss_bytes": 27770880,
+            "load_cpu_percent": 97.4,
+            "load_rss_bytes": 62275584
+          },
+          {
+            "server_cpu_percent": 87.3,
+            "server_rss_bytes": 27770880,
+            "load_cpu_percent": 98.4,
+            "load_rss_bytes": 62275584
+          },
+          {
+            "server_cpu_percent": 86.6,
+            "server_rss_bytes": 27770880,
+            "load_cpu_percent": 97.9,
+            "load_rss_bytes": 62275584
+          },
+          {
+            "server_cpu_percent": 85.6,
+            "server_rss_bytes": 28033024,
+            "load_cpu_percent": 97.5,
+            "load_rss_bytes": 63373312
+          }
+        ],
+        "errors": [],
+        "pid": 22554,
+        "exit_code": 0,
+        "raw_output": "{\"protocol\":\"websocket\",\"concurrency\":32,\"payload_bytes\":64,\"inflight_per_connection\":1,\"warmup_seconds\":2,\"requested_seconds\":5,\"elapsed_seconds\":4.999883833,\"offered_messages\":412247,\"completed_messages\":412215,\"messages_per_second\":82444.9154756992,\"errors\":0,\"first_error\":null,\"latency_ms\":{\"p50\":0.3382605806488938,\"p95\":0.6702121403006793,\"p99\":0.7972102529217725,\"mean\":0.38637532179566114,\"max\":1.7830829999993512},\"latency_histogram\":\"64 log2 buckets per doubling; reported upper bound, about 1.1% resolution\",\"client\":{\"node\":\"v25.1.0\",\"cpu_user_seconds\":1.837149,\"cpu_system_seconds\":3.079996,\"rss_bytes\":62668800}}\n",
+        "elapsed_wall_seconds": 7.284173334017396,
+        "metrics": {
+          "protocol": "websocket",
+          "concurrency": 32,
+          "payload_bytes": 64,
+          "inflight_per_connection": 1,
+          "warmup_seconds": 2,
+          "requested_seconds": 5,
+          "elapsed_seconds": 4.999883833,
+          "offered_messages": 412247,
+          "completed_messages": 412215,
+          "messages_per_second": 82444.9154756992,
+          "errors": 0,
+          "first_error": null,
+          "latency_ms": {
+            "p50": 0.3382605806488938,
+            "p95": 0.6702121403006793,
+            "p99": 0.7972102529217725,
+            "mean": 0.38637532179566114,
+            "max": 1.7830829999993512
+          },
+          "latency_histogram": "64 log2 buckets per doubling; reported upper bound, about 1.1% resolution",
+          "client": {
+            "node": "v25.1.0",
+            "cpu_user_seconds": 1.837149,
+            "cpu_system_seconds": 3.079996,
+            "rss_bytes": 62668800
+          }
+        },
+        "peak_server_rss_bytes": 35995648,
+        "status": "passed"
+      },
+      "server_exit_code": 0,
+      "server_log": "CRAB_SERVER_METADATA {\"source_root\":\"\\/private\\/var\\/folders\\/tg\\/pyt0jkx51cd1_8n1q01dvpjh0000gn\\/T\\/crab-ws-engine-fixes-glg33zhq\\/Engine\",\"loaded_classes\":{\"Crab\\\\Engine\\\\Runtime\":\"\\/private\\/var\\/folders\\/tg\\/pyt0jkx51cd1_8n1q01dvpjh0000gn\\/T\\/crab-ws-engine-fixes-glg33zhq\\/Engine\\/Runtime.php\",\"Crab\\\\Engine\\\\Network\\\\Connection\":\"\\/private\\/var\\/folders\\/tg\\/pyt0jkx51cd1_8n1q01dvpjh0000gn\\/T\\/crab-ws-engine-fixes-glg33zhq\\/Engine\\/Network\\/Connection.php\",\"Crab\\\\Engine\\\\Http\\\\Parser\":\"\\/private\\/var\\/folders\\/tg\\/pyt0jkx51cd1_8n1q01dvpjh0000gn\\/T\\/crab-ws-engine-fixes-glg33zhq\\/Engine\\/Http\\/Parser.php\",\"Crab\\\\Engine\\\\Http\\\\ResponseEncoder\":\"\\/private\\/var\\/folders\\/tg\\/pyt0jkx51cd1_8n1q01dvpjh0000gn\\/T\\/crab-ws-engine-fixes-glg33zhq\\/Engine\\/Http\\/ResponseEncoder.php\",\"Crab\\\\Engine\\\\Http\\\\HttpSession\":\"\\/private\\/var\\/folders\\/tg\\/pyt0jkx51cd1_8n1q01dvpjh0000gn\\/T\\/crab-ws-engine-fixes-glg33zhq\\/Engine\\/Http\\/HttpSession.php\",\"Crab\\\\Engine\\\\Http\\\\Request\":\"\\/private\\/var\\/folders\\/tg\\/pyt0jkx51cd1_8n1q01dvpjh0000gn\\/T\\/crab-ws-engine-fixes-glg33zhq\\/Engine\\/Http\\/Request.php\",\"Crab\\\\Engine\\\\Http\\\\Response\":\"\\/private\\/var\\/folders\\/tg\\/pyt0jkx51cd1_8n1q01dvpjh0000gn\\/T\\/crab-ws-engine-fixes-glg33zhq\\/Engine\\/Http\\/Response.php\",\"Crab\\\\Engine\\\\Server\\\\WebSocketServer\":\"\\/private\\/var\\/folders\\/tg\\/pyt0jkx51cd1_8n1q01dvpjh0000gn\\/T\\/crab-ws-engine-fixes-glg33zhq\\/Engine\\/Server\\/WebSocketServer.php\"},\"http_response\":null,\"driver\":\"Revolt\\\\EventLoop\\\\Driver\\\\StreamSelectDriver\"}\n",
+      "engine_source": {
+        "source_root": "/private/var/folders/tg/pyt0jkx51cd1_8n1q01dvpjh0000gn/T/crab-ws-engine-fixes-glg33zhq/Engine",
+        "loaded_classes": {
+          "Crab\\Engine\\Runtime": "/private/var/folders/tg/pyt0jkx51cd1_8n1q01dvpjh0000gn/T/crab-ws-engine-fixes-glg33zhq/Engine/Runtime.php",
+          "Crab\\Engine\\Network\\Connection": "/private/var/folders/tg/pyt0jkx51cd1_8n1q01dvpjh0000gn/T/crab-ws-engine-fixes-glg33zhq/Engine/Network/Connection.php",
+          "Crab\\Engine\\Http\\Parser": "/private/var/folders/tg/pyt0jkx51cd1_8n1q01dvpjh0000gn/T/crab-ws-engine-fixes-glg33zhq/Engine/Http/Parser.php",
+          "Crab\\Engine\\Http\\ResponseEncoder": "/private/var/folders/tg/pyt0jkx51cd1_8n1q01dvpjh0000gn/T/crab-ws-engine-fixes-glg33zhq/Engine/Http/ResponseEncoder.php",
+          "Crab\\Engine\\Http\\HttpSession": "/private/var/folders/tg/pyt0jkx51cd1_8n1q01dvpjh0000gn/T/crab-ws-engine-fixes-glg33zhq/Engine/Http/HttpSession.php",
+          "Crab\\Engine\\Http\\Request": "/private/var/folders/tg/pyt0jkx51cd1_8n1q01dvpjh0000gn/T/crab-ws-engine-fixes-glg33zhq/Engine/Http/Request.php",
+          "Crab\\Engine\\Http\\Response": "/private/var/folders/tg/pyt0jkx51cd1_8n1q01dvpjh0000gn/T/crab-ws-engine-fixes-glg33zhq/Engine/Http/Response.php",
+          "Crab\\Engine\\Server\\WebSocketServer": "/private/var/folders/tg/pyt0jkx51cd1_8n1q01dvpjh0000gn/T/crab-ws-engine-fixes-glg33zhq/Engine/Server/WebSocketServer.php"
+        },
+        "http_response": null,
+        "driver": "Revolt\\EventLoop\\Driver\\StreamSelectDriver"
+      }
+    },
+    {
+      "protocol": "ws",
+      "concurrency": 32,
+      "payload_bytes": 64,
+      "http_response_mode": null,
+      "trial": 5,
+      "target": "crab-jit",
+      "target_order": [
+        "crab-before-jit",
+        "crab-jit"
+      ],
+      "started_utc": "2026-10-12T10:38:46Z",
+      "server_command": [
+        "php",
+        "-d",
+        "opcache.enable_cli=1",
+        "-d",
+        "opcache.jit=tracing",
+        "-d",
+        "opcache.jit_buffer_size=128M",
+        "/Users/daudau/Code/crabphp/framework/benchmarks/server.php",
+        "--host=127.0.0.1",
+        "--workers=1",
+        "--metadata",
+        "--protocol=ws",
+        "--port=60762"
+      ],
+      "port": 60762,
+      "errors": [],
+      "status": "passed",
+      "server_pid": 22616,
+      "readiness": "TCP readiness; client validates WebSocket handshake and every binary echo.",
+      "measurement": {
+        "command": [
+          "node",
+          "/Users/daudau/Code/crabphp/framework/benchmarks/websocket.mjs",
+          "--port=60762",
+          "--concurrency=32",
+          "--payload=64",
+          "--duration=5",
+          "--warmup=2"
+        ],
+        "timeout_seconds": 22,
+        "timed_out": false,
+        "samples": [
+          {
+            "server_cpu_percent": 28.9,
+            "server_rss_bytes": 35110912,
+            "load_cpu_percent": 0.0,
+            "load_rss_bytes": 1212416
+          },
+          {
+            "server_cpu_percent": 52.0,
+            "server_rss_bytes": 36519936,
+            "load_cpu_percent": 52.2,
+            "load_rss_bytes": 60522496
+          },
+          {
+            "server_cpu_percent": 74.6,
+            "server_rss_bytes": 36519936,
+            "load_cpu_percent": 90.8,
+            "load_rss_bytes": 61734912
+          },
+          {
+            "server_cpu_percent": 81.6,
+            "server_rss_bytes": 36519936,
+            "load_cpu_percent": 94.6,
+            "load_rss_bytes": 61734912
+          },
+          {
+            "server_cpu_percent": 90.7,
+            "server_rss_bytes": 36519936,
+            "load_cpu_percent": 97.0,
+            "load_rss_bytes": 61751296
+          },
+          {
+            "server_cpu_percent": 87.9,
+            "server_rss_bytes": 36519936,
+            "load_cpu_percent": 97.8,
+            "load_rss_bytes": 61751296
+          },
+          {
+            "server_cpu_percent": 87.4,
+            "server_rss_bytes": 36519936,
+            "load_cpu_percent": 98.0,
+            "load_rss_bytes": 61751296
+          },
+          {
+            "server_cpu_percent": 88.2,
+            "server_rss_bytes": 36519936,
+            "load_cpu_percent": 99.2,
+            "load_rss_bytes": 61751296
+          },
+          {
+            "server_cpu_percent": 88.8,
+            "server_rss_bytes": 36519936,
+            "load_cpu_percent": 98.2,
+            "load_rss_bytes": 61751296
+          },
+          {
+            "server_cpu_percent": 88.3,
+            "server_rss_bytes": 36519936,
+            "load_cpu_percent": 97.0,
+            "load_rss_bytes": 61767680
+          },
+          {
+            "server_cpu_percent": 87.4,
+            "server_rss_bytes": 36519936,
+            "load_cpu_percent": 99.0,
+            "load_rss_bytes": 62095360
+          },
+          {
+            "server_cpu_percent": 86.7,
+            "server_rss_bytes": 36519936,
+            "load_cpu_percent": 100.6,
+            "load_rss_bytes": 62095360
+          },
+          {
+            "server_cpu_percent": 86.1,
+            "server_rss_bytes": 36519936,
+            "load_cpu_percent": 98.7,
+            "load_rss_bytes": 62095360
+          },
+          {
+            "server_cpu_percent": 85.8,
+            "server_rss_bytes": 36519936,
+            "load_cpu_percent": 98.5,
+            "load_rss_bytes": 62095360
+          },
+          {
+            "server_cpu_percent": 85.9,
+            "server_rss_bytes": 36519936,
+            "load_cpu_percent": 97.8,
+            "load_rss_bytes": 62095360
+          },
+          {
+            "server_cpu_percent": 85.4,
+            "server_rss_bytes": 36519936,
+            "load_cpu_percent": 98.3,
+            "load_rss_bytes": 66174976
+          },
+          {
+            "server_cpu_percent": 85.9,
+            "server_rss_bytes": 36519936,
+            "load_cpu_percent": 97.9,
+            "load_rss_bytes": 66191360
+          },
+          {
+            "server_cpu_percent": 86.4,
+            "server_rss_bytes": 36519936,
+            "load_cpu_percent": 97.6,
+            "load_rss_bytes": 66224128
+          },
+          {
+            "server_cpu_percent": 86.0,
+            "server_rss_bytes": 36519936,
+            "load_cpu_percent": 99.0,
+            "load_rss_bytes": 66224128
+          },
+          {
+            "server_cpu_percent": 86.1,
+            "server_rss_bytes": 36519936,
+            "load_cpu_percent": 98.3,
+            "load_rss_bytes": 66224128
+          },
+          {
+            "server_cpu_percent": 86.1,
+            "server_rss_bytes": 36519936,
+            "load_cpu_percent": 97.9,
+            "load_rss_bytes": 66273280
+          },
+          {
+            "server_cpu_percent": 86.3,
+            "server_rss_bytes": 36519936,
+            "load_cpu_percent": 99.6,
+            "load_rss_bytes": 66289664
+          },
+          {
+            "server_cpu_percent": 87.1,
+            "server_rss_bytes": 36519936,
+            "load_cpu_percent": 99.5,
+            "load_rss_bytes": 66289664
+          },
+          {
+            "server_cpu_percent": 86.1,
+            "server_rss_bytes": 36487168,
+            "load_cpu_percent": 98.3,
+            "load_rss_bytes": 66289664
+          },
+          {
+            "server_cpu_percent": 86.8,
+            "server_rss_bytes": 36487168,
+            "load_cpu_percent": 97.2,
+            "load_rss_bytes": 66289664
+          },
+          {
+            "server_cpu_percent": 86.8,
+            "server_rss_bytes": 36487168,
+            "load_cpu_percent": 97.9,
+            "load_rss_bytes": 66289664
+          },
+          {
+            "server_cpu_percent": 86.7,
+            "server_rss_bytes": 36487168,
+            "load_cpu_percent": 98.0,
+            "load_rss_bytes": 66289664
+          },
+          {
+            "server_cpu_percent": 86.8,
+            "server_rss_bytes": 36487168,
+            "load_cpu_percent": 98.0,
+            "load_rss_bytes": 66289664
+          },
+          {
+            "server_cpu_percent": 85.9,
+            "server_rss_bytes": 36487168,
+            "load_cpu_percent": 97.6,
+            "load_rss_bytes": 66289664
+          },
+          {
+            "server_cpu_percent": 85.9,
+            "server_rss_bytes": 36487168,
+            "load_cpu_percent": 97.5,
+            "load_rss_bytes": 66289664
+          },
+          {
+            "server_cpu_percent": 86.5,
+            "server_rss_bytes": 36487168,
+            "load_cpu_percent": 97.5,
+            "load_rss_bytes": 66289664
+          },
+          {
+            "server_cpu_percent": 86.7,
+            "server_rss_bytes": 36487168,
+            "load_cpu_percent": 99.8,
+            "load_rss_bytes": 66289664
+          }
+        ],
+        "errors": [],
+        "pid": 22627,
+        "exit_code": 0,
+        "raw_output": "{\"protocol\":\"websocket\",\"concurrency\":32,\"payload_bytes\":64,\"inflight_per_connection\":1,\"warmup_seconds\":2,\"requested_seconds\":5,\"elapsed_seconds\":4.999963416,\"offered_messages\":408048,\"completed_messages\":408016,\"messages_per_second\":81603.79707866246,\"errors\":0,\"first_error\":null,\"latency_ms\":{\"p50\":0.3456894200158445,\"p95\":0.684909772315291,\"p99\":0.7972102529217725,\"mean\":0.3903840380842878,\"max\":1.3892909999999574},\"latency_histogram\":\"64 log2 buckets per doubling; reported upper bound, about 1.1% resolution\",\"client\":{\"node\":\"v25.1.0\",\"cpu_user_seconds\":1.872464,\"cpu_system_seconds\":3.064001,\"rss_bytes\":66404352}}\n",
+        "elapsed_wall_seconds": 7.262571583036333,
+        "metrics": {
+          "protocol": "websocket",
+          "concurrency": 32,
+          "payload_bytes": 64,
+          "inflight_per_connection": 1,
+          "warmup_seconds": 2,
+          "requested_seconds": 5,
+          "elapsed_seconds": 4.999963416,
+          "offered_messages": 408048,
+          "completed_messages": 408016,
+          "messages_per_second": 81603.79707866246,
+          "errors": 0,
+          "first_error": null,
+          "latency_ms": {
+            "p50": 0.3456894200158445,
+            "p95": 0.684909772315291,
+            "p99": 0.7972102529217725,
+            "mean": 0.3903840380842878,
+            "max": 1.3892909999999574
+          },
+          "latency_histogram": "64 log2 buckets per doubling; reported upper bound, about 1.1% resolution",
+          "client": {
+            "node": "v25.1.0",
+            "cpu_user_seconds": 1.872464,
+            "cpu_system_seconds": 3.064001,
+            "rss_bytes": 66404352
+          }
+        },
+        "peak_server_rss_bytes": 36519936,
+        "status": "passed"
+      },
+      "server_exit_code": 0,
+      "server_log": "CRAB_SERVER_METADATA {\"source_root\":\"\\/Users\\/daudau\\/Code\\/crabphp\\/framework\\/src\\/Engine\",\"loaded_classes\":{\"Crab\\\\Engine\\\\Runtime\":\"\\/Users\\/daudau\\/Code\\/crabphp\\/framework\\/src\\/Engine\\/Runtime.php\",\"Crab\\\\Engine\\\\Network\\\\Connection\":\"\\/Users\\/daudau\\/Code\\/crabphp\\/framework\\/src\\/Engine\\/Network\\/Connection.php\",\"Crab\\\\Engine\\\\Http\\\\Parser\":\"\\/Users\\/daudau\\/Code\\/crabphp\\/framework\\/src\\/Engine\\/Http\\/Parser.php\",\"Crab\\\\Engine\\\\Http\\\\ResponseEncoder\":\"\\/Users\\/daudau\\/Code\\/crabphp\\/framework\\/src\\/Engine\\/Http\\/ResponseEncoder.php\",\"Crab\\\\Engine\\\\Http\\\\HttpSession\":\"\\/Users\\/daudau\\/Code\\/crabphp\\/framework\\/src\\/Engine\\/Http\\/HttpSession.php\",\"Crab\\\\Engine\\\\Http\\\\Request\":\"\\/Users\\/daudau\\/Code\\/crabphp\\/framework\\/src\\/Engine\\/Http\\/Request.php\",\"Crab\\\\Engine\\\\Http\\\\Response\":\"\\/Users\\/daudau\\/Code\\/crabphp\\/framework\\/src\\/Engine\\/Http\\/Response.php\",\"Crab\\\\Engine\\\\Server\\\\WebSocketServer\":\"\\/Users\\/daudau\\/Code\\/crabphp\\/framework\\/src\\/Engine\\/Server\\/WebSocketServer.php\"},\"http_response\":null,\"driver\":\"Revolt\\\\EventLoop\\\\Driver\\\\StreamSelectDriver\"}\n",
+      "engine_source": {
+        "source_root": "/Users/daudau/Code/crabphp/framework/src/Engine",
+        "loaded_classes": {
+          "Crab\\Engine\\Runtime": "/Users/daudau/Code/crabphp/framework/src/Engine/Runtime.php",
+          "Crab\\Engine\\Network\\Connection": "/Users/daudau/Code/crabphp/framework/src/Engine/Network/Connection.php",
+          "Crab\\Engine\\Http\\Parser": "/Users/daudau/Code/crabphp/framework/src/Engine/Http/Parser.php",
+          "Crab\\Engine\\Http\\ResponseEncoder": "/Users/daudau/Code/crabphp/framework/src/Engine/Http/ResponseEncoder.php",
+          "Crab\\Engine\\Http\\HttpSession": "/Users/daudau/Code/crabphp/framework/src/Engine/Http/HttpSession.php",
+          "Crab\\Engine\\Http\\Request": "/Users/daudau/Code/crabphp/framework/src/Engine/Http/Request.php",
+          "Crab\\Engine\\Http\\Response": "/Users/daudau/Code/crabphp/framework/src/Engine/Http/Response.php",
+          "Crab\\Engine\\Server\\WebSocketServer": "/Users/daudau/Code/crabphp/framework/src/Engine/Server/WebSocketServer.php"
+        },
+        "http_response": null,
+        "driver": "Revolt\\EventLoop\\Driver\\StreamSelectDriver"
+      }
+    },
+    {
+      "protocol": "ws",
+      "concurrency": 32,
+      "payload_bytes": 64,
+      "http_response_mode": null,
+      "trial": 6,
+      "target": "crab-jit",
+      "target_order": [
+        "crab-jit",
+        "crab-before-jit"
+      ],
+      "started_utc": "2026-10-12T10:38:54Z",
+      "server_command": [
+        "php",
+        "-d",
+        "opcache.enable_cli=1",
+        "-d",
+        "opcache.jit=tracing",
+        "-d",
+        "opcache.jit_buffer_size=128M",
+        "/Users/daudau/Code/crabphp/framework/benchmarks/server.php",
+        "--host=127.0.0.1",
+        "--workers=1",
+        "--metadata",
+        "--protocol=ws",
+        "--port=60835"
+      ],
+      "port": 60835,
+      "errors": [],
+      "status": "passed",
+      "server_pid": 22831,
+      "readiness": "TCP readiness; client validates WebSocket handshake and every binary echo.",
+      "measurement": {
+        "command": [
+          "node",
+          "/Users/daudau/Code/crabphp/framework/benchmarks/websocket.mjs",
+          "--port=60835",
+          "--concurrency=32",
+          "--payload=64",
+          "--duration=5",
+          "--warmup=2"
+        ],
+        "timeout_seconds": 22,
+        "timed_out": false,
+        "samples": [
+          {
+            "server_cpu_percent": 8.5,
+            "server_rss_bytes": 34881536,
+            "load_cpu_percent": 0.0,
+            "load_rss_bytes": 1736704
+          },
+          {
+            "server_cpu_percent": 44.8,
+            "server_rss_bytes": 36274176,
+            "load_cpu_percent": 37.7,
+            "load_rss_bytes": 59359232
+          },
+          {
+            "server_cpu_percent": 68.4,
+            "server_rss_bytes": 36274176,
+            "load_cpu_percent": 86.0,
+            "load_rss_bytes": 60653568
+          },
+          {
+            "server_cpu_percent": 79.6,
+            "server_rss_bytes": 36274176,
+            "load_cpu_percent": 94.2,
+            "load_rss_bytes": 60653568
+          },
+          {
+            "server_cpu_percent": 84.7,
+            "server_rss_bytes": 36274176,
+            "load_cpu_percent": 97.6,
+            "load_rss_bytes": 60653568
+          },
+          {
+            "server_cpu_percent": 86.7,
+            "server_rss_bytes": 36274176,
+            "load_cpu_percent": 99.1,
+            "load_rss_bytes": 60653568
+          },
+          {
+            "server_cpu_percent": 86.9,
+            "server_rss_bytes": 36274176,
+            "load_cpu_percent": 97.0,
+            "load_rss_bytes": 60653568
+          },
+          {
+            "server_cpu_percent": 86.3,
+            "server_rss_bytes": 36274176,
+            "load_cpu_percent": 97.3,
+            "load_rss_bytes": 60653568
+          },
+          {
+            "server_cpu_percent": 86.5,
+            "server_rss_bytes": 36274176,
+            "load_cpu_percent": 98.2,
+            "load_rss_bytes": 60653568
+          },
+          {
+            "server_cpu_percent": 87.3,
+            "server_rss_bytes": 36274176,
+            "load_cpu_percent": 97.4,
+            "load_rss_bytes": 60653568
+          },
+          {
+            "server_cpu_percent": 86.3,
+            "server_rss_bytes": 36274176,
+            "load_cpu_percent": 101.0,
+            "load_rss_bytes": 61177856
+          },
+          {
+            "server_cpu_percent": 87.0,
+            "server_rss_bytes": 36274176,
+            "load_cpu_percent": 99.2,
+            "load_rss_bytes": 61177856
+          },
+          {
+            "server_cpu_percent": 87.1,
+            "server_rss_bytes": 36274176,
+            "load_cpu_percent": 98.7,
+            "load_rss_bytes": 61177856
+          },
+          {
+            "server_cpu_percent": 86.8,
+            "server_rss_bytes": 36274176,
+            "load_cpu_percent": 100.2,
+            "load_rss_bytes": 61177856
+          },
+          {
+            "server_cpu_percent": 87.9,
+            "server_rss_bytes": 36274176,
+            "load_cpu_percent": 97.3,
+            "load_rss_bytes": 62750720
+          },
+          {
+            "server_cpu_percent": 89.8,
+            "server_rss_bytes": 36274176,
+            "load_cpu_percent": 98.8,
+            "load_rss_bytes": 65355776
+          },
+          {
+            "server_cpu_percent": 90.2,
+            "server_rss_bytes": 36274176,
+            "load_cpu_percent": 98.0,
+            "load_rss_bytes": 65372160
+          },
+          {
+            "server_cpu_percent": 88.2,
+            "server_rss_bytes": 36274176,
+            "load_cpu_percent": 99.4,
+            "load_rss_bytes": 65372160
+          },
+          {
+            "server_cpu_percent": 88.0,
+            "server_rss_bytes": 36274176,
+            "load_cpu_percent": 98.6,
+            "load_rss_bytes": 65372160
+          },
+          {
+            "server_cpu_percent": 88.2,
+            "server_rss_bytes": 36274176,
+            "load_cpu_percent": 98.1,
+            "load_rss_bytes": 65404928
+          },
+          {
+            "server_cpu_percent": 88.4,
+            "server_rss_bytes": 36274176,
+            "load_cpu_percent": 99.2,
+            "load_rss_bytes": 65404928
+          },
+          {
+            "server_cpu_percent": 88.2,
+            "server_rss_bytes": 36274176,
+            "load_cpu_percent": 99.9,
+            "load_rss_bytes": 65404928
+          },
+          {
+            "server_cpu_percent": 87.7,
+            "server_rss_bytes": 36274176,
+            "load_cpu_percent": 99.3,
+            "load_rss_bytes": 65404928
+          },
+          {
+            "server_cpu_percent": 87.9,
+            "server_rss_bytes": 36274176,
+            "load_cpu_percent": 98.0,
+            "load_rss_bytes": 65404928
+          },
+          {
+            "server_cpu_percent": 87.7,
+            "server_rss_bytes": 36257792,
+            "load_cpu_percent": 97.8,
+            "load_rss_bytes": 65404928
+          },
+          {
+            "server_cpu_percent": 86.8,
+            "server_rss_bytes": 36257792,
+            "load_cpu_percent": 96.5,
+            "load_rss_bytes": 65404928
+          },
+          {
+            "server_cpu_percent": 87.7,
+            "server_rss_bytes": 36257792,
+            "load_cpu_percent": 97.8,
+            "load_rss_bytes": 65404928
+          },
+          {
+            "server_cpu_percent": 87.5,
+            "server_rss_bytes": 36257792,
+            "load_cpu_percent": 98.4,
+            "load_rss_bytes": 65404928
+          },
+          {
+            "server_cpu_percent": 87.9,
+            "server_rss_bytes": 36257792,
+            "load_cpu_percent": 98.5,
+            "load_rss_bytes": 65404928
+          },
+          {
+            "server_cpu_percent": 89.1,
+            "server_rss_bytes": 36257792,
+            "load_cpu_percent": 98.3,
+            "load_rss_bytes": 65404928
+          },
+          {
+            "server_cpu_percent": 88.5,
+            "server_rss_bytes": 36257792,
+            "load_cpu_percent": 99.3,
+            "load_rss_bytes": 65404928
+          },
+          {
+            "server_cpu_percent": 88.5,
+            "server_rss_bytes": 36421632,
+            "load_cpu_percent": 0.0,
+            "load_rss_bytes": 0
+          }
+        ],
+        "errors": [],
+        "pid": 22841,
+        "exit_code": 0,
+        "raw_output": "{\"protocol\":\"websocket\",\"concurrency\":32,\"payload_bytes\":64,\"inflight_per_connection\":1,\"warmup_seconds\":2,\"requested_seconds\":5,\"elapsed_seconds\":5.000006291,\"offered_messages\":409216,\"completed_messages\":409184,\"messages_per_second\":81836.69703306779,\"errors\":0,\"first_error\":null,\"latency_ms\":{\"p50\":0.34946462028149516,\"p95\":0.684909772315291,\"p99\":0.7886119426088657,\"mean\":0.38929227623759033,\"max\":1.6436249999997017},\"latency_histogram\":\"64 log2 buckets per doubling; reported upper bound, about 1.1% resolution\",\"client\":{\"node\":\"v25.1.0\",\"cpu_user_seconds\":1.855982,\"cpu_system_seconds\":3.084612,\"rss_bytes\":65585152}}\n",
+        "elapsed_wall_seconds": 7.295772750163451,
+        "metrics": {
+          "protocol": "websocket",
+          "concurrency": 32,
+          "payload_bytes": 64,
+          "inflight_per_connection": 1,
+          "warmup_seconds": 2,
+          "requested_seconds": 5,
+          "elapsed_seconds": 5.000006291,
+          "offered_messages": 409216,
+          "completed_messages": 409184,
+          "messages_per_second": 81836.69703306779,
+          "errors": 0,
+          "first_error": null,
+          "latency_ms": {
+            "p50": 0.34946462028149516,
+            "p95": 0.684909772315291,
+            "p99": 0.7886119426088657,
+            "mean": 0.38929227623759033,
+            "max": 1.6436249999997017
+          },
+          "latency_histogram": "64 log2 buckets per doubling; reported upper bound, about 1.1% resolution",
+          "client": {
+            "node": "v25.1.0",
+            "cpu_user_seconds": 1.855982,
+            "cpu_system_seconds": 3.084612,
+            "rss_bytes": 65585152
+          }
+        },
+        "peak_server_rss_bytes": 36421632,
+        "status": "passed"
+      },
+      "server_exit_code": 0,
+      "server_log": "CRAB_SERVER_METADATA {\"source_root\":\"\\/Users\\/daudau\\/Code\\/crabphp\\/framework\\/src\\/Engine\",\"loaded_classes\":{\"Crab\\\\Engine\\\\Runtime\":\"\\/Users\\/daudau\\/Code\\/crabphp\\/framework\\/src\\/Engine\\/Runtime.php\",\"Crab\\\\Engine\\\\Network\\\\Connection\":\"\\/Users\\/daudau\\/Code\\/crabphp\\/framework\\/src\\/Engine\\/Network\\/Connection.php\",\"Crab\\\\Engine\\\\Http\\\\Parser\":\"\\/Users\\/daudau\\/Code\\/crabphp\\/framework\\/src\\/Engine\\/Http\\/Parser.php\",\"Crab\\\\Engine\\\\Http\\\\ResponseEncoder\":\"\\/Users\\/daudau\\/Code\\/crabphp\\/framework\\/src\\/Engine\\/Http\\/ResponseEncoder.php\",\"Crab\\\\Engine\\\\Http\\\\HttpSession\":\"\\/Users\\/daudau\\/Code\\/crabphp\\/framework\\/src\\/Engine\\/Http\\/HttpSession.php\",\"Crab\\\\Engine\\\\Http\\\\Request\":\"\\/Users\\/daudau\\/Code\\/crabphp\\/framework\\/src\\/Engine\\/Http\\/Request.php\",\"Crab\\\\Engine\\\\Http\\\\Response\":\"\\/Users\\/daudau\\/Code\\/crabphp\\/framework\\/src\\/Engine\\/Http\\/Response.php\",\"Crab\\\\Engine\\\\Server\\\\WebSocketServer\":\"\\/Users\\/daudau\\/Code\\/crabphp\\/framework\\/src\\/Engine\\/Server\\/WebSocketServer.php\"},\"http_response\":null,\"driver\":\"Revolt\\\\EventLoop\\\\Driver\\\\StreamSelectDriver\"}\n",
+      "engine_source": {
+        "source_root": "/Users/daudau/Code/crabphp/framework/src/Engine",
+        "loaded_classes": {
+          "Crab\\Engine\\Runtime": "/Users/daudau/Code/crabphp/framework/src/Engine/Runtime.php",
+          "Crab\\Engine\\Network\\Connection": "/Users/daudau/Code/crabphp/framework/src/Engine/Network/Connection.php",
+          "Crab\\Engine\\Http\\Parser": "/Users/daudau/Code/crabphp/framework/src/Engine/Http/Parser.php",
+          "Crab\\Engine\\Http\\ResponseEncoder": "/Users/daudau/Code/crabphp/framework/src/Engine/Http/ResponseEncoder.php",
+          "Crab\\Engine\\Http\\HttpSession": "/Users/daudau/Code/crabphp/framework/src/Engine/Http/HttpSession.php",
+          "Crab\\Engine\\Http\\Request": "/Users/daudau/Code/crabphp/framework/src/Engine/Http/Request.php",
+          "Crab\\Engine\\Http\\Response": "/Users/daudau/Code/crabphp/framework/src/Engine/Http/Response.php",
+          "Crab\\Engine\\Server\\WebSocketServer": "/Users/daudau/Code/crabphp/framework/src/Engine/Server/WebSocketServer.php"
+        },
+        "http_response": null,
+        "driver": "Revolt\\EventLoop\\Driver\\StreamSelectDriver"
+      }
+    },
+    {
+      "protocol": "ws",
+      "concurrency": 32,
+      "payload_bytes": 64,
+      "http_response_mode": null,
+      "trial": 6,
+      "target": "crab-before-jit",
+      "target_order": [
+        "crab-jit",
+        "crab-before-jit"
+      ],
+      "started_utc": "2026-10-12T10:39:01Z",
+      "server_command": [
+        "php",
+        "-d",
+        "opcache.enable_cli=1",
+        "-d",
+        "opcache.jit=tracing",
+        "-d",
+        "opcache.jit_buffer_size=128M",
+        "/Users/daudau/Code/crabphp/framework/benchmarks/server.php",
+        "--host=127.0.0.1",
+        "--workers=1",
+        "--metadata",
+        "--source=/private/var/folders/tg/pyt0jkx51cd1_8n1q01dvpjh0000gn/T/crab-ws-engine-fixes-glg33zhq/Engine",
+        "--protocol=ws",
+        "--port=60911"
+      ],
+      "port": 60911,
+      "errors": [],
+      "status": "passed",
+      "server_pid": 22915,
+      "readiness": "TCP readiness; client validates WebSocket handshake and every binary echo.",
+      "measurement": {
+        "command": [
+          "node",
+          "/Users/daudau/Code/crabphp/framework/benchmarks/websocket.mjs",
+          "--port=60911",
+          "--concurrency=32",
+          "--payload=64",
+          "--duration=5",
+          "--warmup=2"
+        ],
+        "timeout_seconds": 22,
+        "timed_out": false,
+        "samples": [
+          {
+            "server_cpu_percent": 18.7,
+            "server_rss_bytes": 34619392,
+            "load_cpu_percent": 0.0,
+            "load_rss_bytes": 1228800
+          },
+          {
+            "server_cpu_percent": 48.3,
+            "server_rss_bytes": 35995648,
+            "load_cpu_percent": 43.8,
+            "load_rss_bytes": 60768256
+          },
+          {
+            "server_cpu_percent": 70.3,
+            "server_rss_bytes": 35995648,
+            "load_cpu_percent": 86.9,
+            "load_rss_bytes": 62046208
+          },
+          {
+            "server_cpu_percent": 80.7,
+            "server_rss_bytes": 35995648,
+            "load_cpu_percent": 93.7,
+            "load_rss_bytes": 62046208
+          },
+          {
+            "server_cpu_percent": 83.5,
+            "server_rss_bytes": 35995648,
+            "load_cpu_percent": 95.4,
+            "load_rss_bytes": 62046208
+          },
+          {
+            "server_cpu_percent": 87.0,
+            "server_rss_bytes": 35995648,
+            "load_cpu_percent": 98.0,
+            "load_rss_bytes": 62046208
+          },
+          {
+            "server_cpu_percent": 86.8,
+            "server_rss_bytes": 35995648,
+            "load_cpu_percent": 98.2,
+            "load_rss_bytes": 62046208
+          },
+          {
+            "server_cpu_percent": 87.8,
+            "server_rss_bytes": 35995648,
+            "load_cpu_percent": 98.3,
+            "load_rss_bytes": 62046208
+          },
+          {
+            "server_cpu_percent": 87.5,
+            "server_rss_bytes": 35995648,
+            "load_cpu_percent": 100.3,
+            "load_rss_bytes": 62046208
+          },
+          {
+            "server_cpu_percent": 88.7,
+            "server_rss_bytes": 35995648,
+            "load_cpu_percent": 98.8,
+            "load_rss_bytes": 62046208
+          },
+          {
+            "server_cpu_percent": 87.4,
+            "server_rss_bytes": 35995648,
+            "load_cpu_percent": 98.6,
+            "load_rss_bytes": 62324736
+          },
+          {
+            "server_cpu_percent": 87.3,
+            "server_rss_bytes": 35995648,
+            "load_cpu_percent": 100.6,
+            "load_rss_bytes": 62341120
+          },
+          {
+            "server_cpu_percent": 86.8,
+            "server_rss_bytes": 35995648,
+            "load_cpu_percent": 101.0,
+            "load_rss_bytes": 62341120
+          },
+          {
+            "server_cpu_percent": 87.5,
+            "server_rss_bytes": 35995648,
+            "load_cpu_percent": 97.9,
+            "load_rss_bytes": 62341120
+          },
+          {
+            "server_cpu_percent": 87.3,
+            "server_rss_bytes": 35995648,
+            "load_cpu_percent": 98.1,
+            "load_rss_bytes": 66584576
+          },
+          {
+            "server_cpu_percent": 87.7,
+            "server_rss_bytes": 35995648,
+            "load_cpu_percent": 100.0,
+            "load_rss_bytes": 66600960
+          },
+          {
+            "server_cpu_percent": 88.1,
+            "server_rss_bytes": 35995648,
+            "load_cpu_percent": 97.9,
+            "load_rss_bytes": 66617344
+          },
+          {
+            "server_cpu_percent": 89.9,
+            "server_rss_bytes": 35995648,
+            "load_cpu_percent": 98.3,
+            "load_rss_bytes": 66666496
+          },
+          {
+            "server_cpu_percent": 88.0,
+            "server_rss_bytes": 35995648,
+            "load_cpu_percent": 99.8,
+            "load_rss_bytes": 66666496
+          },
+          {
+            "server_cpu_percent": 88.2,
+            "server_rss_bytes": 35995648,
+            "load_cpu_percent": 98.6,
+            "load_rss_bytes": 66666496
+          },
+          {
+            "server_cpu_percent": 87.6,
+            "server_rss_bytes": 35995648,
+            "load_cpu_percent": 98.4,
+            "load_rss_bytes": 66666496
+          },
+          {
+            "server_cpu_percent": 87.6,
+            "server_rss_bytes": 35995648,
+            "load_cpu_percent": 99.8,
+            "load_rss_bytes": 66666496
+          },
+          {
+            "server_cpu_percent": 88.3,
+            "server_rss_bytes": 35995648,
+            "load_cpu_percent": 98.1,
+            "load_rss_bytes": 66666496
+          },
+          {
+            "server_cpu_percent": 89.1,
+            "server_rss_bytes": 35979264,
+            "load_cpu_percent": 98.2,
+            "load_rss_bytes": 66666496
+          },
+          {
+            "server_cpu_percent": 87.8,
+            "server_rss_bytes": 35979264,
+            "load_cpu_percent": 97.8,
+            "load_rss_bytes": 66666496
+          },
+          {
+            "server_cpu_percent": 87.6,
+            "server_rss_bytes": 35979264,
+            "load_cpu_percent": 98.2,
+            "load_rss_bytes": 66666496
+          },
+          {
+            "server_cpu_percent": 87.5,
+            "server_rss_bytes": 35979264,
+            "load_cpu_percent": 99.5,
+            "load_rss_bytes": 66666496
+          },
+          {
+            "server_cpu_percent": 87.3,
+            "server_rss_bytes": 35979264,
+            "load_cpu_percent": 98.4,
+            "load_rss_bytes": 66666496
+          },
+          {
+            "server_cpu_percent": 87.6,
+            "server_rss_bytes": 35979264,
+            "load_cpu_percent": 98.0,
+            "load_rss_bytes": 66666496
+          },
+          {
+            "server_cpu_percent": 87.6,
+            "server_rss_bytes": 35979264,
+            "load_cpu_percent": 97.6,
+            "load_rss_bytes": 66666496
+          },
+          {
+            "server_cpu_percent": 88.2,
+            "server_rss_bytes": 35979264,
+            "load_cpu_percent": 99.7,
+            "load_rss_bytes": 66666496
+          },
+          {
+            "server_cpu_percent": 89.8,
+            "server_rss_bytes": 35979264,
+            "load_cpu_percent": 97.7,
+            "load_rss_bytes": 66666496
+          }
+        ],
+        "errors": [],
+        "pid": 22925,
+        "exit_code": 0,
+        "raw_output": "{\"protocol\":\"websocket\",\"concurrency\":32,\"payload_bytes\":64,\"inflight_per_connection\":1,\"warmup_seconds\":2,\"requested_seconds\":5,\"elapsed_seconds\":5.000057541,\"offered_messages\":418544,\"completed_messages\":418512,\"messages_per_second\":83701.43674712563,\"errors\":0,\"first_error\":null,\"latency_ms\":{\"p50\":0.3382605806488938,\"p95\":0.6702121403006793,\"p99\":0.7716921869278325,\"mean\":0.38055788028299947,\"max\":2.2477499999999964},\"latency_histogram\":\"64 log2 buckets per doubling; reported upper bound, about 1.1% resolution\",\"client\":{\"node\":\"v25.1.0\",\"cpu_user_seconds\":1.855826,\"cpu_system_seconds\":3.094386,\"rss_bytes\":66961408}}\n",
+        "elapsed_wall_seconds": 7.251667625037953,
+        "metrics": {
+          "protocol": "websocket",
+          "concurrency": 32,
+          "payload_bytes": 64,
+          "inflight_per_connection": 1,
+          "warmup_seconds": 2,
+          "requested_seconds": 5,
+          "elapsed_seconds": 5.000057541,
+          "offered_messages": 418544,
+          "completed_messages": 418512,
+          "messages_per_second": 83701.43674712563,
+          "errors": 0,
+          "first_error": null,
+          "latency_ms": {
+            "p50": 0.3382605806488938,
+            "p95": 0.6702121403006793,
+            "p99": 0.7716921869278325,
+            "mean": 0.38055788028299947,
+            "max": 2.2477499999999964
+          },
+          "latency_histogram": "64 log2 buckets per doubling; reported upper bound, about 1.1% resolution",
+          "client": {
+            "node": "v25.1.0",
+            "cpu_user_seconds": 1.855826,
+            "cpu_system_seconds": 3.094386,
+            "rss_bytes": 66961408
+          }
+        },
+        "peak_server_rss_bytes": 35995648,
+        "status": "passed"
+      },
+      "server_exit_code": 0,
+      "server_log": "CRAB_SERVER_METADATA {\"source_root\":\"\\/private\\/var\\/folders\\/tg\\/pyt0jkx51cd1_8n1q01dvpjh0000gn\\/T\\/crab-ws-engine-fixes-glg33zhq\\/Engine\",\"loaded_classes\":{\"Crab\\\\Engine\\\\Runtime\":\"\\/private\\/var\\/folders\\/tg\\/pyt0jkx51cd1_8n1q01dvpjh0000gn\\/T\\/crab-ws-engine-fixes-glg33zhq\\/Engine\\/Runtime.php\",\"Crab\\\\Engine\\\\Network\\\\Connection\":\"\\/private\\/var\\/folders\\/tg\\/pyt0jkx51cd1_8n1q01dvpjh0000gn\\/T\\/crab-ws-engine-fixes-glg33zhq\\/Engine\\/Network\\/Connection.php\",\"Crab\\\\Engine\\\\Http\\\\Parser\":\"\\/private\\/var\\/folders\\/tg\\/pyt0jkx51cd1_8n1q01dvpjh0000gn\\/T\\/crab-ws-engine-fixes-glg33zhq\\/Engine\\/Http\\/Parser.php\",\"Crab\\\\Engine\\\\Http\\\\ResponseEncoder\":\"\\/private\\/var\\/folders\\/tg\\/pyt0jkx51cd1_8n1q01dvpjh0000gn\\/T\\/crab-ws-engine-fixes-glg33zhq\\/Engine\\/Http\\/ResponseEncoder.php\",\"Crab\\\\Engine\\\\Http\\\\HttpSession\":\"\\/private\\/var\\/folders\\/tg\\/pyt0jkx51cd1_8n1q01dvpjh0000gn\\/T\\/crab-ws-engine-fixes-glg33zhq\\/Engine\\/Http\\/HttpSession.php\",\"Crab\\\\Engine\\\\Http\\\\Request\":\"\\/private\\/var\\/folders\\/tg\\/pyt0jkx51cd1_8n1q01dvpjh0000gn\\/T\\/crab-ws-engine-fixes-glg33zhq\\/Engine\\/Http\\/Request.php\",\"Crab\\\\Engine\\\\Http\\\\Response\":\"\\/private\\/var\\/folders\\/tg\\/pyt0jkx51cd1_8n1q01dvpjh0000gn\\/T\\/crab-ws-engine-fixes-glg33zhq\\/Engine\\/Http\\/Response.php\",\"Crab\\\\Engine\\\\Server\\\\WebSocketServer\":\"\\/private\\/var\\/folders\\/tg\\/pyt0jkx51cd1_8n1q01dvpjh0000gn\\/T\\/crab-ws-engine-fixes-glg33zhq\\/Engine\\/Server\\/WebSocketServer.php\"},\"http_response\":null,\"driver\":\"Revolt\\\\EventLoop\\\\Driver\\\\StreamSelectDriver\"}\n",
+      "engine_source": {
+        "source_root": "/private/var/folders/tg/pyt0jkx51cd1_8n1q01dvpjh0000gn/T/crab-ws-engine-fixes-glg33zhq/Engine",
+        "loaded_classes": {
+          "Crab\\Engine\\Runtime": "/private/var/folders/tg/pyt0jkx51cd1_8n1q01dvpjh0000gn/T/crab-ws-engine-fixes-glg33zhq/Engine/Runtime.php",
+          "Crab\\Engine\\Network\\Connection": "/private/var/folders/tg/pyt0jkx51cd1_8n1q01dvpjh0000gn/T/crab-ws-engine-fixes-glg33zhq/Engine/Network/Connection.php",
+          "Crab\\Engine\\Http\\Parser": "/private/var/folders/tg/pyt0jkx51cd1_8n1q01dvpjh0000gn/T/crab-ws-engine-fixes-glg33zhq/Engine/Http/Parser.php",
+          "Crab\\Engine\\Http\\ResponseEncoder": "/private/var/folders/tg/pyt0jkx51cd1_8n1q01dvpjh0000gn/T/crab-ws-engine-fixes-glg33zhq/Engine/Http/ResponseEncoder.php",
+          "Crab\\Engine\\Http\\HttpSession": "/private/var/folders/tg/pyt0jkx51cd1_8n1q01dvpjh0000gn/T/crab-ws-engine-fixes-glg33zhq/Engine/Http/HttpSession.php",
+          "Crab\\Engine\\Http\\Request": "/private/var/folders/tg/pyt0jkx51cd1_8n1q01dvpjh0000gn/T/crab-ws-engine-fixes-glg33zhq/Engine/Http/Request.php",
+          "Crab\\Engine\\Http\\Response": "/private/var/folders/tg/pyt0jkx51cd1_8n1q01dvpjh0000gn/T/crab-ws-engine-fixes-glg33zhq/Engine/Http/Response.php",
+          "Crab\\Engine\\Server\\WebSocketServer": "/private/var/folders/tg/pyt0jkx51cd1_8n1q01dvpjh0000gn/T/crab-ws-engine-fixes-glg33zhq/Engine/Server/WebSocketServer.php"
+        },
+        "http_response": null,
+        "driver": "Revolt\\EventLoop\\Driver\\StreamSelectDriver"
+      }
+    }
+  ],
+  "source_sha256_after": {
+    "benchmarks/baselines/bun.ts": "22c72a4fe8af25a34c8d801de4e504c7718576f1b367cab7a68b0211dd05655f",
+    "benchmarks/baselines/php.php": "94e1c6b02cf0171d857cbb8a82de6dd4e5b578e557abfe2c0ff301810038839b",
+    "benchmarks/baselines/verify.py": "eb138816e126a36f2ace8daeeace7ef954a98800a43ab9c32f2c160813f056ee",
+    "benchmarks/compare.py": "2fe9ec96f11195bcf24e4468389e9d101eafd714abc05379314d4c65e1d20f2a",
+    "benchmarks/elysia/bun.lock": "f6f62efc8a645c8cf2c465d0d3be337c0e7edd8b31778c918c8a2393d787c987",
+    "benchmarks/elysia/package.json": "0398a8051e1cb8581ad4cfc7de0c118bec6defdf4e678edc12d5f9122921f0d3",
+    "benchmarks/elysia/server.ts": "4a2e96009030a8265c525bff2c62e20b4c8b08c146d7388d2fbd93c888c0250a",
+    "benchmarks/http.py": "b63721769c88294579eb9a6aba2025637f8728704a676c859a7a9ae4989bea14",
+    "benchmarks/server.php": "367a55b742c3ac2aada0e2c05edf65b8e661abda046725a99ad88ca8cb0b7e75",
+    "benchmarks/websocket.mjs": "789c5bc4ccb7f380c0b7043aa4528b1dee34ac6868bd079dfe4f6f7ff4bfc784",
+    "composer.json": "392675d44595eeae0cb601b142f368cd57b7304fd11422852be4bc9c1f944863",
+    "composer.lock": "75f7e7a2fbc2114cafe39df1f94d5812567d39e59e7704bdc29ede78df97bec2",
+    "src/Engine/Async/Async.php": "bde793249d2dbda77d68aa844ae6c054655e1d1cf85e03fa7898c17684257132",
+    "src/Engine/Async/Cancellation.php": "4ca203a17bbbe1956cacf7d0cbe4fe15e2fc7497bb009f2d5df0e43b1249d1f8",
+    "src/Engine/Async/CancelledException.php": "8204c5462beef2fe1ac613d07a9aa4d85a4ea894956cc67bc6b839607413a44b",
+    "src/Engine/Async/ConnectionStream.php": "34b6ebaa0a25b909c1466573d151281e6ee69acc922cc5640c86bf4c1e3c7c2d",
+    "src/Engine/Async/Pool.php": "57b9761d799aaa28e8aebd64d97c259f62ef85e7a5b9457c87265e22d14d02f8",
+    "src/Engine/Async/PoolExhaustedException.php": "c2dde9344e17ceecd7fb43727e35870f27d7d00c3e0e76dda74e7141de38494f",
+    "src/Engine/Async/Task.php": "4eaf75a134598e78ebe07364b2c3e03f0bf6dcba0127aa823c4d2b0069025ccf",
+    "src/Engine/EventLoop/RevoltEventLoop.php": "ebae6ee71a38e60dcef37e1d93fd668b5d2748f068f787a4401192c1938430c7",
+    "src/Engine/EventLoop/RevoltSuspension.php": "e44f2c8d8f4448fa62e7dea32a3e7f83f418671dab6fec84e949121c6cc91e87",
+    "src/Engine/EventLoop.php": "8dd87c16c673a1aeb3c91406e9e911d0dd84589bf55d44dbf02d593439e17b14",
+    "src/Engine/FailureReporter.php": "68fe8bfe2343493ce95335384b40f6f39a7d7d19d5eb9a40408f262df199e43f",
+    "src/Engine/Http/Body.php": "1c2bc45522693728152210bf7427715e704db9ff66d8360b5e7709c5a37a5da1",
+    "src/Engine/Http/HttpException.php": "937fe56951a46f213f339ca207bb22a8706c34cf93186ed6e2b04936fa568ddc",
+    "src/Engine/Http/HttpSession.php": "6cab584ad60418a880139a7b507f92e7141787ae474264db139f1d5dca762952",
+    "src/Engine/Http/Parser.php": "f816581daec24621dac1076cc5325cfa7201d33cbf08ec3add3ec9889a394d66",
+    "src/Engine/Http/Request.php": "c358b610cc6a5f5e24849b6597a289a1989adf67d12e839de9e9ced2fa89be25",
+    "src/Engine/Http/Response.php": "236f5dfe7c5603782eb057f8da42adb3d41ef99c1d1b26d45b2bd0bce9429b83",
+    "src/Engine/Http/ResponseEncoder.php": "69807653d6dac3705792608e85d01d9963cabbe8cf362d1a544028327cddd24d",
+    "src/Engine/Http/Upgrade.php": "b41c4a9cdc5b19b07287ec5fb39351a2355e88705e287878a2d4423efebf2dd8",
+    "src/Engine/Network/Connection.php": "849704b5e7901c39a164f7fe40ebb356afac4a3fceb0b7d0a7b1f26f30b1cfc7",
+    "src/Engine/Network/Connector.php": "aa0dfc95adab66d3ac506cb0c1435cb2f4b119b4ca6a159c571be7ad036b4b53",
+    "src/Engine/Network/DnsResolver.php": "39f20a87f67bb8a1b8599b83bf5d38819aedb37982c06572cef519171b696c83",
+    "src/Engine/Network/Listener.php": "723f8ee77a84898520e9ea450c9d4648f49c6d27d86b3aad6be072c6b6ecc44d",
+    "src/Engine/Network/UdpEndpoint.php": "5ad1621dbee4dd146d00ca63bfd17649da203ad589b016d2c5386066b9f7fe97",
+    "src/Engine/Network/WriteResult.php": "0ba70bbf7825fff54a10b5cab9c397127bb76ec6cedcccd13207175daef4e4db",
+    "src/Engine/Process/Daemon.php": "5cd178622eda5702b1dd93aae92dde7ff26bfe612d3266cb7e3c6a0ef0aed4d4",
+    "src/Engine/Process/FileWatcher.php": "cade6787549d08d1ac02863b08ec37f62c784911889df5f5261ac600dab8706d",
+    "src/Engine/Process/Generation.php": "e1700a0ba0d175a9dd25cdb2b3220637a6f29c6c4c6f8b30e89695e83d6ccb63",
+    "src/Engine/Process/Keeper.php": "86a7101f807788b7f0883a247928452848a17575ebc80dd101cb6e0208653535",
+    "src/Engine/Process/PidFile.php": "a04d103c5956c4ee8f3bd567f020fa377a820e5a3e92623a3fbe6de168fb54f2",
+    "src/Engine/Process/Supervisor.php": "b34a4f878449d8454d12cc9c00767039ddf4dc4ed365827290d4c3fd56ef5a98",
+    "src/Engine/Process/Worker.php": "1b12534c0953310f65d619f48915837ab658dc5f64d7c9ede6abee3429477f92",
+    "src/Engine/Runtime.php": "8ab7af3b10187fa5d8ffd052484a4807eff9cb1494fc5fa3fa8343490317e27e",
+    "src/Engine/Server/HttpServer.php": "03b6f676e4bb1071b02b1f896672a021723b324c43065e9cf7bd486a814cd140",
+    "src/Engine/Server/TcpServer.php": "e057200b16a002b991c5da12f6bec519f4d6174ddc5862b92d3f3d4de02b65af",
+    "src/Engine/Server/UdpServer.php": "a372e5daa02c28c42563923678891f66a9443851c3c627c3d4a8aca4289a36eb",
+    "src/Engine/Server/WebSocketServer.php": "dae6d72fe217d2acb2baa6e80d3b6adf3674124de3c6623a541aa6b752f85353",
+    "src/Engine/Suspension.php": "1c0c69f6ede57d2ccc1ce172adde1a9dd811439c8933f0e8666d64b457db9744",
+    "src/Engine/WebSocket/Config.php": "32c579c7e4591964c5b9183060fdf8ae8580a131599928fcaf85c4da54eb267a",
+    "src/Engine/WebSocket/Handshake.php": "c4f8a3d2e3e1d9538f1b5348f85292ead6889ef507f14ef8d0d4fd648028ea06",
+    "src/Engine/WebSocket/MessageType.php": "7175e1c67355c289ced159167d5b8e3f5971922a3c05664763c6b0f33e548706",
+    "src/Engine/WebSocket/WebSocketSession.php": "8aa36ced84c39af1fd34d08de3bd33b22fe06043aa6536ab809f2af5f13d9128",
+    "src/Engine/WorkerGroup.php": "261c1c205c71d5b4e4c9f534ba7d7f3f25e6122c779677f2eebbd01ba78bdf9a"
+  },
+  "source_hash_changes": [],
+  "baseline_source_sha256_after": {
+    "src/Async/Async.php": "bde793249d2dbda77d68aa844ae6c054655e1d1cf85e03fa7898c17684257132",
+    "src/Async/Cancellation.php": "4ca203a17bbbe1956cacf7d0cbe4fe15e2fc7497bb009f2d5df0e43b1249d1f8",
+    "src/Async/CancelledException.php": "8204c5462beef2fe1ac613d07a9aa4d85a4ea894956cc67bc6b839607413a44b",
+    "src/Async/ConnectionStream.php": "34b6ebaa0a25b909c1466573d151281e6ee69acc922cc5640c86bf4c1e3c7c2d",
+    "src/Async/Pool.php": "57b9761d799aaa28e8aebd64d97c259f62ef85e7a5b9457c87265e22d14d02f8",
+    "src/Async/PoolExhaustedException.php": "c2dde9344e17ceecd7fb43727e35870f27d7d00c3e0e76dda74e7141de38494f",
+    "src/Async/Task.php": "4eaf75a134598e78ebe07364b2c3e03f0bf6dcba0127aa823c4d2b0069025ccf",
+    "src/EventLoop/RevoltEventLoop.php": "ebae6ee71a38e60dcef37e1d93fd668b5d2748f068f787a4401192c1938430c7",
+    "src/EventLoop/RevoltSuspension.php": "e44f2c8d8f4448fa62e7dea32a3e7f83f418671dab6fec84e949121c6cc91e87",
+    "src/EventLoop.php": "8dd87c16c673a1aeb3c91406e9e911d0dd84589bf55d44dbf02d593439e17b14",
+    "src/FailureReporter.php": "68fe8bfe2343493ce95335384b40f6f39a7d7d19d5eb9a40408f262df199e43f",
+    "src/Http/Body.php": "1c2bc45522693728152210bf7427715e704db9ff66d8360b5e7709c5a37a5da1",
+    "src/Http/HttpException.php": "937fe56951a46f213f339ca207bb22a8706c34cf93186ed6e2b04936fa568ddc",
+    "src/Http/HttpSession.php": "6cab584ad60418a880139a7b507f92e7141787ae474264db139f1d5dca762952",
+    "src/Http/Parser.php": "f816581daec24621dac1076cc5325cfa7201d33cbf08ec3add3ec9889a394d66",
+    "src/Http/Request.php": "c358b610cc6a5f5e24849b6597a289a1989adf67d12e839de9e9ced2fa89be25",
+    "src/Http/Response.php": "236f5dfe7c5603782eb057f8da42adb3d41ef99c1d1b26d45b2bd0bce9429b83",
+    "src/Http/ResponseEncoder.php": "69807653d6dac3705792608e85d01d9963cabbe8cf362d1a544028327cddd24d",
+    "src/Http/Upgrade.php": "b41c4a9cdc5b19b07287ec5fb39351a2355e88705e287878a2d4423efebf2dd8",
+    "src/Network/Connection.php": "a7a20e1d1e83392cff435d7a6ba8b9438715eaa6314f76b05e029748064e707b",
+    "src/Network/Connector.php": "aa0dfc95adab66d3ac506cb0c1435cb2f4b119b4ca6a159c571be7ad036b4b53",
+    "src/Network/DnsResolver.php": "39f20a87f67bb8a1b8599b83bf5d38819aedb37982c06572cef519171b696c83",
+    "src/Network/Listener.php": "723f8ee77a84898520e9ea450c9d4648f49c6d27d86b3aad6be072c6b6ecc44d",
+    "src/Network/UdpEndpoint.php": "5ad1621dbee4dd146d00ca63bfd17649da203ad589b016d2c5386066b9f7fe97",
+    "src/Network/WriteResult.php": "0ba70bbf7825fff54a10b5cab9c397127bb76ec6cedcccd13207175daef4e4db",
+    "src/Process/Daemon.php": "5cd178622eda5702b1dd93aae92dde7ff26bfe612d3266cb7e3c6a0ef0aed4d4",
+    "src/Process/FileWatcher.php": "cade6787549d08d1ac02863b08ec37f62c784911889df5f5261ac600dab8706d",
+    "src/Process/Generation.php": "e1700a0ba0d175a9dd25cdb2b3220637a6f29c6c4c6f8b30e89695e83d6ccb63",
+    "src/Process/Keeper.php": "86a7101f807788b7f0883a247928452848a17575ebc80dd101cb6e0208653535",
+    "src/Process/PidFile.php": "a04d103c5956c4ee8f3bd567f020fa377a820e5a3e92623a3fbe6de168fb54f2",
+    "src/Process/Supervisor.php": "b34a4f878449d8454d12cc9c00767039ddf4dc4ed365827290d4c3fd56ef5a98",
+    "src/Process/Worker.php": "1b12534c0953310f65d619f48915837ab658dc5f64d7c9ede6abee3429477f92",
+    "src/Runtime.php": "8ab7af3b10187fa5d8ffd052484a4807eff9cb1494fc5fa3fa8343490317e27e",
+    "src/Server/HttpServer.php": "03b6f676e4bb1071b02b1f896672a021723b324c43065e9cf7bd486a814cd140",
+    "src/Server/TcpServer.php": "e057200b16a002b991c5da12f6bec519f4d6174ddc5862b92d3f3d4de02b65af",
+    "src/Server/UdpServer.php": "a372e5daa02c28c42563923678891f66a9443851c3c627c3d4a8aca4289a36eb",
+    "src/Server/WebSocketServer.php": "dae6d72fe217d2acb2baa6e80d3b6adf3674124de3c6623a541aa6b752f85353",
+    "src/Suspension.php": "1c0c69f6ede57d2ccc1ce172adde1a9dd811439c8933f0e8666d64b457db9744",
+    "src/WebSocket/Config.php": "d5565ace75a380486a1a65ef54bd8c4b4ff8a022ff3504450e36221ddba3b96e",
+    "src/WebSocket/Handshake.php": "c4f8a3d2e3e1d9538f1b5348f85292ead6889ef507f14ef8d0d4fd648028ea06",
+    "src/WebSocket/MessageType.php": "7175e1c67355c289ced159167d5b8e3f5971922a3c05664763c6b0f33e548706",
+    "src/WebSocket/WebSocketSession.php": "1812398c493fee318ebf56f194e8de8236c4348a6dc7358ced8729bcf8af6019",
+    "src/WorkerGroup.php": "261c1c205c71d5b4e4c9f534ba7d7f3f25e6122c779677f2eebbd01ba78bdf9a"
+  },
+  "baseline_source_hash_changes": [],
+  "finished_utc": "2026-10-12T10:39:09Z"
+}

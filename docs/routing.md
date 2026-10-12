@@ -6,6 +6,7 @@
     - [Constraining a parameter](#constraining-a-parameter)
 - [Route groups](#route-groups)
 - [Middleware on a route](#middleware-on-a-route)
+- [Socket routes](#socket-routes)
 - [When no route matches](#when-no-route-matches)
 - [Listing routes](#listing-routes)
 - [Several route files](#several-route-files)
@@ -95,7 +96,19 @@ Route::get('/me', [UserController::class, 'me'], middleware: [TokenAuth::class])
 Route::post('/reports', CreateReport::class, middleware: [TokenAuth::class, new RequireRole('analyst')]);
 ```
 
-Give a class name, or an object when the middleware takes options. For `TokenAuth`, register the providers in [Authentication](authentication.md#installation); see [Middleware](middleware.md#around-some-routes).
+Give a class name, or an object when the middleware takes options. For `TokenAuth`, add `TokenAuthProvider` as shown in [Authentication](authentication.md#installation); see [Middleware](middleware.md#around-some-routes).
+
+## Socket routes
+
+A socket action keeps a connection open, with the same groups and middleware as an HTTP route:
+
+```php
+use App\Actions\WatchOrder;
+
+Route::websocket('/orders/{id}/live', WatchOrder::class, middleware: [TokenAuth::class]);
+```
+
+The action declares `handle(Socket $socket, int $id, ...)`. The action starts inside the HTTP pipeline. Its first socket use offers the upgrade to middleware, and it continues after the wire 101. Checks before that use can still answer HTTP errors. `route:list` lists it as `WS`. See [WebSockets](websockets.md) for sending, receiving, authentication and testing.
 
 ## When no route matches
 

@@ -94,12 +94,10 @@ Configuration is fixed once the application is defined. Do not change it at run 
 // app.php
 use App\Providers\AppProvider;
 use Crab\App;
-use Crab\Database\DatabaseProvider;
 use Crab\Http\Cors;
 
 return App::configure(__DIR__)
     ->withProviders([
-        DatabaseProvider::class,
         AppProvider::class,
     ])
     ->withMiddleware(prepend: [new Cors(['https://app.example.com'])])
@@ -113,7 +111,7 @@ return App::configure(__DIR__)
 
 Every step is optional and they may come in any order. Nothing happens until `create()`, which loads the environment, then the configuration, makes the application, registers the providers and the middleware, and then includes the route and command files.
 
-`App::configure(__DIR__)` begins the chain with two steps on your behalf, `withEnv('.env')` and `withConfig('config', required: false)`. Call either yourself to name another file or folder:
+`App::configure(__DIR__)` begins the chain with two steps on your behalf, `withEnv('.env')` and `withConfig('config', required: false)`. The framework providers are also registered by default. Call either file step yourself to name another file or folder:
 
 ```php
 use Crab\App;
@@ -126,7 +124,24 @@ return App::configure(__DIR__)
 
 ### Providers
 
-`withProviders()` takes providers one by one or as a list, by class name or as objects. They are registered in the order given, which matters when one adds to what another binds: `ScheduleProvider` comes before the provider that declares your tasks. See [Services and providers](providers.md).
+`App::configure()` starts with the framework's providers, `App::PROVIDERS`, in this order: `DatabaseProvider`, `AuthProvider`, `CacheProvider`, `EventsProvider`, `QueueProvider`, `ScheduleProvider`, `HttpClientProvider`, `BroadcastProvider`. Add your own and your packages' providers with `withProviders()`, as one provider or a list, by class name or as objects. They come after the framework's, in the order given, so a provider that listens to events or adds scheduled tasks finds them already bound.
+
+To leave out a framework provider or replace the framework's list, use one of these two forms:
+
+```php
+// app.php — choose one
+use App\Providers\AppProvider;
+use Crab\Schedule\ScheduleProvider;
+
+->withProviders(remove: [ScheduleProvider::class])          // without one of the framework's
+->withProviders(only: [AppProvider::class])                 // these in place of the framework's
+```
+
+`remove:` accepts only classes in `App::PROVIDERS` and names the list when you give another. `only: []` leaves out all framework providers. `only:` and `remove:` cannot be combined, even across calls. Providers given as the first argument are still added after the replacement list. Calling `withProviders()` again adds providers; another `only:` replaces the previous replacement.
+
+A framework provider named again, by class or as an object, is registered once at its first place. `TokenAuthProvider` and every package, including `crabphp/redis` and `crabphp/clockwerk`, stay opt-in. Nothing is found by convention. `new App()` used directly registers no providers.
+
+See [Services and providers](providers.md).
 
 ### Middleware
 
@@ -155,16 +170,19 @@ It says that this worker answers, and asks nothing of the database. That is deli
 | --- | --- | --- |
 | `app.name` | none | Shown above the command list and when the server starts |
 | `app.debug` | `false` | Show a failure's details to the client. Never in production. |
+| `auth.ticket_ttl` | `30` | Positive whole seconds a single-use browser socket ticket lives; see [Authentication](authentication.md#browser-socket-tickets) |
 | `log.path` | `php://stderr` | Where the log is written; see [Logging](logging.md) |
 | `log.level` | `debug` | The least severe level written |
 | `server.address` | `tcp://127.0.0.1:8080` | Where the server listens |
 | `server.workers` | `1` | Worker processes |
 | `server.with` | `[]` | The servers `serve` runs beside HTTP, each id with whether it is on: `['queue' => env('SERVER_QUEUE', false)]`. A plain list of ids, or ids with commas between, also works |
 | `server.watch` | `app`, `app.php`, `config`, `routes`, `.env` | What `serve` watches; `false` to watch nothing |
+| `server.max_connections` | `512` | Total HTTP and upgraded connections per worker; at most `900` on the select backend |
+| `server.loop` | `select` | `select`, `ev`, `uv` or `event`; a native backend needs its PHP extension |
 | `server.max_body` | `1048576` | The largest request body taken, in bytes |
 | `server.body_timeout` | `30` | Seconds a client has to send a body |
 | `server.drain` | `5.0` | Seconds an HTTP worker has to finish in-flight requests on stop, reload or restart; unfinished requests at the limit are cut and counted in one warning per worker. Idle keep-alive connections do not count. Must be a finite number greater than zero |
 | `server.pid` | `storage/crab.pid` | The process id of a server in the background |
 | `server.log` | `storage/logs/server.log` | What a server in the background prints |
 
-Each component lists its own settings on its page.
+Each component lists its own settings on its page. [Broadcasting](broadcasting.md#configuration) lists `broadcast.carrier` and channel limits; choose Redis when multiple processes send updates. [WebSockets](websockets.md#configuration) lists the socket limits; when socket routes are declared, `websocket.max_connections` must not exceed `server.max_connections`.

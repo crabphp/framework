@@ -71,6 +71,101 @@ final class CacheTest extends TestCase
     }
 
     #[DataProvider('stores')]
+    public function testAValueCanBeTakenOnlyOnceAndExpiredValuesAreNeverReturned(string $kind): void
+    {
+        $cache = $this->cache($kind);
+        foreach ([false, 0, '', null, ['raw' => "\0\xff", 'id' => 7]] as $value) {
+            $cache->set('once', $value);
+            self::assertSame($value, $cache->take('once', 'missing'));
+            self::assertSame('missing', $cache->take('once', 'missing'));
+            self::assertFalse($cache->has('once'));
+        }
+        $cache->set('expired', 'old', 30);
+        $cache->set('live', 'new', 31);
+        $this->clock->advance('+30 seconds');
+        self::assertNull($cache->take('expired'));
+        self::assertSame('new', $cache->take('live'));
+        self::assertTrue($cache->add('expired', 'replacement', 30));
+        self::assertSame('replacement', $cache->take('expired'));
+    }
+
+    #[DataProvider('stores')]
+    public function testTakingAValueUsesTheCachesPrefix(string $kind): void
+    {
+        $store = $this->store($kind);
+        $first = new Cache($store, prefix: 'first.', clock: $this->clock);
+        $second = new Cache($store, prefix: 'second.', clock: $this->clock);
+        $first->set('once', 'a');
+        $second->set('once', 'b');
+        self::assertSame('a', $first->take('once'));
+        self::assertSame('b', $second->take('once'));
+    }
+
+    public function testTakingAValueRefusesAnInvalidKey(): void
+    {
+        $this->expectException(InvalidKey::class);
+        $this->cache('array')->take('bad:key');
+    }
+
+    #[DataProvider('stores')]
+    public function testTwoProcessesTakingOneEntryHaveExactlyOneWinner(string $kind): void
+    {
+        if ($kind === 'array' || $kind === 'mysql-async') {
+            self::markTestSkipped('The process race uses shared stores and independent blocking connections.');
+        }
+        if (!function_exists('pcntl_fork')) {
+            self::markTestSkipped('Needs pcntl to race independent cache consumers.');
+        }
+        $store = $this->store($kind);
+        $store->set('once', 'winner', null);
+        $children = [];
+        $gates = [];
+        for ($child = 0; $child < 2; ++$child) {
+            [$read, $write] = stream_socket_pair(STREAM_PF_UNIX, STREAM_SOCK_STREAM, 0);
+            $pid = pcntl_fork();
+            if ($pid === 0) {
+                pcntl_signal(SIGALRM, SIG_DFL);
+                pcntl_alarm(10);
+                fclose($write);
+                try {
+                    if (fread($read, 1) !== 'x') {
+                        throw new \RuntimeException('The cache race did not receive its start signal.');
+                    }
+                    $consumer = $kind === 'file'
+                        ? new FileStore($this->directory . '/files')
+                        : new DatabaseStore(new Database(fn (): \PDO => $this->pdo($kind), 1), 'cache_test');
+                    $result = ['value' => $consumer->take('once', 100)];
+                } catch (\Throwable $error) {
+                    $result = ['error' => $error->getMessage()];
+                }
+                file_put_contents($this->directory . '/take-' . $child . '.json', json_encode($result, JSON_THROW_ON_ERROR));
+                posix_kill(getmypid(), SIGKILL);
+            }
+            self::assertGreaterThan(0, $pid, 'The cache race could not fork its consumer.');
+            fclose($read);
+            $gates[] = $write;
+            $children[] = $pid;
+        }
+        foreach ($gates as $gate) {
+            fwrite($gate, 'x');
+            fclose($gate);
+        }
+        foreach ($children as $pid) {
+            $this->waitForChild($pid);
+        }
+        $values = [];
+        for ($child = 0; $child < 2; ++$child) {
+            $file = $this->directory . '/take-' . $child . '.json';
+            self::assertFileExists($file, 'A cache consumer timed out before recording its result.');
+            $result = json_decode(file_get_contents($file), true, flags: JSON_THROW_ON_ERROR);
+            self::assertArrayNotHasKey('error', $result, $result['error'] ?? '');
+            $values[] = $result['value'];
+        }
+        self::assertSame(1, count(array_filter($values, static fn ($value): bool => $value === 'winner')));
+        self::assertSame(1, count(array_filter($values, static fn ($value): bool => $value === null)));
+    }
+
+    #[DataProvider('stores')]
     public function testAValueIsKeptAndGivenBackAsItWas(string $kind): void
     {
         $cache = $this->cache($kind);

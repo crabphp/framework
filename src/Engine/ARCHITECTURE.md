@@ -40,7 +40,7 @@ flowchart TD
 | `Connection` | Byte I/O, watchers, bounded FIFO output, directional close state |
 | `UdpEndpoint` | Datagram I/O, packet/byte limits, drop/error counters |
 | `HttpSession` | Incremental parser, request lifetime, ordered responses and upgrade |
-| `WebSocketSession` | Frames/messages, controls, output admission and close handshake |
+| `Handshake / WebSocketSession` | Deferred upgrade admission, ordered messages, controls, output waits and deadlines |
 | `Task / Cancellation / ConnectionStream` | Cooperative application operations on the same driver |
 
 Server classes install protocol handlers; they do not own another runtime. HTTP and WebSocket load through ordinary autoloading when selected. There is no router, container, ORM or generic plugin registry in the core.
@@ -121,11 +121,11 @@ See [the HTTP contract](Http/README.md) for precise limits and supported semanti
 
 ### WebSocket
 
-The server validates the HTTP handshake, with optional application authentication/Origin policy and subprotocol selection. Sessions validate masking, opcodes, RSV bits, canonical lengths, controls, fragments and UTF-8.
+`WebSocket\Handshake` validates the HTTP handshake, with optional application authentication/Origin policy and subprotocol selection. Its immutable response can be checked before application admission finishes; `upgrade()` transfers the connection later. The standalone server uses that same handshake. Sessions validate masking, opcodes, RSV bits, canonical lengths, controls, fragments and UTF-8.
 
-Frame/message size, buffered input, queued output bytes/frames and per-turn processing are bounded. Buffered work continues on a later turn; application pause also pauses buffered dispatch. Controls can run between complete outbound frames, and partial writes never interleave frame bytes.
+Frame/message size, buffered input, queued output bytes/frames and per-turn processing are bounded. One message handler runs per connection at a time and may suspend. Parsing pauses transport reads until it returns, retains buffered successors in order, and owns a service activity through cleanup. Buffered work continues on a later turn; application pause also pauses buffered dispatch. Controls can run between complete outbound frames, and partial writes never interleave frame bytes.
 
-Text/binary sends report pressure explicitly. Binary chunk sends provide message streaming. Ping payloads are echoed in Pong frames; graceful close has a handshake deadline. Automatic heartbeat scheduling and pong deadlines are application policy. Compression/extensions are not negotiated. [WebSocket](https://www.rfc-editor.org/rfc/rfc6455.html)
+Text/binary sends report pressure explicitly. Binary chunk sends provide message streaming. `awaitWritable()` adds cancellable, bounded threshold waits without polling or permanent callback subscriptions; closing wakes every waiter. While waiters exist, the session observes every partial transport flush by replacing its writable callback with a progress wrapper. The final waiter restores the ordinary callback. Connections without observers keep their read, direct-write and queued-flush paths unchanged. Ping payloads are echoed in Pong frames. Optional server pings and idle expiry share one reusable timer with the close handshake and drain stagger; received bytes move the silence deadline, sent pings never do. Silence advances only while reading. Application pauses and suspended handlers stop heartbeat expiry; resuming begins a new interval. The caller bounds these pauses, which are not timed out. An earlier timer may wake once while paused, without sending a ping or closing, and no heartbeat timer is rearmed until resume. Pings and idle expiry are off by default; enabling only pings gives an idle timeout of two intervals. Drain rejects writes immediately and staggers 1001 over at most one second (or a shorter close timeout), capped at half the remaining transport worker allowance to leave time for the handshake. The transport worker deadline cancels any remaining stagger; no delayed close survives it. WebSockets report no pending HTTP request for drain accounting. Compression/extensions are not negotiated. [WebSocket](https://www.rfc-editor.org/rfc/rfc6455.html)
 
 ## Fibers, cancellation and parallelism
 

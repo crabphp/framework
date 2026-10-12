@@ -16,6 +16,12 @@ use Psr\SimpleCache\CacheInterface;
 interface Cache extends CacheInterface
 {
     /**
+     * Returns and removes a value atomically, so only one caller receives
+     * it. A missing or expired entry returns the given default.
+     */
+    public function take(string $key, mixed $default = null): mixed;
+
+    /**
      * The value at the key; when there is none, what $make returns, which
      * is then kept for the time to live:
      *

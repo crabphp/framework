@@ -49,6 +49,12 @@ interface Router extends RequestHandlerInterface
      */
     public function group(\Closure $routes, string $prefix = '', array $middleware = []): static;
 
+    /**
+     * An action taking a WebSocket Socket, the user, pattern parameters
+     * and typed query fields; all are resolved before the upgrade.
+     */
+    public function websocket(string $pattern, \Closure|string|array $action, array $middleware = []): static;
+
     public function get(string $pattern, RequestHandlerInterface|\Closure|string|array $action, array $middleware = []): static;
 
     public function post(string $pattern, RequestHandlerInterface|\Closure|string|array $action, array $middleware = []): static;

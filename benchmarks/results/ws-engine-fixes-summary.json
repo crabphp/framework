@@ -1,0 +1,268 @@
+{
+  "input": "benchmarks/results/compare-ws-engine-fixes-final.json",
+  "status": "passed",
+  "trials": 108,
+  "errors": 0,
+  "source_hashes_unchanged_at_summary": true,
+  "configuration": {
+    "label": "ws-engine-fixes-final",
+    "protocol": "all",
+    "targets": "crab-before-jit,crab-jit",
+    "baseline_source": "/private/var/folders/tg/pyt0jkx51cd1_8n1q01dvpjh0000gn/T/crab-ws-engine-fixes-glg33zhq/Engine",
+    "http_response": "reuse",
+    "http_request": "fixed",
+    "idle_connections": 0,
+    "bun": "bun",
+    "concurrency": "1,32,128",
+    "threads": 2,
+    "payloads": "64,1024",
+    "duration": 3,
+    "trials": 6,
+    "warmup": 1
+  },
+  "rows": [
+    {
+      "protocol": "http",
+      "concurrency": 1,
+      "payload_bytes": null,
+      "before": {
+        "target": "crab-before-jit",
+        "rate_median": 29797.853306474964,
+        "rate_min": 27566.61445166994,
+        "rate_max": 31315.702184942496,
+        "p50_ms": 0.03,
+        "p99_ms": 0.0835
+      },
+      "after": {
+        "target": "crab-jit",
+        "rate_median": 30346.167633098114,
+        "rate_min": 29953.328369822022,
+        "rate_max": 31429.706971783686,
+        "p50_ms": 0.03,
+        "p99_ms": 0.0735
+      },
+      "median_rate_change_percent": 1.840113517519737,
+      "paired_geometric_mean_change_percent": 3.1595325443989797,
+      "paired_approx_95_percent_ci": [
+        -2.958229683222191,
+        9.662974202141172
+      ]
+    },
+    {
+      "protocol": "http",
+      "concurrency": 32,
+      "payload_bytes": null,
+      "before": {
+        "target": "crab-before-jit",
+        "rate_median": 94082.275213144,
+        "rate_min": 86814.62183106452,
+        "rate_max": 100566.77372500104,
+        "p50_ms": 0.3015,
+        "p99_ms": 0.7170000000000001
+      },
+      "after": {
+        "target": "crab-jit",
+        "rate_median": 94951.6597187101,
+        "rate_min": 89535.5456045099,
+        "rate_max": 101420.59869723883,
+        "p50_ms": 0.2995,
+        "p99_ms": 0.7330000000000001
+      },
+      "median_rate_change_percent": 0.9240683259375881,
+      "paired_geometric_mean_change_percent": 1.3416193910017915,
+      "paired_approx_95_percent_ci": [
+        -2.0284339951398334,
+        4.827596818052204
+      ]
+    },
+    {
+      "protocol": "http",
+      "concurrency": 128,
+      "payload_bytes": null,
+      "before": {
+        "target": "crab-before-jit",
+        "rate_median": 101704.23574451005,
+        "rate_min": 98529.69498984721,
+        "rate_max": 104272.87487925634,
+        "p50_ms": 1.2365,
+        "p99_ms": 2.4615
+      },
+      "after": {
+        "target": "crab-jit",
+        "rate_median": 101096.16874254632,
+        "rate_min": 97209.677434958,
+        "rate_max": 106169.51530579348,
+        "p50_ms": 1.2475,
+        "p99_ms": 2.4255
+      },
+      "median_rate_change_percent": -0.5978777555452508,
+      "paired_geometric_mean_change_percent": -0.3714887986108195,
+      "paired_approx_95_percent_ci": [
+        -5.370923487299361,
+        4.892075564883425
+      ]
+    },
+    {
+      "protocol": "ws",
+      "concurrency": 1,
+      "payload_bytes": 64,
+      "before": {
+        "target": "crab-before-jit",
+        "rate_median": 26178.666858800316,
+        "rate_min": 25161.659613068754,
+        "rate_max": 26540.357923266954,
+        "p50_ms": 0.03466037576306856,
+        "p99_ms": 0.07033748375750237
+      },
+      "after": {
+        "target": "crab-jit",
+        "rate_median": 25910.82852932447,
+        "rate_min": 24706.547597578283,
+        "rate_max": 26728.23944047832,
+        "p50_ms": 0.034854533779266145,
+        "p99_ms": 0.07406843167007837
+      },
+      "median_rate_change_percent": -1.0231167649616513,
+      "paired_geometric_mean_change_percent": -0.7999346149244246,
+      "paired_approx_95_percent_ci": [
+        -4.695467172066836,
+        3.2548261914257637
+      ]
+    },
+    {
+      "protocol": "ws",
+      "concurrency": 1,
+      "payload_bytes": 1024,
+      "before": {
+        "target": "crab-before-jit",
+        "rate_median": 22728.20585438998,
+        "rate_min": 22583.60621857514,
+        "rate_max": 23272.588362114137,
+        "p50_ms": 0.0374690154064865,
+        "p99_ms": 0.08110849637896778
+      },
+      "after": {
+        "target": "crab-jit",
+        "rate_median": 23123.906259427356,
+        "rate_min": 22768.042969291517,
+        "rate_max": 23290.887285714663,
+        "p50_ms": 0.03705462768008707,
+        "p99_ms": 0.07848356138020995
+      },
+      "median_rate_change_percent": 1.7410103004718458,
+      "paired_geometric_mean_change_percent": 1.1239214374989093,
+      "paired_approx_95_percent_ci": [
+        -0.7660919480115269,
+        3.0499321012334324
+      ]
+    },
+    {
+      "protocol": "ws",
+      "concurrency": 32,
+      "payload_bytes": 64,
+      "before": {
+        "target": "crab-before-jit",
+        "rate_median": 81263.89475216187,
+        "rate_min": 75403.5006038405,
+        "rate_max": 85398.49140641686,
+        "p50_ms": 0.34757702014866987,
+        "p99_ms": 0.8108665289980168
+      },
+      "after": {
+        "target": "crab-jit",
+        "rate_median": 81819.55252419619,
+        "rate_min": 74023.86577778819,
+        "rate_max": 85861.43708256981,
+        "p50_ms": 0.343822153086745,
+        "p99_ms": 0.8105809912999139
+      },
+      "median_rate_change_percent": 0.6837695556297874,
+      "paired_geometric_mean_change_percent": 0.6336152794120364,
+      "paired_approx_95_percent_ci": [
+        -6.287415697634657,
+        8.065790732324295
+      ]
+    },
+    {
+      "protocol": "ws",
+      "concurrency": 32,
+      "payload_bytes": 1024,
+      "before": {
+        "target": "crab-before-jit",
+        "rate_median": 69310.3004994446,
+        "rate_min": 28629.772680671387,
+        "rate_max": 70922.64535577483,
+        "p50_ms": 0.4112855249790091,
+        "p99_ms": 0.9482929844530285
+      },
+      "after": {
+        "target": "crab-jit",
+        "rate_median": 68390.07889564172,
+        "rate_min": 55585.09705781243,
+        "rate_max": 69709.6283393533,
+        "p50_ms": 0.41577501999548105,
+        "p99_ms": 0.9903217755065722
+      },
+      "median_rate_change_percent": -1.3276837600931235,
+      "paired_geometric_mean_change_percent": 10.637664995115426,
+      "paired_approx_95_percent_ci": [
+        -17.186391597484974,
+        47.810162504640296
+      ]
+    },
+    {
+      "protocol": "ws",
+      "concurrency": 128,
+      "payload_bytes": 64,
+      "before": {
+        "target": "crab-before-jit",
+        "rate_median": 87263.04486350779,
+        "rate_min": 81556.67765269139,
+        "rate_max": 89038.40369689302,
+        "p50_ms": 1.4316392035005068,
+        "p99_ms": 2.9121035403719464
+      },
+      "after": {
+        "target": "crab-jit",
+        "rate_median": 87696.95824769177,
+        "rate_min": 86934.65104718899,
+        "rate_max": 89263.01664445233,
+        "p50_ms": 1.4008584811259808,
+        "p99_ms": 2.8641103693584613
+      },
+      "median_rate_change_percent": 0.4972475861490855,
+      "paired_geometric_mean_change_percent": 1.4928385411445255,
+      "paired_approx_95_percent_ci": [
+        -1.6291883046217537,
+        4.713950181045323
+      ]
+    },
+    {
+      "protocol": "ws",
+      "concurrency": 128,
+      "payload_bytes": 1024,
+      "before": {
+        "target": "crab-before-jit",
+        "rate_median": 74875.65177627392,
+        "rate_min": 71960.37647493942,
+        "rate_max": 76272.1940083823,
+        "p50_ms": 1.6481420999160363,
+        "p99_ms": 3.3333957095456963
+      },
+      "after": {
+        "target": "crab-jit",
+        "rate_median": 74326.15924630594,
+        "rate_min": 68812.7006428904,
+        "rate_max": 77234.15533136447,
+        "p50_ms": 1.630473242653256,
+        "p99_ms": 3.4064094680692674
+      },
+      "median_rate_change_percent": -0.7338734514256484,
+      "paired_geometric_mean_change_percent": -1.158607683080004,
+      "paired_approx_95_percent_ci": [
+        -6.380447916969512,
+        4.354492387259934
+      ]
+    }
+  ]
+}

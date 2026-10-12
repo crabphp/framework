@@ -46,8 +46,8 @@ final class DatabaseProvider implements WorkerProvider
             if ($config->get('database.dsn') !== null) {
                 throw new DatabaseException('"database.dsn" is not read. A database is described under "database.connections", by name: \'connections\' => [\'main\' => [\'dsn\' => ...]].');
             }
-            if (!is_array($connections) || $connections === []) {
-                throw new DatabaseException('No database is configured. Describe one under "database.connections", by name: \'connections\' => [\'main\' => [\'dsn\' => \'sqlite:/path/app.sqlite\']].');
+            if (!is_array($connections)) {
+                throw new DatabaseException('"database.connections" holds each database by name: \'connections\' => [\'main\' => [\'dsn\' => \'sqlite:/path/app.sqlite\']].');
             }
             $default = (string) ($config->get('database.default') ?? array_key_first($connections));
             $clock = $container->has(ClockInterface::class) ? $container->get(ClockInterface::class) : null;

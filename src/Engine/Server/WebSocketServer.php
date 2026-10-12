@@ -10,6 +10,7 @@ use Crab\Engine\Http\Response;
 use Crab\Engine\Http\Upgrade;
 use Crab\Engine\Network\Connection;
 use Crab\Engine\WebSocket\Config;
+use Crab\Engine\WebSocket\Handshake;
 use Crab\Engine\WebSocket\WebSocketSession;
 
 final class WebSocketServer
@@ -37,7 +38,7 @@ final class WebSocketServer
         ?callable $accept = null,
     ) {
         foreach ($subprotocols as $protocol) {
-            if (!is_string($protocol) || !self::isToken($protocol)) {
+            if (!is_string($protocol) || preg_match('/^[!#$%&\'*+.^_`|~0-9A-Za-z-]+$/D', $protocol) !== 1) {
                 throw new \InvalidArgumentException('WebSocket subprotocols must be HTTP tokens.');
             }
         }
@@ -61,74 +62,9 @@ final class WebSocketServer
 
     private function handshake(Request $request): Response|Upgrade
     {
-        if ($request->method !== 'GET' || $request->version !== '1.1'
-            || !$request->hasToken('upgrade', 'websocket')
-            || !$request->hasToken('connection', 'upgrade') || $request->body->size() !== 0) {
-            return new Response(400, ['Connection' => 'close'], 'Invalid WebSocket upgrade.');
-        }
-
-        if ($request->header('sec-websocket-version') !== '13') {
-            return new Response(426, ['Connection' => 'close', 'Sec-WebSocket-Version' => '13']);
-        }
-
-        $key = $request->header('sec-websocket-key') ?? '';
-        $decoded = base64_decode($key, true);
-        if ($decoded === false || strlen($decoded) !== 16 || base64_encode($decoded) !== $key) {
-            return new Response(400, ['Connection' => 'close'], 'Invalid WebSocket key.');
-        }
-
-        $offered = [];
-        if (($header = $request->header('sec-websocket-protocol')) !== null) {
-            foreach (explode(',', $header) as $item) {
-                $protocol = trim($item);
-                if (!self::isToken($protocol) || isset($offered[$protocol])) {
-                    return new Response(400, ['Connection' => 'close'], 'Invalid WebSocket subprotocol.');
-                }
-                $offered[$protocol] = true;
-            }
-        }
-
-        if ($this->accept !== null && !($this->accept)($request)) {
-            return new Response(403, ['Connection' => 'close']);
-        }
-
-        $headers = [
-            'Upgrade' => 'websocket',
-            'Connection' => 'Upgrade',
-            'Sec-WebSocket-Accept' => base64_encode(sha1($key . '258EAFA5-E914-47DA-95CA-C5AB0DC85B11', true)),
-        ];
-        $selected = null;
-        foreach ($this->subprotocols as $protocol) {
-            if (isset($offered[$protocol])) {
-                $headers['Sec-WebSocket-Protocol'] = $selected = $protocol;
-                break;
-            }
-        }
-
-        return new Upgrade(new Response(101, $headers), function (
-            Connection $connection,
-            Request $request,
-            string $unreadBytes,
-        ) use ($selected): void {
-            $session = new WebSocketSession(
-                $connection, $this->onMessage, $this->config, $this->onClose, $selected,
-            );
-            try {
-                if ($this->onOpen !== null) {
-                    ($this->onOpen)($session, $request);
-                }
-                if ($unreadBytes !== '') {
-                    $session->receive($unreadBytes);
-                }
-            } catch (\Throwable $error) {
-                $connection->reportFailure('WebSocket open handler failed', $error);
-                $session->close(1011, 'Handler failed');
-            }
-        });
-    }
-
-    private static function isToken(string $value): bool
-    {
-        return preg_match('/^[!#$%&\'*+.^_`|~0-9A-Za-z-]+$/D', $value) === 1;
+        $handshake = new Handshake($request, $this->subprotocols, $this->accept);
+        return $handshake->response->status === 101
+            ? $handshake->upgrade($this->onMessage, $this->onOpen, $this->onClose, $this->config)
+            : $handshake->response;
     }
 }

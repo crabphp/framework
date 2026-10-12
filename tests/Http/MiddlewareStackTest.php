@@ -62,4 +62,19 @@ final class MiddlewareStackTest extends TestCase
         $this->expectException(\LogicException::class);
         (new MiddlewareStack($handler, new Container()))->add(Factory::class)->assemble();
     }
+
+    public function testDeclaredMiddlewareCanBeFoundWithoutConstructingIt(): void
+    {
+        $handler = new ClosureHandler(static fn () => 'ok');
+        $named = new MiddlewareStack($handler, new Container());
+        self::assertFalse($named->has(Mark::class));
+        $made = Mark::$made;
+        $named->add(Mark::class);
+        self::assertTrue($named->has(Mark::class));
+        self::assertSame($made, Mark::$made);
+        $objects = new MiddlewareStack($handler);
+        $objects->add(new Mark());
+        self::assertTrue($objects->has(Mark::class));
+        self::assertFalse($objects->has(\Crab\Http\AccessLog::class));
+    }
 }

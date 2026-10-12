@@ -97,6 +97,43 @@ $group->udp('udp://127.0.0.1:8083',
 
 WebSocket supports masking validation, fragmented text/binary messages, ping/pong, UTF-8 checks, close handshakes, subprotocol selection and an application admission callback. Configure bounds with `WebSocket\Config`. `sendBinaryChunk()` streams a fragmented binary message; `pauseRead()` also pauses dispatch of already-buffered messages. Protocol extensions such as per-message compression are not negotiated.
 
+For a socket on an HTTP listener, check the handshake first, finish application admission, then return its upgrade:
+
+~~~php
+use Crab\Engine\Http\Request;
+use Crab\Engine\Server\HttpServer;
+use Crab\Engine\WebSocket\Handshake;
+use Crab\Engine\WebSocket\Config;
+
+$server = new HttpServer(static function (Request $request) {
+    $handshake = new Handshake($request, subprotocols: ['chat']);
+    if ($handshake->response->status !== 101) {
+        return $handshake->response;
+    }
+    // Do any application admission work here, before committing the 101.
+    return $handshake->upgrade(
+        static function (WebSocketSession $session, string $message): void {
+            while ($session->sendText($message) === WriteResult::Backpressured) {
+                if (!$session->awaitWritable(belowBytes: 1)) {
+                    return;
+                }
+            }
+        },
+        config: new Config(pingInterval: 25),
+    );
+});
+~~~
+
+`Handshake::$response` keeps the existing 400, 426 and 403 refusals, or the bodyless 101; `$subprotocol` is the selected protocol or null. `upgrade()` is allowed only after acceptance and transfers unread bytes once. Its callbacks have the same shape as `WebSocketServer`.
+
+`pingInterval` and `idleTimeout` are seconds and default to null (off). With pings enabled, an omitted idle timeout is two intervals. Any received bytes, including data, ping and pong, reset silence; sending a ping does not. Silence is measured only while reading: application read pauses and suspended message handlers stop ping and idle expiry. Resuming starts a full new silence interval. Bound your pauses and handler waits; a paused connection is not timed out. Idle expiry sends Close 1001, then cuts the peer after `closeTimeout`. One reusable deadline handles heartbeat, close and drain; activity does not replace an earlier timer registration.
+
+A message handler may suspend. The next message is delivered only when it returns, in order. The current read batch is bounded by `maxBufferedInputBytes`; while a handler is running, further transport reading pauses. A direct `receive()` that exceeds the bound closes with 1009. Suspended handler cleanup remains owned until it returns, even if the socket closes.
+
+`awaitWritable(?Cancellation $cancellation = null, ?int $belowBytes = null): bool` waits without polling until queued output is strictly below the threshold and a frame slot is available. The default threshold is half the output limit plus one byte. It returns false when the session starts closing or loses its transport; cancellation throws `CancelledException` and removes only that wait. Room is not reserved: always retry the send. Up to `maxWritableWaiters` (64 by default) may wait; another throws `OverflowException`. Thresholds range from one byte to `maxQueuedOutputBytes`. Waiting for an empty queue (`belowBytes: 1`) also leaves room for an individually valid message.
+
+Drain rejects new writes immediately and spreads Close 1001 frames deterministically over at most `min(1, closeTimeout)` seconds, capped at half the remaining worker allowance. The other half remains available for the close handshake. The transport's worker deadline remains the hard cutoff and cancels pending closes. WebSockets do not contribute to the cut HTTP request count.
+
 UDP preserves packet boundaries and empty packets. `send()` reports local acceptance, never delivery. Queue overflow rejects the packet; counters expose application drops and send errors. Multiple workers sharing one UDP endpoint do not guarantee peer affinity.
 
 ## Coroutines and timers
@@ -144,9 +181,9 @@ An HTTP handler that throws is answered with 500; one that fails after its respo
 | `WriteResult::Backpressured` | No bytes accepted; pause production and retry after `onDrain()` |
 | `WriteResult::Closed` | No more writes are accepted |
 
-An individually oversized write throws `LengthException`. `onDrain()` signals a chance to retry; it does not reserve capacity. `shutdownWrite()` flushes then sends FIN while retaining the read direction; `end()` flushes and closes; `close()` releases resources immediately. Low-level application connection, UDP, cancellation and WebSocket callbacks must not suspend. Use tracked tasks for asynchronous application work.
+An individually oversized write throws `LengthException`. `onDrain()` signals a chance to retry; it does not reserve capacity. `shutdownWrite()` flushes then sends FIN while retaining the read direction; `end()` flushes and closes; `close()` releases resources immediately. Low-level application connection, UDP and cancellation callbacks must not suspend; WebSocket message handlers may suspend. Other WebSocket callbacks must not suspend. Use tracked tasks for asynchronous application work.
 
-`onClose()` runs after socket cleanup. `onSettled()` additionally waits for service activity to finish, including asynchronous `finally` cleanup. HTTP owns these activity scopes automatically. Custom protocol owners can use `beginActivity()` and call its returned release closure in `finally`; a closed connection remains in worker admission accounting until all activities release it.
+`onClose()` runs after socket cleanup. `onSettled()` additionally waits for service activity to finish, including asynchronous `finally` cleanup. HTTP and WebSocket message dispatch own these activity scopes automatically. Custom protocol owners can use `beginActivity()` and call its returned release closure in `finally`; a closed connection remains in worker admission accounting until all activities release it.
 
 `Worker::connect()` establishes outbound TCP connections with cancellation, timeouts, admission accounting and exactly-once completion. It accepts numeric IPv4/IPv6 endpoints. `Network\DnsResolver::resolve($loop, $host)` finds a name's addresses first, without holding the worker: it reads the hosts file, keeps answers for as long as they hold, asks the system's name servers over UDP, and only when they give nothing falls back on the system's blocking resolver.
 

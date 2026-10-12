@@ -11,6 +11,7 @@ use Crab\Contracts\Validation\Validator as ValidatorContract;
 use Crab\Http\ErrorResponse;
 use Crab\Http\MiddlewareStack;
 use Crab\Validation\Validator;
+use Crab\WebSocket\Connections;
 use Psr\Container\ContainerInterface;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface;
@@ -58,6 +59,7 @@ final class Router implements RouterContract
      */
     private array $routes = [];
     private readonly ValidatorContract $validator;
+    private ?Connections $websockets = null;
     /**
      * The prefix and middleware of each group being declared, outermost first.
      *
@@ -75,7 +77,7 @@ final class Router implements RouterContract
      * The container makes handlers that are given by name; the validator
      * builds the inputs of typed handlers.
      */
-    public function __construct(private readonly ?ContainerInterface $container = null, ?ValidatorContract $validator = null)
+    public function __construct(private readonly ?ContainerInterface $container = null, ?ValidatorContract $validator = null, private readonly ?\Closure $socketFactory = null)
     {
         $this->validator = $validator ?? new Validator();
     }
@@ -109,8 +111,16 @@ final class Router implements RouterContract
         foreach ($middleware as $layer) {
             $described[] = is_string($layer) ? $layer : $layer::class;
         }
+        if ($method === 'WS' && !$action instanceof \Closure && !is_array($action) && !self::isActionClass($action)) {
+            throw new \LogicException("The action of WS {$pattern} must be a closure or a class with handle(Socket \$socket, ...). Use Route::websocket() with an action, rather than a PSR-15 handler.");
+        }
         if ($action instanceof \Closure || is_array($action) || self::isActionClass($action)) {
-            $handler = new ActionHandler($method, $pattern, $names, $action, $this->validator, $this->container);
+            $websockets = null;
+            if ($method === 'WS') {
+                $this->websockets ??= $this->socketFactory === null ? new Connections() : ($this->socketFactory)();
+                $websockets = $this->websockets;
+            }
+            $handler = new ActionHandler($method, $pattern, $names, $action, $this->validator, $this->container, $websockets);
             $this->routes[$key] = new RouteInfo($method, $pattern, $handler->name, $described);
         } elseif (is_string($action)) {
             if ($this->container === null) {
@@ -220,6 +230,20 @@ final class Router implements RouterContract
         }
     }
 
+    /**
+     * Declares an action that lasts for the connection. Query fields, the
+     * user and pattern parameters are checked before returning 101.
+     */
+    public function hasWebSockets(): bool
+    {
+        return $this->websockets !== null;
+    }
+
+    public function websocket(string $pattern, \Closure|string|array $action, array $middleware = []): static
+    {
+        return $this->add('WS', $pattern, $action, $middleware);
+    }
+
     public function get(string $pattern, RequestHandlerInterface|\Closure|string|array $action, array $middleware = []): static
     {
         return $this->add('GET', $pattern, $action, $middleware);
@@ -260,6 +284,16 @@ final class Router implements RouterContract
         }
         $parameters = [];
         $handler = $this->find($method, $path, $parameters);
+        // HTTP-only routers do not read upgrade headers or search another table.
+        if ($this->websockets !== null && $method === 'GET'
+            && ($handler === null || $request->getHeaderLine('Upgrade') !== '')) {
+            $socketParameters = [];
+            $socketHandler = $this->find('WS', $path, $socketParameters);
+            if ($socketHandler !== null) {
+                $handler = $socketHandler;
+                $parameters = $socketParameters;
+            }
+        }
         if ($handler === null && $method === 'HEAD') {
             $handler = $this->find('GET', $path, $parameters);
         }
@@ -316,15 +350,18 @@ final class Router implements RouterContract
     {
         $allowed = [];
         $ignored = [];
+        $httpGet = false;
         foreach (array_keys($this->static + $this->dynamic) as $method) {
             if ($this->find((string) $method, $path, $ignored) !== null) {
-                $allowed[] = (string) $method;
+                $allowed[] = $method === 'WS' ? 'GET' : (string) $method;
+                $httpGet = $httpGet || $method === 'GET';
             }
         }
         if ($allowed === []) {
             return ErrorResponse::make($request, 404);
         }
-        if (in_array('GET', $allowed, true) && !in_array('HEAD', $allowed, true)) {
+        $allowed = array_values(array_unique($allowed));
+        if ($httpGet && !in_array('HEAD', $allowed, true)) {
             $allowed[] = 'HEAD';
         }
         return ErrorResponse::make($request, 405, headers: ['Allow' => implode(', ', $allowed)]);

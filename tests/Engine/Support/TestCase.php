@@ -9,6 +9,7 @@ use Crab\Engine\FailureReporter;
 use PHPUnit\Framework\Attributes\After;
 use PHPUnit\Framework\Attributes\Before;
 use PHPUnit\Framework\TestCase as PHPUnitTestCase;
+use Revolt\EventLoop as Revolt;
 use Throwable;
 
 abstract class TestCase extends PHPUnitTestCase
@@ -71,6 +72,20 @@ abstract class TestCase extends PHPUnitTestCase
                 $cleanup();
             } catch (Throwable $error) {
                 $cleanupFailure ??= $error;
+            }
+        }
+        // A callback failure or main-context suspension leaves Revolt's loop
+        // fiber suspended. Cancelling watchers alone cannot permit a new driver.
+        $driver = Revolt::getDriver();
+        if ($driver->isRunning()) {
+            foreach ($driver->getIdentifiers() as $id) { $driver->cancel($id); }
+            while ($driver->isRunning()) {
+                $driver->stop();
+                try {
+                    $driver->run();
+                } catch (Throwable $error) {
+                    $cleanupFailure ??= $error;
+                }
             }
         }
         parent::tearDown();

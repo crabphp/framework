@@ -116,15 +116,15 @@ final readonly class Serve implements Command
      * The servers running under this one, each by its id: "http", then
      * every server registered, such as "queue" and "schedule", with the
      * ones "server.with" does not name shown as off. Nothing is drawn
-     * for a server that is HTTP alone and could be nothing else.
+     * for a server that runs HTTP alone, as most do while developing.
      */
     private static function announceServers(Output $output, App $app, string $address, int $workers): void
     {
         $servers = $app->servers;
-        if ($servers->ids() === []) {
+        $with = $app->with();
+        if ($with === []) {
             return;
         }
-        $with = $app->with();
         $rows = [['Server', 'Workers', 'Runs'], ['http', (string) $workers, Server::describe($address)]];
         foreach ($with as $id) {
             $groups = $app->alongside([$id]);

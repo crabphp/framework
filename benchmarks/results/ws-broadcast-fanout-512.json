@@ -1,0 +1,59 @@
+{
+    "mode": "fanout",
+    "php": "8.4.19",
+    "jit": true,
+    "batch": 512,
+    "backend": "ev",
+    "connections": [
+        {
+            "count": 1000,
+            "first_channel_bytes_per_connection": 491.784,
+            "second_channel_bytes_per_connection": 81.44,
+            "trials": [
+                {
+                    "fanout_ms": 2.228958,
+                    "sender_us": 22.708,
+                    "longest_probe_wait_ms": 1.405166,
+                    "errors": 0
+                },
+                {
+                    "fanout_ms": 3.311333,
+                    "sender_us": 67.792,
+                    "longest_probe_wait_ms": 1.928917,
+                    "errors": 0
+                },
+                {
+                    "fanout_ms": 1.578792,
+                    "sender_us": 11.625,
+                    "longest_probe_wait_ms": 0.918125,
+                    "errors": 0
+                }
+            ]
+        },
+        {
+            "count": 10000,
+            "first_channel_bytes_per_connection": 539.2376,
+            "second_channel_bytes_per_connection": 105.584,
+            "trials": [
+                {
+                    "fanout_ms": 46.343167,
+                    "sender_us": 20.584,
+                    "longest_probe_wait_ms": 3.247833,
+                    "errors": 0
+                },
+                {
+                    "fanout_ms": 42.128166,
+                    "sender_us": 35.291,
+                    "longest_probe_wait_ms": 3.148291,
+                    "errors": 0
+                },
+                {
+                    "fanout_ms": 43.037375,
+                    "sender_us": 225.791,
+                    "longest_probe_wait_ms": 2.871333,
+                    "errors": 0
+                }
+            ]
+        }
+    ]
+}

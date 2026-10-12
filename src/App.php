@@ -4,6 +4,10 @@ declare(strict_types=1);
 
 namespace Crab;
 
+use Crab\Auth\AuthProvider;
+use Crab\Broadcast\BroadcastProvider;
+use Crab\Broadcast\Lifecycle as BroadcastLifecycle;
+use Crab\Cache\CacheProvider;
 use Crab\Clock\SystemClock;
 use Crab\Commands\MakeMiddleware;
 use Crab\Commands\Reload;
@@ -16,6 +20,8 @@ use Crab\Config\Config;
 use Crab\Console\Console;
 use Crab\Container\Container;
 use Crab\Contracts\Clock\Clock as ClockContract;
+use Crab\Contracts\Broadcast\Broadcaster;
+use Crab\Contracts\WebSocket\Channels as SocketChannels;
 use Crab\Contracts\Config\Config as ConfigContract;
 use Crab\Contracts\Console\Console as ConsoleContract;
 use Crab\Contracts\Container\Container as ContainerContract;
@@ -29,20 +35,28 @@ use Crab\Contracts\Servers as ServersContract;
 use Crab\Contracts\Validation\Validator as ValidatorContract;
 use Crab\Contracts\WorkerProvider;
 use Crab\Contracts\Workers;
+use Crab\Database\DatabaseProvider;
 use Crab\Engine\Async\Async;
 use Crab\Engine\Async\Cancellation;
 use Crab\Engine\Async\CancelledException;
 use Crab\Engine\FailureReporter;
 use Crab\Engine\Process\Worker;
 use Crab\Engine\Runtime;
+use Crab\Engine\EventLoop\RevoltEventLoop;
 use Crab\Engine\Server\HttpServer;
+use Crab\Events\EventsProvider;
 use Crab\Http\EngineHandler;
 use Crab\Http\ErrorHandler;
 use Crab\Http\Factory;
 use Crab\Http\MiddlewareStack;
+use Crab\HttpClient\HttpClientProvider;
 use Crab\Log\Logger;
+use Crab\Queue\QueueProvider;
 use Crab\Routing\Router;
+use Crab\Schedule\ScheduleProvider;
 use Crab\Validation\Validator;
+use Crab\WebSocket\Connections;
+use Crab\WebSocket\Settings as SocketSettings;
 use Psr\Clock\ClockInterface;
 use Psr\Http\Message\ResponseFactoryInterface;
 use Psr\Http\Message\ResponseInterface;
@@ -101,6 +115,25 @@ final class App implements RequestHandlerInterface, Runner
     public const MIDDLEWARE = [ErrorHandler::class];
 
     /**
+     * The framework's own providers, which an application made with
+     * App::configure() starts with, in the order they depend on one
+     * another: events before the queue and the schedule, which report
+     * through them. Each binds on first use, so one the application never
+     * touches opens nothing. An application's own and a package's come
+     * after them, and AppBuilder::withProviders() can leave one out.
+     */
+    public const PROVIDERS = [
+        DatabaseProvider::class,
+        AuthProvider::class,
+        CacheProvider::class,
+        EventsProvider::class,
+        QueueProvider::class,
+        ScheduleProvider::class,
+        HttpClientProvider::class,
+        BroadcastProvider::class,
+    ];
+
+    /**
      * Seconds a program run beside the server is given to finish when the server stops.
      */
     private const PROCESS_GRACE = 30.0;
@@ -115,7 +148,8 @@ final class App implements RequestHandlerInterface, Runner
         public readonly ?string $basePath = null,
         array $middleware = self::MIDDLEWARE,
     ) {
-        $config->defaults('server', ['drain' => 5.0]);
+        $config->defaults('server', ['drain' => 5.0, 'max_connections' => 512, 'loop' => 'select']);
+        $config->defaults('websocket', SocketSettings::DEFAULTS);
         self::$current = $this;
         $container->instance(self::class, $this);
         // What runs workers that serve no requests, for a provider's commands.
@@ -151,7 +185,20 @@ final class App implements RequestHandlerInterface, Runner
         $validator = new Validator();
         $container->instance(ValidatorContract::class, $validator);
         $container->instance(Validator::class, $validator);
-        $router = new Router($container, $validator);
+        $router = new Router($container, $validator, fn (): Connections => new Connections(
+            $this->socketSettings(),
+            static function () use ($container): SocketChannels {
+                if (!$container->has(SocketChannels::class)) {
+                    throw new \LogicException('To join WebSocket channels, register BroadcastProvider with the application.');
+                }
+                // A socket-pair application is serving in this process too.
+                // Keep this work on first channel use, off the HTTP path.
+                if ($container->has(Broadcaster::class)) {
+                    $container->get(BroadcastLifecycle::class)->serving = true;
+                }
+                return $container->get(SocketChannels::class);
+            },
+        ));
         $this->router = $router;
         $this->routes = $router;
         $container->instance(RouterContract::class, $this->router);
@@ -258,22 +305,54 @@ final class App implements RequestHandlerInterface, Runner
     public function runtime(string $address = 'tcp://127.0.0.1:8080', int $workers = 1, mixed $socket = null, bool $servers = true): Runtime
     {
         $drain = $this->drain();
+        $maxConnections = $this->positiveInteger('server.max_connections');
+        $backend = $this->config->get('server.loop');
+        if (!in_array($backend, ['select', 'ev', 'uv', 'event'], true)) {
+            throw new \InvalidArgumentException('Set "server.loop" to "select", "ev", "uv" or "event".');
+        }
+        if ($backend !== 'select' && !extension_loaded($backend)) {
+            throw new \InvalidArgumentException("The server.loop backend {$backend} needs the {$backend} PHP extension. Install and enable it, or set server.loop to select.");
+        }
+        if ($this->routes->hasWebSockets() && $this->socketSettings()->maxConnections > $maxConnections) {
+            throw new \InvalidArgumentException('websocket.max_connections exceeds server.max_connections. Reduce the socket limit or increase the server limit.');
+        }
+        if ($backend === 'select' && $maxConnections > 900) {
+            throw new \InvalidArgumentException('The select loop supports server.max_connections up to 900, leaving descriptors for files, database and Redis. Reduce the limit or install a native extension and select it with server.loop.');
+        }
         // Beside HTTP, the servers "server.with" switches on: none unless it says so. In one
         // process there is room for HTTP alone.
         $with = $servers ? $this->with() : [];
+        if (max($workers, (int) $this->config->get('server.workers', 1)) > 1) {
+            $tickets = $this->stack->has(\Crab\Auth\Ticket::class);
+            foreach ($this->routes->routes() as $route) {
+                if ($route->action === \Crab\Auth\IssueTicket::class || in_array(\Crab\Auth\Ticket::class, $route->middleware, true)) {
+                    $tickets = true;
+                    break;
+                }
+            }
+            if ($tickets && $this->container->get(\Crab\Contracts\Cache\Store::class) instanceof \Crab\Cache\ArrayStore) {
+                throw new \LogicException('An array cache keeps tickets in one worker only. Set cache.store to file on one machine, or to database or redis with a shared store, before serving multiple workers.');
+            }
+        }
+        if ($this->routes->hasWebSockets() && $this->container->has(Broadcaster::class)
+            && $this->config->get('broadcast.carrier') === 'local'
+            && (max($workers, (int) $this->config->get('server.workers', 1)) > 1
+                || array_intersect($with, ['queue', 'schedule']) !== [])) {
+            throw new \LogicException('The local broadcast carrier reaches one HTTP process only. Set broadcast.carrier to redis and register RedisProvider before serving multiple workers or queue/schedule servers.');
+        }
         $groups = $this->alongside($with);
         // Long enough for the slowest of them to finish what it has in hand.
-        $runtime = new Runtime(shutdownTimeout: max($drain, $this->servers->grace($with)));
+        $runtime = new Runtime(loopFactory: static fn () => RevoltEventLoop::create($backend), shutdownTimeout: max($drain, $this->servers->grace($with)));
         foreach ($groups as $group) {
             $this->group($runtime, $group, background: $socket !== null);
         }
-        $runtime->group('http', $workers, shutdownTimeout: $drain)
+        $runtime->group('http', $workers, maxConnections: $maxConnections, shutdownTimeout: $drain)
             ->listen($address, new HttpServer(
                 new EngineHandler($this->stack),
                 maxBodyBytes: (int) $this->config->get('server.max_body', 1048576),
                 bodyTimeout: (float) $this->config->get('server.body_timeout', 30),
             ), socket: $socket)
-            ->onStart($this->start(...))
+            ->onStart(fn (Worker $worker) => $this->start($worker, serving: true))
             ->onStop(function (Worker $worker): void {
                 try {
                     $cut = $worker->stats()['cutConnections'];
@@ -297,6 +376,41 @@ final class App implements RequestHandlerInterface, Runner
             })
             ->onFailure($this->report(...));
         return $runtime;
+    }
+
+    /**
+     * Settings are read where socket routes are declared and again at
+     * startup; invalid configuration is refused before binding a port.
+     */
+    private function socketSettings(): SocketSettings
+    {
+        $ping = $this->config->get('websocket.ping');
+        $timeout = $this->config->get('websocket.send_timeout');
+        if (!is_numeric($ping) || !is_numeric($timeout)) {
+            throw new \InvalidArgumentException('Set websocket.ping and websocket.send_timeout to numbers of seconds.');
+        }
+        return new SocketSettings(
+            ping: (float) $ping,
+            maxMessage: $this->positiveInteger('websocket.max_message'),
+            sendTimeout: (float) $timeout,
+            maxConnections: $this->positiveInteger('websocket.max_connections'),
+            // The engine spreads drain closes over min(1, closeTimeout).
+            // Keep that window inside even a short worker allowance.
+            closeTimeout: min(5.0, $this->drain()),
+        );
+    }
+
+    /**
+     * Environment settings may be strings, but fractional or malformed
+     * connection and byte limits must not quietly become another number.
+     */
+    private function positiveInteger(string $key): int
+    {
+        $value = filter_var($this->config->get($key), FILTER_VALIDATE_INT);
+        if ($value === false || $value < 1) {
+            throw new \InvalidArgumentException("Set {$key} to a positive whole number.");
+        }
+        return $value;
     }
 
     /**
@@ -644,10 +758,13 @@ final class App implements RequestHandlerInterface, Runner
             ->onFailure($this->report(...));
     }
 
-    private function start(Worker $worker): void
+    private function start(Worker $worker, bool $serving = false): void
     {
         set_error_handler($this->raise(...));
         try {
+            if ($this->container->has(Broadcaster::class)) {
+                $this->container->get(BroadcastLifecycle::class)->serving = $serving;
+            }
             $this->stack->assemble();
             $this->routes->assemble();
             foreach ($this->workerProviders as $provider) {

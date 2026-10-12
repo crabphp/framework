@@ -52,6 +52,22 @@ final class MiddlewareStack implements MiddlewareStackContract, RequestHandlerIn
     }
 
     /**
+     * Checks a declaration without constructing middleware in the parent,
+     * so startup can reject settings that cannot serve it across workers.
+     *
+     * @param class-string<MiddlewareInterface> $class
+     */
+    public function has(string $class): bool
+    {
+        foreach ($this->middleware as $layer) {
+            if (is_string($layer) ? $layer === $class : $layer instanceof $class) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
      * Makes the named middleware and links the chain now, so that a name
      * that cannot be made fails here and not on a request.
      */

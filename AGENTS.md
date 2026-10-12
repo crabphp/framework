@@ -18,7 +18,7 @@
 
 ## Components
 
-- Each component has its own folder and namespace under `src/` (`Http`, `HttpClient`, `Routing`, `Validation`, `Auth`, `Container`, `Config`, `Log`, `Clock`, `Console`, `Database`, `Cache`, `Events`, `Queue`, `Schedule`, `Testing`) and its tests in the matching folder under `tests/`.
+- Each component has its own folder and namespace under `src/` (`Http`, `HttpClient`, `WebSocket`, `Broadcast`, `Routing`, `Validation`, `Auth`, `Container`, `Config`, `Log`, `Clock`, `Console`, `Database`, `Cache`, `Events`, `Queue`, `Schedule`, `Testing`) and its tests in the matching folder under `tests/`.
 - Every component has the same shape: it works standalone, has a contract when packages touch it, ships a `<Component>Provider` when it is optional, and is kept able to be published as its own package the way the engine is.
 - A component works on its own, without `App`, the container or a provider. It may depend on `Contracts`, on PSR interfaces and on the engine, and on another component only where that is its purpose. `tests/LayerBoundaryTest.php` enforces this; a new dependency between components is added to its `ALLOWED` list deliberately, never worked around.
 - The root of `src/` is the glue that makes components an application: `App.php`, `AppBuilder.php`, `Server.php`, `Route.php`, `Command.php`, `helpers.php`, and `Commands/` for built-in commands. Code that needs `App` belongs there, not inside a component.
@@ -37,7 +37,7 @@
 
 ## Application wiring
 
-- `App` binds the core directly: configuration, container, validator, router, HTTP factory, logger, clock, error handler and console. Everything optional is added by a `Provider`, the same way for our packages as for anyone else's, registered explicitly with `$app->register()`.
+- `App` binds the core directly: configuration, container, validator, router, HTTP factory, logger, clock, error handler and console. The framework's providers are the list `App::PROVIDERS`, applied by `App::configure()`: Database, Auth, Cache, Events, Queue, Schedule, HttpClient, Broadcast, in that order. An application names its own providers and those of its packages with `withProviders()`, after the framework's; `remove:` leaves out a framework provider and `only:` replaces the list. A concrete way of doing something (`TokenAuthProvider`) and every package stay opt-in. Nothing is found by convention, and `new App()` used directly registers no providers.
 - A provider has `register(Container $container)`. There is no `boot()`; bindings are closures run on first use. A provider with work to do in each worker implements `WorkerProvider` as well: `start(Worker $worker, Container $container)` opens what holds a socket, file or timer and `stop(Worker $worker, Container $container)` releases it. Providers stop in reverse order, `stop()` must not suspend, and a provider keeps no state of its own.
 - A provider declares its settings and their defaults once with `Config::defaults()`; code reads them with no default argument. The container has no per-request scope: `singleton()` is one per worker, `bind()` is new on every `get()`.
 - Every error response is built by `Http\ErrorResponse`, for the error handler and for the router's 404 and 405 alike. Expected answers such as an unmatched route are returned as responses, not thrown, so they pass back through middleware.
@@ -113,6 +113,29 @@
 - `Http\Concurrency` is how a worker is kept from working on every request at once: middleware an application adds with a number of its own, around every request or around a route. A request that waits has run none of the application's code; one that waits past `wait` is answered 503 by `Http\ErrorResponse`. Do not add a `server.*` setting or a default limit for it.
 - A way of doing something for some routes, such as authenticating, is a middleware. Do not add a contract and a wrapper middleware around it where PSR-15 already says the same.
 
+## WebSockets
+
+- A socket route is declared with `Route::websocket()` and needs no provider: the capability costs an application nothing, and its settings are not even checked, until a socket route exists.
+- The action is one long `handle(Socket $socket, ...)`. It starts inside the HTTP request and the 101 goes out at its first use of the socket, so what it throws before that is an ordinary HTTP answer; after that a failure is reported once and closes with 1011.
+- One action object serves every connection of its route in a worker. Connection state lives in locals of `handle()`, never in properties.
+- Text arrives as it was sent (`array` for JSON, otherwise `string`); only binary is wrapped, in `Binary`. Do not wrap the ordinary message.
+- Everything a connection can hold is bounded: the inbox (16 messages, 256 KiB, which is also the ceiling of `websocket.max_message`), the time an action may leave a full inbox untouched, the wait for a slow client, the connections per worker.
+- The end of a connection is not a failure: `SocketClosed`, and a cancellation caused by the socket's own token, end an action quietly. Any other exception is reported.
+- A test's sockets belong to its `Testing\Api`, which closes them and waits for their actions to settle. A helper that leaves an action or a loop running is a defect.
+- In the engine, a session's silence clock runs only while we read: a pause of ours never retires a peer, so whoever pauses reads bounds that pause.
+
+## Broadcasting
+
+- `Broadcast` follows Cache and Queue: the mechanism in the framework, a `Carrier` behind a contract, the Redis carrier in `crabphp/redis`. It costs nothing until a socket joins or something sends.
+- A socket joins through `Contracts\WebSocket\Channels`, handed over by the glue. The `WebSocket` component never names `Broadcast`.
+- A message is encoded once, before the carrier. Fan-out writes in bounded batches, yields between them and never waits for a reader.
+- Delivery is at most once, in order per sender and channel, with no replay. So a client must never be left silently stale: a lost subscription closes every joined socket with 1012 to make it reconnect and refetch.
+- A client is slow when it stays behind, not at its first full buffer: a bounded backlog per recipient, then 1008 at the bound or after `websocket.send_timeout`. A recipient that keeps up costs no backlog and no timer.
+- A cleanup that walks many recipients continues past one that fails, and reports that failure.
+- `local` reaches this process only. Startup refuses it where another process could send, and a sender outside the serving process fails with a message rather than sending to nobody.
+- `within($transaction)` is the queue's hand-off: sent after the outermost commit, and a failure then is reported, never thrown into the committed caller.
+- Every wait in a test that crosses processes, sockets or the loop has a deadline and a message naming what it waited for.
+
 ## Calling out
 
 - Code that calls another server asks for `Contracts\HttpClient\Client` and never uses `file_get_contents()`, cURL or a stream wrapper for it: those hold the whole worker until the other side answers.
@@ -151,6 +174,7 @@
 - A way of authenticating is a middleware and nothing more. Core `Auth` is `Identity`, that convention, and the `PasswordHasher`; it decides no scheme.
 - Tokens are one way, opt-in through `TokenAuthProvider`: the `TokenAuth` middleware, the `TokenStore` and the `IdentityResolver` an application binds so that a user can be found from the id a token belongs to. Crab keeps no user table of its own.
 - A secret is never stored as it is: a token is kept as its SHA-256 hash and a password through `PasswordHasher`. Neither appears in a log or an exception's message.
+- A browser cannot send a header on a WebSocket, so it trades its credential for a ticket: `Auth\Ticket` in place of `TokenAuth` on the socket route, `Auth\IssueTicket` behind whatever authenticates the application. A ticket is random, kept only as its hash with the identity's id, used once through `Cache::take()` and gone after `auth.ticket_ttl`. Every refusal is the same 401, and a ticket that is present but wrong never falls back to another credential.
 
 ## Scope
 
@@ -161,6 +185,7 @@
 
 - `Cache\Cache` is the one class that checks keys, works out expiry and turns values into text; a store only stores, behind `Contracts\Cache\Store`. A new place to keep entries is a new store, never a second cache class.
 - A store's `add()` sets a key only when it is absent, and its `deleteIf()` removes a key only while it still holds the given value, each as one step with respect to every other caller of that store. `Cache::lock()` is built on the two; a store that cannot do both atomically must not be used for locks.
+- A store's `take()` returns a live entry and removes it as one step with respect to every caller. Anything used once is redeemed with it, never with a get and then a delete.
 - A lock is an entry under `:lock:`, which a `cache.prefix` may not contain. `clear()` removes locks with everything else, and on the array, file and database stores it empties every prefix.
 - The file store never follows a link, and removes an entry by unlinking it before truncating, checking both. An entry that outlived its time stays until it is read or `cache:prune` runs.
 - Times are passed to a store, never read by it, so that every store can be tested with a frozen clock.
@@ -246,7 +271,7 @@
 - It stays minimal and readable at a glance: `app.php` describes the application, `cua` is the command line (`php cua serve`), and the folders are `routes/`, `app/Actions/`, `app/Providers/`, `config/`, `database/migrations/`, `storage/` and `tests/`.
 - An application's `app/` has few folders, by where a class is used and not one for each kind: `Actions/` for every class with `handle()` (what a route points at, a job, a listener, a scheduled class), `Console/` for commands, `Http/` for what only a request meets (middleware, input classes), `Providers/`, and `Events/` for event objects. A folder is made when there are files for it, not before. Do not add `Jobs/`, `Listeners/`, `Middleware/` or `Commands/` to the skeleton, the sample or the guide.
 - `storage/` holds what the application writes while it runs (logs in `storage/logs/`, the SQLite file, the file cache when its directory is set there, later uploads) and is never committed. Nothing the application needs in order to start lives there. A relative `log.path` is inside the application's base path. Add a folder to it only when a component that needs one is built.
-- `app.php` is one `App::configure(__DIR__)` chain that names the providers and, in `withRouting(routes:, commands:)`, the route and command files, and ends in `create()`. `AppBuilder` has no defaults of its own and finds nothing by convention: what an application starts with is a chain of ordinary steps in `App::configure()`, today `withEnv('.env')` and `withConfig('config', required: false)`, where anyone can read it. A new default is added to that chain, with the owner's agreement. A step that takes several things takes them one by one or as a list. The route files declare with `Route::` and `Command::`, and no skeleton file uses a variable it did not define.
+- `app.php` is one `App::configure(__DIR__)` chain that names the providers and, in `withRouting(routes:, commands:)`, the route and command files, and ends in `create()`. The builder starts with the framework's provider and middleware lists, `App::PROVIDERS` and `App::MIDDLEWARE`, and finds nothing by convention. `App::configure()` applies the providers and, with a base path, takes `withEnv('.env')` and `withConfig('config', required: false)` on the application's behalf. An application names only its own and its packages' providers; `remove:` and `only:` change the framework's part. A new default needs the owner's agreement and is written where anyone can read it. A step takes one thing or a list. The route files declare with `Route::` and `Command::`, and no skeleton file uses a variable it did not define.
 - When the framework changes how an application is written, change the skeleton and its README in the same piece of work, and run its tests.
 
 # Engine conventions

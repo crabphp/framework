@@ -378,7 +378,8 @@ final class ScheduleTest extends TestCase
         try {
             WorkerHarness::run([], static function (Worker $worker) use ($scheduler, &$stopped): void {
                 $scheduler->repeat($worker);
-                Async::sleep($worker->loop, 0.05);
+                // Allow five timer intervals before checking that a task ran.
+                Async::sleep($worker->loop, 0.1);
                 // The worker stops while this task is still going, and the timers go on firing meanwhile.
                 $worker->stop();
                 $stopped = Beat::$count;

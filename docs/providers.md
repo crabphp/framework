@@ -16,6 +16,8 @@
 
 A service is an object your application shares: a mailer, a payment client, a repository. The container makes services and hands them to the classes that ask for them. A provider is where you tell the container how a service is made.
 
+`App::configure()` includes BroadcastProvider alongside the database, auth, cache, events, queue, schedule and HTTP client providers. It binds `Crab\Contracts\Broadcast\Broadcaster` and opens no resources until first use; see [Broadcasting](broadcasting.md).
+
 You rarely call the container yourself. You declare what a class needs in its constructor, and the container supplies it.
 
 ## The container
@@ -84,13 +86,29 @@ A provider is a class with one method, `register()`. Add it to `app.php`:
 
 ```php
 // app.php
+use App\Providers\AppProvider;
+
 ->withProviders([
-    DatabaseProvider::class,
     AppProvider::class,
 ])
 ```
 
-Providers are registered in the order given. There is no `boot()` step: because bindings are closures that run on first use, by then every provider has registered, and order rarely matters. It matters only when a provider adds to something another made in `register()`, such as scheduled tasks or event listeners; put the provider that owns the list first.
+`App::configure()` starts with the framework's providers, `App::PROVIDERS`, in this order: `DatabaseProvider`, `AuthProvider`, `CacheProvider`, `EventsProvider`, `QueueProvider`, `ScheduleProvider`, `HttpClientProvider`, `BroadcastProvider`. Your own providers and those of the packages you use come after them, in the order given. There is no `boot()` step: because bindings are closures that run on first use, by then every provider has registered, and order rarely matters. It matters only when a provider adds to something another made in `register()`, such as scheduled tasks or event listeners; put the provider that owns the list first.
+
+To leave out a framework provider or replace the framework's list, use one of these two forms:
+
+```php
+// app.php — choose one
+use App\Providers\AppProvider;
+use Crab\Schedule\ScheduleProvider;
+
+->withProviders(remove: [ScheduleProvider::class])          // without one of the framework's
+->withProviders(only: [AppProvider::class])                 // these in place of the framework's
+```
+
+`remove:` accepts only classes in `App::PROVIDERS` and names the list when you give another. `only: []` leaves out all framework providers. `only:` and `remove:` cannot be combined, even across calls. Providers given as the first argument are still added after the replacement list. Calling `withProviders()` again adds providers; another `only:` replaces the previous replacement.
+
+A framework provider named again, by class or as an object, is registered once at its first place. `TokenAuthProvider` and every package, including `crabphp/redis` and `crabphp/clockwerk`, stay opt-in. Nothing is found by convention. `new App()` used directly registers no providers.
 
 Start with the one `AppProvider`. Split it when it grows, by area: a `BillingProvider`, a `MailProvider`.
 

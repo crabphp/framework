@@ -10,6 +10,7 @@
     - [Protecting routes](#protecting-routes)
     - [Managing tokens](#managing-tokens)
     - [Another header](#another-header)
+- [Browser socket tickets](#browser-socket-tickets)
 - [Passwords](#passwords)
 - [A way of your own](#a-way-of-your-own)
 - [Authorization](#authorization)
@@ -19,7 +20,7 @@
 
 Authentication answers "who is making this request?". In Crab that is decided by middleware, and whatever the way, it ends the same: the middleware puts your user on the request, and an action takes that user as a parameter.
 
-One way ships, because nearly every API starts with it: a token sent in a header and kept in your database. Anything else, a JWT, a signed URL, a header set by a proxy, is a few lines of middleware of your own.
+A token sent in a header and kept in your database authenticates ordinary API requests. For a browser's WebSocket handshake, exchange that authentication for a short-lived, single-use ticket. Anything else, a JWT, a signed URL, a header set by a proxy, is a few lines of middleware of your own.
 
 There is no `Auth::user()`. A worker serves requests that overlap, so the user travels with the request and nowhere else.
 
@@ -65,14 +66,14 @@ Crab keeps no user table and no user model. The table is yours.
 
 ### Installation
 
+`AuthProvider` and its password hasher are registered by default by `App::configure()`, so they need nothing in `app.php`; add `TokenAuthProvider` when you use database tokens.
+
 ```php
 // app.php
-use Crab\Auth\AuthProvider;
+use App\Providers\AppProvider;
 use Crab\Auth\TokenAuthProvider;
 
 ->withProviders([
-    DatabaseProvider::class,
-    AuthProvider::class,
     TokenAuthProvider::class,
     AppProvider::class,
 ])
@@ -196,6 +197,34 @@ new TokenAuth($tokens, $users, required: false);         // lets a request witho
 ```
 
 Use `required: false` for a route that serves both anonymous and logged-in callers. A valid token still supplies the user. An unknown or expired token, or one whose user no longer exists, is answered `401` with `WWW-Authenticate`, so the client knows to log in again. A header with another scheme, such as `Basic` when the scheme is `Bearer`, or an empty token (`Bearer `), counts as no token and goes through anonymously.
+
+## Browser socket tickets
+
+A browser cannot set `Authorization` on a native WebSocket. Declare an authenticated ticket endpoint and use `Ticket` on the socket route:
+
+```php
+// routes/web.php
+use App\Actions\WatchOrder;
+use Crab\Auth\IssueTicket;
+use Crab\Auth\Ticket;
+use Crab\Auth\TokenAuth;
+use Crab\Route;
+
+Route::post('/ws/ticket', IssueTicket::class, middleware: [TokenAuth::class]);
+Route::websocket('/orders/{id}/live', WatchOrder::class, middleware: [Ticket::class]);
+```
+
+`AuthProvider` binds `Crab\Contracts\Auth\Tickets` and the same service as `Crab\Auth\Tickets`. It uses the Cache contract and your IdentityResolver; both are required. TokenAuthProvider supplies the middleware's header fallback. IssueTicket works with any authentication middleware that supplies an Identity. `Tickets::issue(Identity $user): string` issues a ticket; `redeem(string $ticket): ?Identity` consumes it once and resolves its user. Storage holds only the identity id under a hash of the ticket.
+
+| Setting | Default | |
+| --- | --- | --- |
+| `auth.ticket_ttl` | `30` | Positive whole seconds a ticket lives; set it in `config/auth.php` |
+
+Ticket middleware consumes a present `ticket` query parameter. Unknown, expired, malformed, already-used tickets and users that no longer exist all receive the same 401. A present invalid ticket never falls back to a bearer token or an existing identity. Without a ticket, TokenAuth handles the header and existing request identity as usual, including `Api::actingAs()`.
+
+For an Origin restriction, use `new Ticket(origins: ['https://shop.example.com'])`. Values match exactly; a missing or different Origin receives 403 before authentication or upgrade. The check is off by default. Keep Ticket outside a TokenAuth group: putting TokenAuth before it would require a browser to send the header it cannot set.
+
+See [Authenticating a browser](websockets.md#authenticating-a-browser) for the client and reconnect flow. File cache storage works across workers on one machine; use a shared database or Redis store across machines. Startup refuses an array ticket cache with multiple workers.
 
 ## Passwords
 

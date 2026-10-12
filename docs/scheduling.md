@@ -24,19 +24,7 @@ On most frameworks you add a cron entry on the server for this. With Crab you de
 
 ## Installation
 
-Register the provider before the provider that declares your tasks:
-
-```php
-// app.php
-use Crab\Schedule\ScheduleProvider;
-
-->withProviders([
-    DatabaseProvider::class,
-    QueueProvider::class,          // only for tasks that push jobs
-    ScheduleProvider::class,
-    AppProvider::class,
-])
-```
+The schedule is registered by default by `App::configure()`, so it needs nothing in `app.php`; your providers can declare tasks in `register()`.
 
 | Setting | Default | |
 | --- | --- | --- |
@@ -85,7 +73,7 @@ An exit status other than `0` is logged as a failure. Use a command for work you
 $schedule->job(BuildDailyExport::class, format: 'csv')->daily('01:00');
 ```
 
-This is the best choice for work that takes a while or may fail: the scheduler only pushes, a queue worker does the work, and the queue retries it. It needs `QueueProvider`.
+This is the best choice for work that takes a while or may fail: the scheduler only pushes, a queue worker does the work, and the queue retries it. It uses the default queue; configure its store before pushing jobs.
 
 ### Scheduling a class or a closure
 
@@ -101,7 +89,7 @@ $schedule->call(static function () use ($container): void {
 })->hourly();
 ```
 
-The task runs inside the scheduler's own process. Register `CacheProvider` for the cache example; keep such tasks short and give long ones to the queue with `job()`.
+The task runs inside the scheduler's own process. The cache is available by default; keep such tasks short and give long ones to the queue with `job()`.
 
 ## When a task runs
 
@@ -202,7 +190,7 @@ When more than one machine runs `schedule:work`, each would run every task. Mark
 $schedule->job(SendDailyDigest::class)->daily('08:00')->onOneServer();
 ```
 
-The servers agree through the [cache](cache.md), which must then be one they share: the `database` store, not files. Whichever asks first runs the task. Register `CacheProvider`; a schedule that uses `onOneServer()` without a cache is refused when `schedule:work` starts.
+The servers agree through the [cache](cache.md), which must then be one they share: the `database` store, not files. Whichever asks first runs the task. A schedule that uses `onOneServer()` without a cache is refused when `schedule:work` starts.
 
 With a single server, or a single machine running the scheduler, you do not need it.
 

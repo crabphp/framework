@@ -304,7 +304,7 @@ X-RateLimit-Remaining: 0
 Retry-After: 42
 ```
 
-Counts are kept in the [cache](cache.md), so register `CacheProvider`. Workers on one machine share the `file` store; several machines need the `database` or `redis` store. With the `array` store each worker counts alone.
+Counts are kept in the [cache](cache.md), which is available by default. Workers on one machine share the `file` store; several machines need the `database` or `redis` store. With the `array` store each worker counts alone.
 
 Two limits with the same `limit`, `per` and `name` are one count, wherever they are used. Give each its own name to count apart:
 

@@ -28,11 +28,15 @@ final readonly class Api
      * @param RequestHandlerInterface $app The application, or any PSR-15 handler.
      * @param array<string, string> $headers Sent with every request.
      */
+    private SocketFixture $sockets;
+
     public function __construct(
         private RequestHandlerInterface $app,
         private array $headers = [],
         private ?Identity $user = null,
+        ?SocketFixture $sockets = null,
     ) {
+        $this->sockets = $sockets ?? new SocketFixture();
     }
 
     /**
@@ -42,7 +46,7 @@ final readonly class Api
      */
     public function actingAs(Identity $user): self
     {
-        return new self($this->app, $this->headers, $user);
+        return new self($this->app, $this->headers, $user, $this->sockets);
     }
 
     /**
@@ -52,7 +56,7 @@ final readonly class Api
      */
     public function withHeaders(array $headers): self
     {
-        return new self($this->app, [...$this->headers, ...$headers], $this->user);
+        return new self($this->app, [...$this->headers, ...$headers], $this->user, $this->sockets);
     }
 
     /**
@@ -63,6 +67,40 @@ final readonly class Api
     {
         $value = $scheme === '' ? $token : "{$scheme} {$token}";
         return $this->withHeaders(['Authorization' => $value]);
+    }
+
+    /**
+     * Opens the real engine session over a socket pair. A refusal throws
+     * WebSocketRefused carrying the HTTP ApiResponse for assertions.
+     *
+     * @param array<string, mixed> $query
+     * @param array<string, string> $headers
+     */
+    public function websocket(string $path, array $query = [], array $headers = []): TestSocket
+    {
+        $request = new Request('GET', self::with($path, $query), [
+            'Host' => 'localhost',
+            'Accept' => 'application/json',
+            'Upgrade' => 'websocket',
+            'Connection' => 'Upgrade',
+            'Sec-WebSocket-Version' => '13',
+            'Sec-WebSocket-Key' => base64_encode(random_bytes(16)),
+            ...$this->headers,
+            ...$headers,
+        ]);
+        if ($this->user !== null) {
+            $request = $request->withAttribute(Identity::ATTRIBUTE, $this->user);
+        }
+        return $this->sockets->own(TestSocket::connect($this->app, $request));
+    }
+
+    /**
+     * Ends every socket opened by this fixture and its header/user variants.
+     * Api also does this when the fixture leaves scope.
+     */
+    public function closeSockets(): void
+    {
+        $this->sockets->close();
     }
 
     /**
@@ -125,7 +163,16 @@ final readonly class Api
         if ($this->user !== null) {
             $request = $request->withAttribute(Identity::ATTRIBUTE, $this->user);
         }
-        return new ApiResponse($this->app->handle($request), "{$method} {$path}");
+        $response = $this->app->handle($request);
+        if ($response instanceof \Crab\Http\UpgradeResponse) {
+            $response->discard();
+            if (\Fiber::getCurrent() === null) {
+                $loop = \Crab\Engine\EventLoop::current();
+                $loop->defer($loop->stop(...));
+                $loop->run();
+            }
+        }
+        return new ApiResponse($response, "{$method} {$path}");
     }
 
     /**

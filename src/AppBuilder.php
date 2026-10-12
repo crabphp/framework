@@ -20,10 +20,10 @@ use Psr\Http\Server\MiddlewareInterface;
  *         ->create();
  *
  * The directory given to configure() is the application's base path, and
- * a relative path given to any step is inside it. The builder itself has
- * no defaults: the ones an application starts with, its .env file and its
- * config folder, are steps that App::configure() takes on its behalf, and
- * can be read there.
+ * a relative path given to any step is inside it. An application starts
+ * with its .env file and its config folder, which are steps that
+ * App::configure() takes on its behalf, and with the framework's own
+ * providers and middleware, the lists App::PROVIDERS and App::MIDDLEWARE.
  *
  * Nothing happens until create(), which does the steps in the order they
  * depend on one another, whatever order they were given in: environment,
@@ -39,6 +39,18 @@ final class AppBuilder
      * @var list<Provider|string>
      */
     private array $providers = [];
+    /**
+     * Classes of the framework's providers to leave out.
+     *
+     * @var list<string>
+     */
+    private array $withoutProviders = [];
+    /**
+     * The whole list in place of the framework's, when given.
+     *
+     * @var list<Provider|string>|null
+     */
+    private ?array $onlyProviders = null;
     /**
      * Middleware to put after the framework's, and before it.
      *
@@ -107,18 +119,38 @@ final class AppBuilder
     }
 
     /**
-     * Providers to register, in this order; one given by class name is
-     * made by the container. They may be given one by one or as a list.
+     * The application's own providers and those of the packages it uses.
+     * The application starts with the framework's, App::PROVIDERS, and
+     * these are registered after them, in the order given:
      *
-     * @param Provider|class-string<Provider>|list<Provider|class-string<Provider>> ...$providers
+     *     ->withProviders([RedisProvider::class, AppProvider::class])     after the framework's
+     *     ->withProviders(remove: [ScheduleProvider::class])              without one of the framework's
+     *     ->withProviders(only: [AppProvider::class])                     these and no others
+     *
+     * One given by class name is made by the container. Called again, it
+     * adds to what was said before, except that only: replaces an earlier
+     * only:. One of the framework's named again is registered once, in the
+     * framework's place.
+     *
+     * @param Provider|class-string<Provider>|list<Provider|class-string<Provider>> $providers
+     * @param class-string<Provider>|list<class-string<Provider>> $remove Classes of the framework's providers to leave out.
+     * @param list<Provider|class-string<Provider>>|null $only The whole list in place of the framework's.
      */
-    public function withProviders(Provider|string|array ...$providers): static
+    public function withProviders(Provider|string|array $providers = [], string|array $remove = [], ?array $only = null): static
     {
-        foreach (self::flat($providers) as $provider) {
-            if (!is_string($provider) && !$provider instanceof Provider) {
-                throw new \LogicException('withProviders() takes providers or their class names, not ' . get_debug_type($provider) . '.');
+        $this->providers = [...$this->providers, ...self::providers(is_array($providers) ? $providers : [$providers])];
+        foreach ((array) $remove as $class) {
+            if (!is_string($class) || !in_array($class, App::PROVIDERS, true)) {
+                $given = is_string($class) ? $class : get_debug_type($class);
+                throw new \LogicException("withProviders(remove:) leaves out one of the framework's providers, and {$given} is not one of them: " . implode(', ', App::PROVIDERS) . '. A provider of your own is left out where you added it.');
             }
-            $this->providers[] = $provider;
+            $this->withoutProviders[] = $class;
+        }
+        if ($only !== null) {
+            $this->onlyProviders = self::providers($only);
+        }
+        if ($this->onlyProviders !== null && $this->withoutProviders !== []) {
+            throw new \LogicException("withProviders() was given both only: and remove:. only: already replaces the framework's providers, so leave out of it what you do not want.");
         }
         return $this;
     }
@@ -208,7 +240,7 @@ final class AppBuilder
             Env::load($this->path($this->env));
         }
         $app = new App($this->config(), basePath: $this->basePath, middleware: $this->globalMiddleware());
-        $app->register(...$this->providers);
+        $app->register(...$this->allProviders());
         if ($this->health !== null) {
             $app->router->get($this->health, new Health());
         }
@@ -237,6 +269,45 @@ final class AppBuilder
             }
         }
         return [...$this->prepend, ...$middle, ...$this->append];
+    }
+
+    /**
+     * The providers to register, in order: the framework's or what
+     * replaces them, then the application's. A class of the framework's
+     * that the application names as well is registered once.
+     *
+     * @return list<Provider|string>
+     */
+    private function allProviders(): array
+    {
+        $first = $this->onlyProviders ?? array_values(array_diff(App::PROVIDERS, $this->withoutProviders));
+        $providers = [];
+        $seen = [];
+        foreach ([...$first, ...$this->providers] as $provider) {
+            $class = is_string($provider) ? $provider : $provider::class;
+            if (in_array($class, App::PROVIDERS, true)) {
+                if (isset($seen[$class])) {
+                    continue;
+                }
+                $seen[$class] = true;
+            }
+            $providers[] = $provider;
+        }
+        return $providers;
+    }
+
+    /**
+     * @param array<mixed> $list
+     * @return list<Provider|string>
+     */
+    private static function providers(array $list): array
+    {
+        foreach ($list as $provider) {
+            if (!is_string($provider) && !$provider instanceof Provider) {
+                throw new \LogicException('withProviders() takes providers or their class names, not ' . get_debug_type($provider) . '.');
+            }
+        }
+        return array_values($list);
     }
 
     /**
@@ -275,24 +346,6 @@ final class AppBuilder
         return $absolute || $this->basePath === null ? $path : $this->basePath . '/' . $path;
     }
 
-    /**
-     * Arguments given one by one, as a list, or both, as one list.
-     *
-     * @param array<mixed> $arguments
-     * @return list<mixed>
-     */
-    private static function flat(array $arguments): array
-    {
-        $flat = [];
-        foreach ($arguments as $argument) {
-            if (is_array($argument)) {
-                array_push($flat, ...array_values($argument));
-            } else {
-                $flat[] = $argument;
-            }
-        }
-        return $flat;
-    }
 
     /**
      * Includes a file on its own, so that it sees no variable it did not

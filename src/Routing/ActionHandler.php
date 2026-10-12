@@ -5,6 +5,9 @@ declare(strict_types=1);
 namespace Crab\Routing;
 
 use Crab\Contracts\Auth\Identity;
+use Crab\Contracts\Http\Request;
+use Crab\Contracts\WebSocket\Socket;
+use Crab\WebSocket\Connections;
 use Crab\Contracts\Validation\Rule;
 use Crab\Contracts\Validation\Validator;
 use Crab\Http\ErrorResponse;
@@ -85,6 +88,8 @@ final class ActionHandler implements RequestHandlerInterface
      */
     private ?array $input = null;
     private readonly bool $fromQuery;
+    private ?string $socket = null;
+    private readonly string $route;
     /**
      * The action's class and its method, when it is not a closure.
      *
@@ -104,8 +109,9 @@ final class ActionHandler implements RequestHandlerInterface
         \Closure|string|array $action,
         private readonly Validator $validator,
         private readonly ?ContainerInterface $container = null,
+        private readonly ?Connections $websockets = null,
     ) {
-        $route = "{$method} {$pattern}";
+        $route = $this->route = "{$method} {$pattern}";
         if ($action instanceof \Closure) {
             $this->closure = $action;
             $this->method = null;
@@ -118,10 +124,16 @@ final class ActionHandler implements RequestHandlerInterface
             $name = $this->method[1] === 'handle' ? $this->method[0] : implode('::', $this->method);
         }
         $this->name = $name;
-        $this->fromQuery = in_array($method, ['GET', 'HEAD', 'DELETE'], true);
+        $this->fromQuery = in_array($method, ['GET', 'HEAD', 'DELETE', 'WS'], true);
 
         foreach ($this->signature->getParameters() as $parameter) {
             $this->read($parameter, $names, $route);
+        }
+        if ($method === 'WS' && $this->socket === null) {
+            throw new \LogicException("The action of {$route} needs a " . Socket::class . ' parameter. Declare handle(Socket $socket, ...).');
+        }
+        if ($method === 'WS' && $this->input !== null) {
+            throw new \LogicException("The action of {$route} takes an input class. A socket upgrade has no request body; take query fields as typed parameters instead.");
         }
         if ($this->input !== null && $this->fields !== []) {
             throw new \LogicException("The action of {$route} takes the input {$this->input[1]} and also the field \${$this->fields[0]}; put every field in the class, or take them all as parameters.");
@@ -190,6 +202,22 @@ final class ActionHandler implements RequestHandlerInterface
             return ErrorResponse::make($request, 422, 'The request is invalid.', fields: $errors);
         }
         // By name, so that a field the request leaves out takes the default the action gives it.
+        if ($this->socket !== null) {
+            if (!$request instanceof Request) {
+                throw new \LogicException('A socket route needs a Crab HTTP request; use Http\\Request or the engine adapter.');
+            }
+            $action = $this->closure ??= $this->callable();
+            $name = $this->socket;
+            try {
+                $logger = $this->container !== null && $this->container->has(\Psr\Log\LoggerInterface::class)
+                    ? $this->container->get(\Psr\Log\LoggerInterface::class) : null;
+                return $this->websockets->upgrade($request, $this->route, static function (Socket $socket) use ($action, $name, $arguments): mixed {
+                    return $action(...[$name => $socket, ...$arguments]);
+                }, $logger);
+            } catch (ValidationException $invalid) {
+                return ErrorResponse::make($request, 422, 'The request is invalid.', fields: $invalid->errors);
+            }
+        }
         $result = ($this->closure ??= $this->callable())(...$arguments);
         if ($result instanceof ResponseInterface) {
             return $result;
@@ -242,7 +270,18 @@ final class ActionHandler implements RequestHandlerInterface
             throw new \LogicException("The action of {$route} takes \${$name}, which must have one plain type.");
         }
         $typeName = $type->getName();
-        if (in_array($name, $names, true)) {
+        if (is_a($typeName, Socket::class, true)) {
+            if ($this->websockets === null) {
+                throw new \LogicException("The action of {$route} takes a Socket parameter. Declare it with Route::websocket() instead of an HTTP route.");
+            }
+            if ($typeName !== Socket::class && $typeName !== \Crab\WebSocket\Socket::class) {
+                throw new \LogicException("The action of {$route} takes {$typeName}; use " . Socket::class . ' for the socket parameter.');
+            }
+            if ($this->socket !== null || $type->allowsNull() || $parameter->isPassedByReference()) {
+                throw new \LogicException("The action of {$route} needs one non-null Socket parameter, passed by value.");
+            }
+            $this->socket = $name;
+        } elseif (in_array($name, $names, true)) {
             if (!in_array($typeName, ['string', 'int', 'float', 'bool'], true)) {
                 throw new \LogicException("The action of {$route} takes the route parameter \${$name} as {$typeName}; it can be string, int, float or bool.");
             }

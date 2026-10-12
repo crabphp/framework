@@ -24,6 +24,8 @@ parser.add_argument('--concurrency', default='1,32,128')
 parser.add_argument('--payloads', default='64,1024')
 parser.add_argument('--workers', type=int, default=1)
 parser.add_argument('--opcache-cli', action='store_true')
+parser.add_argument('--jit', choices=('off', 'tracing'))
+parser.add_argument('--source', type=Path, help='Engine source tree for matched snapshot trials.')
 args = parser.parse_args()
 directory = Path(__file__).resolve().parent
 results = directory / 'results'
@@ -46,8 +48,14 @@ with socket.socket() as reservation:
     port = reservation.getsockname()[1]
 
 php_command = ['php'] + (['-d', 'opcache.enable_cli=1', '-d', 'opcache.jit=0'] if args.opcache_cli else [])
+if args.jit is not None:
+    php_command += ['-d', 'opcache.enable_cli=1', '-d', f'opcache.jit={args.jit}',
+                    '-d', 'opcache.jit_buffer_size=128M' if args.jit == 'tracing' else 'opcache.jit_buffer_size=0']
 server_command = php_command + [str(directory / 'server.php'), '--protocol=ws', '--host=127.0.0.1',
                   f'--port={port}', f'--workers={args.workers}']
+source = (args.source or directory.parent / 'src' / 'Engine').resolve()
+if args.source is not None:
+    server_command += [f'--source={source}']
 log_path = results / f'ws-{args.label}-server.log'
 document = {
     'label': args.label, 'timestamp_utc': datetime.datetime.now(datetime.timezone.utc).isoformat(),
@@ -62,9 +70,12 @@ document = {
     'method': 'closed-loop, one in-flight masked binary echo per connection; validated payload; fresh connections per trial',
     'results': [],
 }
-source_files = sorted((directory.parent / 'src' / 'Engine').rglob('*.php')) + [directory / 'server.php', directory / 'websocket.mjs']
-document['source_sha256'] = {str(path.relative_to(directory.parent)): hashlib.sha256(path.read_bytes()).hexdigest()
+source_files = sorted(source.rglob('*.php'))
+document['source_root'] = str(source)
+document['source_sha256'] = {str(Path('src/Engine') / path.relative_to(source)): hashlib.sha256(path.read_bytes()).hexdigest()
                              for path in source_files}
+for path in (directory / 'server.php', directory / 'websocket.mjs'):
+    document['source_sha256'][str(path.relative_to(directory.parent))] = hashlib.sha256(path.read_bytes()).hexdigest()
 packages = json.loads((directory.parent / 'composer.lock').read_text())['packages']
 document['revolt_version'] = next(package['version'] for package in packages if package['name'] == 'revolt/event-loop')
 output_path = results / f'ws-{args.label}.json'

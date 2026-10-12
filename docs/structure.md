@@ -7,7 +7,7 @@
 
 ## Introduction
 
-The skeleton is small on purpose: every file in it is one you will open. Providers and route and command files are named in `app.php`; configuration files and migrations are found inside their configured folders.
+The skeleton is small on purpose: every file in it is one you will open. Your own and package providers and route and command files are named in `app.php`; the framework providers are registered by default, and configuration files and migrations are found inside their configured folders.
 
 ## The root
 
@@ -45,11 +45,9 @@ Everything begins in `app.php`:
 // app.php
 use App\Providers\AppProvider;
 use Crab\App;
-use Crab\Database\DatabaseProvider;
 
 return App::configure(__DIR__)
     ->withProviders([
-        DatabaseProvider::class,
         AppProvider::class,
     ])
     ->withRouting(

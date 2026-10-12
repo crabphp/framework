@@ -25,15 +25,7 @@ It is the PSR-18 client, so a library that asks for `Psr\Http\Client\ClientInter
 
 ## Configuration
 
-```php
-// app.php
-use Crab\HttpClient\HttpClientProvider;
-
-->withProviders([
-    HttpClientProvider::class,
-    AppProvider::class,
-])
-```
+The HTTP client is registered by default by `App::configure()`, so it needs nothing in `app.php`.
 
 | Setting | Default | |
 | --- | --- | --- |

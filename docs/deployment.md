@@ -208,7 +208,7 @@ Shop server running on http://127.0.0.1:8080
 Press Ctrl+C to stop
 ```
 
-Each server running under `serve` has an id: `http`, `queue`, `schedule`. They are started, stopped and reloaded together: `reload` after a deploy gives every one of them the new code, each given its shutdown period to finish the work in hand before remaining workers are ended. Each has processes of its own, so a slow job never holds up a request. A server that is registered and switched off is listed as `off`, so that no one waits for a job that nothing will run.
+Each server running under `serve` has an id: `http`, `queue`, `schedule`. They are started, stopped and reloaded together: `reload` after a deploy gives every one of them the new code, each given its shutdown period to finish the work in hand before remaining workers are ended. Each has processes of its own, so a slow job never holds up a request. When something runs beside HTTP, registered servers that are switched off are listed as `off`. With HTTP alone, `serve` prints no server table.
 
 | On | Switch on | Why |
 | --- | --- | --- |

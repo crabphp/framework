@@ -18,15 +18,7 @@ MySQL and SQLite are supported. SQLite needs no server and suits development, te
 
 ## Configuration
 
-```php
-// app.php
-use Crab\Database\DatabaseProvider;
-
-->withProviders([
-    DatabaseProvider::class,
-    AppProvider::class,
-])
-```
+The database provider is registered by default by `App::configure()`, so it needs nothing in `app.php`; configure a connection before using it.
 
 ```php
 // config/database.php
@@ -44,7 +36,7 @@ return [
 ];
 ```
 
-A database is always described under `database.connections`, by a name of your choosing, whether you have one or several. `database.default` names the one you get when you name none; left out, it is the first.
+An application with no database configured still starts; asking for the database then names the missing configuration. A database is always described under `database.connections`, by a name of your choosing, whether you have one or several. `database.default` names the one you get when you name none; left out, it is the first.
 
 ```text
 DB_DSN=mysql:host=127.0.0.1;dbname=orders;charset=utf8mb4

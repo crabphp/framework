@@ -1,0 +1,80 @@
+[
+  {
+    "pair": 0,
+    "version": "before",
+    "mode": "echo",
+    "php": "8.4.19",
+    "jit": true,
+    "iterations": 5000,
+    "user_us_per_operation": [
+      9.265,
+      9.3182,
+      9.2882
+    ]
+  },
+  {
+    "pair": 0,
+    "version": "after",
+    "mode": "echo",
+    "php": "8.4.19",
+    "jit": true,
+    "iterations": 5000,
+    "user_us_per_operation": [
+      9.1182,
+      9.3052,
+      9.061
+    ]
+  },
+  {
+    "pair": 1,
+    "version": "before",
+    "mode": "echo",
+    "php": "8.4.19",
+    "jit": true,
+    "iterations": 5000,
+    "user_us_per_operation": [
+      8.9288,
+      9.013,
+      9.2508
+    ]
+  },
+  {
+    "pair": 1,
+    "version": "after",
+    "mode": "echo",
+    "php": "8.4.19",
+    "jit": true,
+    "iterations": 5000,
+    "user_us_per_operation": [
+      9.0644,
+      9.2158,
+      9.1254
+    ]
+  },
+  {
+    "pair": 2,
+    "version": "before",
+    "mode": "echo",
+    "php": "8.4.19",
+    "jit": true,
+    "iterations": 5000,
+    "user_us_per_operation": [
+      9.0806,
+      9.1154,
+      9.1672
+    ]
+  },
+  {
+    "pair": 2,
+    "version": "after",
+    "mode": "echo",
+    "php": "8.4.19",
+    "jit": true,
+    "iterations": 5000,
+    "user_us_per_operation": [
+      8.993,
+      9.0088,
+      8.9544
+    ]
+  }
+]

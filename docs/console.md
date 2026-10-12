@@ -166,7 +166,7 @@ php cua stop --force
 
 Success means the background server, including registered programs, has ended; a keeper that does not lead its own session is ended alone, with a non-zero result saying its workers may remain and must be ended by whatever started it. Foreground `serve` writes no background PID file: stop its terminal job or process manager. See [Deployment](deployment.md#finishing-requests-on-stop) for drain limits.
 
-Providers add theirs when you register them:
+The default framework providers add their commands automatically; `TokenAuthProvider` adds its command when you register it:
 
 | Provider | Commands |
 | --- | --- |

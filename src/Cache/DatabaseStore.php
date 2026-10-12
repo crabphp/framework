@@ -51,6 +51,22 @@ final readonly class DatabaseStore implements Store
         return $inserted === 1;
     }
 
+    public function take(string $key, int $now): ?string
+    {
+        return $this->connection->transaction(function (Connection $connection) use ($key, $now): ?string {
+            $row = $connection->table($this->table)->select('value', 'expires_at')->where('key', $key)->lockForUpdate()->first();
+            if ($row === null) {
+                return null;
+            }
+            $connection->table($this->table)->where('key', $key)->delete();
+            if ($row['expires_at'] !== null && (int) $row['expires_at'] <= $now) {
+                return null;
+            }
+            $value = base64_decode((string) $row['value'], true);
+            return $value === false ? null : $value;
+        });
+    }
+
     public function increment(string $key, int $by, ?int $expiresAt, int $now): int
     {
         for ($try = 0; $try < 5; ++$try) {

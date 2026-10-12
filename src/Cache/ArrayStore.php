@@ -36,6 +36,13 @@ final class ArrayStore implements Store
         $this->entries[$key] = [$value, $expiresAt];
     }
 
+    public function take(string $key, int $now): ?string
+    {
+        $entry = $this->entries[$key] ?? null;
+        unset($this->entries[$key]);
+        return $entry === null || ($entry[1] !== null && $entry[1] <= $now) ? null : $entry[0];
+    }
+
     public function add(string $key, string $value, ?int $expiresAt, int $now): bool
     {
         if ($this->get($key, $now) !== null) {

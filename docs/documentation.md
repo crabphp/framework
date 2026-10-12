@@ -28,6 +28,8 @@
 - [Queues](queues.md)
 - [Task scheduling](scheduling.md)
 - [HTTP client](http-client.md)
+- [WebSockets](websockets.md)
+- [Broadcasting](broadcasting.md)
 
 ## Security
 

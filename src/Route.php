@@ -21,6 +21,15 @@ use Psr\Http\Server\RequestHandlerInterface;
 final class Route
 {
     /**
+     * An action with handle(Socket $socket, ...) that runs after its HTTP
+     * handshake has passed through every middleware.
+     */
+    public static function websocket(string $pattern, \Closure|string|array $action, array $middleware = []): Router
+    {
+        return App::current()->router->websocket($pattern, $action, $middleware);
+    }
+
+    /**
      * @param RequestHandlerInterface|\Closure|string|array{class-string, string} $action
      * @param list<\Psr\Http\Server\MiddlewareInterface|class-string<\Psr\Http\Server\MiddlewareInterface>> $middleware Around this route alone.
      */

@@ -94,6 +94,109 @@ final class TransportTest extends TestCase
         $loop->cancel($watcher);
     }
 
+    public function testWriteProgressObserverReplacementRemovalAndRearming(): void
+    {
+        [$loop, $connection, $peer] = $this->connectedPair(4_194_304);
+        $fill = static function () use ($connection): void {
+            for ($i = 0; $i < 256; ++$i) {
+                self::assertSame(WriteResult::Accepted, $connection->tryWrite(str_repeat('x', 4096)));
+            }
+            self::assertGreaterThan(262_144, $connection->bufferedBytes());
+            self::assertLessThan(2_097_152, $connection->bufferedBytes());
+        };
+        $turn = function () use ($loop, $connection, $peer): void {
+            $before = $connection->bufferedBytes();
+            // Socket readiness needs different amounts of peer reading on each OS.
+            // Stop reading as soon as a partial write has actually happened.
+            $reader = $loop->onReadable($peer, static function () use ($connection, $peer, $before): void {
+                if ($connection->bufferedBytes() === $before) {
+                    fread($peer, 65_536);
+                }
+            });
+            try {
+                $this->until($loop, static fn () => $connection->bufferedBytes() < $before,
+                    message: 'Peer reading did not trigger a transport write turn before the deadline.');
+            } finally {
+                $loop->cancel($reader);
+            }
+        };
+        $fill();
+        $ordinaryWatcher = $loop->getIdentifiers();
+        $connection->onWriteProgress(null);
+        self::assertSame($ordinaryWatcher, $loop->getIdentifiers(), 'No observer must leave the ordinary watcher untouched.');
+        $oldCalls = $calls = 0;
+        $connection->onWriteProgress(static function () use (&$oldCalls): void { ++$oldCalls; });
+        $observedWatcher = $loop->getIdentifiers();
+        self::assertCount(1, $observedWatcher, 'Observation must replace the writer, not add another watcher.');
+        $connection->onWriteProgress(static function () use (&$calls): void { ++$calls; });
+        self::assertSame($observedWatcher, $loop->getIdentifiers(), 'Replacing the callback must retain its watcher.');
+        $before = $connection->bufferedBytes();
+        $turn();
+        self::assertSame(0, $oldCalls);
+        self::assertGreaterThan(0, $calls);
+        self::assertGreaterThan(0, $connection->bufferedBytes());
+        self::assertLessThan($before, $connection->bufferedBytes());
+        $connection->onWriteProgress(null);
+        $callsAfterRemoval = $calls;
+        $before = $connection->bufferedBytes();
+        $turn();
+        self::assertSame($callsAfterRemoval, $calls);
+        self::assertLessThan($before, $connection->bufferedBytes(), 'Removing observation must not stop ordinary writes.');
+        $reader = $loop->onReadable($peer, static function () use ($peer): void { fread($peer, 262_144); });
+        $this->until($loop, static fn () => $connection->bufferedBytes() === 0);
+        $loop->cancel($reader);
+        while (fread($peer, 262_144) !== '') {}
+        self::assertSame([], $loop->getIdentifiers());
+        $observe = static function () use (&$calls): void { ++$calls; };
+        $connection->onWriteProgress($observe);
+        self::assertSame([], $loop->getIdentifiers(), 'An empty output queue needs no watcher.');
+        $fill();
+        $connection->onWriteProgress($observe);
+        $turn();
+        self::assertGreaterThan($callsAfterRemoval, $calls, 'A newly queued writer must be observable again.');
+        $connection->close();
+        self::assertSame([], $loop->getIdentifiers());
+    }
+
+    public function testWriteProgressObserverFailureClosesAndReportsOnce(): void
+    {
+        [$loop, $connection, $peer] = $this->connectedPair(65_536);
+        do {
+            self::assertSame(WriteResult::Accepted, $connection->tryWrite(str_repeat('x', 8192)));
+        } while ($connection->bufferedBytes() === 0);
+        $reported = [];
+        $connection->onError(static function (Throwable $error) use (&$reported): void { $reported[] = $error->getMessage(); });
+        $connection->onWriteProgress(static function (): void { throw new RuntimeException('observer failed'); });
+        $reader = $loop->onReadable($peer, static function () use ($peer): void { fread($peer, 262_144); });
+        $this->until($loop, $connection->isClosed(...));
+        $loop->cancel($reader);
+        self::assertSame(['observer failed'], $reported);
+        self::assertSame([], $loop->getIdentifiers());
+    }
+
+    public function testWorkerDrainExposesItsExtendedDeadlineToTheProtocol(): void
+    {
+        [$loop, $connection] = $this->connectedPair(closeTimeout: 0.01);
+        $connection->shutdownWrite();
+        self::assertNull($connection->drainDeadline());
+        $cutoff = null;
+        $connection->onDrainRequest(static function (Connection $connection) use (&$cutoff): void {
+            $cutoff = $connection->drainDeadline();
+        });
+        $before = hrtime(true) / 1_000_000_000;
+        $connection->drain(0.1);
+        $after = hrtime(true) / 1_000_000_000;
+        self::assertNotNull($cutoff);
+        self::assertGreaterThanOrEqual($before + 0.1, $cutoff);
+        self::assertLessThanOrEqual($after + 0.1, $cutoff);
+        $loop->delay(0.03, $loop->stop(...));
+        $loop->run();
+        self::assertFalse($connection->isClosed(), 'An older close timer shortened the worker allowance.');
+        $this->until($loop, $connection->isClosed(...));
+        self::assertNull($connection->drainDeadline());
+        self::assertSame([], $loop->getIdentifiers());
+    }
+
     public function testOversizeRejectionAndAdditiveCloseCleanup(): void
     {
         [$loop, $connection, $peer] = $this->connectedPair(4);
@@ -381,7 +484,7 @@ final class TransportTest extends TestCase
         return [$loop, $this->ownConnection(new Connection($loop, $server, '', $capacity, $closeTimeout)), $peer];
     }
 
-    private function until(EventLoop $loop, Closure $complete, float $timeout = 2.0): void
+    private function until(EventLoop $loop, Closure $complete, float $timeout = 2.0, string $message = 'Transport test exceeded its deadline.'): void
     {
         $timedOut = false;
         $poll = $loop->repeat(0.001, static function () use ($complete, $loop): void {
@@ -396,7 +499,7 @@ final class TransportTest extends TestCase
             $loop->cancel($poll);
             $loop->cancel($deadline);
         }
-        self::assertFalse($timedOut, 'Transport test exceeded its deadline.');
+        self::assertFalse($timedOut, $message);
         self::assertTrue($complete(), 'EventLoop exited before completion.');
     }
 }

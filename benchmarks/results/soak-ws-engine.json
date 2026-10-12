@@ -1,0 +1,327 @@
+{
+  "label": "ws-engine",
+  "started_utc": "2026-10-12T09:27:56Z",
+  "configuration": {
+    "label": "ws-engine",
+    "minutes": 2.0,
+    "jit": "tracing",
+    "connections": 32
+  },
+  "platform": "macOS-26.7.1-arm64-arm-64bit-Mach-O",
+  "php": "PHP 8.4.19 (cli) (built: Mar 10 2026 15:51:04) (NTS)",
+  "status": "passed",
+  "problems": [],
+  "cycles": [
+    {
+      "elapsed_minutes": 0.0,
+      "loads": [
+        {
+          "path": "/",
+          "requests": 783459,
+          "non_2xx": 0,
+          "socket_errors": ""
+        },
+        {
+          "path": "/",
+          "requests": 94736,
+          "non_2xx": 0,
+          "socket_errors": ""
+        },
+        {
+          "path": "/upload",
+          "requests": 293286,
+          "non_2xx": 0,
+          "socket_errors": ""
+        },
+        {
+          "path": "/stream",
+          "requests": 3728,
+          "non_2xx": 0,
+          "socket_errors": ""
+        }
+      ],
+      "websocket": {
+        "messages": 271864,
+        "errors": 0,
+        "first_error": null
+      },
+      "broken": {
+        "clients": 200,
+        "answered": 77
+      },
+      "samples": {
+        "http": {
+          "rss_bytes": 27148288,
+          "descriptors": 9
+        },
+        "ws": {
+          "rss_bytes": 28016640,
+          "descriptors": 9
+        }
+      }
+    },
+    {
+      "elapsed_minutes": 0.49,
+      "loads": [
+        {
+          "path": "/",
+          "requests": 751203,
+          "non_2xx": 0,
+          "socket_errors": ""
+        },
+        {
+          "path": "/",
+          "requests": 90611,
+          "non_2xx": 0,
+          "socket_errors": ""
+        },
+        {
+          "path": "/upload",
+          "requests": 296133,
+          "non_2xx": 0,
+          "socket_errors": ""
+        },
+        {
+          "path": "/stream",
+          "requests": 3658,
+          "non_2xx": 0,
+          "socket_errors": ""
+        }
+      ],
+      "websocket": {
+        "messages": 261620,
+        "errors": 0,
+        "first_error": null
+      },
+      "broken": {
+        "clients": 200,
+        "answered": 77
+      },
+      "samples": {
+        "http": {
+          "rss_bytes": 23363584,
+          "descriptors": 9
+        },
+        "ws": {
+          "rss_bytes": 23166976,
+          "descriptors": 9
+        }
+      }
+    },
+    {
+      "elapsed_minutes": 0.99,
+      "loads": [
+        {
+          "path": "/",
+          "requests": 739441,
+          "non_2xx": 0,
+          "socket_errors": ""
+        },
+        {
+          "path": "/",
+          "requests": 34549,
+          "non_2xx": 0,
+          "socket_errors": ""
+        },
+        {
+          "path": "/upload",
+          "requests": 269345,
+          "non_2xx": 0,
+          "socket_errors": ""
+        },
+        {
+          "path": "/stream",
+          "requests": 2765,
+          "non_2xx": 0,
+          "socket_errors": ""
+        }
+      ],
+      "websocket": {
+        "messages": 233547,
+        "errors": 0,
+        "first_error": null
+      },
+      "broken": {
+        "clients": 200,
+        "answered": 77
+      },
+      "samples": {
+        "http": {
+          "rss_bytes": 22413312,
+          "descriptors": 9
+        },
+        "ws": {
+          "rss_bytes": 23068672,
+          "descriptors": 9
+        }
+      }
+    },
+    {
+      "elapsed_minutes": 1.49,
+      "loads": [
+        {
+          "path": "/",
+          "requests": 663844,
+          "non_2xx": 0,
+          "socket_errors": ""
+        },
+        {
+          "path": "/",
+          "requests": 76416,
+          "non_2xx": 0,
+          "socket_errors": ""
+        },
+        {
+          "path": "/upload",
+          "requests": 241758,
+          "non_2xx": 0,
+          "socket_errors": ""
+        },
+        {
+          "path": "/stream",
+          "requests": 3647,
+          "non_2xx": 0,
+          "socket_errors": ""
+        }
+      ],
+      "websocket": {
+        "messages": 235183,
+        "errors": 0,
+        "first_error": null
+      },
+      "broken": {
+        "clients": 200,
+        "answered": 77
+      },
+      "samples": {
+        "http": {
+          "rss_bytes": 20496384,
+          "descriptors": 9
+        },
+        "ws": {
+          "rss_bytes": 17104896,
+          "descriptors": 9
+        }
+      }
+    },
+    {
+      "elapsed_minutes": 1.98,
+      "loads": [
+        {
+          "path": "/",
+          "requests": 714563,
+          "non_2xx": 0,
+          "socket_errors": ""
+        },
+        {
+          "path": "/",
+          "requests": 89697,
+          "non_2xx": 0,
+          "socket_errors": ""
+        },
+        {
+          "path": "/upload",
+          "requests": 272188,
+          "non_2xx": 0,
+          "socket_errors": ""
+        },
+        {
+          "path": "/stream",
+          "requests": 3496,
+          "non_2xx": 0,
+          "socket_errors": ""
+        }
+      ],
+      "websocket": {
+        "messages": 276739,
+        "errors": 0,
+        "first_error": null
+      },
+      "broken": {
+        "clients": 200,
+        "answered": 77
+      },
+      "samples": {
+        "http": {
+          "rss_bytes": 23216128,
+          "descriptors": 9
+        },
+        "ws": {
+          "rss_bytes": 21037056,
+          "descriptors": 9
+        }
+      }
+    }
+  ],
+  "baseline": {
+    "http": {
+      "rss_bytes": 35504128,
+      "descriptors": 9
+    },
+    "ws": {
+      "rss_bytes": 34734080,
+      "descriptors": 9
+    }
+  },
+  "summary": {
+    "http": {
+      "cycles": 5,
+      "descriptors_baseline": 9,
+      "descriptors_final": 9,
+      "descriptors_peak_at_rest": 9,
+      "rss_baseline_mib": 33.9,
+      "rss_first_third_mib": 25.9,
+      "rss_last_third_mib": 22.1,
+      "rss_peak_mib": 25.9
+    },
+    "ws": {
+      "cycles": 5,
+      "descriptors_baseline": 9,
+      "descriptors_final": 9,
+      "descriptors_peak_at_rest": 9,
+      "rss_baseline_mib": 33.1,
+      "rss_first_third_mib": 26.7,
+      "rss_last_third_mib": 20.1,
+      "rss_peak_mib": 26.7
+    }
+  },
+  "servers": {
+    "http": {
+      "command": [
+        "php",
+        "-d",
+        "opcache.enable_cli=1",
+        "-d",
+        "opcache.jit=tracing",
+        "-d",
+        "opcache.jit_buffer_size=128M",
+        "/Users/daudau/Code/crabphp/framework/benchmarks/server.php",
+        "--protocol=http",
+        "--port=50708",
+        "--workers=1",
+        "--http-response=fresh"
+      ],
+      "exit_code": 0,
+      "log": ""
+    },
+    "ws": {
+      "command": [
+        "php",
+        "-d",
+        "opcache.enable_cli=1",
+        "-d",
+        "opcache.jit=tracing",
+        "-d",
+        "opcache.jit_buffer_size=128M",
+        "/Users/daudau/Code/crabphp/framework/benchmarks/server.php",
+        "--protocol=ws",
+        "--port=50712",
+        "--workers=1",
+        "--http-response=fresh"
+      ],
+      "exit_code": 0,
+      "log": ""
+    }
+  },
+  "finished_utc": "2026-10-12T09:30:29Z"
+}

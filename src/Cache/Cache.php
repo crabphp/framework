@@ -57,6 +57,12 @@ final readonly class Cache implements CacheContract
         return true;
     }
 
+    public function take(string $key, mixed $default = null): mixed
+    {
+        $entry = $this->store->take($this->key($key), $this->now());
+        return $entry === null ? $default : unserialize($entry);
+    }
+
     public function add(string $key, mixed $value, null|int|\DateInterval $ttl = null): bool
     {
         $now = $this->now();
