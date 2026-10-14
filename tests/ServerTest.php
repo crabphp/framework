@@ -390,7 +390,7 @@ final class ServerTest extends TestCase
             <?php
             $app = Crab\App::configure(__DIR__)->withRouting(routes: 'app/routes.php')->create();
             $app->servers->add('slow', static fn (): array => [
-                new Crab\Contracts\Workers('slow', setup: static function (Crab\Engine\WorkerGroup $group): void {}),
+                new Crab\Contracts\Workers('slow', setup: static function (Crab\Engine\Crab $group): void {}),
             ], grace: 30.0);
             return $app;
             PHP);

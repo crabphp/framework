@@ -15,7 +15,7 @@ use Crab\Engine\Network\Connection;
 use Crab\Engine\Network\Listener;
 use Crab\Engine\Process\Worker;
 use Crab\Engine\Server\HttpServer;
-use Crab\Engine\WorkerGroup;
+use Crab\Engine\Crab;
 use Crab\Engine\EventLoop;
 use Crab\Engine\EventLoop\RevoltEventLoop;
 use Crab\Engine\Tests\Support\TestCase;
@@ -584,7 +584,7 @@ final class HttpTest extends TestCase
                 $wait();
             })());
         });
-        $group = new WorkerGroup('http-cleanup');
+        $group = new Crab('http-cleanup');
         $group->listen($address, static function (Connection $accepted) use ($http, &$connection): void {
             $connection = $accepted;
             $http->attach($accepted);

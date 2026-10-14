@@ -232,7 +232,7 @@ Each worker is started and stopped as an HTTP worker is, with every `WorkerProvi
 use Crab\Contracts\Servers;
 use Crab\Contracts\Workers;
 use Crab\Engine\Server\WebSocketServer;
-use Crab\Engine\WorkerGroup;
+use Crab\Engine\Crab;
 
 public function register(Container $container): void
 {
@@ -246,7 +246,7 @@ public function register(Container $container): void
 
     // Workers of the server's own, here listening for WebSocket connections.
     $servers->add('chat', static fn (): array => [
-        new Workers('chat', workers: 2, setup: static function (WorkerGroup $group) use ($container): void {
+        new Workers('chat', workers: 2, setup: static function (Crab $group) use ($container): void {
             $group->listen('tcp://0.0.0.0:8081', new WebSocketServer($container->get(ChatRoom::class)));
         }),
     ], runs: 'WebSocket on :8081');

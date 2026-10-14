@@ -15,7 +15,7 @@ use Crab\Engine\Process\Worker;
 use Crab\Engine\Runtime;
 use Crab\Engine\Server\HttpServer;
 use Crab\Engine\Tests\Support\TestCase;
-use Crab\Engine\WorkerGroup;
+use Crab\Engine\Crab;
 
 /**
  * Drain deadlines belong to workers. Their parent allows time for those
@@ -35,17 +35,17 @@ final class DrainTest extends TestCase
     public function testTheSupervisorWaitsLongerThanEachWorkersDrainDeadline(): void
     {
         foreach ([1.0, 30.0, 120.0] as $drain) {
-            $group = new WorkerGroup('http', shutdownTimeout: $drain);
+            $group = new Crab('http', shutdownTimeout: $drain);
             self::assertGreaterThan($drain, $this->supervisorGrace($group, $drain));
         }
-        self::assertSame(2.0, $this->supervisorGrace(new WorkerGroup('http', shutdownTimeout: 1.0), 30.0));
+        self::assertSame(2.0, $this->supervisorGrace(new Crab('http', shutdownTimeout: 1.0), 30.0));
     }
 
     public function testAGroupRejectsInvalidDrainDeadlines(): void
     {
         foreach ([0.0, -1.0, INF, NAN] as $drain) {
             try {
-                new WorkerGroup('http', shutdownTimeout: $drain);
+                new Crab('http', shutdownTimeout: $drain);
                 self::fail('An invalid worker drain deadline was accepted.');
             } catch (\InvalidArgumentException $error) {
                 self::assertStringContainsString('shutdown timeout', $error->getMessage());
@@ -422,7 +422,7 @@ final class DrainTest extends TestCase
      * Reads the supervisor's computed allowance without a wall-clock wait
      * or a fork: the same method sets the deadline when it retires a child.
      */
-    private function supervisorGrace(WorkerGroup $group, float $timeout): float
+    private function supervisorGrace(Crab $group, float $timeout): float
     {
         $supervisor = new Supervisor([$group->name => $group], [], static fn () => EventLoop::current(), $timeout);
         $method = new \ReflectionMethod($supervisor, 'grace');

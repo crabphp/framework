@@ -12,7 +12,7 @@ Create the loop **after fork**, install it with `EventLoop::install()`, and inje
 
 ~~~mermaid
 flowchart TD
-    R[Runtime] --> G[WorkerGroup: endpoints and limits]
+    R[Runtime] --> G[Crab: endpoints and limits]
     G --> S[Supervisor: process lifecycle]
     G -. single process .-> W[Worker: resource ownership]
     S --> W
@@ -33,7 +33,7 @@ flowchart TD
 | Owner | Responsibility |
 | --- | --- |
 | `Runtime` | Validate mode, bind endpoints, launch runner, close bindings on rollback |
-| `WorkerGroup` | Frozen startup configuration, endpoint and admission limits |
+| `Crab` | Frozen startup configuration, endpoint and admission limits |
 | `Supervisor` | Worker slots, readiness, backoff, control channels, hard deadlines |
 | `Worker` | One loop, connection/task registries, admission, bootstrap and drain |
 | `Listener / Connector` | Establish streams and transfer ownership once |
@@ -63,7 +63,7 @@ Worker and parent enforce the shutdown deadline, default five seconds. The paren
 
 Unexpected exits receive exponential backoff and at most five restarts per slot in sixty seconds. Readiness has a ten-second deadline. SIGUSR1 starts one replacement at a time, draining its predecessor only after readiness. A failed replacement preserves a healthy previous worker. Fresh-code deployment requires a new parent because loaded classes survive fork.
 
-`Process\Keeper` replaces a parent without refusing a connection. It binds the address once, starts a parent (a generation) with the socket as descriptor 3 and a pipe to report on as descriptor 4, and on request starts another on the same socket; `WorkerGroup::listen(socket:)` and `Process\Generation` are the other side. Old and new accept from one queue, and the keeper retires the old only when `Runtime::onReady()` in the new has said every worker accepts connections. A parent that is stopping closes its own copy of the listening sockets at once, since it will start no more workers.
+`Process\Keeper` replaces a parent without refusing a connection. It binds the address once, starts a parent (a generation) with the socket as descriptor 3 and a pipe to report on as descriptor 4, and on request starts another on the same socket; `Crab::listen(socket:)` and `Process\Generation` are the other side. Old and new accept from one queue, and the keeper retires the old only when `Runtime::onReady()` in the new has said every worker accepts connections. A parent that is stopping closes its own copy of the listening sockets at once, since it will start no more workers.
 
 Two servers binding one address with `SO_REUSEPORT` would be simpler and was measured and turned down: on Linux each socket has its own queue, and connections queued on the one that closes are reset unless `net.ipv4.tcp_migrate_req` is on. A parent starting its own successor was turned down too: a process started with `proc_open` inherits every descriptor its parent has open and PHP cannot close them by number, so each generation would carry the descriptors of all before it. The keeper opens next to nothing, and generations are siblings.
 

@@ -14,7 +14,7 @@ namespace Crab\Contracts;
  *     $servers->command('reverb', 'chat:serve --debug');     // one of the application's commands
  *     $servers->process('vite', 'npm run dev');              // any program
  *     $servers->add('chat', static fn (): array => [         // workers of the server's own
- *         new Workers('chat', workers: 2, setup: static function (WorkerGroup $group): void {
+ *         new Workers('chat', workers: 2, setup: static function (Crab $group): void {
  *             $group->listen('tcp://0.0.0.0:8081', new WebSocketServer(...));
  *         }),
  *     ]);

@@ -6,7 +6,7 @@ namespace Crab\Contracts;
 
 use Crab\Engine\Async\Cancellation;
 use Crab\Engine\Process\Worker;
-use Crab\Engine\WorkerGroup;
+use Crab\Engine\Crab;
 
 /**
  * One group of worker processes that serve no HTTP requests, for
@@ -22,7 +22,7 @@ final readonly class Workers
      * @param string $group A name for these workers, such as "queue:mail"; no two groups run together share one.
      * @param (\Closure(Worker, Cancellation): void)|null $work What each worker does until its cancellation fires. A worker whose work returns is started again.
      * @param int $workers How many processes run it.
-     * @param (\Closure(WorkerGroup): void)|null $setup Called once before the workers start, with the engine's group, to have it listen: `$group->listen('tcp://0.0.0.0:8081', $server)`.
+     * @param (\Closure(Crab): void)|null $setup Called once before the workers start, with the engine's group, to have it listen: `$group->listen('tcp://0.0.0.0:8081', $server)`.
      */
     public function __construct(
         public string $group,

@@ -13,7 +13,7 @@ use Crab\Engine\EventLoop\RevoltEventLoop;
 final class Runtime
 {
     /**
-     * @var array<string, WorkerGroup>
+     * @var array<string, Crab>
      */
     private array $groups = [];
     private \Closure $loopFactory;
@@ -44,12 +44,12 @@ final class Runtime
      * A group may have a shorter drain deadline than the runtime's other
      * workers; its supervisor still allows time for cleanup and exit.
      */
-    public function group(string $name = 'default', int $workers = 1, int $maxConnections = 512, int $maxTasks = 1024, ?float $shutdownTimeout = null): WorkerGroup
+    public function group(string $name = 'default', int $workers = 1, int $maxConnections = 512, int $maxTasks = 1024, ?float $shutdownTimeout = null): Crab
     {
         if ($this->running || isset($this->groups[$name])) {
             throw new \LogicException('Groups must be unique and configured before startup.');
         }
-        return $this->groups[$name] = new WorkerGroup($name, $workers, $maxConnections, $maxTasks, $shutdownTimeout);
+        return $this->groups[$name] = new Crab($name, $workers, $maxConnections, $maxTasks, $shutdownTimeout);
     }
 
     /**

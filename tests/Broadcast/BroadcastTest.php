@@ -642,7 +642,7 @@ final class BroadcastTest extends TestCase
         $container->instance(ConfigContract::class, new Config());
         $provider = new BroadcastProvider();
         $provider->register($container);
-        $worker = new \Crab\Engine\Process\Worker($this->loop, new \Crab\Engine\WorkerGroup('test'), 0, [], 1.0);
+        $worker = new \Crab\Engine\Process\Worker($this->loop, new \Crab\Engine\Crab('test'), 0, [], 1.0);
         $provider->start($worker, $container);
         self::assertNull($container->get(Lifecycle::class)->carrier);
         (new Broadcaster(new LocalCarrier()))->to('nobody')->send('text');

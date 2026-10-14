@@ -10,7 +10,7 @@ use Crab\Engine\Network\Connection;
 use Crab\Engine\Network\Connector;
 use Crab\Engine\Network\Listener;
 use Crab\Engine\Network\UdpEndpoint;
-use Crab\Engine\WorkerGroup;
+use Crab\Engine\Crab;
 use Crab\Engine\EventLoop;
 use Crab\Engine\FailureReporter;
 
@@ -48,7 +48,7 @@ final class Worker
      */
     public function __construct(
         public readonly EventLoop $loop,
-        public readonly WorkerGroup $group,
+        public readonly Crab $group,
         public readonly int $index,
         private array $bindings,
         private readonly float $shutdownTimeout,

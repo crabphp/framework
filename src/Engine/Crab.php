@@ -4,7 +4,13 @@ declare(strict_types=1);
 
 namespace Crab\Engine;
 
-final class WorkerGroup
+/**
+ * A crab: a named set of identical worker processes, what they listen
+ * on and their limits. The runtime starts each crab's workers, and each
+ * worker runs one event loop. HTTP, the queue and the scheduler are
+ * crabs side by side in one runtime.
+ */
+final class Crab
 {
     /**
      * @var list<array{address:string, handler:\Closure, options:array}>
@@ -110,7 +116,7 @@ final class WorkerGroup
     private function assertMutable(): void
     {
         if ($this->frozen) {
-            throw new \LogicException('Worker group configuration is frozen after startup.');
+            throw new \LogicException('A crab\'s configuration is frozen after startup.');
         }
     }
 }

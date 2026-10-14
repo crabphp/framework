@@ -416,7 +416,7 @@ final class AppTest extends TestCase
         $servers = $app->container->get(\Crab\Contracts\Servers::class);
         // A server of the application's own that joins: no loop of work, only somewhere to listen.
         $servers->add('chat', static fn (): array => [
-            new \Crab\Contracts\Workers('chat', workers: 3, setup: static function (\Crab\Engine\WorkerGroup $group): void {
+            new \Crab\Contracts\Workers('chat', workers: 3, setup: static function (\Crab\Engine\Crab $group): void {
                 $group->listen('tcp://127.0.0.1:0', static fn () => null);
             }),
         ], 12.0, 'chat:serve');
@@ -436,7 +436,7 @@ final class AppTest extends TestCase
 
         // Nothing is named, so the server is HTTP alone.
         self::assertSame([], $app->with());
-        self::assertInstanceOf(\Crab\Engine\WorkerGroup::class, $app->runtime('tcp://127.0.0.1:0')->group('queue:mail'));
+        self::assertInstanceOf(\Crab\Engine\Crab::class, $app->runtime('tcp://127.0.0.1:0')->group('queue:mail'));
 
         // Each id with whether it is on, as a configuration file reads it from the environment.
         $switched = new App(new Config(['server' => ['with' => ['queue' => true, 'schedule' => false, 'vite' => ['enabled' => true], 'chat' => ['enabled' => false], 'sync' => 'yes']]]));
@@ -457,13 +457,13 @@ final class AppTest extends TestCase
             self::assertStringContainsString('unique', $error->getMessage());
         }
         // In one process there is room for HTTP alone.
-        self::assertInstanceOf(\Crab\Engine\WorkerGroup::class, $app->runtime('tcp://127.0.0.1:0', servers: false)->group('queue:mail'));
+        self::assertInstanceOf(\Crab\Engine\Crab::class, $app->runtime('tcp://127.0.0.1:0', servers: false)->group('queue:mail'));
 
         // A server in the background hands only the HTTP socket to the one that replaces it, so one that
         // listens on an address of its own is refused there, in words, and not left to fail at its first reload.
         $listening = new App(new Config(['server' => ['with' => ['chat' => true]]]));
         $listening->servers->add('chat', static fn (): array => [
-            new \Crab\Contracts\Workers('chat', setup: static function (\Crab\Engine\WorkerGroup $group): void {
+            new \Crab\Contracts\Workers('chat', setup: static function (\Crab\Engine\Crab $group): void {
                 $group->listen('tcp://127.0.0.1:0', static fn () => null);
             }),
         ]);

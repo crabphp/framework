@@ -14,7 +14,7 @@ use Crab\Engine\Process\Worker;
 use Crab\Engine\Runtime;
 use Crab\Engine\Server\HttpServer;
 use Crab\Engine\Tests\Support\TestCase;
-use Crab\Engine\WorkerGroup;
+use Crab\Engine\Crab;
 use Generator;
 use OverflowException;
 use PHPUnit\Framework\Attributes\RequiresPhpExtension;
@@ -217,7 +217,7 @@ final class RuntimeTest extends TestCase
         $outboundAddress = 'tcp://' . stream_socket_get_name($outbound, false);
         $cancelled = 0;
         $ran = false;
-        $group = new WorkerGroup('bootstrap-failure');
+        $group = new Crab('bootstrap-failure');
         $group->listen('tcp://127.0.0.1:0', static function (): void {});
         $group->onStart(function (Worker $worker) use ($outboundAddress, &$cancelled, &$ran): void {
             $worker->connect($outboundAddress, $this->guardCallback(static function (?Connection $connection, ?Throwable $error) use (&$cancelled): void {
@@ -251,7 +251,7 @@ final class RuntimeTest extends TestCase
         $this->ownStream($pair[0]);
         $this->ownStream($pair[1]);
         $watcherRemoved = false;
-        $group = new WorkerGroup('control-eof');
+        $group = new Crab('control-eof');
         $group->onStart(static function (Worker $worker) use ($loop, $pair, &$watcherRemoved): void {
             $worker->spawn(static function () use ($loop): void { Async::sleep($loop, 0.02); });
             $loop->defer(static function () use ($pair): void { fclose($pair[0]); });
@@ -403,7 +403,7 @@ final class RuntimeTest extends TestCase
         $accepted = $completions = 0;
         $released = false;
         $worker = null;
-        $group = new WorkerGroup('admission', maxConnections: 1);
+        $group = new Crab('admission', maxConnections: 1);
         $group->listen($incomingAddress, $this->guardCallback(static function (Connection $connection) use (&$accepted, &$released, &$worker): void {
             self::assertTrue($released, 'An inbound socket was accepted before outbound capacity was released.');
             $accepted++;
@@ -478,7 +478,7 @@ final class RuntimeTest extends TestCase
                 yield 'finished';
             })());
         });
-        $group = new WorkerGroup('http-drain');
+        $group = new Crab('http-drain');
         $group->listen($address, static function (Connection $value) use ($http, &$connection): void {
             $connection = $value;
             $http->attach($value);

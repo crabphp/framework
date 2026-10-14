@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace Crab\Engine\Process;
 
-use Crab\Engine\WorkerGroup;
+use Crab\Engine\Crab;
 use Crab\Engine\EventLoop;
 use Crab\Engine\FailureReporter;
 
@@ -30,7 +30,7 @@ final class Supervisor
     private array $pendingSignals = [];
 
     /**
-     * @param array<string, WorkerGroup> $groups
+     * @param array<string, Crab> $groups
      */
     public function __construct(
         private readonly array $groups,
