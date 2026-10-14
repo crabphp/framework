@@ -349,14 +349,14 @@ final class AuthTest extends TestCase
         Route::get('/public', static fn (): string => 'anyone');
         Route::get('/maybe', static fn (?Member $user = null): array => ['name' => $user?->name]);
         Route::get('/unprotected', static fn (Member $user): array => ['name' => $user->name]);
-        Route::get('/alone', static fn (Member $user): array => ['alone' => $user->id], middleware: [TokenAuth::class]);
-        Route::group(middleware: [TokenAuth::class], routes: static function (): void {
+        Route::get('/alone', static fn (Member $user): array => ['alone' => $user->id])->middleware(TokenAuth::class);
+        Route::middleware(TokenAuth::class)->group(static function (): void {
             Route::get('/me', static fn (Member $user): Member => $user);
             Route::get('/whoami', static fn (Identity $user, ServerRequestInterface $request): array => [$user->id, $request->getAttribute('user') === $user]);
             Route::post('/notes/{id}', static fn (int $id, Member $user, string $text): array => [$id, $user->id, $text]);
             Route::get('/members-only', static fn (Member $user): string => 'members');
         });
-        Route::group(prefix: '/internal', middleware: [new TrustedHeader($members)], routes: static function (): void {
+        Route::prefix('/internal')->middleware(new TrustedHeader($members))->group(static function (): void {
             Route::get('/me', static fn (Member $user): array => ['via' => 'header', 'id' => $user->id]);
         });
 

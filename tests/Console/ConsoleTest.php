@@ -202,12 +202,18 @@ final class ConsoleTest extends TestCase
         self::assertSame($app->console, $app->container->get(Console::class));
         self::assertTrue($app->console->has('serve') && $app->console->has('route:list'));
         self::assertSame(0, $this->exec($app->console, 'route:list'));
-        $app->router->get('/', static fn() => 'home')->post('/users/{id}', \Crab\Http\Health::class);
+        $app->router->get('/', static fn() => 'home');
+        $app->router->post('/users/{id}', \Crab\Http\Health::class);
         self::assertSame(0, $this->exec($app->console, 'route:list'));
         self::assertSame("No routes are registered.\nGET   /            Closure\nPOST  /users/{id}  " . \Crab\Http\Health::class . "\n", $this->written($this->out));
         $routes = $app->router->routes();
         self::assertSame(['GET', '/', 'Closure', []], [$routes[0]->method, $routes[0]->pattern, $routes[0]->action, $routes[0]->middleware]);
         self::assertSame(['POST', '/users/{id}', \Crab\Http\Health::class], [$routes[1]->method, $routes[1]->pattern, $routes[1]->action]);
+
+        // A name column appears once a route has a name.
+        $app->router->get('/orders/{id}', static fn() => 'order')->name('orders.show');
+        self::assertSame(0, $this->exec($app->console, 'route:list'));
+        self::assertStringEndsWith("GET   /                          Closure\nPOST  /users/{id}                " . \Crab\Http\Health::class . "\nGET   /orders/{id}  orders.show  Closure\n", $this->written($this->out));
 
         $app->console->add('hello', static function (Input $input, Output $output): int {
             $output->line('hello');

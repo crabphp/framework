@@ -19,7 +19,7 @@ use Psr\Http\Server\RequestHandlerInterface;
  *
  *     ->withMiddleware(new Concurrency(32))
  *
- *     Route::post('/login', Login::class, middleware: [new Concurrency(2, wait: 1.0)]);
+ *     Route::post('/login', Login::class)->middleware(new Concurrency(2, wait: 1.0));
  *
  * The count is each worker's own: a server of eight workers with a limit
  * of 32 works on up to 256 requests. A request that waits holds no

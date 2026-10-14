@@ -30,6 +30,7 @@ use Crab\Contracts\Http\MiddlewareStack as MiddlewareStackContract;
 use Crab\Contracts\Log\Logger as LoggerContract;
 use Crab\Contracts\Provider;
 use Crab\Contracts\Routing\Router as RouterContract;
+use Crab\Contracts\Routing\Urls as UrlsContract;
 use Crab\Contracts\Runner;
 use Crab\Contracts\Servers as ServersContract;
 use Crab\Contracts\Validation\Validator as ValidatorContract;
@@ -53,6 +54,7 @@ use Crab\HttpClient\HttpClientProvider;
 use Crab\Log\Logger;
 use Crab\Queue\QueueProvider;
 use Crab\Routing\Router;
+use Crab\Routing\Urls;
 use Crab\Schedule\ScheduleProvider;
 use Crab\Validation\Validator;
 use Crab\WebSocket\Connections;
@@ -74,7 +76,8 @@ use Psr\Log\LoggerInterface;
  * front of them, console commands and the engine runtime that serves them.
  *
  * It reads these configuration keys: "app.name" heads the command list,
- * "app.debug" shows failure details to clients, "log.path" is where the
+ * "app.debug" shows failure details to clients, "app.url" is where the
+ * application is reached, put in front of the URLs Urls writes, "log.path" is where the
  * default logger writes (standard error when unset) and "log.level" is
  * the least severe level it writes. Of the server it serves requests
  * with, "server.max_body" is the largest request body it takes, in bytes
@@ -203,6 +206,8 @@ final class App implements RequestHandlerInterface, Runner
         $this->routes = $router;
         $container->instance(RouterContract::class, $this->router);
         $container->instance(Router::class, $this->router);
+        $container->singleton(UrlsContract::class, fn (): Urls => new Urls($this->router, $config->get('app.url')));
+        $container->singleton(Urls::class, UrlsContract::class);
         // The error handler is the entry bound as ErrorHandler; rebinding it to
         // another PSR-15 middleware replaces how failures are answered.
         $this->stack = new MiddlewareStack($this->router, $container);

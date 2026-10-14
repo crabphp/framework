@@ -131,7 +131,7 @@ A provider does everything through contracts in the container, so a package neve
 
 | To | Ask for | And call |
 | --- | --- | --- |
-| Add routes | `Crab\Contracts\Routing\Router` | `get()`, `post()`, `group()` |
+| Add routes | `Crab\Contracts\Routing\Router` | `get()`, `post()`, `prefix()`, `middleware()` |
 | Add commands | `Crab\Contracts\Console\Console` | `add()` |
 | Add middleware around every request | `Crab\Contracts\Http\MiddlewareStack` | `add()` |
 | Listen for events | `Crab\Contracts\Events\Dispatcher` | `listen()` |

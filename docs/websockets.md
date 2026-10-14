@@ -86,7 +86,7 @@ Check access inside `handle()` before its first socket use. This order route use
 use App\Actions\WatchOrder;
 use Crab\Auth\TokenAuth;
 
-Route::websocket('/orders/{id}/live', WatchOrder::class, middleware: [TokenAuth::class]);
+Route::websocket('/orders/{id}/live', WatchOrder::class)->middleware(TokenAuth::class);
 ```
 
 ```php
@@ -138,8 +138,8 @@ use Crab\Auth\Ticket;
 use Crab\Auth\TokenAuth;
 use Crab\Route;
 
-Route::post('/ws/ticket', IssueTicket::class, middleware: [TokenAuth::class]);
-Route::websocket('/orders/{id}/live', WatchOrder::class, middleware: [Ticket::class]);
+Route::post('/ws/ticket', IssueTicket::class)->middleware(TokenAuth::class);
+Route::websocket('/orders/{id}/live', WatchOrder::class)->middleware(Ticket::class);
 ```
 
 Fetch a new ticket before each connection, including every reconnect. This client uses the token returned by login, and retries with a capped delay and jitter:

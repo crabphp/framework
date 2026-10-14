@@ -237,8 +237,8 @@ final class AppTest extends TestCase
         try {
             // Outside the error handler, so that the record of a failure carries the id too.
             $app = new App(new Config(['log' => ['path' => $path]]), middleware: [RequestId::class, ErrorHandler::class]);
-            $app->router->get('/', static fn(ServerRequestInterface $request) => $request->getAttribute('request_id'))
-                ->get('/fail', static fn() => throw new \RuntimeException('broken'));
+            $app->router->get('/', static fn(ServerRequestInterface $request) => $request->getAttribute('request_id'));
+            $app->router->get('/fail', static fn() => throw new \RuntimeException('broken'));
 
             $first = $app->handle(new Request('GET', '/'));
             $second = $app->handle(new Request('GET', '/'));

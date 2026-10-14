@@ -6,6 +6,7 @@
     - [Constraining a parameter](#constraining-a-parameter)
 - [Route groups](#route-groups)
 - [Middleware on a route](#middleware-on-a-route)
+- [Named routes](#named-routes)
 - [Socket routes](#socket-routes)
 - [When no route matches](#when-no-route-matches)
 - [Listing routes](#listing-routes)
@@ -69,19 +70,19 @@ Routes that share a path prefix, middleware, or both go in a group:
 ```php
 use Crab\Auth\TokenAuth;
 
-Route::group(prefix: '/admin', middleware: [TokenAuth::class], routes: function () {
+Route::prefix('/admin')->middleware(TokenAuth::class)->group(function () {
     Route::get('/users', [AdminController::class, 'users']);          // GET /admin/users
     Route::get('/users/{id}', [AdminController::class, 'user']);      // GET /admin/users/{id}
 });
 ```
 
-Either `prefix:` or `middleware:` may be left out, and groups may be nested: an inner group's prefix follows the outer one's, and its middleware runs inside the outer one's.
+A group starts with `Route::prefix()` or `Route::middleware()`, takes the other as a further step if it needs both, and ends with `group()`. Groups may be nested: an inner group's prefix follows the outer one's, and its middleware runs inside the outer one's.
 
 ```php
-Route::group(prefix: '/api', routes: function () {
+Route::prefix('/api')->group(function () {
     Route::get('/status', ShowStatus::class);                          // open to all
 
-    Route::group(middleware: [TokenAuth::class], routes: function () {
+    Route::middleware(TokenAuth::class)->group(function () {
         Route::get('/me', ShowMe::class);                              // GET /api/me, with a token
     });
 });
@@ -89,14 +90,61 @@ Route::group(prefix: '/api', routes: function () {
 
 ## Middleware on a route
 
-`middleware:` on a route runs around that route alone, inside its groups' middleware:
+`->middleware()` on a route runs around that route alone, inside its groups' middleware. Each route is declared in one statement, and what follows it on that line says more about it:
 
 ```php
-Route::get('/me', [UserController::class, 'me'], middleware: [TokenAuth::class]);
-Route::post('/reports', CreateReport::class, middleware: [TokenAuth::class, new RequireRole('analyst')]);
+Route::get('/me', [UserController::class, 'me'])->middleware(TokenAuth::class);
+Route::post('/reports', CreateReport::class)->middleware(TokenAuth::class, new RequireRole('analyst'));
 ```
 
 Give a class name, or an object when the middleware takes options. For `TokenAuth`, add `TokenAuthProvider` as shown in [Authentication](authentication.md#installation); see [Middleware](middleware.md#around-some-routes).
+
+## Named routes
+
+`->name()` gives a route a name, so that code can write its path or its full URL without repeating the pattern:
+
+```php
+Route::get('/orders/{id}', ShowOrder::class)->name('orders.show');
+```
+
+Ask for `Crab\Contracts\Routing\Urls` to write a full URL. It works anywhere, in an action, a job, a listener or a command, because it reads the application's address from the `app.url` setting rather than from a request:
+
+```php
+use Crab\Contracts\Routing\Urls;
+
+final readonly class SendOrderConfirmation
+{
+    public function __construct(private Urls $urls, private Mailer $mailer)
+    {
+    }
+
+    public function handle(int $orderId): void
+    {
+        $link = $this->urls->to('orders.show', ['id' => $orderId]);   // https://api.example.com/orders/12
+        // ...
+    }
+}
+```
+
+```ini
+# .env
+APP_URL=https://api.example.com
+```
+
+The router writes the path alone, with no setting needed:
+
+```php
+$router->path('orders.show', ['id' => 12]);                       // /orders/12
+$router->path('orders.show', ['id' => 12], ['tab' => 'items']);         // /orders/12?tab=items
+$router->route('orders.show');                                     // its RouteInfo, or null
+```
+
+- **Names are unique.** A second route with a name already taken stops the application from starting, naming both routes. A route has one name.
+- **Both chain:** `Route::get('/orders/{id}', ShowOrder::class)->name('orders.show')->middleware(TokenAuth::class);`
+- **Parameters are checked.** One that is missing, one the pattern does not have, or a value its expression refuses, such as `abc` for `{id:\d+}`, throws and names the route. What goes after `?` is the third argument.
+- **Values are encoded.** A parameter matches one path segment, so a `/` in its value is encoded; one with an expression of its own, such as `{path:.+}`, keeps its slashes. A value may be text, a whole number or a backed enum.
+- **Groups do not name.** A route in a group writes its whole name: `admin.users.show`.
+- **`route:list` shows the names** once a route has one.
 
 ## Socket routes
 
@@ -105,7 +153,7 @@ A socket action keeps a connection open, with the same groups and middleware as 
 ```php
 use App\Actions\WatchOrder;
 
-Route::websocket('/orders/{id}/live', WatchOrder::class, middleware: [TokenAuth::class]);
+Route::websocket('/orders/{id}/live', WatchOrder::class)->middleware(TokenAuth::class);
 ```
 
 The action declares `handle(Socket $socket, int $id, ...)`. The action starts inside the HTTP pipeline. Its first socket use offers the upgrade to middleware, and it continues after the wire 101. Checks before that use can still answer HTTP errors. `route:list` lists it as `WS`. See [WebSockets](websockets.md) for sending, receiving, authentication and testing.
@@ -122,7 +170,7 @@ Both pass back through the middleware around every request, which is how a `404`
 php cua route:list
 ```
 
-It prints every route with its action and route and group middleware; global middleware from `app.php` and providers is not shown.
+It prints every route with its name, when routes have one, its action and route and group middleware; global middleware from `app.php` and providers is not shown.
 
 ## Several route files
 

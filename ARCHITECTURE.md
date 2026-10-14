@@ -60,6 +60,8 @@ A contract exists for everything a package touches, including where no PSR exist
 | `Database\Schema`, `Database\Table`, `Database\Column`, `Database\Migration`, `Database\Migrator` | none | today |
 | `Routing\Router` | PSR-15 `RequestHandlerInterface` | today |
 | `Routing\RouteInfo` | none; a value object | today |
+| `Routing\Urls` | none | today |
+| `Routing\DeclaredRoute`, `Routing\RouteGroup` | none | today |
 | `Validation\Validator`, `Validation\Rule` | none | today |
 | `Console\Console` | none | today |
 | `Clock\Clock` | PSR-20 `ClockInterface` | today |

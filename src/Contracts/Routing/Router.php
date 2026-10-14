@@ -23,50 +23,67 @@ use Psr\Http\Server\RequestHandlerInterface;
  * A PSR-15 handler, or the name of a container entry that is one, is also
  * accepted; it receives the request, with the parameters as attributes.
  *
- * A route's middleware: runs around that route alone, inside the
- * middleware of the groups it is declared in. One given by class name is
- * made by the container in each worker as the worker starts.
+ * Each route is declared in one statement, which returns the route so
+ * that it can be named and given middleware of its own, which runs
+ * inside that of the groups it is declared in:
+ *
+ *     $router->get('/orders/{id}', ShowOrder::class)->name('orders.show')->middleware(TokenAuth::class);
+ *
+ * A name is how code finds the route again, to write its path with
+ * path() or a full URL with Urls. Two routes may not share one.
  *
  * @phpstan-type Action RequestHandlerInterface|\Closure|string|array{class-string, string}
  */
 interface Router extends RequestHandlerInterface
 {
-    public function add(string $method, string $pattern, RequestHandlerInterface|\Closure|string|array $action, array $middleware = []): static;
+    public function add(string $method, string $pattern, RequestHandlerInterface|\Closure|string|array $action): DeclaredRoute;
 
     /**
-     * Routes that share a path prefix, middleware, or both. The closure
-     * declares them; what it adds gets the prefix in front of its pattern
-     * and the middleware around its action, the first given outermost:
-     *
-     *     $router->group(prefix: '/admin', middleware: [TokenAuth::class], routes: function () {
-     *         Route::get('/users', [AdminController::class, 'users']);     // GET /admin/users
-     *     });
-     *
-     * Groups may be nested; the closure receives the router.
-     *
-     * @param \Closure(static): mixed $routes
-     * @param list<MiddlewareInterface|class-string<MiddlewareInterface>> $middleware PSR-15 middleware; one given by class name is made by the container.
+     * Starts a group of routes under a path prefix; see RouteGroup.
      */
-    public function group(\Closure $routes, string $prefix = '', array $middleware = []): static;
+    public function prefix(string $prefix): RouteGroup;
+
+    /**
+     * Starts a group of routes behind middleware; see RouteGroup.
+     *
+     * @param MiddlewareInterface|class-string<MiddlewareInterface> ...$middleware
+     */
+    public function middleware(MiddlewareInterface|string ...$middleware): RouteGroup;
 
     /**
      * An action taking a WebSocket Socket, the user, pattern parameters
      * and typed query fields; all are resolved before the upgrade.
      */
-    public function websocket(string $pattern, \Closure|string|array $action, array $middleware = []): static;
+    public function websocket(string $pattern, \Closure|string|array $action): DeclaredRoute;
 
-    public function get(string $pattern, RequestHandlerInterface|\Closure|string|array $action, array $middleware = []): static;
+    public function get(string $pattern, RequestHandlerInterface|\Closure|string|array $action): DeclaredRoute;
 
-    public function post(string $pattern, RequestHandlerInterface|\Closure|string|array $action, array $middleware = []): static;
+    public function post(string $pattern, RequestHandlerInterface|\Closure|string|array $action): DeclaredRoute;
 
-    public function put(string $pattern, RequestHandlerInterface|\Closure|string|array $action, array $middleware = []): static;
+    public function put(string $pattern, RequestHandlerInterface|\Closure|string|array $action): DeclaredRoute;
 
-    public function patch(string $pattern, RequestHandlerInterface|\Closure|string|array $action, array $middleware = []): static;
+    public function patch(string $pattern, RequestHandlerInterface|\Closure|string|array $action): DeclaredRoute;
 
-    public function delete(string $pattern, RequestHandlerInterface|\Closure|string|array $action, array $middleware = []): static;
+    public function delete(string $pattern, RequestHandlerInterface|\Closure|string|array $action): DeclaredRoute;
 
     /**
      * @return list<RouteInfo> Every route, in the order added.
      */
     public function routes(): array;
+
+    /**
+     * The route of that name, or null when there is none.
+     */
+    public function route(string $name): ?RouteInfo;
+
+    /**
+     * The path of the named route, with its parameters filled in and
+     * encoded: path('orders.show', ['id' => 12]) is "/orders/12". A
+     * parameter missing, one the pattern does not have, or a value its
+     * expression refuses throws, naming the route.
+     *
+     * @param array<string, string|int|\Stringable|\BackedEnum> $parameters The pattern's parameters, by name.
+     * @param array<string, mixed> $query Added as the query string.
+     */
+    public function path(string $name, array $parameters = [], array $query = []): string;
 }

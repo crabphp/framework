@@ -265,7 +265,7 @@ final class ApiTest extends TestCase
                 return null;
             }
         };
-        $app->router->get('/me', static fn (Member $user): array => ['id' => $user->id, 'name' => $user->name], middleware: [new TokenAuth($tokens, $users)]);
+        $app->router->get('/me', static fn (Member $user): array => ['id' => $user->id, 'name' => $user->name])->middleware(new TokenAuth($tokens, $users));
         $api = new Api($app);
 
         self::assertSame(401, $api->get('/me')->status);

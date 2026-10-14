@@ -29,7 +29,8 @@ final class RouteTest extends TestCase
         $app = new App();
         Route::get('/', static fn (): string => 'home');
         Route::post('/ping/{id}', [Ping::class, 'show']);
-        Route::put('/a', static fn (): string => 'put')->get('/chained', static fn (): string => 'chained');
+        Route::put('/a', static fn (): string => 'put');
+        Route::get('/chained', static fn (): string => 'chained');
         Route::patch('/a', static fn (): string => 'patch');
         Route::delete('/a', static fn (): string => 'delete');
         Route::add('OPTIONS', '/a', static fn (): string => 'options');
@@ -40,7 +41,8 @@ final class RouteTest extends TestCase
             self::assertSame($body, (string) $app->handle(new Request($method, '/a'))->getBody());
         }
         self::assertSame('chained', (string) $app->handle(new Request('GET', '/chained'))->getBody());
-        self::assertSame($app->router, Route::get('/same', static fn (): string => ''), 'It is the application\'s own router.');
+        self::assertInstanceOf(\Crab\Contracts\Routing\DeclaredRoute::class, Route::get('/same', static fn (): string => '')->name('same'));
+        self::assertSame('/same', $app->router->path('same'), 'It is declared on the application\'s own router.');
         self::assertSame([], $first->router->routes(), 'Only the application created last receives them.');
 
         Command::add('hello', static function (Input $input, OutputContract $output): int {
@@ -52,6 +54,19 @@ final class RouteTest extends TestCase
         rewind($out);
         self::assertSame("Hello, Crab\n", stream_get_contents($out));
         self::assertFalse($first->console->has('hello'));
+    }
+
+    public function testARouteIsNamedWhereItIsDeclared(): void
+    {
+        $app = new App();
+        Route::get('/orders/{id}', static fn(): string => 'order')->name('orders.show');
+        Route::prefix('/admin')->group(static function (): void {
+            Route::put('/orders/{id}/ship', static fn(): string => 'shipped')->name('admin.orders.ship');
+        });
+
+        self::assertSame('/orders/9', $app->router->path('orders.show', ['id' => 9]));
+        self::assertSame('PUT', $app->router->route('admin.orders.ship')?->method);
+        self::assertSame('/admin/orders/9/ship', $app->router->path('admin.orders.ship', ['id' => 9]));
     }
 
     public function testThereMustBeAnApplicationFirst(): void

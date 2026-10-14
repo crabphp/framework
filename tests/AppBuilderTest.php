@@ -377,7 +377,7 @@ final class AppBuilderTest extends TestCase
         self::assertInstanceOf(\Crab\Contracts\Http\Middleware::class, $made);
         self::assertInstanceOf(MiddlewareInterface::class, $made);
         $router = new \Crab\Routing\Router();
-        $router->get('/', static fn (): string => 'through', middleware: [$made]);
+        $router->get('/', static fn (): string => 'through')->middleware($made);
         self::assertSame('through', (string) $router->handle(new Request('GET', '/'))->getBody());
 
         self::assertSame([1, "{$file} already exists.\n"], $run('RequireAdmin'));

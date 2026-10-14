@@ -19,7 +19,7 @@ use Psr\Http\Server\RequestHandlerInterface;
  * Middleware that lets each client make so many requests in a length of
  * time, and answers the rest with 429 and when to try again:
  *
- *     Route::post('/login', Login::class, middleware: [new RateLimit(5, per: 60)]);
+ *     Route::post('/login', Login::class)->middleware(new RateLimit(5, per: 60));
  *
  * A client is the logged-in user when the request has one, and the
  * address it comes from otherwise. The counts are kept in the cache, so

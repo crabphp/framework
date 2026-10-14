@@ -15,7 +15,7 @@ use Psr\Http\Server\MiddlewareInterface;
  *
  * It is PSR-15's middleware under Crab's own name. The same class is used
  * around every request, in App::configure()->withMiddleware(), or around
- * some routes, as the middleware: of a route or a group.
+ * some routes, with ->middleware() on a route or a group.
  */
 interface Middleware extends MiddlewareInterface
 {

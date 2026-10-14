@@ -73,13 +73,24 @@ An action is a closure, a class and the name of its method, or the name of a cla
 Routes that share a path prefix, middleware, or both are declared in a group:
 
 ~~~php
-Route::group(prefix: '/admin', middleware: [TokenAuth::class], routes: function () {
+Route::prefix('/admin')->middleware(TokenAuth::class)->group(function () {
     Route::get('/users', [AdminController::class, 'users']);          // GET /admin/users
     Route::get('/users/{id}', [AdminController::class, 'user']);
 });
 ~~~
 
-Either may be left out, and groups may be nested. See [Middleware](#middleware) for what goes in `middleware:`.
+`Route::prefix()` or `Route::middleware()` starts a group, the other may follow, and `group()` declares its routes. Groups may be nested. A route says more about itself on its own line: `Route::get('/me', ShowMe::class)->name('me')->middleware(TokenAuth::class)`. See [Middleware](#middleware).
+
+### Named routes
+
+~~~php
+Route::get('/orders/{id}', ShowOrder::class)->name('orders.show');
+
+$urls->to('orders.show', ['id' => 12]);        // https://api.example.com/orders/12, from Contracts\Routing\Urls and app.url
+$router->path('orders.show', ['id' => 12]);    // /orders/12
+~~~
+
+A name is unique, and a missing or refused parameter throws naming the route. `Urls` reads the address from `app.url`, not from a request, so a job or a command writes the same links an action does. See [Named routes](docs/routing.md#named-routes).
 
 ### What an action takes
 
@@ -184,9 +195,9 @@ To change the framework's own part of the list, use one of these two, not both:
 **Around some routes**, on a route or on a group:
 
 ~~~php
-Route::get('/me', [UserController::class, 'me'], middleware: [TokenAuth::class]);
+Route::get('/me', [UserController::class, 'me'])->middleware(TokenAuth::class);
 
-Route::group(prefix: '/admin', middleware: [TokenAuth::class, RequireAdmin::class], routes: function () {
+Route::prefix('/admin')->middleware(TokenAuth::class, RequireAdmin::class)->group(function () {
     Route::get('/users', [AdminController::class, 'users']);
 });
 ~~~
@@ -204,7 +215,7 @@ request  →  every request's  →  the group's  →  the route's  →  action
 - **Middleware given by class name is made when a worker starts**, not on the first request, so one that cannot be made stops the server from starting. A route that names a class that does not exist, or one that is not middleware, is refused as soon as it is declared, with the route's name.
 - **The same middleware given twice runs once.** `TokenAuth::class` on a group and again on a route inside it is one check, not two. Two objects of one class, `new RequireRole('admin')` and `new RequireRole('billing')`, are two middleware and both run.
 - **`php cua route:list` shows the middleware around each route**, its groups' included.
-- **With options, give an object:** `middleware: [new TokenAuth($tokens, $users, 'X-Api-Key', '')]`.
+- **With options, give an object:** `->middleware(new TokenAuth($tokens, $users, 'X-Api-Key', ''))`.
 - **Without the error handler** nothing turns an exception into a response for the client; the engine answers 500 and the failure is logged. Replace it rather than remove it.
 
 ### CORS
@@ -253,7 +264,7 @@ final readonly class User implements Identity          // your user: anything wi
 
 Route::post('/login', [AuthController::class, 'login']);                  // open to all
 
-Route::group(middleware: [TokenAuth::class], routes: function () {
+Route::middleware(TokenAuth::class)->group(function () {
     Route::get('/me', static fn (User $user): User => $user);            // the logged-in user, by type
     Route::post('/posts', [PostController::class, 'store']);
 });
@@ -565,12 +576,13 @@ To leave out a framework provider or replace the default list, choose one form:
 return ['level' => env('LOG_LEVEL', 'info')];
 ~~~
 
-Anywhere after the application is created, `config('log.level')` reads that value, and `config('log.level', 'debug')` supplies a default. `env('NAME', $default)` reads an environment variable, where the real environment wins over `.env`; the words `true`, `false` and `null` become those values. The two helpers are global functions over `Env::get()` and `$app->config->get()`. The application itself reads four keys:
+Anywhere after the application is created, `config('log.level')` reads that value, and `config('log.level', 'debug')` supplies a default. `env('NAME', $default)` reads an environment variable, where the real environment wins over `.env`; the words `true`, `false` and `null` become those values. The two helpers are global functions over `Env::get()` and `$app->config->get()`. The application itself reads five keys:
 
 | Key | Meaning | Default |
 | --- | --- | --- |
 | `app.name` | The application's name, shown above the command list | none |
 | `app.debug` | Show failure details to clients | `false` |
+| `app.url` | Where the application is reached, the start of each URL `Urls` writes | none |
 | `log.path` | Where the default logger writes | standard error |
 | `log.level` | The least severe level written | `debug` |
 

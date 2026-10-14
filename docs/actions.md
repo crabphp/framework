@@ -231,7 +231,7 @@ See [Requests](requests.md).
 A parameter whose class implements `Crab\Contracts\Auth\Identity` receives the user that authentication middleware put on the request. A request without one is answered `401` unless the parameter is nullable.
 
 ```php
-Route::get('/me', static fn (User $user): User => $user, middleware: [TokenAuth::class]);
+Route::get('/me', static fn (User $user): User => $user)->middleware(TokenAuth::class);
 ```
 
 See [Authentication](authentication.md).

@@ -32,7 +32,7 @@ use Crab\Auth\TokenAuth;
 
 Route::post('/login', [AuthController::class, 'login']);                  // open to all
 
-Route::group(middleware: [TokenAuth::class], routes: function () {
+Route::middleware(TokenAuth::class)->group(function () {
     Route::get('/me', static fn (User $user): User => $user);            // the logged-in user, by type
     Route::post('/posts', [PostController::class, 'store']);
 });
@@ -165,7 +165,7 @@ A token is 64 random characters. It is shown once, by `issue()`; only its hash i
 ```php
 use Crab\Auth\TokenAuth;
 
-Route::group(middleware: [TokenAuth::class], routes: function () {
+Route::middleware(TokenAuth::class)->group(function () {
     Route::get('/me', static fn (User $user): User => $user);
 });
 ```
@@ -210,8 +210,8 @@ use Crab\Auth\Ticket;
 use Crab\Auth\TokenAuth;
 use Crab\Route;
 
-Route::post('/ws/ticket', IssueTicket::class, middleware: [TokenAuth::class]);
-Route::websocket('/orders/{id}/live', WatchOrder::class, middleware: [Ticket::class]);
+Route::post('/ws/ticket', IssueTicket::class)->middleware(TokenAuth::class);
+Route::websocket('/orders/{id}/live', WatchOrder::class)->middleware(Ticket::class);
 ```
 
 `AuthProvider` binds `Crab\Contracts\Auth\Tickets` and the same service as `Crab\Auth\Tickets`. It uses the Cache contract and your IdentityResolver; both are required. TokenAuthProvider supplies the middleware's header fallback. IssueTicket works with any authentication middleware that supplies an Identity. `Tickets::issue(Identity $user): string` issues a ticket; `redeem(string $ticket): ?Identity` consumes it once and resolves its user. Storage holds only the identity id under a hash of the ticket.
@@ -280,7 +280,7 @@ What a user may do is your application's rule, and Crab ships no roles or permis
 For "only admins may use these routes", a middleware with an option; see [Middleware with options](middleware.md#middleware-with-options):
 
 ```php
-Route::group(prefix: '/admin', middleware: [TokenAuth::class, new RequireRole('admin')], routes: function () {
+Route::prefix('/admin')->middleware(TokenAuth::class, new RequireRole('admin'))->group(function () {
     // ...
 });
 ```

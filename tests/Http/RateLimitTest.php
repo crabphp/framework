@@ -29,7 +29,7 @@ final class RateLimitTest extends TestCase
     public function testAClientIsLetThroughUpToTheLimitAndToldWhenToTryAgain(): void
     {
         [$app, $clock] = self::app();
-        $app->router->post('/login', static fn (): array => ['ok' => true], [new RateLimit(3, per: 60)]);
+        $app->router->post('/login', static fn (): array => ['ok' => true])->middleware(new RateLimit(3, per: 60));
         $app->router->get('/open', static fn (): array => ['ok' => true]);
         $api = new Api($app);
 
@@ -57,10 +57,10 @@ final class RateLimitTest extends TestCase
     {
         [$app] = self::app();
         $limit = new RateLimit(1, per: 60);
-        $app->router->get('/a', static fn (): array => [], [$limit]);
-        $app->router->get('/b', static fn (): array => [], [$limit]);
-        $app->router->get('/named', static fn (): array => [], [new RateLimit(1, per: 60, name: 'other')]);
-        $app->router->get('/tenant', static fn (): array => [], [new RateLimit(1, per: 60, name: 'tenant', by: static fn ($request): string => $request->getHeaderLine('X-Tenant'))]);
+        $app->router->get('/a', static fn (): array => [])->middleware($limit);
+        $app->router->get('/b', static fn (): array => [])->middleware($limit);
+        $app->router->get('/named', static fn (): array => [])->middleware(new RateLimit(1, per: 60, name: 'other'));
+        $app->router->get('/tenant', static fn (): array => [])->middleware(new RateLimit(1, per: 60, name: 'tenant', by: static fn ($request): string => $request->getHeaderLine('X-Tenant')));
         $api = new Api($app);
         $from = static fn (string $address, string $path = '/a'): int => $app->handle(new Request('GET', $path, serverParams: ['REMOTE_ADDR' => $address]))->getStatusCode();
 
@@ -85,7 +85,7 @@ final class RateLimitTest extends TestCase
     public function testItSaysWhatItNeedsWhenItHasNoCacheOrImpossibleNumbers(): void
     {
         $app = new App();
-        $app->router->get('/a', static fn (): array => [], [new RateLimit(1)]);
+        $app->router->get('/a', static fn (): array => [])->middleware(new RateLimit(1));
         try {
             // As a worker does when it starts.
             $app->router->assemble();

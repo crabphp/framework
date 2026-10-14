@@ -92,9 +92,9 @@ Put it on a route or on a group:
 ```php
 use Crab\Auth\TokenAuth;
 
-Route::get('/me', [UserController::class, 'me'], middleware: [TokenAuth::class]);
+Route::get('/me', [UserController::class, 'me'])->middleware(TokenAuth::class);
 
-Route::group(prefix: '/admin', middleware: [TokenAuth::class, RequireAdmin::class], routes: function () {
+Route::prefix('/admin')->middleware(TokenAuth::class, RequireAdmin::class)->group(function () {
     Route::get('/users', [AdminController::class, 'users']);
 });
 ```
@@ -141,7 +141,7 @@ final readonly class RequireRole implements Middleware
 ```
 
 ```php
-Route::group(middleware: [TokenAuth::class, new RequireRole('admin')], routes: function () {
+Route::middleware(TokenAuth::class, new RequireRole('admin'))->group(function () {
     // ...
 });
 ```
@@ -184,7 +184,7 @@ final readonly class RequirePlan implements Middleware, UsesContainer
 ```
 
 ```php
-Route::get('/exports', ListExports::class, middleware: [new RequirePlan('team')]);
+Route::get('/exports', ListExports::class)->middleware(new RequirePlan('team'));
 ```
 
 ## Passing data to the action
@@ -280,9 +280,9 @@ An in-process PHP 8.4 run with JIT enabled measured about 1.2 µs added per requ
 ```php
 use Crab\Http\RateLimit;
 
-Route::post('/login', Login::class, middleware: [new RateLimit(5, per: 60)]);
+Route::post('/login', Login::class)->middleware(new RateLimit(5, per: 60));
 
-Route::group(middleware: [TokenAuth::class, new RateLimit(120)], routes: function () {
+Route::middleware(TokenAuth::class, new RateLimit(120))->group(function () {
     // 120 a minute for each user, over all of these routes together
 });
 ```
@@ -309,8 +309,8 @@ Counts are kept in the [cache](cache.md), which is available by default. Workers
 Two limits with the same `limit`, `per` and `name` are one count, wherever they are used. Give each its own name to count apart:
 
 ```php
-Route::post('/login', Login::class, middleware: [new RateLimit(5, name: 'login')]);
-Route::post('/register', Register::class, middleware: [new RateLimit(5, name: 'register')]);
+Route::post('/login', Login::class)->middleware(new RateLimit(5, name: 'login'));
+Route::post('/register', Register::class)->middleware(new RateLimit(5, name: 'register'));
 ```
 
 Each window counts from zero, so across the edge of two windows a client can get up to twice the limit through in a short time. Set the limit with that in mind.
@@ -347,7 +347,7 @@ Retry-After: 5
 Give a route that is heavy a smaller limit of its own; requests for it then queue among themselves and leave the rest of the worker's places to the other routes:
 
 ```php
-Route::get('/reports/{id}', BuildReport::class, middleware: [new Concurrency(2, wait: 1.0)]);
+Route::get('/reports/{id}', BuildReport::class)->middleware(new Concurrency(2, wait: 1.0));
 ```
 
 A limit does not make a request faster, and code that never waits, such as hashing a password, holds its worker however many places are free. Put it inside the error handler, which is where `withMiddleware()` adds it, and before middleware that does work of its own.

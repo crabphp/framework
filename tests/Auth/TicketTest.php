@@ -61,13 +61,13 @@ final class TicketTest extends TestCase
         $this->app->container->instance(ClockInterface::class, $this->clock);
         $this->app->container->instance(IdentityResolver::class, $this->users);
         $this->app->container->instance(TokenStore::class, new TicketTokens($this->user->id));
-        $this->app->router->post('/ws/ticket', IssueTicket::class, middleware: [\Crab\Auth\TokenAuth::class]);
+        $this->app->router->post('/ws/ticket', IssueTicket::class)->middleware(\Crab\Auth\TokenAuth::class);
         $this->app->router->websocket('/live', static function (Socket $socket, TicketUser $user): void {
             $socket->send(['user' => $user->id]);
             foreach ($socket as $message) {
                 $socket->send($message);
             }
-        }, middleware: [Ticket::class]);
+        })->middleware(Ticket::class);
         $this->api = new Api($this->app);
     }
 
@@ -133,7 +133,7 @@ final class TicketTest extends TestCase
     {
         $this->app->router->websocket('/restricted', static function (Socket $socket, TicketUser $user): void {
             $socket->send(['user' => $user->id]);
-        }, middleware: [new Ticket(origins: ['https://shop.example.com'])]);
+        })->middleware(new Ticket(origins: ['https://shop.example.com']));
         $ticket = $this->issue();
         foreach (['', 'https://shop.example.com/', 'https://SHOP.example.com', 'https://other.example.com'] as $origin) {
             try {
@@ -161,7 +161,7 @@ final class TicketTest extends TestCase
         };
         $this->app->router->websocket('/logged', static function (Socket $socket): void {
             $socket->send('ready');
-        }, middleware: [new AccessLog(logger: $logger), Ticket::class]);
+        })->middleware(new AccessLog(logger: $logger), Ticket::class);
         $ticket = $this->issue();
         $this->api->websocket('/logged', query: ['ticket' => $ticket, 'page' => 2])->assertReceived('ready');
         self::assertCount(1, $records);

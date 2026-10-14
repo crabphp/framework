@@ -10,7 +10,7 @@ use Psr\Container\ContainerInterface;
  * Middleware that is written with options, as an object, and needs a
  * service as well:
  *
- *     Route::post('/login', Login::class, middleware: [new RateLimit(5, per: 60)]);
+ *     Route::post('/login', Login::class)->middleware(new RateLimit(5, per: 60));
  *
  * The options are all `new` can give it, where no container is at hand.
  * So before the first request it is asked for itself with what it needs

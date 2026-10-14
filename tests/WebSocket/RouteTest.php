@@ -165,7 +165,7 @@ final class RouteTest extends TestCase
     {
         $app = new App();
         $guard = self::middleware(static fn ($request, $handler) => $handler->handle($request));
-        Route::group(prefix: '/admin', middleware: [$guard], routes: static function (): void {
+        Route::prefix('/admin')->middleware($guard)->group(static function (): void {
             Route::websocket('/live/{id}', LiveAction::class);
         });
         $info = $app->router->routes()[0];
@@ -219,7 +219,7 @@ final class RouteTest extends TestCase
     {
         $called = false;
         $app = new App();
-        $app->router->websocket('/live', static function (Socket $socket) use (&$called): void { $called = true; }, middleware: [self::middleware(static fn ($request, $handler) => \Crab\Http\ErrorResponse::make($request, 403, 'Not yours.'))]);
+        $app->router->websocket('/live', static function (Socket $socket) use (&$called): void { $called = true; })->middleware(self::middleware(static fn ($request, $handler) => \Crab\Http\ErrorResponse::make($request, 403, 'Not yours.')));
         try {
             (new Api($app))->websocket('/live');
             self::fail('Middleware refused but upgraded.');
