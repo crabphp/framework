@@ -6,6 +6,4 @@ namespace Crab\Engine\Async;
 
 use RuntimeException;
 
-final class CancelledException extends RuntimeException
-{
-}
+final class CancelledException extends RuntimeException {}

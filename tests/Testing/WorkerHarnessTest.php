@@ -20,9 +20,9 @@ final class Ticker implements WorkerProvider
     public array $events = [];
     private string $timer = '';
 
-    public function __construct(private bool $timerFails = false)
-    {
-    }
+    public function __construct(
+        private bool $timerFails = false,
+    ) {}
 
     public function register(Container $container): void
     {
@@ -59,7 +59,9 @@ final class WorkerHarnessTest extends TestCase
                 $container->instance('plain', 'registered');
             }
         };
-        $result = WorkerHarness::run([$ticker, $plain], static function (Worker $worker, Container $container) use ($ticker): array {
+        $result = WorkerHarness::run([$ticker, $plain], static function (Worker $worker, Container $container) use (
+            $ticker,
+        ): array {
             Async::sleep($worker->loop, 0.02);
             return [$ticker->events, count($container->get('ticks')) > 2, $container->get('plain')];
         });

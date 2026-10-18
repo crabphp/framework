@@ -11,13 +11,9 @@ use Crab\Contracts\Container\Container as ContainerContract;
 use PHPUnit\Framework\TestCase;
 use Psr\Container\ContainerInterface;
 
-interface Clock
-{
-}
+interface Clock {}
 
-final class SystemClock implements Clock
-{
-}
+final class SystemClock implements Clock {}
 
 final class Mailer
 {
@@ -28,45 +24,40 @@ final class Mailer
         public ?Missing $missing = null,
         public string $from = 'crab@example.com',
         public ?int $limit = null,
-    ) {
-    }
+    ) {}
 }
 
-interface Missing
-{
-}
+interface Missing {}
 
 final class NeedsMissing
 {
-    public function __construct(public Missing $missing)
-    {
-    }
+    public function __construct(
+        public Missing $missing,
+    ) {}
 }
 
 final class NeedsScalar
 {
-    public function __construct(public string $dsn)
-    {
-    }
+    public function __construct(
+        public string $dsn,
+    ) {}
 }
 
 final class First
 {
-    public function __construct(public Second $second)
-    {
-    }
+    public function __construct(
+        public Second $second,
+    ) {}
 }
 
 final class Second
 {
-    public function __construct(public First $first)
-    {
-    }
+    public function __construct(
+        public First $first,
+    ) {}
 }
 
-abstract class Shape
-{
-}
+abstract class Shape {}
 
 final class ContainerTest extends TestCase
 {
@@ -98,7 +89,9 @@ final class ContainerTest extends TestCase
         });
         self::assertSame([1, 2], [$container->get('counter')->made, $container->get('counter')->made]);
 
-        $container->singleton('config', static fn(ContainerInterface $c): array => ['clock' => $c->get(Clock::class)::class]);
+        $container->singleton('config', static fn(ContainerInterface $c): array => [
+            'clock' => $c->get(Clock::class)::class,
+        ]);
         self::assertSame(['clock' => SystemClock::class], $container->get('config'));
 
         $container->instance('nothing', null);
@@ -147,7 +140,11 @@ final class ContainerTest extends TestCase
     public function testUnresolvableDependenciesAreContainerErrors(): void
     {
         $container = new Container();
-        foreach ([NeedsMissing::class => Missing::class, NeedsScalar::class => '$dsn', First::class => 'depends on itself'] as $id => $message) {
+        foreach ([
+            NeedsMissing::class => Missing::class,
+            NeedsScalar::class => '$dsn',
+            First::class => 'depends on itself',
+        ] as $id => $message) {
             try {
                 $container->get($id);
                 self::fail("{$id} was resolved.");

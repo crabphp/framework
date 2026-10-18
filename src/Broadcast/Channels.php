@@ -50,11 +50,13 @@ final class Channels implements ChannelsContract
         private readonly Carrier $carrier,
         private readonly int $maxChannels = 64,
         private readonly int $batch = 128,
-        private readonly int $maxPendingBytes = 1048576,
-        private readonly int $maxBacklogBytes = 524288,
+        private readonly int $maxPendingBytes = 1_048_576,
+        private readonly int $maxBacklogBytes = 524_288,
     ) {
         if ($maxChannels < 1 || $batch < 1 || $maxPendingBytes < 1 || $maxBacklogBytes < 1) {
-            throw new \InvalidArgumentException('Set broadcast.max_channels, broadcast.batch, broadcast.max_pending_bytes and broadcast.max_backlog_bytes to positive whole numbers.');
+            throw new \InvalidArgumentException(
+                'Set broadcast.max_channels, broadcast.batch, broadcast.max_pending_bytes and broadcast.max_backlog_bytes to positive whole numbers.',
+            );
         }
         $this->pending = new \SplQueue();
     }
@@ -71,7 +73,9 @@ final class Channels implements ChannelsContract
             return;
         }
         if (count($this->memberships[$id] ?? []) >= $this->maxChannels) {
-            throw new \LengthException("This socket already joined {$this->maxChannels} channels. Leave one or increase broadcast.max_channels.");
+            throw new \LengthException(
+                "This socket already joined {$this->maxChannels} channels. Leave one or increase broadcast.max_channels.",
+            );
         }
         $first = !isset($this->channels[$key]);
         $this->channels[$key][$id] = $socket;
@@ -140,9 +144,11 @@ final class Channels implements ChannelsContract
         }
         // Charge even empty payloads so a burst cannot queue unbounded objects.
         $bytes = strlen($message) + 256;
-        if ($this->pendingBytes + $bytes > $this->maxPendingBytes) {
+        if (($this->pendingBytes + $bytes) > $this->maxPendingBytes) {
             $this->gap();
-            throw new \OverflowException('Broadcast fan-out exceeded broadcast.max_pending_bytes; clients were closed to refetch state. Reduce the send rate or increase the bound.');
+            throw new \OverflowException(
+                'Broadcast fan-out exceeded broadcast.max_pending_bytes; clients were closed to refetch state. Reduce the send rate or increase the bound.',
+            );
         }
         $this->pending->enqueue(new Delivery($sockets, $message, $key));
         $this->pendingBytes += $bytes;
@@ -193,7 +199,8 @@ final class Channels implements ChannelsContract
     private function queue(Recipient $socket, string $message): void
     {
         $id = spl_object_id($socket);
-        $backlog = $this->backlogs[$id] ??= new Backlog($socket, $this->maxBacklogBytes, $this->batch, $this->caughtUp(...));
+        $backlog =
+            $this->backlogs[$id] ??= new Backlog($socket, $this->maxBacklogBytes, $this->batch, $this->caughtUp(...));
         if (!$backlog->offer($message)) {
             ++$this->slowClients;
             $this->retire($socket, 1008, 'Read messages faster');
@@ -267,7 +274,13 @@ final class Channels implements ChannelsContract
         foreach ($this->backlogs as $backlog) {
             $backlogBytes += $backlog->bytes();
         }
-        return ['channels' => count($this->channels), 'connections' => count($this->memberships), 'slow_clients' => $this->slowClients, 'pending_bytes' => $this->pendingBytes, 'backlog_bytes' => $backlogBytes];
+        return [
+            'channels' => count($this->channels),
+            'connections' => count($this->memberships),
+            'slow_clients' => $this->slowClients,
+            'pending_bytes' => $this->pendingBytes,
+            'backlog_bytes' => $backlogBytes,
+        ];
     }
 
     public function close(): void

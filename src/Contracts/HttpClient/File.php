@@ -17,8 +17,7 @@ final readonly class File
         public ?string $contents,
         public string $name,
         public string $type,
-    ) {
-    }
+    ) {}
 
     /**
      * A file on disk. It is read when the request is sent, never into memory whole.

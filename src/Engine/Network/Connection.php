@@ -5,11 +5,11 @@ declare(strict_types=1);
 namespace Crab\Engine\Network;
 
 use Closure;
+use Crab\Engine\EventLoop;
+use Crab\Engine\FailureReporter;
 use InvalidArgumentException;
 use LengthException;
 use LogicException;
-use Crab\Engine\EventLoop;
-use Crab\Engine\FailureReporter;
 use Throwable;
 
 /**
@@ -213,8 +213,7 @@ final class Connection
         }
         $this->writeProgressHandler = $handler === null ? null : Closure::fromCallable($handler);
         $observe = $handler !== null;
-        if ($this->writeWatcher !== null
-            && $observe !== ($this->observedWriteWatcher === $this->writeWatcher)) {
+        if ($this->writeWatcher !== null && $observe !== ($this->observedWriteWatcher === $this->writeWatcher)) {
             $this->driver->cancel($this->writeWatcher);
             $this->writeWatcher = $this->driver->onWritable(
                 $this->stream,
@@ -280,7 +279,9 @@ final class Connection
     public function drain(?float $timeout = null): void
     {
         if ($timeout !== null && (!is_finite($timeout) || $timeout <= 0)) {
-            throw new InvalidArgumentException('Set the connection drain timeout to a finite number of seconds greater than zero.');
+            throw new InvalidArgumentException(
+                'Set the connection drain timeout to a finite number of seconds greater than zero.',
+            );
         }
         if ($this->closed || $this->draining) {
             return;
@@ -313,8 +314,10 @@ final class Connection
         if ($length === 0) {
             return WriteResult::Accepted;
         }
-        if ($length > $this->maxWriteBufferSize - $this->buffered
-            || $this->tail - $this->head >= self::MAX_QUEUE_ENTRIES) {
+        if (
+            $length > ($this->maxWriteBufferSize - $this->buffered)
+            || ($this->tail - $this->head) >= self::MAX_QUEUE_ENTRIES
+        ) {
             $this->writeRejected = true;
             return WriteResult::Backpressured;
         }
@@ -394,10 +397,12 @@ final class Connection
         }
         $this->closed = true;
         foreach (['readWatcher', 'writeWatcher', 'closeTimer', 'drainNotification'] as $property) {
-            if ($this->{$property} !== null) {
-                $this->driver->cancel($this->{$property});
-                $this->{$property} = null;
+            if ($this->{$property} === null) {
+                continue;
             }
+
+            $this->driver->cancel($this->{$property});
+            $this->{$property} = null;
         }
         fclose($this->stream);
         $this->stream = null;
@@ -507,8 +512,13 @@ final class Connection
         } finally {
             $this->reading = false;
             // An untouched, still-watched connection has nothing to reconcile.
-            if (!$this->readWatching || $this->readPaused || $this->closed || $this->readEnded
-                || $this->dataHandler === null) {
+            if (
+                !$this->readWatching
+                || $this->readPaused
+                || $this->closed
+                || $this->readEnded
+                || $this->dataHandler === null
+            ) {
                 $this->updateReadWatcher();
             }
         }
@@ -556,10 +566,16 @@ final class Connection
                 $this->finishWrite();
             }
         }
-        if (!$this->closed && $this->buffered < $before
-            && ($this->buffered === 0 || $this->writeRejected
-                || ($before > intdiv($this->maxWriteBufferSize, 2)
-                    && $this->buffered <= intdiv($this->maxWriteBufferSize, 2)))) {
+        if (
+            !$this->closed
+            && $this->buffered < $before
+            && (
+                $this->buffered === 0
+                || $this->writeRejected
+                || $before > intdiv($this->maxWriteBufferSize, 2)
+                && $this->buffered <= intdiv($this->maxWriteBufferSize, 2)
+            )
+        ) {
             $this->notifyDrain();
         }
     }
@@ -620,7 +636,7 @@ final class Connection
     {
         if ($this->closeTimer === null) {
             $timeout ??= $this->closeTimeout;
-            $this->closeDeadline = hrtime(true) / 1_000_000_000 + $timeout;
+            $this->closeDeadline = (hrtime(true) / 1_000_000_000) + $timeout;
             $this->closeTimer = $this->driver->delay($timeout, function (): void {
                 $this->closeTimer = null;
                 $this->close();

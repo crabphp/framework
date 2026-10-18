@@ -10,9 +10,9 @@ namespace Crab\Contracts\Auth;
  */
 interface PasswordHasher
 {
-    public function hash(string $password): string;
+    public function hash(#[\SensitiveParameter] string $password): string;
 
-    public function verify(string $password, string $hash): bool;
+    public function verify(#[\SensitiveParameter] string $password, string $hash): bool;
 
     /**
      * Whether a stored hash was made with older settings and should be

@@ -6,13 +6,13 @@ namespace Crab\Engine\Process;
 
 use Crab\Engine\Async\CancelledException;
 use Crab\Engine\Async\Task;
+use Crab\Engine\Crab;
+use Crab\Engine\EventLoop;
+use Crab\Engine\FailureReporter;
 use Crab\Engine\Network\Connection;
 use Crab\Engine\Network\Connector;
 use Crab\Engine\Network\Listener;
 use Crab\Engine\Network\UdpEndpoint;
-use Crab\Engine\Crab;
-use Crab\Engine\EventLoop;
-use Crab\Engine\FailureReporter;
 
 final class Worker
 {
@@ -64,7 +64,9 @@ final class Worker
                 // Everything the engine catches in this worker goes to the group's callbacks.
                 $previousHandler = FailureReporter::handleWith($this->notify(...));
                 // Otherwise an uncaught failure in a timer or watcher ends the worker.
-                $this->loop->setErrorHandler(static fn(\Throwable $error) => FailureReporter::report('Callback failed', $error));
+                $this->loop->setErrorHandler(
+                    static fn(\Throwable $error) => FailureReporter::report('Callback failed', $error),
+                );
             }
             $this->watchControl();
             if (extension_loaded('pcntl')) {
@@ -72,14 +74,22 @@ final class Worker
                 $this->loop->onSignal(SIGINT, fn() => $this->stop());
             }
             foreach ($this->group->listeners() as $i => $definition) {
-                $listener = new Listener($this->loop, $this->bindings['tcp'][$i], function (Connection $connection) use ($definition): void {
-                    if ($this->draining || count($this->connections) + count($this->pendingConnects) >= $this->group->maxConnections) {
-                        $connection->close();
-                        return;
-                    }
-                    $this->track($connection);
-                    ($definition['handler'])($connection);
-                });
+                $listener = new Listener(
+                    $this->loop,
+                    $this->bindings['tcp'][$i],
+                    function (Connection $connection) use ($definition): void {
+                        if (
+                            $this->draining
+                            || (count($this->connections) + count($this->pendingConnects))
+                                >= $this->group->maxConnections
+                        ) {
+                            $connection->close();
+                            return;
+                        }
+                        $this->track($connection);
+                        $definition['handler']($connection);
+                    },
+                );
                 $this->listeners[] = $listener;
                 $listener->attach();
             }
@@ -89,8 +99,8 @@ final class Worker
                     $this->loop,
                     $this->bindings['udp'][$i],
                     $definition['handler'],
-                    $options['maxDatagramSize'] ?? 65507,
-                    $options['maxQueueBytes'] ?? 1048576,
+                    $options['maxDatagramSize'] ?? 65_507,
+                    $options['maxQueueBytes'] ?? 1_048_576,
                     $options['maxQueuePackets'] ?? 1024,
                 );
                 $id = spl_object_id($endpoint);
@@ -124,16 +134,34 @@ final class Worker
                     }
                 }
             }
-            foreach ($this->listeners as $listener) { $listener->close(); }
-            foreach ($this->pendingConnects as $cancel) { $cancel(); }
-            foreach ($this->tasks as $task) { $task->cancel(); }
-            foreach ($this->connections as $connection) { $connection->close(); }
-            foreach ($this->datagrams as $endpoint) { $endpoint->close(); }
-            foreach ($this->loop->getIdentifiers() as $id) { $this->loop->cancel($id); }
-            foreach ($this->keepAlive as $stream) {
-                if (is_resource($stream)) { fclose($stream); }
+            foreach ($this->listeners as $listener) {
+                $listener->close();
             }
-            if (is_resource($this->control)) { fclose($this->control); }
+            foreach ($this->pendingConnects as $cancel) {
+                $cancel();
+            }
+            foreach ($this->tasks as $task) {
+                $task->cancel();
+            }
+            foreach ($this->connections as $connection) {
+                $connection->close();
+            }
+            foreach ($this->datagrams as $endpoint) {
+                $endpoint->close();
+            }
+            foreach ($this->loop->getIdentifiers() as $id) {
+                $this->loop->cancel($id);
+            }
+            foreach ($this->keepAlive as $stream) {
+                if (!is_resource($stream)) {
+                    continue;
+                }
+
+                fclose($stream);
+            }
+            if (is_resource($this->control)) {
+                fclose($this->control);
+            }
             if ($handlesFailures) {
                 FailureReporter::handleWith($previousHandler);
             }
@@ -142,32 +170,55 @@ final class Worker
 
     public function stop(): void
     {
-        if ($this->draining) { return; }
+        if ($this->draining) {
+            return;
+        }
         $this->draining = true;
-        foreach ($this->listeners as $listener) { $listener->close(); }
-        foreach ($this->pendingConnects as $cancel) { $cancel(); }
-        foreach ($this->tasks as $task) { $task->cancel(); }
+        foreach ($this->listeners as $listener) {
+            $listener->close();
+        }
+        foreach ($this->pendingConnects as $cancel) {
+            $cancel();
+        }
+        foreach ($this->tasks as $task) {
+            $task->cancel();
+        }
         // Count and close before the transports' matching deadlines can fire.
         $this->loop->delay($this->shutdownTimeout, function (): void {
             foreach ($this->connections as $connection) {
-                if ($connection->hasPendingWork()) {
-                    ++$this->cutConnections;
+                if (!$connection->hasPendingWork()) {
+                    continue;
                 }
+
+                ++$this->cutConnections;
             }
-            foreach ($this->connections as $connection) { $connection->close(); }
-            foreach ($this->datagrams as $endpoint) { $endpoint->close(); }
+            foreach ($this->connections as $connection) {
+                $connection->close();
+            }
+            foreach ($this->datagrams as $endpoint) {
+                $endpoint->close();
+            }
             $this->loop->stop();
         });
-        foreach ($this->connections as $connection) { $connection->drain($this->shutdownTimeout); }
-        foreach ($this->datagrams as $endpoint) { $endpoint->drain(); }
+        foreach ($this->connections as $connection) {
+            $connection->drain($this->shutdownTimeout);
+        }
+        foreach ($this->datagrams as $endpoint) {
+            $endpoint->drain();
+        }
         $this->finishDrain();
     }
 
-    public function isDraining(): bool { return $this->draining; }
+    public function isDraining(): bool
+    {
+        return $this->draining;
+    }
 
     public function spawn(callable $operation): Task
     {
-        if ($this->draining) { throw new \LogicException('Cannot start a task while draining.'); }
+        if ($this->draining) {
+            throw new \LogicException('Cannot start a task while draining.');
+        }
         if (count($this->tasks) >= $this->group->maxTasks) {
             throw new \OverflowException('Worker task limit has been reached.');
         }
@@ -193,18 +244,33 @@ final class Worker
      */
     public function connect(string $address, callable $completion, float $timeout = 5.0): \Closure
     {
-        if ($this->draining || count($this->connections) + count($this->pendingConnects) >= $this->group->maxConnections) {
+        if (
+            $this->draining
+            || (count($this->connections) + count($this->pendingConnects)) >= $this->group->maxConnections
+        ) {
             throw new \OverflowException('Worker is draining or its connection limit has been reached.');
         }
         $id = ++$this->nextConnect;
         $completed = false;
-        $cancel = Connector::connect($this->loop, $address, function (?Connection $connection, ?\Throwable $error) use ($id, $completion, &$completed): void {
-            $completed = true;
-            unset($this->pendingConnects[$id]);
-            if ($connection !== null) { $this->track($connection); }
-            else { $this->updateAdmission(); }
-            try { $completion($connection, $error); } finally { $this->finishDrain(); }
-        }, $timeout);
+        $cancel = Connector::connect(
+            $this->loop,
+            $address,
+            function (?Connection $connection, ?\Throwable $error) use ($id, $completion, &$completed): void {
+                $completed = true;
+                unset($this->pendingConnects[$id]);
+                if ($connection !== null) {
+                    $this->track($connection);
+                } else {
+                    $this->updateAdmission();
+                }
+                try {
+                    $completion($connection, $error);
+                } finally {
+                    $this->finishDrain();
+                }
+            },
+            $timeout,
+        );
         if (!$completed) {
             $this->pendingConnects[$id] = $cancel;
             $this->updateAdmission();
@@ -215,11 +281,19 @@ final class Worker
     public function stats(): array
     {
         return [
-            'pid' => getmypid(), 'group' => $this->group->name, 'index' => $this->index,
-            'connections' => count($this->connections), 'pendingConnects' => count($this->pendingConnects),
-            'tasks' => count($this->tasks), 'datagrams' => count($this->datagrams),
-            'queuedBytes' => array_sum(array_map(static fn(Connection $c): int => $c->bufferedBytes(), $this->connections)),
-            'memoryBytes' => memory_get_usage(true), 'draining' => $this->draining,
+            'pid' => getmypid(),
+            'group' => $this->group->name,
+            'index' => $this->index,
+            'connections' => count($this->connections),
+            'pendingConnects' => count($this->pendingConnects),
+            'tasks' => count($this->tasks),
+            'datagrams' => count($this->datagrams),
+            'queuedBytes' => array_sum(array_map(
+                static fn(Connection $c): int => $c->bufferedBytes(),
+                $this->connections,
+            )),
+            'memoryBytes' => memory_get_usage(true),
+            'draining' => $this->draining,
             'cutConnections' => $this->cutConnections,
         ];
     }
@@ -238,11 +312,15 @@ final class Worker
 
     private function updateAdmission(): void
     {
-        $atCapacity = $this->draining
-            || count($this->connections) + count($this->pendingConnects) >= $this->group->maxConnections;
+        $atCapacity =
+            $this->draining
+            || (count($this->connections) + count($this->pendingConnects)) >= $this->group->maxConnections;
         foreach ($this->listeners as $listener) {
-            if ($atCapacity) { $listener->pause(); }
-            else { $listener->resume(); }
+            if ($atCapacity) {
+                $listener->pause();
+            } else {
+                $listener->resume();
+            }
         }
     }
 
@@ -250,7 +328,9 @@ final class Worker
     {
         if (!is_resource($this->control)) {
             $pair = stream_socket_pair(STREAM_PF_UNIX, STREAM_SOCK_STREAM, STREAM_IPPROTO_IP);
-            if ($pair === false) { throw new \RuntimeException('Could not create worker wakeup stream.'); }
+            if ($pair === false) {
+                throw new \RuntimeException('Could not create worker wakeup stream.');
+            }
             $this->keepAlive = $pair;
             // Keep an otherwise idle worker alive without a polling timer.
             $this->loop->onReadable($pair[0], static fn() => null);
@@ -291,11 +371,18 @@ final class Worker
 
     private function hasWork(): bool
     {
-        return $this->connections !== [] || $this->datagrams !== [] || $this->tasks !== [] || $this->pendingConnects !== [];
+        return (
+            $this->connections !== []
+            || $this->datagrams !== []
+            || $this->tasks !== []
+            || $this->pendingConnects !== []
+        );
     }
 
     private function finishDrain(): void
     {
-        if ($this->draining && !$this->starting && !$this->hasWork()) { $this->loop->stop(); }
+        if ($this->draining && !$this->starting && !$this->hasWork()) {
+            $this->loop->stop();
+        }
     }
 }

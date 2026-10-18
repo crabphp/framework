@@ -40,8 +40,13 @@ final class RequestTokenTest extends TestCase
     }
 
     #[DataProvider('tokenProvider')]
-    public function testTokenLookup(array $headers, string $name, string $token, bool $expected): void
-    {
+    public function testTokenLookup(
+        array $headers,
+        string $name,
+        #[\SensitiveParameter]
+        string $token,
+        bool $expected,
+    ): void {
         self::assertSame($expected, self::request('1.1', $headers)->hasToken($name, $token));
     }
 
@@ -58,12 +63,32 @@ final class RequestTokenTest extends TestCase
         yield 'trailing separator has empty token' => [['connection' => ['close,']], 'connection', '', true];
         yield 'repeated empty field has empty token' => [['connection' => ['close', '']], 'connection', '', true];
         yield 'header and token names ignore case' => [['connection' => ['ClOsE']], 'CoNnEcTiOn', 'CLOSE', true];
-        yield 'repeated fields and tokens' => [['connection' => ['upgrade, close', 'KEEP-ALIVE, close']], 'connection', 'keep-alive', true];
-        yield 'surrounding field whitespace' => [['connection' => ["\t upgrade \t, \tClOsE\t "]], 'connection', 'close', true];
-        yield 'searched token whitespace is preserved' => [['connection' => [' close ']], 'connection', ' close ', false];
+        yield 'repeated fields and tokens' => [
+            ['connection' => ['upgrade, close', 'KEEP-ALIVE, close']],
+            'connection',
+            'keep-alive',
+            true,
+        ];
+        yield 'surrounding field whitespace' => [
+            ['connection' => ["\t upgrade \t, \tClOsE\t "]],
+            'connection',
+            'close',
+            true,
+        ];
+        yield 'searched token whitespace is preserved' => [
+            ['connection' => [' close ']],
+            'connection',
+            ' close ',
+            false,
+        ];
         yield 'no token substring matches' => [['connection' => ['disclose, not-close']], 'connection', 'close', false];
         yield 'generic header lookup' => [['upgrade' => ['WebSocket, h2c']], 'UPGRADE', 'websocket', true];
-        yield 'constructor does not lowercase stored names' => [['Connection' => ['close']], 'Connection', 'close', false];
+        yield 'constructor does not lowercase stored names' => [
+            ['Connection' => ['close']],
+            'Connection',
+            'close',
+            false,
+        ];
     }
 
     public function testReferencedHeaderListChangesRemainVisible(): void

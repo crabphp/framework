@@ -4,8 +4,8 @@ declare(strict_types=1);
 
 namespace Crab\Contracts\WebSocket;
 
-use Crab\Engine\Network\WriteResult;
 use Crab\Engine\Async\Cancellation;
+use Crab\Engine\Network\WriteResult;
 
 /**
  * A worker-local recipient. Broadcast writes never wait for a reader;

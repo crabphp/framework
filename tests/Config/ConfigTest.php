@@ -96,10 +96,16 @@ final class ConfigTest extends TestCase
             self::assertSame('from environment', Env::get('CRAB_TEST_REAL'));
             self::assertSame('default', Env::get('CRAB_TEST_UNSET', 'default'));
 
-            file_put_contents($this->directory . '/app.php', "<?php return ['name' => env('CRAB_TEST_NAME'), 'debug' => env('CRAB_TEST_DEBUG', false)];");
+            file_put_contents(
+                $this->directory . '/app.php',
+                "<?php return ['name' => env('CRAB_TEST_NAME'), 'debug' => env('CRAB_TEST_DEBUG', false)];",
+            );
             file_put_contents($this->directory . '/log.php', "<?php return ['level' => 'info'];");
             $config = Config::load($this->directory);
-            self::assertSame(['app' => ['name' => 'Crab App', 'debug' => true], 'log' => ['level' => 'info']], $config->all());
+            self::assertSame(
+                ['app' => ['name' => 'Crab App', 'debug' => true], 'log' => ['level' => 'info']],
+                $config->all(),
+            );
 
             $app = new App($config);
             self::assertSame($app, App::current());

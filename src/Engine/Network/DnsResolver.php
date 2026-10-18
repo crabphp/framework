@@ -92,7 +92,14 @@ final class DnsResolver
         if (function_exists('idn_to_ascii') && preg_match('/[^\x00-\x7F]/', $name) === 1) {
             $name = (string) idn_to_ascii($name);
         }
-        if ($name === '' || strlen($name) > 253 || preg_match('/^(?:[a-z0-9_](?:[a-z0-9_-]{0,61}[a-z0-9_])?\.)*[a-z0-9_](?:[a-z0-9_-]{0,61}[a-z0-9_])?$/D', $name) !== 1) {
+        if (
+            $name === ''
+            || strlen($name) > 253
+            || preg_match(
+                '/^(?:[a-z0-9_](?:[a-z0-9_-]{0,61}[a-z0-9_])?\.)*[a-z0-9_](?:[a-z0-9_-]{0,61}[a-z0-9_])?$/D',
+                $name,
+            ) !== 1
+        ) {
             throw new RuntimeException("\"{$host}\" is not a host name");
         }
         $this->hosts ??= self::readHosts($this->hostsFile);
@@ -118,7 +125,9 @@ final class DnsResolver
         unset($this->asking[$name]);
         foreach ($waiting as $settle) {
             // A caller that asked while this one was asking is given the same answer.
-            $failure instanceof CancelledException ? $settle(null, new RuntimeException("no address was found for the name {$host}")) : $settle($found, $failure);
+            $failure instanceof CancelledException
+                ? $settle(null, new RuntimeException("no address was found for the name {$host}"))
+                : $settle($found, $failure);
         }
         return $found ?? throw $failure;
     }
@@ -148,14 +157,14 @@ final class DnsResolver
         }
         if ($answer !== null && $answer[0] !== []) {
             $keep = max(self::KEEP_AT_LEAST, min(self::KEEP_AT_MOST, $answer[1]));
-            $this->kept[$name] = [$answer[0], hrtime(true) / 1_000_000_000 + $keep];
+            $this->kept[$name] = [$answer[0], (hrtime(true) / 1_000_000_000) + $keep];
             return $answer[0];
         }
         if ($this->fallback) {
             $cancellation?->throwIfCancelled();
             $found = @gethostbynamel($name);
             if ($found !== false && $found !== []) {
-                $this->kept[$name] = [$found, hrtime(true) / 1_000_000_000 + self::KEEP_AT_LEAST * 6];
+                $this->kept[$name] = [$found, (hrtime(true) / 1_000_000_000) + (self::KEEP_AT_LEAST * 6)];
                 return $found;
             }
         }
@@ -194,11 +203,20 @@ final class DnsResolver
      *
      * @return string|null The reply; null when none came in time or the server could not be asked.
      */
-    private function exchange(EventLoop $loop, string $server, string $query, int $id, ?Cancellation $cancellation): ?string
-    {
+    private function exchange(
+        EventLoop $loop,
+        string $server,
+        string $query,
+        int $id,
+        ?Cancellation $cancellation,
+    ): ?string {
         $cancellation?->throwIfCancelled();
-        $address = preg_match('/^(.+):(\d+)$/D', $server, $parts) === 1 && !str_contains($parts[1], ':') ? [$parts[1], $parts[2]] : [trim($server, '[]'), '53'];
-        $target = str_contains($address[0], ':') ? "udp://[{$address[0]}]:{$address[1]}" : "udp://{$address[0]}:{$address[1]}";
+        $address = preg_match('/^(.+):(\d+)$/D', $server, $parts) === 1 && !str_contains($parts[1], ':')
+            ? [$parts[1], $parts[2]]
+            : [trim($server, '[]'), '53'];
+        $target = str_contains($address[0], ':')
+            ? "udp://[{$address[0]}]:{$address[1]}"
+            : "udp://{$address[0]}:{$address[1]}";
         $socket = @stream_socket_client($target, $code, $reason, 0, STREAM_CLIENT_CONNECT);
         if ($socket === false) {
             return null;
@@ -233,8 +251,8 @@ final class DnsResolver
                 $finish($reply);
             }
         });
-        $timer = $loop->delay($this->patience, static fn () => $finish(null));
-        $unsubscribe = $cancellation?->subscribe(static fn (CancelledException $error) => $finish(null, $error));
+        $timer = $loop->delay($this->patience, static fn() => $finish(null));
+        $unsubscribe = $cancellation?->subscribe(static fn(CancelledException $error) => $finish(null, $error));
         try {
             return $suspension->suspend();
         } finally {
@@ -267,7 +285,7 @@ final class DnsResolver
             }
         };
         $this->asking[$name][] = $finish;
-        $unsubscribe = $cancellation?->subscribe(static fn (CancelledException $error) => $finish(null, $error));
+        $unsubscribe = $cancellation?->subscribe(static fn(CancelledException $error) => $finish(null, $error));
         try {
             return $suspension->suspend();
         } finally {
@@ -285,7 +303,7 @@ final class DnsResolver
     {
         $head = unpack('nid/nflags/nquestions/nanswers', $reply);
         $code = $head['flags'] & 0x000F;
-        if (($head['flags'] & 0x0200) !== 0 || ($code !== 0 && $code !== 3)) {
+        if (($head['flags'] & 0x0200) !== 0 || $code !== 0 && $code !== 3) {
             // Cut short to fit, or a server that failed or refused: another may do better.
             return null;
         }
@@ -306,12 +324,12 @@ final class DnsResolver
         $holds = PHP_INT_MAX;
         for ($i = 0; $i < $head['answers']; ++$i) {
             $offset = self::skipName($reply, $offset);
-            if ($offset === null || $offset + 10 > $length) {
+            if ($offset === null || ($offset + 10) > $length) {
                 return null;
             }
             $record = unpack('ntype/nclass/Nttl/nlength', $reply, $offset);
             $offset += 10;
-            if ($offset + $record['length'] > $length) {
+            if (($offset + $record['length']) > $length) {
                 return null;
             }
             $size = $type === self::TYPE_A ? 4 : 16;
@@ -363,7 +381,7 @@ final class DnsResolver
         }
         foreach ($hosts as $name => $addresses) {
             // IPv4 first, as for a name that was asked for.
-            usort($addresses, static fn (string $a, string $b): int => str_contains($a, ':') <=> str_contains($b, ':'));
+            usort($addresses, static fn(string $a, string $b): int => str_contains($a, ':') <=> str_contains($b, ':'));
             $hosts[$name] = array_values(array_unique($addresses));
         }
         return $hosts;
@@ -377,12 +395,14 @@ final class DnsResolver
         $servers = [];
         $lines = is_file($file) ? @file($file, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES) : false;
         foreach ($lines === false ? [] : $lines as $line) {
-            if (preg_match('/^\s*nameserver\s+(\S+)/', $line, $match) === 1) {
-                // An address may name the interface it is reached through, which a socket address cannot.
-                $address = (string) strtok($match[1], '%');
-                if (filter_var($address, FILTER_VALIDATE_IP) !== false) {
-                    $servers[] = $address;
-                }
+            if (preg_match('/^\s*nameserver\s+(\S+)/', $line, $match) !== 1) {
+                continue;
+            }
+
+            // An address may name the interface it is reached through, which a socket address cannot.
+            $address = (string) strtok($match[1], '%');
+            if (filter_var($address, FILTER_VALIDATE_IP) !== false) {
+                $servers[] = $address;
             }
         }
         return $servers;

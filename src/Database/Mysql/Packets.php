@@ -46,7 +46,9 @@ final class Packets
             $length = $word & self::LIMIT;
             $received = $word >> 24;
             if ($received !== $sequence) {
-                throw new \UnexpectedValueException('MySQL packet sequence is out of order; reconnect before trying again.');
+                throw new \UnexpectedValueException(
+                    'MySQL packet sequence is out of order; reconnect before trying again.',
+                );
             }
             $sequence = ($sequence + 1) & 255;
             $parts[] = $read($length);

@@ -47,9 +47,17 @@ final class Opening
     ) {
         $this->loop = EventLoop::current();
         $this->pipeline = $this->loop->getSuspension();
-        $this->socket = new Socket($this->loop, $request, $this->offerUpgrade(...), $settings, $route, $logger, $memberships);
+        $this->socket = new Socket(
+            $this->loop,
+            $request,
+            $this->offerUpgrade(...),
+            $settings,
+            $route,
+            $logger,
+            $memberships,
+        );
         $this->unsubscribe = $request->cancellation()->subscribe($this->requestEnded(...));
-        $this->loop->defer(fn () => $this->runAction($action));
+        $this->loop->defer(fn() => $this->runAction($action));
     }
 
     public function response(): ResponseInterface
@@ -132,7 +140,11 @@ final class Opening
 
     private function endBeforeAcceptance(\Throwable $error): void
     {
-        if ($error instanceof SocketClosed || $this->socket->causedCancellation($error) || $error === $this->requestEndReason) {
+        if (
+            $error instanceof SocketClosed
+            || $this->socket->causedCancellation($error)
+            || $error === $this->requestEndReason
+        ) {
             // The engine has retired the request. An HTTP answer ends its
             // handler without reporting a disconnected client.
             $this->pipeline->resume(Response::noContent());
@@ -149,7 +161,10 @@ final class Opening
         }
         try {
             if ($this->connection !== null) {
-                $failure = new \RuntimeException("The action of {$this->route} failed: {$error->getMessage()}", previous: $error);
+                $failure = new \RuntimeException(
+                    "The action of {$this->route} failed: {$error->getMessage()}",
+                    previous: $error,
+                );
                 $this->connection->reportFailure('WebSocket action failed', $failure);
             }
         } finally {

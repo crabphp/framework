@@ -29,9 +29,13 @@ final readonly class Handshake
                 throw new \InvalidArgumentException('WebSocket subprotocols must be HTTP tokens.');
             }
         }
-        if ($request->method !== 'GET' || $request->version !== '1.1'
+        if (
+            $request->method !== 'GET'
+            || $request->version !== '1.1'
             || !$request->hasToken('upgrade', 'websocket')
-            || !$request->hasToken('connection', 'upgrade') || $request->body->size() !== 0) {
+            || !$request->hasToken('connection', 'upgrade')
+            || $request->body->size() !== 0
+        ) {
             $this->response = new Response(400, ['Connection' => 'close'], 'Invalid WebSocket upgrade.');
             $this->subprotocol = null;
             return;
@@ -64,7 +68,7 @@ final readonly class Handshake
             }
         }
 
-        if ($accept !== null && !($accept)($request)) {
+        if ($accept !== null && !$accept($request)) {
             $this->response = new Response(403, ['Connection' => 'close']);
             $this->subprotocol = null;
             return;
@@ -77,10 +81,12 @@ final readonly class Handshake
         ];
         $selected = null;
         foreach ($subprotocols as $protocol) {
-            if (isset($offered[$protocol])) {
-                $headers['Sec-WebSocket-Protocol'] = $selected = $protocol;
-                break;
+            if (!isset($offered[$protocol])) {
+                continue;
             }
+
+            $headers['Sec-WebSocket-Protocol'] = $selected = $protocol;
+            break;
         }
 
         $this->response = new Response(101, $headers);
@@ -97,8 +103,7 @@ final readonly class Handshake
         ?callable $onOpen = null,
         ?callable $onClose = null,
         ?Config $config = null,
-    ): Upgrade
-    {
+    ): Upgrade {
         if ($this->response->status !== 101) {
             throw new \LogicException('The WebSocket handshake was refused; return its HTTP response instead.');
         }
@@ -108,11 +113,15 @@ final readonly class Handshake
             string $unreadBytes,
         ) use ($onMessage, $onOpen, $onClose, $config): void {
             $session = new WebSocketSession(
-                $connection, $onMessage, $config ?? new Config(), $onClose, $this->subprotocol,
+                $connection,
+                $onMessage,
+                $config ?? new Config(),
+                $onClose,
+                $this->subprotocol,
             );
             try {
                 if ($onOpen !== null) {
-                    ($onOpen)($session, $request);
+                    $onOpen($session, $request);
                 }
                 if ($unreadBytes !== '') {
                     $session->receive($unreadBytes);

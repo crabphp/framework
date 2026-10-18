@@ -23,9 +23,10 @@ final class Generation
      * @param resource $socket The listening socket passed on by the keeper.
      * @param resource|null $report Where the keeper is told how the start went.
      */
-    private function __construct(public readonly mixed $socket, private mixed $report)
-    {
-    }
+    private function __construct(
+        public readonly mixed $socket,
+        private mixed $report,
+    ) {}
 
     /**
      * Takes up what the keeper passed to this process. Fails in a process

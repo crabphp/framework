@@ -16,8 +16,10 @@ final readonly class Pattern implements Rule
     /**
      * @param string $message What to tell the client, worded to follow the field's name.
      */
-    public function __construct(public string $expression, public string $message = 'does not have the expected format')
-    {
+    public function __construct(
+        public string $expression,
+        public string $message = 'does not have the expected format',
+    ) {
         if (@preg_match($this->delimited(), '') === false) {
             throw new \LogicException("Pattern was given an invalid regular expression: {$expression}");
         }

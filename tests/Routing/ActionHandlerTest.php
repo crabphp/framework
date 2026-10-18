@@ -7,7 +7,6 @@ namespace Crab\Tests\Routing;
 use Crab\App;
 use Crab\Config\Config;
 use Crab\Container\Container;
-use Crab\Contracts\Database\Page;
 use Crab\Contracts\Http\Request as RequestContract;
 use Crab\Contracts\Validation\Validator as ValidatorContract;
 use Crab\Http\Request;
@@ -33,27 +32,31 @@ enum Plan: string
 final readonly class CreateUser
 {
     public function __construct(
-        #[Email] public string $email,
-        #[Length(min: 2, max: 50)] public string $name,
+        #[Email]
+        public string $email,
+        #[Length(min: 2, max: 50)]
+        public string $name,
         public Plan $plan = Plan::Free,
-    ) {
-    }
+    ) {}
 }
 
 final readonly class ListUsers
 {
     public function __construct(
-        #[Range(min: 1)] public int $page = 1,
+        #[Range(min: 1)]
+        public int $page = 1,
         public ?string $search = null,
-    ) {
-    }
+    ) {}
 }
 
 final readonly class User
 {
-    public function __construct(public int $id, public string $email, public string $name, public Plan $plan)
-    {
-    }
+    public function __construct(
+        public int $id,
+        public string $email,
+        public string $name,
+        public Plan $plan,
+    ) {}
 }
 
 final readonly class Event
@@ -64,9 +67,9 @@ final readonly class Event
     public function __construct(
         public string $title,
         public \DateTimeImmutable $at,
-        #[ListOf(\DateTimeImmutable::class)] public array $reminders = [],
-    ) {
-    }
+        #[ListOf(\DateTimeImmutable::class)]
+        public array $reminders = [],
+    ) {}
 }
 
 final class Names
@@ -84,8 +87,9 @@ final class Names
  */
 final readonly class ShowUser
 {
-    public function __construct(private Names $names)
-    {
+    public function __construct(
+        private Names $names,
+    ) {
         ++$names->made;
     }
 
@@ -100,8 +104,9 @@ final readonly class ShowUser
  */
 final readonly class UserController
 {
-    public function __construct(private Names $names)
-    {
+    public function __construct(
+        private Names $names,
+    ) {
         ++$names->made;
     }
 
@@ -183,10 +188,10 @@ final class ActionHandlerTest extends TestCase
         $actions = [
             [UntypedRouteAction::class, UntypedRouteAction::class, 'id'],
             [[UntypedRouteAction::class, 'show'], UntypedRouteAction::class . '::show', 'id'],
-            [static fn ($id): string => (string) $id, 'Closure', 'id'],
-            [static fn ($id = null): string => (string) $id, 'Closure', 'id'],
-            [static fn ($email): string => (string) $email, 'Closure', 'email'],
-            [static fn (#[Fields(['email' => 'string'])] $input): array => [], 'Closure', 'input'],
+            [static fn($id): string => (string) $id, 'Closure', 'id'],
+            [static fn($id = null): string => (string) $id, 'Closure', 'id'],
+            [static fn($email): string => (string) $email, 'Closure', 'email'],
+            [static fn(#[Fields(['email' => 'string'])] $input): array => [], 'Closure', 'input'],
         ];
         foreach ($actions as [$action, $name, $parameter]) {
             try {
@@ -209,10 +214,10 @@ final class ActionHandlerTest extends TestCase
     {
         $router = new Router();
         $actions = [
-            static fn (UntypedInput $input): array => [],
-            static fn (#[ListOf(UntypedInput::class)] array $inputs): array => [],
-            static fn (#[Fields(['customer' => UntypedInput::class])] Data $input): array => [],
-            static fn (#[Fields(['customers' => [[UntypedInput::class]]])] Data $input): array => [],
+            static fn(UntypedInput $input): array => [],
+            static fn(#[ListOf(UntypedInput::class)] array $inputs): array => [],
+            static fn(#[Fields(['customer' => UntypedInput::class])] Data $input): array => [],
+            static fn(#[Fields(['customers' => [[UntypedInput::class]]])] Data $input): array => [],
         ];
         foreach ($actions as $action) {
             try {
@@ -235,9 +240,9 @@ final class ActionHandlerTest extends TestCase
     {
         $router = new Router();
         $actions = [
-            [static fn (#[Fields(['email' => []])] Data $input): array => [], 'email'],
-            [static fn (#[Fields(['customer' => ['email' => []]])] Data $input): array => [], 'email'],
-            [static fn (#[Fields(['customers' => [['email' => []]]])] Data $input): array => [], 'email'],
+            [static fn(#[Fields(['email' => []])] Data $input): array => [], 'email'],
+            [static fn(#[Fields(['customer' => ['email' => []]])] Data $input): array => [], 'email'],
+            [static fn(#[Fields(['customers' => [['email' => []]]])] Data $input): array => [], 'email'],
         ];
         foreach ($actions as [$action, $field]) {
             try {
@@ -245,7 +250,10 @@ final class ActionHandlerTest extends TestCase
                 self::fail('A described field without a type was accepted.');
             } catch (\LogicException $error) {
                 self::assertStringContainsString('POST /untyped-description', $error->getMessage());
-                self::assertStringContainsString("describes \"{$field}\", which must be a type such as 'int'", $error->getMessage());
+                self::assertStringContainsString(
+                    "describes \"{$field}\", which must be a type such as 'int'",
+                    $error->getMessage(),
+                );
             }
             self::assertSame([], $router->routes());
         }
@@ -254,14 +262,17 @@ final class ActionHandlerTest extends TestCase
     public function testTheFieldsOfARequestCanBeDescribedWhereTheyAreUsedInPlaceOfAClass(): void
     {
         $router = new Router();
-        $router->post('/shops/{shop}/big', static fn (
+        $router->post('/shops/{shop}/big', static fn(
             int $shop,
             #[Fields([
                 'email' => ['string', new Email()],
                 'plan' => Plan::class,
                 'note' => '?string',
                 'address?' => ['street' => 'string', 'country' => ['string', new Length(min: 2, max: 2)]],
-                'lines' => [['productId' => 'int', 'quantity' => ['int', new Range(min: 1, max: 20)]], new Length(min: 1)],
+                'lines' => [
+                    ['productId' => 'int', 'quantity' => ['int', new Range(min: 1, max: 20)]],
+                    new Length(min: 1),
+                ],
                 'tags?' => [['string']],
             ])]
             Data $order,
@@ -274,28 +285,57 @@ final class ActionHandlerTest extends TestCase
             'second' => $order->lines[1]->productId * $order->lines[1]->quantity,
             'tags' => $order->tags,
             'all' => $order,
-        ], );
-        $router->add('POST', '/shops/{shop}/orders', static fn (int $shop, #[Fields(['id' => 'int'])] Data $order): array => [$shop, $order->id]);
+        ]);
+        $router->add('POST', '/shops/{shop}/orders', static fn(
+            int $shop,
+            #[Fields(['id' => 'int'])]
+            Data $order,
+        ): array => [$shop, $order->id]);
         // A list of described objects is a field like any other, beside other fields.
-        $router->post('/baskets', static fn (
+        $router->post('/baskets', static fn(
             string $name,
             #[ListOf(['productId' => 'int', 'quantity' => '?int']), Length(min: 1)]
             array $lines,
-        ): array => [$name, array_map(static fn (Data $line): array => [$line->productId, $line->quantity], $lines)]);
-        $router->get('/search', static fn (#[Fields(['q' => 'string', 'page' => '?int'])] Data $query): array => [$query->q, $query->page]);
+        ): array => [$name, array_map(static fn(Data $line): array => [$line->productId, $line->quantity], $lines)]);
+        $router->get('/search', static fn(#[Fields(['q' => 'string', 'page' => '?int'])] Data $query): array => [
+            $query->q,
+            $query->page,
+        ]);
 
-        $whole = ['email' => 'ada@example.com', 'plan' => 'paid', 'note' => 'ring twice', 'address' => ['street' => '1 Main St', 'country' => 'GB'],
-            'lines' => [['productId' => 5, 'quantity' => 2], ['productId' => 7, 'quantity' => 3]], 'tags' => ['gift'], 'unknown' => 'ignored'];
+        $whole = [
+            'email' => 'ada@example.com',
+            'plan' => 'paid',
+            'note' => 'ring twice',
+            'address' => ['street' => '1 Main St', 'country' => 'GB'],
+            'lines' => [['productId' => 5, 'quantity' => 2], ['productId' => 7, 'quantity' => 3]],
+            'tags' => ['gift'],
+            'unknown' => 'ignored',
+        ];
         $answer = json_decode($this->body($router, $this->json('POST', '/shops/4/big', $whole)), true);
-        self::assertSame([4, 'ada@example.com', 'paid', 'ring twice', 'GB', 21, ['gift']], [$answer['shop'], $answer['email'], $answer['plan'], $answer['note'], $answer['country'], $answer['second'], $answer['tags']]);
+        self::assertSame([4, 'ada@example.com', 'paid', 'ring twice', 'GB', 21, ['gift']], [
+            $answer['shop'],
+            $answer['email'],
+            $answer['plan'],
+            $answer['note'],
+            $answer['country'],
+            $answer['second'],
+            $answer['tags'],
+        ]);
         // What was not described is not taken; an enum is the enum, and returned as its value.
         self::assertSame(['email', 'plan', 'note', 'address', 'lines', 'tags'], array_keys($answer['all']));
         // Left out, what may be is null.
-        $less = json_decode($this->body($router, $this->json('POST', '/shops/4/big', ['email' => 'a@b.co', 'plan' => 'free', 'lines' => [['productId' => 1, 'quantity' => 1], ['productId' => 2, 'quantity' => 2]]])), true);
+        $less = json_decode($this->body($router, $this->json('POST', '/shops/4/big', [
+            'email' => 'a@b.co',
+            'plan' => 'free',
+            'lines' => [['productId' => 1, 'quantity' => 1], ['productId' => 2, 'quantity' => 2]],
+        ])), true);
         self::assertSame([null, null, null], [$less['note'], $less['country'], $less['tags']]);
 
         self::assertSame('[3,9]', $this->body($router, $this->json('POST', '/shops/3/orders', ['id' => 9])));
-        self::assertSame('["weekly",[[5,2],[7,null]]]', $this->body($router, $this->json('POST', '/baskets', ['name' => 'weekly', 'lines' => [['productId' => 5, 'quantity' => 2], ['productId' => 7]]])));
+        self::assertSame('["weekly",[[5,2],[7,null]]]', $this->body($router, $this->json('POST', '/baskets', [
+            'name' => 'weekly',
+            'lines' => [['productId' => 5, 'quantity' => 2], ['productId' => 7]],
+        ])));
         // A query string is text, and is read as the types described.
         self::assertSame('["mug",3]', $this->body($router, new Request('GET', '/search?q=mug&page=3')));
         self::assertSame('["mug",null]', $this->body($router, new Request('GET', '/search?q=mug')));
@@ -303,41 +343,77 @@ final class ActionHandlerTest extends TestCase
         // Every problem at once, each by the field's own path.
         $bad = $router->handle($this->json('POST', '/shops/3/orders', []));
         self::assertSame(['id' => ['is required']], json_decode((string) $bad->getBody(), true)['error']['fields']);
-        $router->post('/checkout', static fn (#[Fields([
-            'email' => ['string', new Email()],
-            'address?' => ['street' => 'string', 'country' => ['string', new Length(min: 2, max: 2)]],
-            'lines' => [['productId' => 'int', 'quantity' => ['int', new Range(min: 1, max: 20)]], new Length(min: 1)],
-        ])] Data $order): Data => $order);
-        $bad = $router->handle($this->json('POST', '/checkout', ['email' => 'nope', 'address' => ['street' => 5, 'country' => 'GBR'], 'lines' => [['productId' => 5, 'quantity' => 99], ['quantity' => 1], 'x']]));
+        $router->post(
+            '/checkout',
+            static fn(
+                #[Fields([
+                    'email' => ['string', new Email()],
+                    'address?' => ['street' => 'string', 'country' => ['string', new Length(min: 2, max: 2)]],
+                    'lines' => [
+                        ['productId' => 'int', 'quantity' => ['int', new Range(min: 1, max: 20)]],
+                        new Length(min: 1),
+                    ],
+                ])]
+                Data $order,
+            ): Data => $order,
+        );
+        $bad = $router->handle($this->json('POST', '/checkout', [
+            'email' => 'nope',
+            'address' => ['street' => 5, 'country' => 'GBR'],
+            'lines' => [['productId' => 5, 'quantity' => 99], ['quantity' => 1], 'x'],
+        ]));
         self::assertSame(422, $bad->getStatusCode());
-        self::assertSame([
-            'email' => ['must be an email address'],
-            'address.street' => ['must be text'],
-            'address.country' => ['must be at most 2 character(s)'],
-            'lines.0.quantity' => ['must be at most 20'],
-            'lines.1.productId' => ['is required'],
-            'lines.2' => ['must be an object'],
-        ], json_decode((string) $bad->getBody(), true)['error']['fields']);
-        self::assertSame(['lines' => ['must have at least 1 item(s)']], json_decode((string) $router->handle($this->json('POST', '/checkout', ['email' => 'a@b.co', 'lines' => []]))->getBody(), true)['error']['fields']);
+        self::assertSame(
+            [
+                'email' => ['must be an email address'],
+                'address.street' => ['must be text'],
+                'address.country' => ['must be at most 2 character(s)'],
+                'lines.0.quantity' => ['must be at most 20'],
+                'lines.1.productId' => ['is required'],
+                'lines.2' => ['must be an object'],
+            ],
+            json_decode((string) $bad->getBody(), true)['error']['fields'],
+        );
+        self::assertSame(
+            ['lines' => ['must have at least 1 item(s)']],
+            json_decode((string) $router->handle($this->json('POST', '/checkout', [
+                'email' => 'a@b.co',
+                'lines' => [],
+            ]))->getBody(), true)['error']['fields'],
+        );
 
         // Returned, it is its fields; what was left out is null, and what was not described is not there.
         $good = ['email' => 'ada@example.com', 'lines' => [['productId' => 5, 'quantity' => 2]], 'extra' => true];
-        self::assertSame('{"email":"ada@example.com","lines":[{"productId":5,"quantity":2}]}', $this->body($router, $this->json('POST', '/checkout', $good)));
+        self::assertSame('{"email":"ada@example.com","lines":[{"productId":5,"quantity":2}]}', $this->body($router, $this->json(
+            'POST',
+            '/checkout',
+            $good,
+        )));
 
         // An update takes what was sent and nothing else: a field left out is not a field sent as null.
-        $router->patch('/users/{id}', static fn (int $id, #[Fields(['name' => '?string', 'bio' => '?string', 'age' => '?int'])] Data $changes): array => [
+        $router->patch('/users/{id}', static fn(
+            int $id,
+            #[Fields(['name' => '?string', 'bio' => '?string', 'age' => '?int'])]
+            Data $changes,
+        ): array => [
             'sent' => $changes->toArray(),
             'has' => [$changes->has('name'), $changes->has('bio'), $changes->has('age')],
             'reads' => [$changes->name, $changes->bio, $changes->age],
         ]);
-        self::assertSame(
-            '{"sent":{"name":"Ada","bio":null},"has":[true,true,false],"reads":["Ada",null,null]}',
-            $this->body($router, $this->json('PATCH', '/users/7', ['name' => 'Ada', 'bio' => null])),
-        );
+        self::assertSame('{"sent":{"name":"Ada","bio":null},"has":[true,true,false],"reads":["Ada",null,null]}', $this->body($router, $this->json(
+            'PATCH',
+            '/users/7',
+            ['name' => 'Ada', 'bio' => null],
+        )));
 
         // A form carries everything as text, as a query string does, and is read as the types described.
-        $router->post('/form', static fn (int $quantity, bool $gift = false): array => [$quantity, $gift]);
-        $form = new Request('POST', '/form', ['Content-Type' => 'application/x-www-form-urlencoded'], 'quantity=2&gift=true');
+        $router->post('/form', static fn(int $quantity, bool $gift = false): array => [$quantity, $gift]);
+        $form = new Request(
+            'POST',
+            '/form',
+            ['Content-Type' => 'application/x-www-form-urlencoded'],
+            'quantity=2&gift=true',
+        );
         self::assertSame('[2,true]', $this->body($router, $form));
         // JSON says what each value is, and "2" there is text.
         self::assertSame(422, $router->handle($this->json('POST', '/form', ['quantity' => '2']))->getStatusCode());
@@ -354,15 +430,26 @@ final class ActionHandlerTest extends TestCase
 
         // A description that cannot be is refused when the route is added.
         $mistakes = [
-            'has no #[Fields] to say what its fields are' => static fn (Data $order) => '',
-            'has #[Fields] but is not declared as' => static fn (#[Fields(['id' => 'int'])] array $order) => '',
-            "must name each field with its description" => static fn (#[Fields(['int'])] Data $order) => '',
-            'describes "id", which is declared as integer' => static fn (#[Fields(['id' => 'integer'])] Data $order) => '',
-            'where only rules such as' => static fn (#[Fields(['id' => ['int', 'required']])] Data $order) => '',
-            'describes "lines", which, in each item, describes "n", which is declared as number' => static fn (#[Fields(['lines' => [['n' => 'number']]])] Data $order) => '',
-            'takes two inputs' => static fn (#[Fields(['a' => 'int'])] Data $one, #[Fields(['b' => 'int'])] Data $two) => '',
-            'takes $email with no type' => static fn ($email) => '',
-            'and also the field $name' => static fn (string $name, #[Fields(['a' => 'int'])] Data $order) => '',
+            'has no #[Fields] to say what its fields are' => static fn(Data $order) => '',
+            'has #[Fields] but is not declared as' => static fn(#[Fields(['id' => 'int'])] array $order) => '',
+            'must name each field with its description' => static fn(#[Fields(['int'])] Data $order) => '',
+            'describes "id", which is declared as integer' => static fn(
+                #[Fields(['id' => 'integer'])]
+                Data $order,
+            ) => '',
+            'where only rules such as' => static fn(#[Fields(['id' => ['int', 'required']])] Data $order) => '',
+            'describes "lines", which, in each item, describes "n", which is declared as number' => static fn(
+                #[Fields(['lines' => [['n' => 'number']]])]
+                Data $order,
+            ) => '',
+            'takes two inputs' => static fn(
+                #[Fields(['a' => 'int'])]
+                Data $one,
+                #[Fields(['b' => 'int'])]
+                Data $two,
+            ) => '',
+            'takes $email with no type' => static fn($email) => '',
+            'and also the field $name' => static fn(string $name, #[Fields(['a' => 'int'])] Data $order) => '',
         ];
         $n = 0;
         foreach ($mistakes as $says => $action) {
@@ -378,31 +465,62 @@ final class ActionHandlerTest extends TestCase
     public function testAHandlerReceivesWhatItsSignatureAsksFor(): void
     {
         $router = new Router();
-        $router->post('/users', static fn (CreateUser $input): User => new User(1, $input->email, $input->name, $input->plan));
-        $router->get('/users', static fn (ListUsers $query): array => ['page' => $query->page, 'search' => $query->search]);
-        $router->get('/users/{id}/posts/{slug}', static fn (string $slug, int $id): array => [$id, $slug]);
-        $router->put('/users/{id}', static fn (int $id, CreateUser $input, ServerRequestInterface $request): array => [$id, $input->name, $request->getMethod()]);
-        $router->get('/ratio/{value}/{exact}', static fn (float $value, bool $exact): array => [$value, $exact]);
-        $router->get('/raw/{name}', static fn (ServerRequestInterface $request, string $name): array => [$name, $request->getAttribute('name')]);
-        $router->delete('/users/{id}', static function (int $id, RequestContract $request): void {
-        });
-        $router->get('/text', static fn (): string => 'plain');
-        $router->get('/made', static fn (): ResponseInterface => Response::json(['made' => true], 201));
-        $router->get('/number', static fn (): int => 7);
+        $router->post(
+            '/users',
+            static fn(CreateUser $input): User => new User(1, $input->email, $input->name, $input->plan),
+        );
+        $router->get('/users', static fn(ListUsers $query): array => [
+            'page' => $query->page,
+            'search' => $query->search,
+        ]);
+        $router->get('/users/{id}/posts/{slug}', static fn(string $slug, int $id): array => [$id, $slug]);
+        $router->put('/users/{id}', static fn(int $id, CreateUser $input, ServerRequestInterface $request): array => [
+            $id,
+            $input->name,
+            $request->getMethod(),
+        ]);
+        $router->get('/ratio/{value}/{exact}', static fn(float $value, bool $exact): array => [$value, $exact]);
+        $router->get('/raw/{name}', static fn(ServerRequestInterface $request, string $name): array => [
+            $name,
+            $request->getAttribute('name'),
+        ]);
+        $router->delete('/users/{id}', static function (int $id, RequestContract $request): void {});
+        $router->get('/text', static fn(): string => 'plain');
+        $router->get('/made', static fn(): ResponseInterface => Response::json(['made' => true], 201));
+        $router->get('/number', static fn(): int => 7);
 
-        $created = $router->handle($this->json('POST', '/users', ['email' => 'ada@example.com', 'name' => 'Ada', 'plan' => 'paid']));
-        self::assertSame([200, 'application/json', '{"id":1,"email":"ada@example.com","name":"Ada","plan":"paid"}'],
-            [$created->getStatusCode(), $created->getHeaderLine('Content-Type'), (string) $created->getBody()]);
+        $created = $router->handle($this->json('POST', '/users', [
+            'email' => 'ada@example.com',
+            'name' => 'Ada',
+            'plan' => 'paid',
+        ]));
+        self::assertSame([200, 'application/json', '{"id":1,"email":"ada@example.com","name":"Ada","plan":"paid"}'], [
+            $created->getStatusCode(),
+            $created->getHeaderLine('Content-Type'),
+            (string) $created->getBody(),
+        ]);
         self::assertSame('{"page":1,"search":null}', $this->body($router, new Request('GET', '/users')));
-        self::assertSame('{"page":3,"search":"ada"}', $this->body($router, new Request('GET', '/users?page=3&search=ada&unknown=1')));
-        self::assertSame('[42,"hello world"]', $this->body($router, new Request('GET', '/users/42/posts/hello%20world')));
-        self::assertSame('[7,"Grace","PUT"]', $this->body($router, $this->json('PUT', '/users/7', ['email' => 'g@example.com', 'name' => 'Grace'])));
+        self::assertSame('{"page":3,"search":"ada"}', $this->body(
+            $router,
+            new Request('GET', '/users?page=3&search=ada&unknown=1'),
+        ));
+        self::assertSame('[42,"hello world"]', $this->body(
+            $router,
+            new Request('GET', '/users/42/posts/hello%20world'),
+        ));
+        self::assertSame('[7,"Grace","PUT"]', $this->body($router, $this->json('PUT', '/users/7', [
+            'email' => 'g@example.com',
+            'name' => 'Grace',
+        ])));
         self::assertSame('[2.5,true]', $this->body($router, new Request('GET', '/ratio/2.5/1')));
         self::assertSame('["x","x"]', $this->body($router, new Request('GET', '/raw/x')));
         $deleted = $router->handle(new Request('DELETE', '/users/9'));
         self::assertSame([204, ''], [$deleted->getStatusCode(), (string) $deleted->getBody()]);
         $text = $router->handle(new Request('GET', '/text'));
-        self::assertSame(['text/plain; charset=utf-8', 'plain'], [$text->getHeaderLine('Content-Type'), (string) $text->getBody()]);
+        self::assertSame(['text/plain; charset=utf-8', 'plain'], [
+            $text->getHeaderLine('Content-Type'),
+            (string) $text->getBody(),
+        ]);
         self::assertSame(201, $router->handle(new Request('GET', '/made'))->getStatusCode());
         self::assertSame('7', $this->body($router, new Request('GET', '/number')));
     }
@@ -422,26 +540,40 @@ final class ActionHandlerTest extends TestCase
 
         $response = $router->handle($this->json('PUT', '/users/abc', ['email' => 'nope', 'plan' => 'gold']));
         self::assertSame(422, $response->getStatusCode());
-        self::assertSame([
-            'error' => [
-                'status' => 422,
-                'message' => 'The request is invalid.',
-                'fields' => [
-                    'id' => ['must be a whole number'],
-                    'email' => ['must be an email address'],
-                    'name' => ['is required'],
-                    'plan' => ['must be one of: free, paid'],
+        self::assertSame(
+            [
+                'error' => [
+                    'status' => 422,
+                    'message' => 'The request is invalid.',
+                    'fields' => [
+                        'id' => ['must be a whole number'],
+                        'email' => ['must be an email address'],
+                        'name' => ['is required'],
+                        'plan' => ['must be one of: free, paid'],
+                    ],
                 ],
             ],
-        ], json_decode((string) $response->getBody(), true));
+            json_decode((string) $response->getBody(), true),
+        );
 
         $query = $router->handle(new Request('GET', '/users?page=0', ['Accept' => 'application/json']));
-        self::assertSame(['page' => ['must be at least 1']], json_decode((string) $query->getBody(), true)['error']['fields']);
+        self::assertSame(
+            ['page' => ['must be at least 1']],
+            json_decode((string) $query->getBody(), true)['error']['fields'],
+        );
         $plain = $router->handle(new Request('GET', '/users?page=first'));
-        self::assertSame([422, "422 The request is invalid.\npage must be a whole number\n"], [$plain->getStatusCode(), (string) $plain->getBody()]);
+        self::assertSame([422, "422 The request is invalid.\npage must be a whole number\n"], [
+            $plain->getStatusCode(),
+            (string) $plain->getBody(),
+        ]);
 
         foreach (['', '"text"', '[1,2]x'] as $body) {
-            $request = new Request('PUT', '/users/1', ['Content-Type' => 'application/json', 'Accept' => 'application/json'], $body);
+            $request = new Request(
+                'PUT',
+                '/users/1',
+                ['Content-Type' => 'application/json', 'Accept' => 'application/json'],
+                $body,
+            );
             try {
                 $status = $router->handle($request)->getStatusCode();
             } catch (\Crab\Http\HttpException $malformed) {
@@ -450,7 +582,11 @@ final class ActionHandlerTest extends TestCase
             self::assertContains($status, [400, 422], "A body of {$body} was accepted.");
         }
         $noBody = $router->handle(new Request('PUT', '/users/1', ['Accept' => 'application/json']));
-        self::assertSame(['email' => ['is required'], 'name' => ['is required']], json_decode((string) $noBody->getBody(), true)['error']['fields'], 'With no body, every field is missing.');
+        self::assertSame(
+            ['email' => ['is required'], 'name' => ['is required']],
+            json_decode((string) $noBody->getBody(), true)['error']['fields'],
+            'With no body, every field is missing.',
+        );
         self::assertSame(0, $calls);
     }
 
@@ -462,8 +598,14 @@ final class ActionHandlerTest extends TestCase
         $names = $container->get(Names::class);
         self::assertSame(0, $names->made, 'Adding the route does not make the action.');
 
-        self::assertSame('{"id":5,"email":"5@example.com","name":"user-5","plan":"paid"}', $this->body($router, new Request('GET', '/users/5')));
-        self::assertSame('{"id":6,"email":"6@example.com","name":"user-6","plan":"paid"}', $this->body($router, new Request('GET', '/users/6')));
+        self::assertSame('{"id":5,"email":"5@example.com","name":"user-5","plan":"paid"}', $this->body(
+            $router,
+            new Request('GET', '/users/5'),
+        ));
+        self::assertSame('{"id":6,"email":"6@example.com","name":"user-6","plan":"paid"}', $this->body(
+            $router,
+            new Request('GET', '/users/6'),
+        ));
         self::assertSame(1, $names->made);
         self::assertSame(422, $router->handle(new Request('GET', '/users/x'))->getStatusCode());
 
@@ -475,30 +617,71 @@ final class ActionHandlerTest extends TestCase
     {
         $at = new \DateTimeImmutable('2026-01-31 12:00:00', new \DateTimeZone('UTC'));
         $router = new Router();
-        $router->get('/event', static fn (): Event => new Event('Launch', $at, [$at->modify('-1 day')]));
-        $router->get('/events', static fn (): array => [new Event('Launch', $at)]);
-        $router->post('/events', static fn (Event $input): Event => $input);
+        $router->get('/event', static fn(): Event => new Event('Launch', $at, [$at->modify('-1 day')]));
+        $router->get('/events', static fn(): array => [new Event('Launch', $at)]);
+        $router->post('/events', static fn(Event $input): Event => $input);
 
-        self::assertSame('{"title":"Launch","at":"2026-01-31T12:00:00+00:00","reminders":["2026-01-30T12:00:00+00:00"]}', $this->body($router, new Request('GET', '/event')));
-        self::assertSame('[{"title":"Launch","at":"2026-01-31T12:00:00+00:00","reminders":[]}]', $this->body($router, new Request('GET', '/events')));
-        self::assertSame('{"title":"Talk","at":"2026-02-01T09:30:00+00:00","reminders":[]}',
-            $this->body($router, $this->json('POST', '/events', ['title' => 'Talk', 'at' => '2026-02-01T09:30:00Z'])));
+        self::assertSame('{"title":"Launch","at":"2026-01-31T12:00:00+00:00","reminders":["2026-01-30T12:00:00+00:00"]}', $this->body(
+            $router,
+            new Request('GET', '/event'),
+        ));
+        self::assertSame('[{"title":"Launch","at":"2026-01-31T12:00:00+00:00","reminders":[]}]', $this->body(
+            $router,
+            new Request('GET', '/events'),
+        ));
+        self::assertSame('{"title":"Talk","at":"2026-02-01T09:30:00+00:00","reminders":[]}', $this->body($router, $this->json(
+            'POST',
+            '/events',
+            ['title' => 'Talk', 'at' => '2026-02-01T09:30:00Z'],
+        )));
     }
 
     public function testTheRequestsDataCanBeTakenAsSeparateParameters(): void
     {
         $router = new Router();
-        $router->get('/users', static fn (int $page = 1, ?string $search = null, Plan $plan = Plan::Free, bool $active = true): array => [$page, $search, $plan, $active]);
-        $router->post('/users', static fn (#[Email] string $email, #[Length(min: 2)] string $name, ?int $age = null): array => [$email, $name, $age]);
-        $router->patch('/users/{id}', static fn (int $id, ServerRequestInterface $request, ?string $name = null, #[ListOf('string')] array $tags = [], ?\DateTimeImmutable $seen = null): array
-            => [$id, $name, $tags, $seen?->format('Y'), $request->getMethod()]);
+        $router->get('/users', static fn(
+            int $page = 1,
+            ?string $search = null,
+            Plan $plan = Plan::Free,
+            bool $active = true,
+        ): array => [$page, $search, $plan, $active]);
+        $router->post('/users', static fn(
+            #[Email]
+            string $email,
+            #[Length(min: 2)]
+            string $name,
+            ?int $age = null,
+        ): array => [$email, $name, $age]);
+        $router->patch('/users/{id}', static fn(
+            int $id,
+            ServerRequestInterface $request,
+            ?string $name = null,
+            #[ListOf('string')]
+            array $tags = [],
+            ?\DateTimeImmutable $seen = null,
+        ): array => [$id, $name, $tags, $seen?->format('Y'), $request->getMethod()]);
 
         self::assertSame('[1,null,"free",true]', $this->body($router, new Request('GET', '/users')));
-        self::assertSame('[3,"ada","paid",false]', $this->body($router, new Request('GET', '/users?page=3&search=ada&plan=paid&active=0&unknown=x')));
-        self::assertSame('["ada@example.com","Ada",null]', $this->body($router, $this->json('POST', '/users', ['email' => 'ada@example.com', 'name' => 'Ada', 'is_admin' => true])));
-        self::assertSame('["ada@example.com","Ada",36]', $this->body($router, $this->json('POST', '/users', ['age' => 36, 'name' => 'Ada', 'email' => 'ada@example.com'])));
+        self::assertSame('[3,"ada","paid",false]', $this->body(
+            $router,
+            new Request('GET', '/users?page=3&search=ada&plan=paid&active=0&unknown=x'),
+        ));
+        self::assertSame('["ada@example.com","Ada",null]', $this->body($router, $this->json('POST', '/users', [
+            'email' => 'ada@example.com',
+            'name' => 'Ada',
+            'is_admin' => true,
+        ])));
+        self::assertSame('["ada@example.com","Ada",36]', $this->body($router, $this->json('POST', '/users', [
+            'age' => 36,
+            'name' => 'Ada',
+            'email' => 'ada@example.com',
+        ])));
         self::assertSame('[7,null,[],null,"PATCH"]', $this->body($router, $this->json('PATCH', '/users/7', [])));
-        self::assertSame('[7,"Ada",["a","b"],"2026","PATCH"]', $this->body($router, $this->json('PATCH', '/users/7', ['name' => 'Ada', 'tags' => ['a', 'b'], 'seen' => '2026-01-31T12:00:00Z'])));
+        self::assertSame('[7,"Ada",["a","b"],"2026","PATCH"]', $this->body($router, $this->json('PATCH', '/users/7', [
+            'name' => 'Ada',
+            'tags' => ['a', 'b'],
+            'seen' => '2026-01-31T12:00:00Z',
+        ])));
 
         $invalid = $router->handle($this->json('POST', '/users', ['email' => 'nope', 'age' => '36']));
         self::assertSame(
@@ -506,7 +689,10 @@ final class ActionHandlerTest extends TestCase
             json_decode((string) $invalid->getBody(), true)['error']['fields'],
         );
         $invalid = $router->handle($this->json('PATCH', '/users/x', ['tags' => ['a', 1]]));
-        self::assertSame(['id' => ['must be a whole number'], 'tags.1' => ['must be text']], json_decode((string) $invalid->getBody(), true)['error']['fields']);
+        self::assertSame(
+            ['id' => ['must be a whole number'], 'tags.1' => ['must be text']],
+            json_decode((string) $invalid->getBody(), true)['error']['fields'],
+        );
         self::assertSame(422, $router->handle(new Request('GET', '/users?page=first'))->getStatusCode());
     }
 
@@ -520,62 +706,128 @@ final class ActionHandlerTest extends TestCase
         $names = $container->get(Names::class);
         self::assertSame(0, $names->made, 'Adding the routes does not make the controller.');
 
-        self::assertSame('[{"id":2,"email":"2@example.com","name":"user-2","plan":"free"}]', $this->body($router, new Request('GET', '/users?page=2')));
-        self::assertSame('{"id":5,"email":"5@example.com","name":"user-5","plan":"free"}', $this->body($router, new Request('GET', '/users/5')));
+        self::assertSame('[{"id":2,"email":"2@example.com","name":"user-2","plan":"free"}]', $this->body(
+            $router,
+            new Request('GET', '/users?page=2'),
+        ));
+        self::assertSame('{"id":5,"email":"5@example.com","name":"user-5","plan":"free"}', $this->body(
+            $router,
+            new Request('GET', '/users/5'),
+        ));
         $created = $router->handle($this->json('POST', '/users', ['email' => 'ada@example.com', 'name' => 'Ada']));
-        self::assertSame([201, '/users/9', '{"id":9,"email":"ada@example.com","name":"Ada","plan":"free"}'],
-            [$created->getStatusCode(), $created->getHeaderLine('Location'), (string) $created->getBody()]);
+        self::assertSame([201, '/users/9', '{"id":9,"email":"ada@example.com","name":"Ada","plan":"free"}'], [
+            $created->getStatusCode(),
+            $created->getHeaderLine('Location'),
+            (string) $created->getBody(),
+        ]);
         self::assertSame(422, $router->handle($this->json('POST', '/users', ['email' => 'x']))->getStatusCode());
         self::assertSame(1, $names->made, 'One controller serves all its routes.');
 
         $routes = $router->routes();
-        self::assertSame([UserController::class . '::index', UserController::class . '::show', UserController::class . '::store'], array_column($routes, 'action'));
+        self::assertSame(
+            [UserController::class . '::index', UserController::class . '::show', UserController::class . '::store'],
+            array_column($routes, 'action'),
+        );
 
         $standalone = new Router();
         $standalone->get('/plain', [PlainController::class, 'hello']);
-        self::assertSame('hello', (string) $standalone->handle(new Request('GET', '/plain'))->getBody(), 'Without a container, a class that needs nothing is simply made.');
+        self::assertSame(
+            'hello',
+            (string) $standalone->handle(new Request('GET', '/plain'))->getBody(),
+            'Without a container, a class that needs nothing is simply made.',
+        );
     }
 
     public function testAHandlerReturnsAResponseToControlTheStatusHeadersOrBody(): void
     {
         $at = new \DateTimeImmutable('2026-01-31 12:00:00', new \DateTimeZone('UTC'));
         $file = sys_get_temp_dir() . '/crab-download-' . bin2hex(random_bytes(4)) . '.txt';
-        file_put_contents($file, str_repeat('0123456789', 10000));
+        file_put_contents($file, str_repeat('0123456789', 10_000));
         $router = new Router();
-        $router->post('/events', static fn (string $title): Response => Response::created(new Event($title, $at), '/events/1'));
-        $router->post('/empty', static fn (): Response => Response::created());
-        $router->delete('/events/{id}', static fn (int $id): Response => Response::noContent());
-        $router->get('/old', static fn (): Response => Response::redirect('/new'));
-        $router->post('/login', static fn (): Response => Response::redirect('/home', 303));
-        $router->get('/file', static fn (): Response => Response::download($file, 'réport "final".txt', 'text/plain'));
-        $router->get('/cached', static fn (): ResponseInterface => Response::json(['a' => 1])->withHeader('Cache-Control', 'max-age=60'));
+        $router->post('/events', static fn(string $title): Response => Response::created(
+            new Event($title, $at),
+            '/events/1',
+        ));
+        $router->post('/empty', static fn(): Response => Response::created());
+        $router->delete('/events/{id}', static fn(int $id): Response => Response::noContent());
+        $router->get('/old', static fn(): Response => Response::redirect('/new'));
+        $router->post('/login', static fn(): Response => Response::redirect('/home', 303));
+        $router->get('/file', static fn(): Response => Response::download($file, 'réport "final".txt', 'text/plain'));
+        $router->get('/cached', static fn(): ResponseInterface => Response::json(['a' => 1])->withHeader(
+            'Cache-Control',
+            'max-age=60',
+        ));
 
         $created = $router->handle($this->json('POST', '/events', ['title' => 'Launch']));
-        self::assertSame([201, '/events/1', 'application/json', '{"title":"Launch","at":"2026-01-31T12:00:00+00:00","reminders":[]}'],
-            [$created->getStatusCode(), $created->getHeaderLine('Location'), $created->getHeaderLine('Content-Type'), (string) $created->getBody()]);
+        self::assertSame([
+            201,
+            '/events/1',
+            'application/json',
+            '{"title":"Launch","at":"2026-01-31T12:00:00+00:00","reminders":[]}',
+        ], [
+            $created->getStatusCode(),
+            $created->getHeaderLine('Location'),
+            $created->getHeaderLine('Content-Type'),
+            (string) $created->getBody(),
+        ]);
         $empty = $router->handle(new Request('POST', '/empty'));
-        self::assertSame([201, '', false], [$empty->getStatusCode(), (string) $empty->getBody(), $empty->hasHeader('Location')]);
+        self::assertSame([201, '', false], [
+            $empty->getStatusCode(),
+            (string) $empty->getBody(),
+            $empty->hasHeader('Location'),
+        ]);
         $deleted = $router->handle(new Request('DELETE', '/events/1'));
         self::assertSame([204, ''], [$deleted->getStatusCode(), (string) $deleted->getBody()]);
         $moved = $router->handle(new Request('GET', '/old'));
         self::assertSame([302, '/new'], [$moved->getStatusCode(), $moved->getHeaderLine('Location')]);
         self::assertSame(303, $router->handle(new Request('POST', '/login'))->getStatusCode());
         $download = $router->handle(new Request('GET', '/file'));
-        self::assertSame([200, 'text/plain', "attachment; filename=\"r__port _final_.txt\"; filename*=UTF-8''r%C3%A9port%20%22final%22.txt", 100000],
-            [$download->getStatusCode(), $download->getHeaderLine('Content-Type'), $download->getHeaderLine('Content-Disposition'), $download->getBody()->getSize()]);
-        self::assertSame(str_repeat('0123456789', 10000), (string) $download->getBody());
-        self::assertNull($download->getBody() instanceof \Crab\Http\Stream ? $download->getBody()->text() : '', 'A file is read as it is sent, not held as a string.');
+        self::assertSame([
+            200,
+            'text/plain',
+            "attachment; filename=\"r__port _final_.txt\"; filename*=UTF-8''r%C3%A9port%20%22final%22.txt",
+            100_000,
+        ], [
+            $download->getStatusCode(),
+            $download->getHeaderLine('Content-Type'),
+            $download->getHeaderLine('Content-Disposition'),
+            $download->getBody()->getSize(),
+        ]);
+        self::assertSame(str_repeat('0123456789', 10_000), (string) $download->getBody());
+        self::assertNull(
+            $download->getBody() instanceof \Crab\Http\Stream ? $download->getBody()->text() : '',
+            'A file is read as it is sent, not held as a string.',
+        );
         self::assertSame('max-age=60', $router->handle(new Request('GET', '/cached'))->getHeaderLine('Cache-Control'));
         unlink($file);
 
-        self::assertSame('attachment; filename="notes.txt"; filename*=UTF-8\'\'notes.txt', Response::download(__FILE__, 'notes.txt')->getHeaderLine('Content-Disposition'));
-        self::assertStringContainsString('filename="ActionHandlerTest.php"', Response::download(__FILE__)->getHeaderLine('Content-Disposition'));
+        self::assertSame(
+            'attachment; filename="notes.txt"; filename*=UTF-8\'\'notes.txt',
+            Response::download(__FILE__, 'notes.txt')->getHeaderLine('Content-Disposition'),
+        );
+        self::assertStringContainsString(
+            'filename="ActionHandlerTest.php"',
+            Response::download(__FILE__)->getHeaderLine('Content-Disposition'),
+        );
         self::assertSame('application/octet-stream', Response::download(__FILE__)->getHeaderLine('Content-Type'));
         $csv = Response::attachment("id,total\n1,4200\n", 'commande été.csv', 'text/csv');
-        self::assertSame([200, 'text/csv', "attachment; filename=\"commande __t__.csv\"; filename*=UTF-8''commande%20%C3%A9t%C3%A9.csv", "id,total\n1,4200\n"],
-            [$csv->getStatusCode(), $csv->getHeaderLine('Content-Type'), $csv->getHeaderLine('Content-Disposition'), (string) $csv->getBody()]);
+        self::assertSame([
+            200,
+            'text/csv',
+            "attachment; filename=\"commande __t__.csv\"; filename*=UTF-8''commande%20%C3%A9t%C3%A9.csv",
+            "id,total\n1,4200\n",
+        ], [
+            $csv->getStatusCode(),
+            $csv->getHeaderLine('Content-Type'),
+            $csv->getHeaderLine('Content-Disposition'),
+            (string) $csv->getBody(),
+        ]);
         $refused = 0;
-        foreach ([static fn () => Response::redirect('/x', 200), static fn () => Response::download('/no/such/file'), static fn () => Response::download(__DIR__)] as $mistake) {
+        foreach ([
+            static fn() => Response::redirect('/x', 200),
+            static fn() => Response::download('/no/such/file'),
+            static fn() => Response::download(__DIR__),
+        ] as $mistake) {
             try {
                 $mistake();
             } catch (\InvalidArgumentException|\RuntimeException) {
@@ -589,21 +841,51 @@ final class ActionHandlerTest extends TestCase
     {
         $router = new Router();
         $refused = [
-            'takes Crab\Contracts\Validation\Validator $validator, which is neither the request, the user, a parameter of the pattern, a field nor an input class' => static fn () => $router->get('/a', static fn (ValidatorContract $validator) => ''),
-            'Services belong in the constructor of an action class' => static fn () => $router->get('/a', static fn (ValidatorContract $validator) => ''),
-            "cannot take the request's data: Crab\\Database\\Database::\$connect is declared as Closure" => static fn () => $router->get('/a', static fn (\Crab\Database\Database $db) => ''),
-            'If it is a service, it belongs in the constructor of an action class' => static fn () => $router->get('/a', static fn (\Crab\Database\Database $db) => ''),
-            'takes the route parameter $id as array; it can be string, int, float or bool' => static fn () => $router->get('/a/{id}', static fn (array $id) => ''),
-            'takes two inputs' => static fn () => $router->post('/a', static fn (CreateUser $a, ListUsers $b) => ''),
-            'takes the input Crab\Tests\Routing\CreateUser and also the field $force; put every field in the class, or take them all as parameters' => static fn () => $router->post('/a', static fn (CreateUser $input, bool $force = false) => ''),
-            'takes $id, which must have one plain type' => static fn () => $router->get('/a/{id}', static fn (int|string $id) => ''),
-            'takes $rest, which must have one plain type' => static fn () => $router->get('/a', static fn (string ...$rest) => ''),
-            'Ambiguous::$id has a union or intersection type' => static fn () => $router->post('/a', static fn (\Crab\Tests\Routing\Ambiguous $input) => ''),
-            'A closure takes $tags, which has #[ListOf] but is not declared as an array' => static fn () => $router->post('/a', static fn (#[ListOf('int')] string $tags) => ''),
-            "is an array, which must be a class and the name of its method: [Users::class, 'show']" => static fn () => $router->get('/a', [UserController::class]),
-            'names the class App\Missing, which does not exist' => static fn () => $router->get('/a', ['App\Missing', 'show']),
-            'UserController::missing(), which is not a public method' => static fn () => $router->get('/a', [UserController::class, 'missing']),
-            'UserController::secret(), which is not a public method' => static fn () => $router->get('/a', [UserController::class, 'secret']),
+            'takes Crab\Contracts\Validation\Validator $validator, which is neither the request, the user, a parameter of the pattern, a field nor an input class' =>
+                static fn() => $router->get('/a', static fn(ValidatorContract $validator) => ''),
+            'Services belong in the constructor of an action class' => static fn() => $router->get(
+                '/a',
+                static fn(ValidatorContract $validator) => '',
+            ),
+            "cannot take the request's data: Crab\\Database\\Database::\$connect is declared as Closure" =>
+                static fn() => $router->get('/a', static fn(\Crab\Database\Database $db) => ''),
+            'If it is a service, it belongs in the constructor of an action class' => static fn() => $router->get(
+                '/a',
+                static fn(\Crab\Database\Database $db) => '',
+            ),
+            'takes the route parameter $id as array; it can be string, int, float or bool' =>
+                static fn() => $router->get('/a/{id}', static fn(array $id) => ''),
+            'takes two inputs' => static fn() => $router->post('/a', static fn(CreateUser $a, ListUsers $b) => ''),
+            'takes the input Crab\Tests\Routing\CreateUser and also the field $force; put every field in the class, or take them all as parameters' =>
+                static fn() => $router->post('/a', static fn(CreateUser $input, bool $force = false) => ''),
+            'takes $id, which must have one plain type' => static fn() => $router->get(
+                '/a/{id}',
+                static fn(int|string $id) => '',
+            ),
+            'takes $rest, which must have one plain type' => static fn() => $router->get(
+                '/a',
+                static fn(string ...$rest) => '',
+            ),
+            'Ambiguous::$id has a union or intersection type' => static fn() => $router->post(
+                '/a',
+                static fn(\Crab\Tests\Routing\Ambiguous $input) => '',
+            ),
+            'A closure takes $tags, which has #[ListOf] but is not declared as an array' =>
+                static fn() => $router->post('/a', static fn(#[ListOf('int')] string $tags) => ''),
+            "is an array, which must be a class and the name of its method: [Users::class, 'show']" =>
+                static fn() => $router->get('/a', [UserController::class]),
+            'names the class App\Missing, which does not exist' => static fn() => $router->get('/a', [
+                'App\Missing',
+                'show',
+            ]),
+            'UserController::missing(), which is not a public method' => static fn() => $router->get('/a', [
+                UserController::class,
+                'missing',
+            ]),
+            'UserController::secret(), which is not a public method' => static fn() => $router->get('/a', [
+                UserController::class,
+                'secret',
+            ]),
         ];
         foreach ($refused as $expected => $attempt) {
             try {
@@ -622,7 +904,10 @@ final class ActionHandlerTest extends TestCase
         $app = new App(new Config(['app' => ['name' => 'Shop']]));
         self::assertInstanceOf(Validator::class, $app->container->get(ValidatorContract::class));
         self::assertSame($app->container->get(ValidatorContract::class), $app->container->get(Validator::class));
-        $app->router->post('/users', static fn (CreateUser $input): User => new User(1, $input->email, $input->name, $input->plan));
+        $app->router->post(
+            '/users',
+            static fn(CreateUser $input): User => new User(1, $input->email, $input->name, $input->plan),
+        );
 
         $response = $app->handle($this->json('POST', '/users', ['email' => 'x']));
         self::assertSame(422, $response->getStatusCode());
@@ -633,7 +918,12 @@ final class ActionHandlerTest extends TestCase
      */
     private function json(string $method, string $path, array $data): Request
     {
-        return new Request($method, $path, ['Content-Type' => 'application/json', 'Accept' => 'application/json'], json_encode($data));
+        return new Request(
+            $method,
+            $path,
+            ['Content-Type' => 'application/json', 'Accept' => 'application/json'],
+            json_encode($data),
+        );
     }
 
     private function body(Router $router, Request $request): string
@@ -646,7 +936,7 @@ final class ActionHandlerTest extends TestCase
 
 final class Ambiguous
 {
-    public function __construct(public int|string $id)
-    {
-    }
+    public function __construct(
+        public int|string $id,
+    ) {}
 }

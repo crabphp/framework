@@ -6,6 +6,4 @@ namespace Crab\Engine\Async;
 
 use RuntimeException;
 
-final class PoolExhaustedException extends RuntimeException
-{
-}
+final class PoolExhaustedException extends RuntimeException {}

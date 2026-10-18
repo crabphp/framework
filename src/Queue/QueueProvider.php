@@ -68,19 +68,31 @@ final class QueueProvider implements Provider
             }
             if ($store === 'database') {
                 if (!$container->has(Database::class)) {
-                    throw new \LogicException('The queue keeps its jobs in the database ("queue.store" is "database"): register the database provider, DatabaseProvider, as well as QueueProvider.');
+                    throw new \LogicException(
+                        'The queue keeps its jobs in the database ("queue.store" is "database"): register the database provider, DatabaseProvider, as well as QueueProvider.',
+                    );
                 }
                 $database = $container->get(Database::class);
                 $name = $config->get('queue.database');
-                return new DatabaseStore(is_string($name) ? $database->connection($name) : $database, (string) $config->get('queue.table'));
+                return new DatabaseStore(
+                    is_string($name) ? $database->connection($name) : $database,
+                    (string) $config->get('queue.table'),
+                );
             }
-            throw new \LogicException("\"queue.store\" is \"{$store}\", and the stores are \"database\" and \"memory\". For \"redis\", install crabphp/redis and register its RedisProvider after this one; for another, bind " . Store::class . ' to a store of your own.');
+            throw new \LogicException(
+                "\"queue.store\" is \"{$store}\", and the stores are \"database\" and \"memory\". For \"redis\", install crabphp/redis and register its RedisProvider after this one; for another, bind "
+                . Store::class
+                . ' to a store of your own.',
+            );
         });
-        $container->singleton(QueueContract::class, static fn (Container $container): Queue => new Queue(
-            $container->get(Store::class),
-            (string) $container->get(Config::class)->get('queue.queue'),
-            $container->has(ClockInterface::class) ? $container->get(ClockInterface::class) : null,
-        ));
+        $container->singleton(
+            QueueContract::class,
+            static fn(Container $container): Queue => new Queue(
+                $container->get(Store::class),
+                (string) $container->get(Config::class)->get('queue.queue'),
+                $container->has(ClockInterface::class) ? $container->get(ClockInterface::class) : null,
+            ),
+        );
         $container->singleton(Queue::class, QueueContract::class);
         $container->singleton(Consumer::class, static function (Container $container): Consumer {
             $config = $container->get(Config::class);
@@ -92,17 +104,27 @@ final class QueueProvider implements Provider
                 (int) $config->get('queue.tries'),
                 array_map(intval(...), array_values((array) $config->get('queue.backoff'))),
                 (int) $config->get('queue.retry_after'),
-                $container->has(EventDispatcherInterface::class) ? $container->get(EventDispatcherInterface::class) : null,
+                $container->has(EventDispatcherInterface::class)
+                    ? $container->get(EventDispatcherInterface::class)
+                    : null,
             );
         });
         if ($container->has(Servers::class)) {
             // Named in "server.with", the queue's workers are run by `serve` itself, beside HTTP: every
             // supervisor declared, or one made of the queue's own settings.
-            $container->get(Servers::class)->add('queue', static function () use ($container): array {
-                $config = $container->get(Config::class);
-                $supervisors = array_values(Supervisor::all($config));
-                return Supervisor::groups($supervisors === [] ? [Supervisor::from($config, 'queue')] : $supervisors, $container->get(Consumer::class));
-            }, (float) $container->get(Config::class)->get('queue.grace'), 'queue:work');
+            $container->get(Servers::class)->add(
+                'queue',
+                static function () use ($container): array {
+                    $config = $container->get(Config::class);
+                    $supervisors = array_values(Supervisor::all($config));
+                    return Supervisor::groups(
+                        $supervisors === [] ? [Supervisor::from($config, 'queue')] : $supervisors,
+                        $container->get(Consumer::class),
+                    );
+                },
+                (float) $container->get(Config::class)->get('queue.grace'),
+                'queue:work',
+            );
         }
         if ($container->has(Console::class)) {
             $console = $container->get(Console::class);

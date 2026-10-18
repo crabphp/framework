@@ -18,11 +18,11 @@ final class Multipart
     /**
      * How much is read from the body at a time.
      */
-    private const CHUNK = 65536;
+    private const CHUNK = 65_536;
     /**
      * How long the headers of one part may be.
      */
-    private const MAX_HEAD = 16384;
+    private const MAX_HEAD = 16_384;
 
     /**
      * The bytes of the body that are in memory, and where they start in it.
@@ -33,9 +33,9 @@ final class Multipart
     /**
      * @param resource $stream
      */
-    private function __construct(private readonly mixed $stream)
-    {
-    }
+    private function __construct(
+        private readonly mixed $stream,
+    ) {}
 
     /**
      * Names such as "photos[]" and "user[name]" nest as they do in PHP's
@@ -45,8 +45,12 @@ final class Multipart
      * @param int $maxFieldBytes How many bytes all the fields together may be; a file may be any size the body may.
      * @return array{array<string, mixed>, array<string, mixed>} The fields, and the UploadedFile tree.
      */
-    public static function parse(string $contentType, mixed $stream, int $maxParts = 1000, int $maxFieldBytes = 1048576): array
-    {
+    public static function parse(
+        string $contentType,
+        mixed $stream,
+        int $maxParts = 1000,
+        int $maxFieldBytes = 1_048_576,
+    ): array {
         if (preg_match('/boundary=(?:"([^"]+)"|([^;\s]+))/i', $contentType, $match) !== 1) {
             throw new HttpException(400, 'The multipart body has no boundary.');
         }
@@ -63,7 +67,7 @@ final class Multipart
         $names = [];
         $files = [];
         $fieldBytes = 0;
-        for ($parts = 0; ; ++$parts) {
+        for ($parts = 0;; ++$parts) {
             $next = $body->take($position, 2);
             if ($next === '--') {
                 break;
@@ -81,9 +85,11 @@ final class Multipart
                 throw self::malformed();
             }
             $head = $body->take($position, $content - $position);
-            if (str_contains($head, $delimiter)
+            if (
+                str_contains($head, $delimiter)
                 || preg_match('/^content-disposition:[ \t]*form-data;(.*)$/mi', $head, $disposition) !== 1
-                || preg_match('/\bname="((?:[^"\\\\]|\\\\.)*)"/', $disposition[1], $name) !== 1) {
+                || preg_match('/\bname="((?:[^"\\\\]|\\\\.)*)"/', $disposition[1], $name) !== 1
+            ) {
                 throw self::malformed();
             }
             $start = $content + 4;
@@ -98,9 +104,16 @@ final class Multipart
                 $type = preg_match('/^content-type:[ \t]*(.+)$/mi', $head, $match) === 1 ? trim($match[1]) : null;
                 $names[] = $key . '=' . count($files);
                 // A file input left empty arrives as a part with no file name.
-                $files[] = $filename[1] === '' && $size === 0
-                    ? new UploadedFile(new Stream(''), 0, UPLOAD_ERR_NO_FILE, '', $type)
-                    : new UploadedFile(new StreamSlice($stream, $start, $size), $size, UPLOAD_ERR_OK, stripslashes($filename[1]), $type);
+                $files[] =
+                    $filename[1] === '' && $size === 0
+                        ? new UploadedFile(new Stream(''), 0, UPLOAD_ERR_NO_FILE, '', $type)
+                        : new UploadedFile(
+                            new StreamSlice($stream, $start, $size),
+                            $size,
+                            UPLOAD_ERR_OK,
+                            stripslashes($filename[1]),
+                            $type,
+                        );
             } else {
                 $fieldBytes += $size;
                 if ($fieldBytes > $maxFieldBytes) {
@@ -135,9 +148,9 @@ final class Multipart
             $found = strpos($this->window, $needle, $searched);
             if ($found !== false) {
                 $position = $this->base + $found;
-                return $within !== null && $position - $from > $within ? null : $position;
+                return $within !== null && ($position - $from) > $within ? null : $position;
             }
-            if ($within !== null && $this->base + strlen($this->window) - $from > $within + strlen($needle)) {
+            if ($within !== null && ($this->base + strlen($this->window) - $from) > ($within + strlen($needle))) {
                 return null;
             }
             if ($within === null && strlen($this->window) > $keep) {
@@ -161,7 +174,7 @@ final class Multipart
             return '';
         }
         if ($from >= $this->base) {
-            while ($this->base + strlen($this->window) < $from + $length && $this->readMore()) {
+            while (($this->base + strlen($this->window)) < ($from + $length) && $this->readMore()) {
                 // Reads on until the window holds them.
             }
             return substr($this->window, $from - $this->base, $length);

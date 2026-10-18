@@ -70,7 +70,7 @@ final class UploadedFile implements UploadedFileInterface
                 $this->stream->rewind();
             }
             while (!$this->stream->eof()) {
-                $chunk = $this->stream->read(65536);
+                $chunk = $this->stream->read(65_536);
                 if ($chunk !== '' && @fwrite($target, $chunk) !== strlen($chunk)) {
                     throw new \RuntimeException("Cannot write the uploaded file to {$targetPath}.");
                 }

@@ -18,7 +18,25 @@ final readonly class Cron
         ['minute', 0, 59, []],
         ['hour', 0, 23, []],
         ['day of the month', 1, 31, []],
-        ['month', 1, 12, ['jan' => 1, 'feb' => 2, 'mar' => 3, 'apr' => 4, 'may' => 5, 'jun' => 6, 'jul' => 7, 'aug' => 8, 'sep' => 9, 'oct' => 10, 'nov' => 11, 'dec' => 12]],
+        [
+            'month',
+            1,
+            12,
+            [
+                'jan' => 1,
+                'feb' => 2,
+                'mar' => 3,
+                'apr' => 4,
+                'may' => 5,
+                'jun' => 6,
+                'jul' => 7,
+                'aug' => 8,
+                'sep' => 9,
+                'oct' => 10,
+                'nov' => 11,
+                'dec' => 12,
+            ],
+        ],
         ['day of the week', 0, 7, ['sun' => 0, 'mon' => 1, 'tue' => 2, 'wed' => 3, 'thu' => 4, 'fri' => 5, 'sat' => 6]],
     ];
 
@@ -31,11 +49,16 @@ final readonly class Cron
     private bool $anyDay;
     private bool $anyWeekday;
 
-    public function __construct(public string $expression)
-    {
+    public function __construct(
+        public string $expression,
+    ) {
         $fields = preg_split('/\s+/', trim($expression)) ?: [];
         if (count($fields) !== 5) {
-            throw new \InvalidArgumentException("\"{$expression}\" is not a cron expression: it has " . count($fields) . ' fields and needs five, which are minute, hour, day of the month, month and day of the week. Every day at 07:30 is "30 7 * * *".');
+            throw new \InvalidArgumentException(
+                "\"{$expression}\" is not a cron expression: it has "
+                . count($fields)
+                . ' fields and needs five, which are minute, hour, day of the month, month and day of the week. Every day at 07:30 is "30 7 * * *".',
+            );
         }
         $allowed = [];
         foreach ($fields as $position => $field) {
@@ -56,10 +79,14 @@ final readonly class Cron
      */
     public function matches(\DateTimeInterface $time): bool
     {
-        return isset($this->allowed[0][(int) $time->format('i')])
-            && isset($this->allowed[1][(int) $time->format('G')])
-            && isset($this->allowed[3][(int) $time->format('n')])
-            && $this->matchesDay($time);
+        return (
+            isset(
+                $this->allowed[0][(int) $time->format('i')],
+                $this->allowed[1][(int) $time->format('G')],
+                $this->allowed[3][(int) $time->format('n')],
+            )
+            && $this->matchesDay($time)
+        );
     }
 
     /**
@@ -82,11 +109,13 @@ final readonly class Cron
             } else {
                 return $time;
             }
-            if ((int) $time->format('Y') > (int) $after->format('Y') + 5) {
+            if ((int) $time->format('Y') > ((int) $after->format('Y') + 5)) {
                 break;
             }
         }
-        throw new \LogicException("The cron expression \"{$this->expression}\" names a time that never comes, such as the 31st of a month with 30 days.");
+        throw new \LogicException(
+            "The cron expression \"{$this->expression}\" names a time that never comes, such as the 31st of a month with 30 days.",
+        );
     }
 
     private function matchesDay(\DateTimeInterface $time): bool
@@ -106,8 +135,14 @@ final readonly class Cron
      * @param array<string, int> $names
      * @return array<int, true>
      */
-    private static function parse(string $expression, string $field, string $what, int $least, int $greatest, array $names): array
-    {
+    private static function parse(
+        string $expression,
+        string $field,
+        string $what,
+        int $least,
+        int $greatest,
+        array $names,
+    ): array {
         $allowed = [];
         foreach (explode(',', $field) as $part) {
             [$range, $step] = explode('/', $part, 2) + [1 => '1'];
@@ -120,7 +155,11 @@ final readonly class Cron
                 [$from, $to] = explode('-', $range, 2) + [1 => null];
                 $from = self::value($from, $names);
                 // "5/10" means from 5 on, in steps; "5" alone means 5.
-                $to = $to === null ? (str_contains($part, '/') ? $greatest : $from) : self::value($to, $names);
+                if ($to === null) {
+                    $to = str_contains($part, '/') ? $greatest : $from;
+                } else {
+                    $to = self::value($to, $names);
+                }
             }
             if ($from === null || $to === null || $from < $least || $to > $greatest || $from > $to) {
                 throw self::invalid($expression, $part, $what, $least, $greatest);
@@ -143,8 +182,15 @@ final readonly class Cron
         return $names[strtolower($text)] ?? null;
     }
 
-    private static function invalid(string $expression, string $part, string $what, int $least, int $greatest): \InvalidArgumentException
-    {
-        return new \InvalidArgumentException("\"{$expression}\" is not a cron expression: \"{$part}\" cannot be its {$what}, which is a number from {$least} to {$greatest}, a list (1,15), a range (1-5), a step (*/10) or *.");
+    private static function invalid(
+        string $expression,
+        string $part,
+        string $what,
+        int $least,
+        int $greatest,
+    ): \InvalidArgumentException {
+        return new \InvalidArgumentException(
+            "\"{$expression}\" is not a cron expression: \"{$part}\" cannot be its {$what}, which is a number from {$least} to {$greatest}, a list (1,15), a range (1-5), a step (*/10) or *.",
+        );
     }
 }

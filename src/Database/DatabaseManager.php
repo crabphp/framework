@@ -52,7 +52,9 @@ final class DatabaseManager implements Migrators
     ) {
         // With none configured there is nothing to check: an application that uses no database asks for none.
         if ($connections !== [] && !isset($connections[$default])) {
-            throw new DatabaseException("The default database is \"{$default}\", and no database of that name is configured.");
+            throw new DatabaseException(
+                "The default database is \"{$default}\", and no database of that name is configured.",
+            );
         }
     }
 
@@ -74,7 +76,12 @@ final class DatabaseManager implements Migrators
         if (!isset($this->migrators[$name])) {
             $database = $this->connection($name);
             $directory = $this->connections[$name]['migrations'] ?? null;
-            $this->migrators[$name] = new Migrator($database, is_string($directory) && $directory !== '' ? $directory : [], clock: $this->clock, lockTimeout: $this->migrationLockTimeout);
+            $this->migrators[$name] = new Migrator(
+                $database,
+                is_string($directory) && $directory !== '' ? $directory : [],
+                clock: $this->clock,
+                lockTimeout: $this->migrationLockTimeout,
+            );
         }
         return $this->migrators[$name];
     }
@@ -118,15 +125,23 @@ final class DatabaseManager implements Migrators
     private function make(string $name): Database
     {
         if ($this->connections === []) {
-            throw new DatabaseException('No database is configured. Describe one under "database.connections", by name: \'connections\' => [\'main\' => [\'dsn\' => \'sqlite:/path/app.sqlite\']].');
+            throw new DatabaseException(
+                'No database is configured. Describe one under "database.connections", by name: \'connections\' => [\'main\' => [\'dsn\' => \'sqlite:/path/app.sqlite\']].',
+            );
         }
         $settings = $this->connections[$name] ?? null;
         if ($settings === null) {
-            throw new DatabaseException("There is no database named \"{$name}\"; the configured ones are: " . implode(', ', $this->names()) . '.');
+            throw new DatabaseException(
+                "There is no database named \"{$name}\"; the configured ones are: "
+                . implode(', ', $this->names())
+                . '.',
+            );
         }
         $dsn = $settings['dsn'] ?? null;
         if (!is_string($dsn) || $dsn === '') {
-            throw new DatabaseException("The database \"{$name}\" has no \"dsn\" configured. Set it to a data source name such as \"sqlite:/path/app.sqlite\" or \"mysql:host=127.0.0.1;dbname=app\".");
+            throw new DatabaseException(
+                "The database \"{$name}\" has no \"dsn\" configured. Set it to a data source name such as \"sqlite:/path/app.sqlite\" or \"mysql:host=127.0.0.1;dbname=app\".",
+            );
         }
         $username = $settings['username'] ?? null;
         $password = $settings['password'] ?? null;
@@ -134,7 +149,9 @@ final class DatabaseManager implements Migrators
         $sqlite = str_starts_with($dsn, 'sqlite:');
         $connect = static function () use ($dsn, $username, $password, $options, $sqlite): \PDO {
             $mysql = str_starts_with($dsn, 'mysql:');
-            $pdoOptions = $mysql ? self::pdoOptions($options) : array_filter($options, static fn (int|string $key): bool => is_int($key), ARRAY_FILTER_USE_KEY);
+            $pdoOptions = $mysql
+                ? self::pdoOptions($options)
+                : array_filter($options, static fn(int|string $key): bool => is_int($key), ARRAY_FILTER_USE_KEY);
             $pdo = new \PDO($dsn, $username, $password, $pdoOptions);
             if ($mysql && ($options['ssl'] ?? false) !== false) {
                 $pdo->setAttribute(\PDO::ATTR_ERRMODE, \PDO::ERRMODE_EXCEPTION);
@@ -142,7 +159,9 @@ final class DatabaseManager implements Migrators
                 $cipher = $status->fetchColumn(1);
                 $status->closeCursor();
                 if (!is_string($cipher) || $cipher === '') {
-                    throw new DatabaseException('PDO did not establish the requested TLS session; check the MySQL client and server TLS configuration before retrying.');
+                    throw new DatabaseException(
+                        'PDO did not establish the requested TLS session; check the MySQL client and server TLS configuration before retrying.',
+                    );
                 }
             }
             if ($sqlite) {
@@ -160,8 +179,17 @@ final class DatabaseManager implements Migrators
         $timeout = (float) ($settings['timeout'] ?? 5.0);
         $async = (bool) ($settings['async'] ?? false) && str_starts_with($dsn, 'mysql:');
         $resolver = new DnsResolver(fallback: false);
-        $factory = fn (\Closure $owner): ManagedConnection => $async && $this->worker !== null
-            ? new Mysql\Connection($owner, $dsn, (string) $username, (string) $password, $options, $timeout, $this->worker, resolver: $resolver)
+        $factory = fn(\Closure $owner): ManagedConnection => $async && $this->worker !== null
+            ? new Mysql\Connection(
+                $owner,
+                $dsn,
+                (string) $username,
+                (string) $password,
+                $options,
+                $timeout,
+                $this->worker,
+                resolver: $resolver,
+            )
             : new PdoConnection($owner);
         return new Database($connect, $pool, $timeout, $this, $factory);
     }
@@ -176,13 +204,15 @@ final class DatabaseManager implements Migrators
      */
     private static function pdoOptions(array $options): array
     {
-        $pdo = array_filter($options, static fn (int|string $key): bool => is_int($key), ARRAY_FILTER_USE_KEY);
+        $pdo = array_filter($options, static fn(int|string $key): bool => is_int($key), ARRAY_FILTER_USE_KEY);
         $ssl = $options['ssl'] ?? false;
         if ($ssl === false) {
             return $pdo;
         }
         if ($ssl !== true && !is_array($ssl)) {
-            throw new DatabaseException('Set options["ssl"] on the database connection to true, false or supported SSL context options.');
+            throw new DatabaseException(
+                'Set options["ssl"] on the database connection to true, false or supported SSL context options.',
+            );
         }
         $ssl = $ssl === true ? [] : $ssl;
         $attributes = [
@@ -194,26 +224,34 @@ final class DatabaseManager implements Migrators
         ];
         foreach ($ssl as $key => $value) {
             if (!array_key_exists($key, $attributes) && !in_array($key, ['verify_peer', 'verify_peer_name'], true)) {
-                throw new DatabaseException("PDO cannot preserve SSL context option {$key}; remove it or configure an equivalent supported policy.");
+                throw new DatabaseException(
+                    "PDO cannot preserve SSL context option {$key}; remove it or configure an equivalent supported policy.",
+                );
             }
         }
         $verify = array_key_exists('verify_peer', $ssl) ? $ssl['verify_peer'] : true;
         $verifyName = array_key_exists('verify_peer_name', $ssl) ? $ssl['verify_peer_name'] : true;
         if (!is_bool($verify) || !is_bool($verifyName) || $verify !== $verifyName) {
-            throw new DatabaseException('PDO couples certificate and name verification; set verify_peer and verify_peer_name to the same boolean.');
+            throw new DatabaseException(
+                'PDO couples certificate and name verification; set verify_peer and verify_peer_name to the same boolean.',
+            );
         }
         $mapped = [\PDO::MYSQL_ATTR_SSL_VERIFY_SERVER_CERT => $verify];
         foreach ($attributes as $key => $attribute) {
-            if (array_key_exists($key, $ssl)) {
-                if (!is_string($ssl[$key]) || $ssl[$key] === '') {
-                    throw new DatabaseException("Set SSL context option {$key} to a non-empty string for PDO.");
-                }
-                $mapped[$attribute] = $ssl[$key];
+            if (!array_key_exists($key, $ssl)) {
+                continue;
             }
+
+            if (!is_string($ssl[$key]) || $ssl[$key] === '') {
+                throw new DatabaseException("Set SSL context option {$key} to a non-empty string for PDO.");
+            }
+            $mapped[$attribute] = $ssl[$key];
         }
         foreach ($mapped as $attribute => $value) {
             if (array_key_exists($attribute, $pdo) && $pdo[$attribute] !== $value) {
-                throw new DatabaseException("PDO SSL attribute {$attribute} conflicts with options[\"ssl\"]; use one consistent TLS policy.");
+                throw new DatabaseException(
+                    "PDO SSL attribute {$attribute} conflicts with options[\"ssl\"]; use one consistent TLS policy.",
+                );
             }
             $pdo[$attribute] = $value;
         }

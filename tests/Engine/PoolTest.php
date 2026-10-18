@@ -10,11 +10,11 @@ use Crab\Engine\Async\CancelledException;
 use Crab\Engine\Async\Pool;
 use Crab\Engine\Async\PoolExhaustedException;
 use Crab\Engine\Async\Task;
+use Crab\Engine\EventLoop;
+use Crab\Engine\EventLoop\RevoltEventLoop;
 use Crab\Engine\Tests\Support\TestCase;
 use InvalidArgumentException;
 use LogicException;
-use Crab\Engine\EventLoop;
-use Crab\Engine\EventLoop\RevoltEventLoop;
 use RuntimeException;
 use stdClass;
 
@@ -23,11 +23,15 @@ final class PoolTest extends TestCase
     public function testResourcesAreMadeOnDemandAndReused(): void
     {
         $made = 0;
-        $pool = new Pool($this->newLoop(), static function () use (&$made): stdClass {
-            $resource = new stdClass();
-            $resource->number = ++$made;
-            return $resource;
-        }, max: 2);
+        $pool = new Pool(
+            $this->newLoop(),
+            static function () use (&$made): stdClass {
+                $resource = new stdClass();
+                $resource->number = ++$made;
+                return $resource;
+            },
+            max: 2,
+        );
         self::assertSame(['max' => 2, 'idle' => 0, 'borrowed' => 0, 'waiting' => 0], $pool->stats());
 
         $first = $pool->acquire();
@@ -39,14 +43,17 @@ final class PoolTest extends TestCase
         $pool->release($second);
         self::assertSame(2, $made);
         self::assertSame(['max' => 2, 'idle' => 2, 'borrowed' => 0, 'waiting' => 0], $pool->stats());
-        self::assertSame('result 2', $pool->run(static fn (stdClass $resource): string => 'result ' . $resource->number));
+        self::assertSame(
+            'result 2',
+            $pool->run(static fn(stdClass $resource): string => 'result ' . $resource->number),
+        );
         self::assertSame(2, $pool->stats()['idle']);
     }
 
     public function testCallersBeyondTheLimitWaitInOrder(): void
     {
         $loop = $this->newLoop();
-        $pool = new Pool($loop, static fn (): stdClass => new stdClass(), max: 1);
+        $pool = new Pool($loop, static fn(): stdClass => new stdClass(), max: 1);
         $held = $pool->acquire();
         $order = [];
         $tasks = [];
@@ -74,7 +81,7 @@ final class PoolTest extends TestCase
     public function testAWaitTimesOutOrIsCancelledWithoutLeavingAWaiter(): void
     {
         $loop = $this->newLoop();
-        $pool = new Pool($loop, static fn (): stdClass => new stdClass(), max: 1, timeout: 0.01);
+        $pool = new Pool($loop, static fn(): stdClass => new stdClass(), max: 1, timeout: 0.01);
         $held = $pool->acquire();
         try {
             $pool->acquire();
@@ -84,7 +91,7 @@ final class PoolTest extends TestCase
         }
 
         $token = new Cancellation();
-        $loop->delay(0.002, static fn () => $token->cancel());
+        $loop->delay(0.002, static fn() => $token->cancel());
         try {
             $pool->acquire($token);
             self::fail('A cancelled wait returned.');
@@ -107,20 +114,25 @@ final class PoolTest extends TestCase
         $loop = $this->newLoop();
         $destroyed = [];
         $made = 0;
-        $pool = new Pool($loop, static function () use (&$made): stdClass {
-            $resource = new stdClass();
-            $resource->number = ++$made;
-            return $resource;
-        }, max: 1, destroy: static function (stdClass $resource) use (&$destroyed): void {
-            $destroyed[] = $resource->number;
-        });
+        $pool = new Pool(
+            $loop,
+            static function () use (&$made): stdClass {
+                $resource = new stdClass();
+                $resource->number = ++$made;
+                return $resource;
+            },
+            max: 1,
+            destroy: static function (stdClass $resource) use (&$destroyed): void {
+                $destroyed[] = $resource->number;
+            },
+        );
         $broken = $pool->acquire();
         $pool->discard($broken);
         self::assertSame([[1], 0], [$destroyed, $pool->stats()['borrowed']]);
 
         $second = $pool->acquire();
-        $waiter = $this->spawn($loop, static fn (): object => $pool->acquire());
-        $loop->defer(static fn () => $pool->discard($second));
+        $waiter = $this->spawn($loop, static fn(): object => $pool->acquire());
+        $loop->defer(static fn() => $pool->discard($second));
         $third = $this->awaitTask($loop, $waiter);
         self::assertSame([3, [1, 2]], [$third->number, $destroyed]);
         self::assertSame(1, $pool->stats()['borrowed']);
@@ -130,12 +142,16 @@ final class PoolTest extends TestCase
     {
         $loop = $this->newLoop();
         $fail = true;
-        $pool = new Pool($loop, static function () use (&$fail): stdClass {
-            if ($fail) {
-                throw new RuntimeException('cannot connect');
-            }
-            return new stdClass();
-        }, max: 1);
+        $pool = new Pool(
+            $loop,
+            static function () use (&$fail): stdClass {
+                if ($fail) {
+                    throw new RuntimeException('cannot connect');
+                }
+                return new stdClass();
+            },
+            max: 1,
+        );
         try {
             $pool->acquire();
             self::fail('A failed create returned a resource.');
@@ -147,8 +163,8 @@ final class PoolTest extends TestCase
         self::assertSame(1, $pool->stats()['borrowed'], 'The failed create must not keep a place.');
 
         $fail = true;
-        $waiter = $this->spawn($loop, static fn (): object => $pool->acquire());
-        $loop->defer(static fn () => $pool->discard($resource));
+        $waiter = $this->spawn($loop, static fn(): object => $pool->acquire());
+        $loop->defer(static fn() => $pool->discard($resource));
         try {
             $this->awaitTask($loop, $waiter);
             self::fail('A waiter received nothing and no failure.');
@@ -162,7 +178,9 @@ final class PoolTest extends TestCase
     {
         $loop = $this->newLoop();
         $destroyed = 0;
-        $pool = new Pool($loop, static fn (): stdClass => new stdClass(), max: 2, destroy: static function () use (&$destroyed): void {
+        $pool = new Pool($loop, static fn(): stdClass => new stdClass(), max: 2, destroy: static function () use (
+            &$destroyed,
+        ): void {
             ++$destroyed;
             throw new RuntimeException('cleanup failures are contained');
         });
@@ -172,8 +190,8 @@ final class PoolTest extends TestCase
         self::assertSame($idle, $lent[0]);
         $pool->release($lent[0]);
         $lent[0] = $pool->acquire();
-        $waiter = $this->spawn($loop, static fn (): object => $pool->acquire());
-        $loop->defer(static fn () => $pool->close());
+        $waiter = $this->spawn($loop, static fn(): object => $pool->acquire());
+        $loop->defer(static fn() => $pool->close());
         try {
             $this->awaitTask($loop, $waiter);
             self::fail('A waiter survived close.');
@@ -185,13 +203,18 @@ final class PoolTest extends TestCase
         self::assertSame(2, $destroyed, 'A lent resource is destroyed when it comes back.');
         $pool->close();
 
-        $other = new Pool($loop, static fn (): stdClass => new stdClass(), destroy: static function () use (&$destroyed): void {
+        $other = new Pool($loop, static fn(): stdClass => new stdClass(), destroy: static function () use (
+            &$destroyed,
+        ): void {
             ++$destroyed;
         });
         $other->release($other->acquire());
         $other->close();
         self::assertSame(3, $destroyed, 'Idle resources are destroyed on close.');
-        self::assertSame(array_fill(0, 2, 'Pool resource cleanup failed: cleanup failures are contained'), $this->reports);
+        self::assertSame(
+            array_fill(0, 2, 'Pool resource cleanup failed: cleanup failures are contained'),
+            $this->reports,
+        );
         $this->expectException(LogicException::class);
         $pool->acquire();
     }
@@ -199,21 +222,26 @@ final class PoolTest extends TestCase
     public function testMisuseIsRejected(): void
     {
         $loop = $this->newLoop();
-        $pool = new Pool($loop, static fn (): stdClass => new stdClass());
+        $pool = new Pool($loop, static fn(): stdClass => new stdClass());
         $resource = $pool->acquire();
         $pool->release($resource);
         $rejected = 0;
-        foreach ([static fn () => $pool->release($resource), static fn () => $pool->release(new stdClass()),
-            static fn () => $pool->discard($resource)] as $misuse) {
+        foreach ([
+            static fn() => $pool->release($resource),
+            static fn() => $pool->release(new stdClass()),
+            static fn() => $pool->discard($resource),
+        ] as $misuse) {
             try {
                 $misuse();
             } catch (LogicException) {
                 ++$rejected;
             }
         }
-        foreach ([static fn () => new Pool($loop, static fn () => new stdClass(), max: 0),
-            static fn () => new Pool($loop, static fn () => new stdClass(), timeout: 0.0),
-            static fn () => new Pool($loop, static fn () => new stdClass(), timeout: INF)] as $invalid) {
+        foreach ([
+            static fn() => new Pool($loop, static fn() => new stdClass(), max: 0),
+            static fn() => new Pool($loop, static fn() => new stdClass(), timeout: 0.0),
+            static fn() => new Pool($loop, static fn() => new stdClass(), timeout: INF),
+        ] as $invalid) {
             try {
                 $invalid();
             } catch (InvalidArgumentException) {
@@ -227,7 +255,9 @@ final class PoolTest extends TestCase
     {
         $loop = RevoltEventLoop::create();
         $this->deferCleanup(static function () use ($loop): void {
-            foreach ($loop->getIdentifiers() as $id) { $loop->cancel($id); }
+            foreach ($loop->getIdentifiers() as $id) {
+                $loop->cancel($id);
+            }
         });
         return $loop;
     }
@@ -241,8 +271,11 @@ final class PoolTest extends TestCase
 
     private function awaitTask(EventLoop $loop, Task $task): mixed
     {
-        $deadline = $loop->delay(2, static fn () => throw new RuntimeException('Pool test exceeded its deadline.'));
-        try { return $task->await(); }
-        finally { $loop->cancel($deadline); }
+        $deadline = $loop->delay(2, static fn() => throw new RuntimeException('Pool test exceeded its deadline.'));
+        try {
+            return $task->await();
+        } finally {
+            $loop->cancel($deadline);
+        }
     }
 }

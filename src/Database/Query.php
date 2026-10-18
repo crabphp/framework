@@ -60,8 +60,7 @@ final class Query implements QueryContract
         private readonly Connection $connection,
         public readonly string $table,
         private ?Grammar $grammar = null,
-    ) {
-    }
+    ) {}
 
     public function select(string ...$columns): static
     {
@@ -87,13 +86,21 @@ final class Query implements QueryContract
         return $this;
     }
 
-    public function join(string $table, string|\Closure $first, ?string $operator = null, ?string $second = null): static
-    {
+    public function join(
+        string $table,
+        string|\Closure $first,
+        ?string $operator = null,
+        ?string $second = null,
+    ): static {
         return $this->addJoin('inner', $table, $first, $operator, $second);
     }
 
-    public function leftJoin(string $table, string|\Closure $first, ?string $operator = null, ?string $second = null): static
-    {
+    public function leftJoin(
+        string $table,
+        string|\Closure $first,
+        ?string $operator = null,
+        ?string $second = null,
+    ): static {
         return $this->addJoin('left', $table, $first, $operator, $second);
     }
 
@@ -153,25 +160,53 @@ final class Query implements QueryContract
 
     public function whereBetween(string $column, mixed $from, mixed $to): static
     {
-        $this->wheres[] = ['type' => 'between', 'boolean' => 'and', 'column' => $column, 'from' => $from, 'to' => $to, 'not' => false];
+        $this->wheres[] = [
+            'type' => 'between',
+            'boolean' => 'and',
+            'column' => $column,
+            'from' => $from,
+            'to' => $to,
+            'not' => false,
+        ];
         return $this;
     }
 
     public function orWhereBetween(string $column, mixed $from, mixed $to): static
     {
-        $this->wheres[] = ['type' => 'between', 'boolean' => 'or', 'column' => $column, 'from' => $from, 'to' => $to, 'not' => false];
+        $this->wheres[] = [
+            'type' => 'between',
+            'boolean' => 'or',
+            'column' => $column,
+            'from' => $from,
+            'to' => $to,
+            'not' => false,
+        ];
         return $this;
     }
 
     public function whereNotBetween(string $column, mixed $from, mixed $to): static
     {
-        $this->wheres[] = ['type' => 'between', 'boolean' => 'and', 'column' => $column, 'from' => $from, 'to' => $to, 'not' => true];
+        $this->wheres[] = [
+            'type' => 'between',
+            'boolean' => 'and',
+            'column' => $column,
+            'from' => $from,
+            'to' => $to,
+            'not' => true,
+        ];
         return $this;
     }
 
     public function orWhereNotBetween(string $column, mixed $from, mixed $to): static
     {
-        $this->wheres[] = ['type' => 'between', 'boolean' => 'or', 'column' => $column, 'from' => $from, 'to' => $to, 'not' => true];
+        $this->wheres[] = [
+            'type' => 'between',
+            'boolean' => 'or',
+            'column' => $column,
+            'from' => $from,
+            'to' => $to,
+            'not' => true,
+        ];
         return $this;
     }
 
@@ -189,13 +224,21 @@ final class Query implements QueryContract
 
     public function whereRaw(string $sql, array $bindings = []): static
     {
-        $this->wheres[] = ['type' => 'raw', 'boolean' => 'and', 'expression' => new Expression($sql, array_values($bindings))];
+        $this->wheres[] = [
+            'type' => 'raw',
+            'boolean' => 'and',
+            'expression' => new Expression($sql, array_values($bindings)),
+        ];
         return $this;
     }
 
     public function orWhereRaw(string $sql, array $bindings = []): static
     {
-        $this->wheres[] = ['type' => 'raw', 'boolean' => 'or', 'expression' => new Expression($sql, array_values($bindings))];
+        $this->wheres[] = [
+            'type' => 'raw',
+            'boolean' => 'or',
+            'expression' => new Expression($sql, array_values($bindings)),
+        ];
         return $this;
     }
 
@@ -213,7 +256,11 @@ final class Query implements QueryContract
 
     public function havingRaw(string $sql, array $bindings = []): static
     {
-        $this->havings[] = ['type' => 'raw', 'boolean' => 'and', 'expression' => new Expression($sql, array_values($bindings))];
+        $this->havings[] = [
+            'type' => 'raw',
+            'boolean' => 'and',
+            'expression' => new Expression($sql, array_values($bindings)),
+        ];
         return $this;
     }
 
@@ -396,7 +443,7 @@ final class Query implements QueryContract
         $all->offset = null;
         $total = $all->count();
         $items = $total === 0 ? [] : $all->forPage($page, $perPage)->get();
-        return new Page($items, $perPage, $page, $page * $perPage < $total, $total);
+        return new Page($items, $perPage, $page, ($page * $perPage) < $total, $total);
     }
 
     public function simplePaginate(int $perPage = 15, int $page = 1): Page
@@ -404,14 +451,19 @@ final class Query implements QueryContract
         $page = max(1, $page);
         // One row more than the page holds tells whether another page follows.
         $query = clone $this;
-        $rows = $query->forPage($page, $perPage)->limit($perPage + 1)->get();
+        $rows = $query
+            ->forPage($page, $perPage)
+            ->limit($perPage + 1)
+            ->get();
         return new Page(array_slice($rows, 0, $perPage), $perPage, $page, count($rows) > $perPage);
     }
 
     public function insert(array $values): int|string
     {
         if ($values === [] || array_is_list($values)) {
-            throw new \InvalidArgumentException('insert() takes one row as column => value; use insertMany() for a list of rows.');
+            throw new \InvalidArgumentException(
+                'insert() takes one row as column => value; use insertMany() for a list of rows.',
+            );
         }
         $statement = $this->grammar()->insert($this, [$values]);
         return $this->connection->insert($statement->sql, $statement->bindings);
@@ -445,7 +497,9 @@ final class Query implements QueryContract
         }
         $uniqueBy = (array) $uniqueBy;
         if ($uniqueBy === []) {
-            throw new \InvalidArgumentException('upsert() needs the columns of a unique key to tell an existing row by.');
+            throw new \InvalidArgumentException(
+                'upsert() needs the columns of a unique key to tell an existing row by.',
+            );
         }
         $update ??= array_values(array_diff(array_keys($rows[0]), $uniqueBy));
         // With nothing to overwrite, an existing row is simply left alone.
@@ -514,8 +568,13 @@ final class Query implements QueryContract
         return $row['aggregate'];
     }
 
-    private function addWhere(string $boolean, int $arguments, string|array|\Closure $column, mixed $operator, mixed $value): static
-    {
+    private function addWhere(
+        string $boolean,
+        int $arguments,
+        string|array|\Closure $column,
+        mixed $operator,
+        mixed $value,
+    ): static {
         if (is_string($column)) {
             $this->wheres[] = self::comparison($boolean, $arguments, $column, $operator, $value);
             return $this;
@@ -543,17 +602,30 @@ final class Query implements QueryContract
         if (is_array($values)) {
             $values = array_values($values);
         }
-        $this->wheres[] = ['type' => 'in', 'boolean' => $boolean, 'column' => $column, 'values' => $values, 'not' => $not];
+        $this->wheres[] = [
+            'type' => 'in',
+            'boolean' => $boolean,
+            'column' => $column,
+            'values' => $values,
+            'not' => $not,
+        ];
         return $this;
     }
 
-    private function addJoin(string $type, string $table, string|\Closure $first, ?string $operator, ?string $second): static
-    {
+    private function addJoin(
+        string $type,
+        string $table,
+        string|\Closure $first,
+        ?string $operator,
+        ?string $second,
+    ): static {
         $on = $this->nested();
         if ($first instanceof \Closure) {
             $first($on);
         } elseif ($operator === null) {
-            throw new \InvalidArgumentException("A join needs a condition: join('{$table}', '{$table}.user_id', '=', 'users.id').");
+            throw new \InvalidArgumentException(
+                "A join needs a condition: join('{$table}', '{$table}.user_id', '=', 'users.id').",
+            );
         } else {
             $on->whereColumn($first, $operator, $second);
         }
@@ -570,8 +642,13 @@ final class Query implements QueryContract
      * @param int $arguments How many arguments the caller was given: with two, the second is the value and the comparison is "=".
      * @return array<string, mixed>
      */
-    private static function comparison(string $boolean, int $arguments, string $column, mixed $operator, mixed $value): array
-    {
+    private static function comparison(
+        string $boolean,
+        int $arguments,
+        string $column,
+        mixed $operator,
+        mixed $value,
+    ): array {
         if ($arguments < 2) {
             throw new \InvalidArgumentException("The condition on \"{$column}\" has no value to compare with.");
         }
@@ -592,7 +669,13 @@ final class Query implements QueryContract
         if (is_array($value) || $value instanceof QueryContract) {
             throw new \InvalidArgumentException("\"{$column}\" was compared with a list; use whereIn() for that.");
         }
-        return ['type' => 'basic', 'boolean' => $boolean, 'column' => $column, 'operator' => $operator, 'value' => $value];
+        return [
+            'type' => 'basic',
+            'boolean' => $boolean,
+            'column' => $column,
+            'operator' => $operator,
+            'value' => $value,
+        ];
     }
 
     /**
@@ -607,7 +690,13 @@ final class Query implements QueryContract
             $second = $operator;
             $operator = '=';
         }
-        return ['type' => 'column', 'boolean' => $boolean, 'first' => $first, 'operator' => self::operator($operator), 'second' => $second];
+        return [
+            'type' => 'column',
+            'boolean' => $boolean,
+            'first' => $first,
+            'operator' => self::operator($operator),
+            'second' => $second,
+        ];
     }
 
     private static function operator(mixed $operator): string
@@ -615,7 +704,9 @@ final class Query implements QueryContract
         $known = is_string($operator) ? strtolower($operator) : null;
         if ($known === null || !in_array($known, self::OPERATORS, true)) {
             $given = is_string($operator) ? "\"{$operator}\"" : get_debug_type($operator);
-            throw new \InvalidArgumentException("{$given} is not a comparison; use one of: " . implode(' ', self::OPERATORS) . '.');
+            throw new \InvalidArgumentException(
+                "{$given} is not a comparison; use one of: " . implode(' ', self::OPERATORS) . '.',
+            );
         }
         return $known;
     }
@@ -669,10 +760,17 @@ final class Query implements QueryContract
      */
     private function wheresOnly(string $method): void
     {
-        $extra = $this->joins !== [] || $this->groups !== [] || $this->havings !== [] || $this->orders !== []
-            || $this->limit !== null || $this->offset !== null;
+        $extra =
+            $this->joins !== []
+            || $this->groups !== []
+            || $this->havings !== []
+            || $this->orders !== []
+            || $this->limit !== null
+            || $this->offset !== null;
         if ($extra) {
-            throw new \LogicException("{$method}() uses only the where conditions, and this query also has a join, group, order or limit.");
+            throw new \LogicException(
+                "{$method}() uses only the where conditions, and this query also has a join, group, order or limit.",
+            );
         }
     }
 }

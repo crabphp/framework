@@ -42,7 +42,11 @@ final class BodyProducer
             }
             echo 'late';
             PHP;
-        $process = proc_open([PHP_BINARY, '-r', $program], [0 => ['pipe', 'r'], 1 => ['pipe', 'w'], 2 => ['file', '/dev/null', 'w']], $pipes);
+        $process = proc_open(
+            [PHP_BINARY, '-r', $program],
+            [0 => ['pipe', 'r'], 1 => ['pipe', 'w'], 2 => ['file', '/dev/null', 'w']],
+            $pipes,
+        );
         if (!is_resource($process)) {
             throw new \RuntimeException('Cannot start the owned request-body producer.');
         }
@@ -57,7 +61,7 @@ final class BodyProducer
     public function readAfter(float $deadline, int $length): string
     {
         if (!$this->released) {
-            fwrite($this->control, sprintf('%.9f', $deadline) . "\n");
+            fwrite($this->control, sprintf("%.9f\n", $deadline));
             fflush($this->control);
             $this->released = true;
         }

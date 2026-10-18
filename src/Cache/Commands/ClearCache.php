@@ -11,9 +11,9 @@ use Crab\Contracts\Console\Output;
 
 final readonly class ClearCache implements Command
 {
-    public function __construct(private Cache $cache)
-    {
-    }
+    public function __construct(
+        private Cache $cache,
+    ) {}
 
     public function description(): string
     {

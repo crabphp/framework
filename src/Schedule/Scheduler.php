@@ -82,7 +82,7 @@ final class Scheduler
      */
     public function due(\DateTimeInterface $at): array
     {
-        return array_values(array_filter($this->schedule->tasks(), static fn (Task $task): bool => $task->isDue($at)));
+        return array_values(array_filter($this->schedule->tasks(), static fn(Task $task): bool => $task->isDue($at)));
     }
 
     /**
@@ -106,12 +106,18 @@ final class Scheduler
                     try {
                         $this->keep($task, $task->interval());
                     } catch (\Throwable $error) {
-                        $this->logger?->error('Scheduled task {task} could not be kept for this server: {message}', ['task' => $name, 'message' => $error->getMessage(), 'exception' => $error]);
+                        $this->logger?->error('Scheduled task {task} could not be kept for this server: {message}', [
+                            'task' => $name,
+                            'message' => $error->getMessage(),
+                            'exception' => $error,
+                        ]);
                     }
                 }
                 return false;
             }
-            $this->logger?->warning('Scheduled task {task} was due and is still running from before, so it was not started again.', ['task' => $name]);
+            $this->logger?->warning('Scheduled task {task} was due and is still running from before, so it was not started again.', [
+                'task' => $name,
+            ]);
             return false;
         }
         $this->running[$name] = true;
@@ -129,7 +135,11 @@ final class Scheduler
             $this->tell(new TaskRan($name, (hrtime(true) - $started) / 1e9));
             return true;
         } catch (\Throwable $error) {
-            $this->logger?->error('Scheduled task {task} failed: {message}', ['task' => $name, 'message' => $error->getMessage(), 'exception' => $error]);
+            $this->logger?->error('Scheduled task {task} failed: {message}', [
+                'task' => $name,
+                'message' => $error->getMessage(),
+                'exception' => $error,
+            ]);
             return false;
         } finally {
             unset($this->running[$name]);
@@ -149,7 +159,7 @@ final class Scheduler
         }
         $due = $this->due($at);
         foreach ($due as $task) {
-            $worker->spawn(fn (): bool => $this->run($task, $at));
+            $worker->spawn(fn(): bool => $this->run($task, $at));
         }
         return count($due);
     }
@@ -174,7 +184,7 @@ final class Scheduler
                 if ($worker->isDraining()) {
                     return;
                 }
-                $worker->spawn(fn (): bool => $this->run($task, $this->now()));
+                $worker->spawn(fn(): bool => $this->run($task, $this->now()));
             });
         }
         return $timers;
@@ -223,7 +233,9 @@ final class Scheduler
     {
         foreach ($this->schedule->tasks() as $task) {
             if ($task->runsOnOneServer() && $this->cache === null) {
-                throw new \LogicException("The scheduled task {$task->named()} is marked onOneServer(), which servers agree on through the cache, and there is none: register the cache provider, CacheProvider, with a store they share.");
+                throw new \LogicException(
+                    "The scheduled task {$task->named()} is marked onOneServer(), which servers agree on through the cache, and there is none: register the cache provider, CacheProvider, with a store they share.",
+                );
             }
         }
     }
@@ -237,7 +249,11 @@ final class Scheduler
         try {
             $this->events?->dispatch($event);
         } catch (\Throwable $error) {
-            $this->logger?->error('A listener for {event} failed: {message}', ['event' => TaskRan::class, 'message' => $error->getMessage(), 'exception' => $error]);
+            $this->logger?->error('A listener for {event} failed: {message}', [
+                'event' => TaskRan::class,
+                'message' => $error->getMessage(),
+                'exception' => $error,
+            ]);
         }
     }
 
@@ -273,7 +289,7 @@ final class Scheduler
         // Signed again only while the last signing cannot have run out. After a pause longer than
         // that, another server may have taken the task, and writing over its entry would give
         // the task to two: it is asked for afresh, which only one of them can win.
-        $fresh = isset($this->kept[$key]) && $now - $this->kept[$key] < $seconds * 2 / 3;
+        $fresh = isset($this->kept[$key]) && ($now - $this->kept[$key]) < (($seconds * 2) / 3);
         if (!$fresh || $this->cache->get($key) !== $this->owner) {
             unset($this->kept[$key]);
             return false;

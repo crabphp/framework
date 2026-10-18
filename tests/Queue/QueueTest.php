@@ -50,49 +50,49 @@ final class Ledger
 
 final readonly class Greeter
 {
-    public function __construct(public string $greeting = 'Hello')
-    {
-    }
+    public function __construct(
+        public string $greeting = 'Hello',
+    ) {}
 }
 
 final readonly class GreetJob
 {
-    public function __construct(private Greeter $greeter)
-    {
-    }
+    public function __construct(
+        private Greeter $greeter,
+    ) {}
 
     public function handle(string $name, int $times = 1, array $tags = []): void
     {
-        Ledger::$lines[] = str_repeat("{$this->greeter->greeting}, {$name}!", $times) . ($tags === [] ? '' : ' ' . json_encode($tags));
+        Ledger::$lines[] =
+            str_repeat("{$this->greeter->greeting}, {$name}!", $times) . ($tags === [] ? '' : ' ' . json_encode($tags));
     }
 }
 
 final class TypedJob
 {
-    public function handle(int $id, float $ratio, ?string $note = null, string|int $key = '', array $tags = [], mixed $anything = null): void
-    {
-    }
+    public function handle(
+        int $id,
+        float $ratio,
+        ?string $note = null,
+        string|int $key = '',
+        array $tags = [],
+        mixed $anything = null,
+    ): void {}
 }
 
 final class HiddenJob
 {
-    private function handle(): void
-    {
-    }
+    private function handle(): void {}
 }
 
 final class NamedJob
 {
-    public function handle(string $job = ''): void
-    {
-    }
+    public function handle(string $job = ''): void {}
 }
 
 final class DatedJob
 {
-    public function handle(\DateTimeImmutable $when): void
-    {
-    }
+    public function handle(\DateTimeImmutable $when): void {}
 }
 
 final class FlakyJob
@@ -115,7 +115,7 @@ final readonly class SingleTryJob
 {
     public function handle(int $id): void
     {
-        (new FlakyJob())->handle($id);
+        new FlakyJob()->handle($id);
     }
 }
 
@@ -127,7 +127,7 @@ final readonly class FiveTryJob
 {
     public function handle(int $id): void
     {
-        (new FlakyJob())->handle($id);
+        new FlakyJob()->handle($id);
     }
 }
 
@@ -139,7 +139,7 @@ final readonly class LoweredRetryJob
 {
     public function handle(int $id): void
     {
-        (new FlakyJob())->handle($id);
+        new FlakyJob()->handle($id);
     }
 }
 
@@ -151,7 +151,7 @@ final readonly class FourTryJob
 {
     public function handle(int $id): void
     {
-        (new FlakyJob())->handle($id);
+        new FlakyJob()->handle($id);
     }
 }
 
@@ -163,7 +163,7 @@ final readonly class ShortBackoffJob
 {
     public function handle(int $id): void
     {
-        (new FlakyJob())->handle($id);
+        new FlakyJob()->handle($id);
     }
 }
 
@@ -175,7 +175,7 @@ final readonly class FiveSecondBackoffJob
 {
     public function handle(int $id): void
     {
-        (new FlakyJob())->handle($id);
+        new FlakyJob()->handle($id);
     }
 }
 
@@ -187,7 +187,7 @@ final readonly class ImmediateRetryJob
 {
     public function handle(int $id): void
     {
-        (new FlakyJob())->handle($id);
+        new FlakyJob()->handle($id);
     }
 }
 
@@ -199,7 +199,7 @@ final readonly class ZeroBackoffJob
 {
     public function handle(int $id): void
     {
-        (new FlakyJob())->handle($id);
+        new FlakyJob()->handle($id);
     }
 }
 
@@ -209,9 +209,7 @@ final readonly class ZeroBackoffJob
 #[Retry(tries: 0)]
 final readonly class ZeroTriesJob
 {
-    public function handle(): void
-    {
-    }
+    public function handle(): void {}
 }
 
 /**
@@ -220,9 +218,7 @@ final readonly class ZeroTriesJob
 #[Retry(backoff: [-1])]
 final readonly class NegativeBackoffJob
 {
-    public function handle(): void
-    {
-    }
+    public function handle(): void {}
 }
 
 /**
@@ -231,9 +227,7 @@ final readonly class NegativeBackoffJob
 #[Retry(backoff: ['a'])]
 final readonly class TextBackoffJob
 {
-    public function handle(): void
-    {
-    }
+    public function handle(): void {}
 }
 
 /**
@@ -242,9 +236,7 @@ final readonly class TextBackoffJob
 #[Retry]
 final readonly class UnsetRetryJob
 {
-    public function handle(): void
-    {
-    }
+    public function handle(): void {}
 }
 
 /**
@@ -253,9 +245,7 @@ final readonly class UnsetRetryJob
 #[Retry(backoff: [1 => 5])]
 final readonly class SparseBackoffJob
 {
-    public function handle(): void
-    {
-    }
+    public function handle(): void {}
 }
 
 /**
@@ -264,9 +254,7 @@ final readonly class SparseBackoffJob
 #[Retry(backoff: [1.0])]
 final readonly class FloatBackoffJob
 {
-    public function handle(): void
-    {
-    }
+    public function handle(): void {}
 }
 
 /**
@@ -275,9 +263,7 @@ final readonly class FloatBackoffJob
 #[Retry(backoff: ['1'])]
 final readonly class NumericTextBackoffJob
 {
-    public function handle(): void
-    {
-    }
+    public function handle(): void {}
 }
 
 /**
@@ -286,9 +272,7 @@ final readonly class NumericTextBackoffJob
 #[Retry(backoff: [true])]
 final readonly class BooleanBackoffJob
 {
-    public function handle(): void
-    {
-    }
+    public function handle(): void {}
 }
 
 /**
@@ -341,9 +325,7 @@ final readonly class RepeatedRetryJob
     }
 }
 
-final class NotAJob
-{
-}
+final class NotAJob {}
 
 final class Records extends AbstractLogger
 {
@@ -361,7 +343,10 @@ final class Records extends AbstractLogger
 
     public function log($level, string|\Stringable $message, array $context = []): void
     {
-        $this->records[] = [(string) $level, strtr((string) $message, ['{job}' => $context['job'] ?? '', '{message}' => $context['message'] ?? ''])];
+        $this->records[] = [
+            (string) $level,
+            strtr((string) $message, ['{job}' => $context['job'] ?? '', '{message}' => $context['message'] ?? '']),
+        ];
         $this->contexts[] = $context;
     }
 }
@@ -462,7 +447,10 @@ final class QueueTest extends TestCase
         self::assertSame([0, 0, 0, null], $counts('other', $now));
         self::assertSame(['default'], $store->queues());
         // The same, job by job, to be looked at: nothing is taken by looking.
-        $listed = static fn (string $state, int $at): array => array_map(static fn ($message): array => [$message->data['name'], $message->availableAt, $message->reservedAt], $store->jobs('default', $state, $at));
+        $listed = static fn(string $state, int $at): array => array_map(
+            static fn($message): array => [$message->data['name'], $message->availableAt, $message->reservedAt],
+            $store->jobs('default', $state, $at),
+        );
         self::assertSame([['now', $now, $now]], $listed('processing', $now));
         self::assertSame([['seconds', $now + 600, null], ['interval', $now + 3600, null]], $listed('delayed', $now));
         self::assertSame([['seconds', $now + 600, null]], $listed('pending', $now + 900));
@@ -490,7 +478,7 @@ final class QueueTest extends TestCase
     {
         $store = $this->store($kind);
         $consumer = $this->consumer($store, tries: 3, backoff: [10, 60]);
-        (new Queue($store, clock: $this->clock))->push(FlakyJob::class, id: 5);
+        new Queue($store, clock: $this->clock)->push(FlakyJob::class, id: 5);
         Ledger::$failures = 2;
 
         self::assertTrue($consumer->runNext());
@@ -554,7 +542,7 @@ final class QueueTest extends TestCase
     {
         $store = $this->store($kind);
         $consumer = $this->consumer($store, tries: 3, backoff: []);
-        (new Queue($store, clock: $this->clock))->push(SingleTryJob::class, id: 1);
+        new Queue($store, clock: $this->clock)->push(SingleTryJob::class, id: 1);
         Ledger::$failures = 1;
 
         self::assertTrue($consumer->runNext());
@@ -574,7 +562,7 @@ final class QueueTest extends TestCase
     {
         $store = $this->store($kind);
         $consumer = $this->consumer($store, tries: 2, backoff: []);
-        (new Queue($store, clock: $this->clock))->push(FiveTryJob::class, id: 5);
+        new Queue($store, clock: $this->clock)->push(FiveTryJob::class, id: 5);
         Ledger::$failures = 5;
 
         for ($attempt = 1; $attempt <= 5; ++$attempt) {
@@ -601,7 +589,7 @@ final class QueueTest extends TestCase
     {
         $store = $this->store($kind);
         $consumer = $this->consumer($store, tries: 4, backoff: [99]);
-        (new Queue($store, clock: $this->clock))->push(ShortBackoffJob::class, id: 1);
+        new Queue($store, clock: $this->clock)->push(ShortBackoffJob::class, id: 1);
         Ledger::$failures = 3;
 
         self::assertTrue($consumer->runNext());
@@ -624,7 +612,7 @@ final class QueueTest extends TestCase
     {
         $store = $this->store($kind);
         $consumer = $this->consumer($store, tries: 2, backoff: [3, 7]);
-        (new Queue($store, clock: $this->clock))->push(FourTryJob::class, id: 4);
+        new Queue($store, clock: $this->clock)->push(FourTryJob::class, id: 4);
         Ledger::$failures = 4;
 
         self::assertTrue($consumer->runNext());
@@ -647,7 +635,7 @@ final class QueueTest extends TestCase
     {
         $store = $this->store($kind);
         $consumer = $this->consumer($store, tries: 2, backoff: [99]);
-        (new Queue($store, clock: $this->clock))->push(FiveSecondBackoffJob::class, id: 2);
+        new Queue($store, clock: $this->clock)->push(FiveSecondBackoffJob::class, id: 2);
         Ledger::$failures = 2;
 
         self::assertTrue($consumer->runNext());
@@ -674,7 +662,7 @@ final class QueueTest extends TestCase
             $heard[] = [$event, count($store->failed())];
         });
         $consumer = new Consumer($store, new Container(), $this->log, $this->clock, tries: 6, events: $events);
-        $id = (new Queue($store, clock: $this->clock))->push(FourTryJob::class, id: 4);
+        $id = new Queue($store, clock: $this->clock)->push(FourTryJob::class, id: 4);
 
         for ($attempt = 1; $attempt <= 4; ++$attempt) {
             $message = $store->reserve(['default'], $this->clock->now()->getTimestamp(), 90);
@@ -686,10 +674,18 @@ final class QueueTest extends TestCase
 
         self::assertSame([], Ledger::$lines);
         self::assertCount(1, $store->failed());
-        self::assertStringContainsString('retry limit of 4 is exhausted; the job was taken 4 times before this check', (string) $store->failed()[0]->error);
+        self::assertStringContainsString(
+            'retry limit of 4 is exhausted; the job was taken 4 times before this check',
+            (string) $store->failed()[0]->error,
+        );
         self::assertSame(4, $this->log->contexts[0]['attempt']);
         self::assertCount(1, $heard);
-        self::assertSame([$id, 5, true, 1], [$heard[0][0]->message->id, $heard[0][0]->message->attempts, $heard[0][0]->gaveUp, $heard[0][1]]);
+        self::assertSame([$id, 5, true, 1], [
+            $heard[0][0]->message->id,
+            $heard[0][0]->message->attempts,
+            $heard[0][0]->gaveUp,
+            $heard[0][1],
+        ]);
         self::assertInstanceOf(\RuntimeException::class, $heard[0][0]->error);
         self::assertSame($this->log->contexts[0]['exception'], $heard[0][0]->error);
         self::assertGreaterThanOrEqual(0.0, $heard[0][0]->seconds);
@@ -708,7 +704,7 @@ final class QueueTest extends TestCase
             $heard[] = [$event, count($store->failed())];
         });
         $consumer = new Consumer($store, new Container(), $this->log, $this->clock, events: $events);
-        $id = (new Queue($store, clock: $this->clock))->push(SingleTryJob::class, id: 1);
+        $id = new Queue($store, clock: $this->clock)->push(SingleTryJob::class, id: 1);
         $first = $store->reserve(['default'], $this->clock->now()->getTimestamp(), 90);
         self::assertSame([$id, 1], [$first?->id, $first?->attempts]);
 
@@ -744,7 +740,7 @@ final class QueueTest extends TestCase
     public function testALoweredRetryLimitKeepsThePriorReservationsWithoutClaimingAWorkerDied(string $kind): void
     {
         $store = $this->store($kind);
-        $id = (new Queue($store, clock: $this->clock))->push(LoweredRetryJob::class, id: 2);
+        $id = new Queue($store, clock: $this->clock)->push(LoweredRetryJob::class, id: 2);
         $now = $this->clock->now()->getTimestamp();
         // Four reported failures under the old limit of five, before the new worker starts.
         for ($attempt = 1; $attempt <= 4; ++$attempt) {
@@ -763,7 +759,10 @@ final class QueueTest extends TestCase
         $reason = 'The retry limit of 2 is exhausted; the job was taken 4 times before this check. This can happen without a recorded failure when a worker stopped while running it or it ran longer than 90 seconds (queue.retry_after). It can also happen when its limit was lowered. Review the job before retrying it with queue:retry.';
         self::assertSame(\RuntimeException::class . ': ' . $reason, $store->failed()[0]->error);
         self::assertSame(4, $this->log->contexts[0]['attempt']);
-        self::assertSame($this->log->contexts[0]['exception']::class . ': ' . $this->log->contexts[0]['message'], $store->failed()[0]->error);
+        self::assertSame(
+            $this->log->contexts[0]['exception']::class . ': ' . $this->log->contexts[0]['message'],
+            $store->failed()[0]->error,
+        );
         self::assertSame($reason, $this->log->contexts[0]['message']);
         self::assertStringContainsString($reason, $this->log->records[0][1]);
         self::assertSame(0, $store->size('default'));
@@ -820,7 +819,10 @@ final class QueueTest extends TestCase
                 self::assertStringContainsString($job, $error->getMessage());
                 self::assertStringContainsString('Use one #[Retry] declaration', $error->getMessage());
                 self::assertStringContainsString('integer of at least 1', $error->getMessage());
-                self::assertStringContainsString('list of whole numbers greater than or equal to 0', $error->getMessage());
+                self::assertStringContainsString(
+                    'list of whole numbers greater than or equal to 0',
+                    $error->getMessage(),
+                );
                 self::assertInstanceOf($cause, $error->getPrevious());
             }
         }
@@ -884,7 +886,7 @@ final class QueueTest extends TestCase
             self::assertCount($failedCount, $heard);
         }
         // The same consumer can take the next valid job after refusing this one.
-        (new Queue($store, clock: $this->clock))->push(GreetJob::class, name: 'next');
+        new Queue($store, clock: $this->clock)->push(GreetJob::class, name: 'next');
         self::assertTrue($consumer->runNext());
         self::assertSame(['Hello, next!'], Ledger::$lines);
         self::assertCount($failedCount + 1, $heard);
@@ -902,7 +904,15 @@ final class QueueTest extends TestCase
         $events->listen(JobRan::class, static function (JobRan $event) use (&$heard, $store): void {
             $heard[] = [$event->message->attempts, $event->gaveUp, count($store->failed())];
         });
-        $consumer = new Consumer($store, new Container(), $this->log, $this->clock, tries: 2, backoff: [], events: $events);
+        $consumer = new Consumer(
+            $store,
+            new Container(),
+            $this->log,
+            $this->clock,
+            tries: 2,
+            backoff: [],
+            events: $events,
+        );
         $queue->push(FiveTryJob::class, id: 5);
         Ledger::$failures = 5;
 
@@ -913,10 +923,17 @@ final class QueueTest extends TestCase
         $queue->push(SingleTryJob::class, id: 1);
         self::assertTrue($consumer->runNext());
 
-        self::assertSame([
-            [1, false, 0], [2, false, 0], [3, false, 0], [4, false, 0], [5, true, 1],
-            [1, false, 1],
-        ], $heard);
+        self::assertSame(
+            [
+                [1, false, 0],
+                [2, false, 0],
+                [3, false, 0],
+                [4, false, 0],
+                [5, true, 1],
+                [1, false, 1],
+            ],
+            $heard,
+        );
         self::assertSame(['sent 1'], Ledger::$lines);
         self::assertFalse($consumer->runNext());
     }
@@ -927,7 +944,7 @@ final class QueueTest extends TestCase
         $store = $this->store($kind);
         $supervisor = new Supervisor('mail', ['mail'], tries: 1, backoff: [2]);
         $consumer = $this->consumer($store, tries: 2, backoff: [99])->within($supervisor);
-        (new Queue($store, clock: $this->clock))->on('mail')->push(FiveTryJob::class, id: 5);
+        new Queue($store, clock: $this->clock)->on('mail')->push(FiveTryJob::class, id: 5);
         Ledger::$failures = 5;
 
         for ($attempt = 1; $attempt <= 5; ++$attempt) {
@@ -953,7 +970,7 @@ final class QueueTest extends TestCase
         $store = $this->store($kind);
         $supervisor = new Supervisor('mail', ['mail'], tries: 5, backoff: [99]);
         $consumer = $this->consumer($store)->within($supervisor);
-        (new Queue($store, clock: $this->clock))->on('mail')->push(ImmediateRetryJob::class, id: 3);
+        new Queue($store, clock: $this->clock)->on('mail')->push(ImmediateRetryJob::class, id: 3);
         Ledger::$failures = 3;
 
         for ($attempt = 1; $attempt <= 3; ++$attempt) {
@@ -972,7 +989,7 @@ final class QueueTest extends TestCase
     {
         $store = $this->store($kind);
         $consumer = $this->consumer($store, tries: 2, backoff: [99]);
-        (new Queue($store, clock: $this->clock))->push(ZeroBackoffJob::class, id: 1);
+        new Queue($store, clock: $this->clock)->push(ZeroBackoffJob::class, id: 1);
         Ledger::$failures = 1;
 
         self::assertTrue($consumer->runNext());
@@ -1021,13 +1038,17 @@ final class QueueTest extends TestCase
         self::assertSame(3, $this->log->contexts[0]['tries']);
         // Registering this existing fixture makes the previously missing name loadable.
         self::assertTrue(class_alias(SingleTryJob::class, $job));
-        $id = (new Queue($store, clock: $this->clock))->on('fresh')->push($job, id: 1);
+        $id = new Queue($store, clock: $this->clock)->on('fresh')->push($job, id: 1);
         Ledger::$failures = 1;
         self::assertTrue($consumer->runNext(['fresh']));
 
         self::assertSame(1, Retry::for($job)?->tries);
         self::assertCount(1, $store->failed());
-        self::assertSame([$id, $job, 1], [$store->failed()[0]->id, $store->failed()[0]->job, $store->failed()[0]->attempts]);
+        self::assertSame([$id, $job, 1], [
+            $store->failed()[0]->id,
+            $store->failed()[0]->job,
+            $store->failed()[0]->attempts,
+        ]);
         self::assertSame(0, $store->size('fresh'));
         self::assertSame([], Ledger::$lines);
         self::assertFalse($consumer->runNext(['fresh']));
@@ -1045,7 +1066,7 @@ final class QueueTest extends TestCase
         self::assertTrue(class_alias(ZeroTriesJob::class, $job));
 
         try {
-            (new Queue($store, clock: $this->clock))->on('fresh')->push($job);
+            new Queue($store, clock: $this->clock)->on('fresh')->push($job);
             self::fail('The retry declaration of the newly loaded class was not checked.');
         } catch (\InvalidArgumentException $error) {
             self::assertStringContainsString($job, $error->getMessage());
@@ -1092,7 +1113,7 @@ final class QueueTest extends TestCase
     public function testAJobIsGivenToOneWorkerAtATimeAndAgainWhenItsWorkerDied(string $kind): void
     {
         $store = $this->store($kind);
-        (new Queue($store, clock: $this->clock))->push(GreetJob::class, name: 'once');
+        new Queue($store, clock: $this->clock)->push(GreetJob::class, name: 'once');
         $now = $this->clock->now()->getTimestamp();
 
         $first = $store->reserve(['default'], $now, 90);
@@ -1106,7 +1127,11 @@ final class QueueTest extends TestCase
         // The first worker was only slow. What it says of its try changes nothing: the job is the second's now.
         $store->release($first, $now + 91);
         $store->fail($first, 'too slow', $now + 91);
-        self::assertSame([0, 0, 1], [$store->counts('default', $now + 91)['pending'], $store->counts('default', $now + 91)['delayed'], $store->counts('default', $now + 91)['processing']]);
+        self::assertSame([0, 0, 1], [
+            $store->counts('default', $now + 91)['pending'],
+            $store->counts('default', $now + 91)['delayed'],
+            $store->counts('default', $now + 91)['processing'],
+        ]);
         self::assertNull($store->reserve(['default'], $now + 100, 90));
         self::assertSame([], $store->failed());
 
@@ -1116,7 +1141,10 @@ final class QueueTest extends TestCase
         self::assertTrue($consumer->runNext());
         self::assertSame([], Ledger::$lines);
         self::assertCount(1, $store->failed());
-        self::assertStringContainsString('retry limit of 2 is exhausted; the job was taken 2 times before this check', (string) $store->failed()[0]->error);
+        self::assertStringContainsString(
+            'retry limit of 2 is exhausted; the job was taken 2 times before this check',
+            (string) $store->failed()[0]->error,
+        );
     }
 
     #[DataProvider('stores')]
@@ -1141,7 +1169,7 @@ final class QueueTest extends TestCase
     public function testAJobPushedWithinATransactionIsStoredWithItOrNotAtAll(string $kind): void
     {
         $this->store($kind);
-        $db = new Database(fn (): \PDO => $this->pdo($kind), 1, factory: $this->mysqlFactory($kind));
+        $db = new Database(fn(): \PDO => $this->pdo($kind), 1, factory: $this->mysqlFactory($kind));
         $store = new DatabaseStore($db, 'queue_test');
         $queue = new Queue($store, clock: $this->clock);
         $now = $this->clock->now()->getTimestamp();
@@ -1158,23 +1186,36 @@ final class QueueTest extends TestCase
         try {
             $db->transaction(static function (Connection $tx) use ($queue): void {
                 $queue->within($tx)->push(GreetJob::class, name: 'user 8');
-                $tx->transaction(static fn (Connection $inner) => $queue->within($inner)->push(GreetJob::class, name: 'user 9'));
+                $tx->transaction(static fn(Connection $inner) => $queue->within($inner)->push(
+                    GreetJob::class,
+                    name: 'user 9',
+                ));
                 throw new \DomainException('the order was refused');
             });
             self::fail('The failure was swallowed.');
         } catch (\DomainException) {
         }
-        self::assertSame([1, 0], [$store->size('mail', $now), $store->size('default', $now)], 'A job of a write that was undone must not exist.');
+        self::assertSame(
+            [1, 0],
+            [$store->size('mail', $now), $store->size('default', $now)],
+            'A job of a write that was undone must not exist.',
+        );
     }
 
     #[DataProvider('databases')]
     public function testAJobKeptElsewhereIsPushedOnceTheTransactionHasCommitted(string $kind): void
     {
         $this->store($kind);
-        $db = new Database(fn (): \PDO => $this->pdo($kind), 1, factory: $this->mysqlFactory($kind));
+        $db = new Database(fn(): \PDO => $this->pdo($kind), 1, factory: $this->mysqlFactory($kind));
         $now = $this->clock->now()->getTimestamp();
         // In memory, and in a database that is not the transaction's own.
-        foreach ([new MemoryStore(), new DatabaseStore(new Database(fn (): \PDO => $this->pdo($kind), 1, factory: $this->mysqlFactory($kind)), 'queue_test')] as $store) {
+        foreach ([
+            new MemoryStore(),
+            new DatabaseStore(
+                new Database(fn(): \PDO => $this->pdo($kind), 1, factory: $this->mysqlFactory($kind)),
+                'queue_test',
+            ),
+        ] as $store) {
             $queue = new Queue($store, clock: $this->clock);
             $before = $store->size('default', $now);
 
@@ -1191,7 +1232,11 @@ final class QueueTest extends TestCase
                     self::assertSame($before, $store->size('default', $now), 'Nothing is pushed before the commit.');
                 }
             });
-            self::assertSame($before + 1, $store->size('default', $now), 'The job of the part that was undone is not pushed.');
+            self::assertSame(
+                $before + 1,
+                $store->size('default', $now),
+                'The job of the part that was undone is not pushed.',
+            );
 
             try {
                 $db->transaction(static function (Connection $tx) use ($queue): void {
@@ -1210,19 +1255,27 @@ final class QueueTest extends TestCase
 
     public static function databases(): array
     {
-        return array_values(array_filter(self::stores(), static fn (array $store): bool => $store[0] !== 'memory'));
+        return array_values(array_filter(self::stores(), static fn(array $store): bool => $store[0] !== 'memory'));
     }
 
     public function testWhatIsPushedIsCheckedAgainstTheJobWhereItIsPushed(): void
     {
         $queue = new Queue(new MemoryStore());
         $mistakes = [
-            'no such class' => static fn () => $queue->push('App\\Jobs\\Missing'),
-            'no handle() method' => static fn () => $queue->push(NotAJob::class),
-            'by position' => static fn () => $queue->push(GreetJob::class, 'Ada'),
-            'no parameter for; it takes name, times, tags' => static fn () => $queue->push(GreetJob::class, name: 'Ada', title: 'Dr'),
-            'without name' => static fn () => $queue->push(GreetJob::class, times: 2),
-            'stored as JSON' => static fn () => $queue->push(GreetJob::class, name: 'Ada', tags: [new \DateTimeImmutable()]),
+            'no such class' => static fn() => $queue->push('App\\Jobs\\Missing'),
+            'no handle() method' => static fn() => $queue->push(NotAJob::class),
+            'by position' => static fn() => $queue->push(GreetJob::class, 'Ada'),
+            'no parameter for; it takes name, times, tags' => static fn() => $queue->push(
+                GreetJob::class,
+                name: 'Ada',
+                title: 'Dr',
+            ),
+            'without name' => static fn() => $queue->push(GreetJob::class, times: 2),
+            'stored as JSON' => static fn() => $queue->push(
+                GreetJob::class,
+                name: 'Ada',
+                tags: [new \DateTimeImmutable()],
+            ),
         ];
         foreach ($mistakes as $says => $mistake) {
             try {
@@ -1245,14 +1298,27 @@ final class QueueTest extends TestCase
         self::assertSame(2, $store->size('default'));
 
         $mistakes = [
-            'array as "id", which its handle() takes as int' => static fn () => $queue->push(TypedJob::class, id: ['wrong'], ratio: 1.0),
-            'string as "id"' => static fn () => $queue->push(TypedJob::class, id: '7', ratio: 1.0),
-            'string as "ratio", which its handle() takes as float' => static fn () => $queue->push(TypedJob::class, id: 7, ratio: 'half'),
-            'float as "key", which its handle() takes as string|int' => static fn () => $queue->push(TypedJob::class, id: 7, ratio: 1.0, key: 1.5),
-            'null as "tags"' => static fn () => $queue->push(TypedJob::class, id: 7, ratio: 1.0, tags: null),
-            'takes $when as DateTimeImmutable' => static fn () => $queue->push(DatedJob::class, when: '2026-01-01'),
-            'must be a public method' => static fn () => $queue->push(HiddenJob::class),
-            'takes $job, a name push() and later() use for themselves' => static fn () => $queue->push(NamedJob::class),
+            'array as "id", which its handle() takes as int' => static fn() => $queue->push(
+                TypedJob::class,
+                id: ['wrong'],
+                ratio: 1.0,
+            ),
+            'string as "id"' => static fn() => $queue->push(TypedJob::class, id: '7', ratio: 1.0),
+            'string as "ratio", which its handle() takes as float' => static fn() => $queue->push(
+                TypedJob::class,
+                id: 7,
+                ratio: 'half',
+            ),
+            'float as "key", which its handle() takes as string|int' => static fn() => $queue->push(
+                TypedJob::class,
+                id: 7,
+                ratio: 1.0,
+                key: 1.5,
+            ),
+            'null as "tags"' => static fn() => $queue->push(TypedJob::class, id: 7, ratio: 1.0, tags: null),
+            'takes $when as DateTimeImmutable' => static fn() => $queue->push(DatedJob::class, when: '2026-01-01'),
+            'must be a public method' => static fn() => $queue->push(HiddenJob::class),
+            'takes $job, a name push() and later() use for themselves' => static fn() => $queue->push(NamedJob::class),
         ];
         foreach ($mistakes as $says => $mistake) {
             try {
@@ -1286,7 +1352,7 @@ final class QueueTest extends TestCase
 
         $ran = WorkerHarness::run([], static function (Worker $worker) use ($consumer, $queue): int {
             $cancellation = new Cancellation();
-            $task = $worker->spawn(static fn (): int => $consumer->work($worker->loop, $cancellation, sleep: 0.005));
+            $task = $worker->spawn(static fn(): int => $consumer->work($worker->loop, $cancellation, sleep: 0.005));
             Async::sleep($worker->loop, 0.02);
             // Pushed while it waits; it finds it on its next look.
             $queue->push(GreetJob::class, name: 'three');
@@ -1312,17 +1378,11 @@ final class QueueTest extends TestCase
                 throw new \RuntimeException('database has gone away');
             }
 
-            public function complete(\Crab\Contracts\Queue\Message $message): void
-            {
-            }
+            public function complete(\Crab\Contracts\Queue\Message $message): void {}
 
-            public function release(\Crab\Contracts\Queue\Message $message, int $availableAt): void
-            {
-            }
+            public function release(\Crab\Contracts\Queue\Message $message, int $availableAt): void {}
 
-            public function fail(\Crab\Contracts\Queue\Message $message, string $error, int $now): void
-            {
-            }
+            public function fail(\Crab\Contracts\Queue\Message $message, string $error, int $now): void {}
 
             public function failed(?int $latest = null): array
             {
@@ -1362,7 +1422,7 @@ final class QueueTest extends TestCase
         $consumer = new Consumer($broken, null, $this->log);
         WorkerHarness::run([], static function (Worker $worker) use ($consumer): void {
             $cancellation = new Cancellation();
-            $worker->loop->delay(0.03, static fn () => $cancellation->cancel());
+            $worker->loop->delay(0.03, static fn() => $cancellation->cancel());
             $consumer->work($worker->loop, $cancellation, sleep: 0.005);
         });
 
@@ -1375,10 +1435,20 @@ final class QueueTest extends TestCase
         $app = new App(new Config([
             'queue' => ['tries' => 1],
             'log' => ['path' => $this->directory . '/app.log'],
-            'database' => ['connections' => ['main' => ['dsn' => 'sqlite:' . $this->directory . '/app.sqlite', 'migrations' => $this->directory . '/migrations']]],
+            'database' => [
+                'connections' => ['main' => [
+                    'dsn' => 'sqlite:' . $this->directory . '/app.sqlite',
+                    'migrations' => $this->directory . '/migrations',
+                ]],
+            ],
         ]));
         $app->register(DatabaseProvider::class, QueueProvider::class);
-        self::assertSame(['database', 'jobs', 'default', 90], [config('queue.store'), config('queue.table'), config('queue.queue'), config('queue.retry_after')]);
+        self::assertSame(['database', 'jobs', 'default', 90], [
+            config('queue.store'),
+            config('queue.table'),
+            config('queue.queue'),
+            config('queue.retry_after'),
+        ]);
 
         self::assertSame(0, $app->console->run(['queue:install'], $this->quiet()));
         self::assertSame(0, $app->console->run(['queue:install'], $this->quiet()));
@@ -1396,7 +1466,10 @@ final class QueueTest extends TestCase
         self::assertSame("Ran 2 jobs.\n", $read());
         self::assertSame(['Hello, worker!'], Ledger::$lines);
         // What a job throws reaches the application's log, trace and all.
-        self::assertStringContainsString('failed for good after 1 tries: mail server refused 9', (string) file_get_contents($this->directory . '/app.log'));
+        self::assertStringContainsString(
+            'failed for good after 1 tries: mail server refused 9',
+            (string) file_get_contents($this->directory . '/app.log'),
+        );
 
         [$output, $read] = $this->captured();
         self::assertSame(0, $app->console->run(['queue:failed'], $output));
@@ -1417,25 +1490,58 @@ final class QueueTest extends TestCase
 
     public function testSupervisorsAreReadFromTheConfigurationWithTheQueuesOwnSettingsForWhatTheyLeaveOut(): void
     {
-        $config = new Config(['queue' => [
-            'queue' => 'default', 'workers' => 2, 'concurrency' => 1, 'tries' => 3, 'backoff' => [10, 60], 'retry_after' => 90, 'sleep' => 1.0,
-            'supervisors' => [
-                'mail' => ['queues' => ['mail'], 'workers' => 4, 'tries' => 5, 'backoff' => [1], 'retry_after' => 30, 'sleep' => 0.2],
-                'rest' => ['queues' => ['high', 'default'], 'concurrency' => 10],
+        $config = new Config([
+            'queue' => [
+                'queue' => 'default',
+                'workers' => 2,
+                'concurrency' => 1,
+                'tries' => 3,
+                'backoff' => [10, 60],
+                'retry_after' => 90,
+                'sleep' => 1.0,
+                'supervisors' => [
+                    'mail' => [
+                        'queues' => ['mail'],
+                        'workers' => 4,
+                        'tries' => 5,
+                        'backoff' => [1],
+                        'retry_after' => 30,
+                        'sleep' => 0.2,
+                    ],
+                    'rest' => ['queues' => ['high', 'default'], 'concurrency' => 10],
+                ],
             ],
-        ]]);
+        ]);
 
         $supervisors = Supervisor::all($config);
 
         self::assertSame(['mail', 'rest'], array_keys($supervisors));
         $mail = $supervisors['mail'];
-        self::assertSame([['mail'], 4, 1, 5, [1], 30, 0.2], [$mail->queues, $mail->workers, $mail->concurrency, $mail->tries, $mail->backoff, $mail->retryAfter, $mail->sleep]);
+        self::assertSame([['mail'], 4, 1, 5, [1], 30, 0.2], [
+            $mail->queues,
+            $mail->workers,
+            $mail->concurrency,
+            $mail->tries,
+            $mail->backoff,
+            $mail->retryAfter,
+            $mail->sleep,
+        ]);
         $rest = $supervisors['rest'];
-        self::assertSame([['high', 'default'], 2, 10, 3, [10, 60], 90, 1.0], [$rest->queues, $rest->workers, $rest->concurrency, $rest->tries, $rest->backoff, $rest->retryAfter, $rest->sleep]);
+        self::assertSame([['high', 'default'], 2, 10, 3, [10, 60], 90, 1.0], [
+            $rest->queues,
+            $rest->workers,
+            $rest->concurrency,
+            $rest->tries,
+            $rest->backoff,
+            $rest->retryAfter,
+            $rest->sleep,
+        ]);
         self::assertSame([], Supervisor::all(new Config(['queue' => ['supervisors' => []]])));
 
         $mistakes = [
-            'has the setting "max", which is not one of queues, workers' => ['mail' => ['queues' => ['mail'], 'max' => 4]],
+            'has the setting "max", which is not one of queues, workers' => [
+                'mail' => ['queues' => ['mail'], 'max' => 4],
+            ],
             'names no queue' => ['mail' => ['queues' => []]],
             '"workers" set to 0' => ['mail' => ['queues' => ['mail'], 'workers' => 0]],
             'by name' => [['queues' => ['mail']]],
@@ -1453,10 +1559,14 @@ final class QueueTest extends TestCase
     public function testEachSupervisorRunsItsOwnQueuesWithinItsOwnLimits(): void
     {
         $app = new App(new Config([
-            'queue' => ['store' => 'memory', 'backoff' => [0], 'supervisors' => [
-                'mail' => ['queues' => ['mail'], 'tries' => 1],
-                'rest' => ['queues' => ['default'], 'tries' => 2],
-            ]],
+            'queue' => [
+                'store' => 'memory',
+                'backoff' => [0],
+                'supervisors' => [
+                    'mail' => ['queues' => ['mail'], 'tries' => 1],
+                    'rest' => ['queues' => ['default'], 'tries' => 2],
+                ],
+            ],
             'log' => ['path' => $this->directory . '/app.log'],
         ]));
         $app->register(QueueProvider::class);
@@ -1489,7 +1599,10 @@ final class QueueTest extends TestCase
         self::assertSame(0, $app->console->run(['queue:work', '--queue=reports', '--stop-when-empty'], $this->quiet()));
         self::assertSame('Hello, nobody!', Ledger::$lines[2]);
 
-        foreach (['The supervisors are mail, rest' => ['--supervisor=reports'], 'leave out --queue' => ['--supervisor=mail', '--queue=mail']] as $says => $words) {
+        foreach ([
+            'The supervisors are mail, rest' => ['--supervisor=reports'],
+            'leave out --queue' => ['--supervisor=mail', '--queue=mail'],
+        ] as $says => $words) {
             [$output, $read] = $this->captured();
             self::assertSame(1, $app->console->run(['queue:work', '--stop-when-empty', ...$words], $output));
             self::assertStringContainsString($says, $read());
@@ -1503,13 +1616,27 @@ final class QueueTest extends TestCase
         $events = new Dispatcher();
         $heard = [];
         $events->listen(JobRan::class, static function (JobRan $event) use (&$heard, $store): void {
-            $heard[] = [$event->message->job, $event->message->attempts, $event->error?->getMessage(), $event->gaveUp, $event->seconds >= 0.0];
+            $heard[] = [
+                $event->message->job,
+                $event->message->attempts,
+                $event->error?->getMessage(),
+                $event->gaveUp,
+                $event->seconds >= 0.0,
+            ];
             // What the store held as failed at the moment the listener was told.
             $heard[array_key_last($heard)][] = count($store->failed());
         });
         // A listener that fails changes nothing for the job, and is logged.
-        $events->listen(JobRan::class, static fn () => throw new \LogicException('the dashboard is down'));
-        $consumer = new Consumer($store, new Container(), $this->log, $this->clock, tries: 2, backoff: [0], events: $events);
+        $events->listen(JobRan::class, static fn() => throw new \LogicException('the dashboard is down'));
+        $consumer = new Consumer(
+            $store,
+            new Container(),
+            $this->log,
+            $this->clock,
+            tries: 2,
+            backoff: [0],
+            events: $events,
+        );
 
         $queue->push(GreetJob::class, name: 'Ada');
         $queue->push(FlakyJob::class, id: 5);
@@ -1517,12 +1644,15 @@ final class QueueTest extends TestCase
         while ($consumer->runNext()) {
         }
 
-        self::assertSame([
-            [GreetJob::class, 1, null, false, true, 0],
-            [FlakyJob::class, 1, 'mail server refused 5', false, true, 0],
-            // Told after the store knows: the job given up on is already there to be found.
-            [FlakyJob::class, 2, 'mail server refused 5', true, true, 1],
-        ], $heard);
+        self::assertSame(
+            [
+                [GreetJob::class, 1, null,                    false, true, 0],
+                [FlakyJob::class, 1, 'mail server refused 5', false, true, 0],
+                // Told after the store knows: the job given up on is already there to be found.
+                [FlakyJob::class, 2, 'mail server refused 5', true,  true, 1],
+            ],
+            $heard,
+        );
         self::assertCount(1, $store->failed());
         self::assertSame(['Hello, Ada!'], Ledger::$lines);
         self::assertStringContainsString('the dashboard is down', implode("\n", array_column($this->log->records, 1)));
@@ -1544,7 +1674,11 @@ final class QueueTest extends TestCase
         $app->container->get(QueueContract::class)->on('emails')->push(GreetJob::class, name: 'test');
         $store = $app->container->get(Store::class);
         self::assertInstanceOf(MemoryStore::class, $store);
-        self::assertSame(['emails', GreetJob::class, ['name' => 'test']], [$store->waiting()[0]->queue, $store->waiting()[0]->job, $store->waiting()[0]->data]);
+        self::assertSame(['emails', GreetJob::class, ['name' => 'test']], [
+            $store->waiting()[0]->queue,
+            $store->waiting()[0]->job,
+            $store->waiting()[0]->data,
+        ]);
     }
 
     /**
@@ -1560,9 +1694,9 @@ final class QueueTest extends TestCase
         if ($kind === 'memory') {
             return new MemoryStore();
         }
-        $database = new Database(fn (): \PDO => $this->pdo($kind), 1, factory: $this->mysqlFactory($kind));
+        $database = new Database(fn(): \PDO => $this->pdo($kind), 1, factory: $this->mysqlFactory($kind));
         $database->execute('drop table if exists queue_test');
-        (new Schema($database))->create('queue_test', static function (Table $table): void {
+        new Schema($database)->create('queue_test', static function (Table $table): void {
             $table->id();
             $table->string('queue');
             $table->string('job');
@@ -1581,7 +1715,11 @@ final class QueueTest extends TestCase
     private function pdo(string $driver): \PDO
     {
         if ($driver === 'mysql') {
-            return new \PDO(getenv('CRAB_TEST_MYSQL_DSN'), getenv('CRAB_TEST_MYSQL_USER') ?: 'root', getenv('CRAB_TEST_MYSQL_PASSWORD') ?: '');
+            return new \PDO(
+                getenv('CRAB_TEST_MYSQL_DSN'),
+                getenv('CRAB_TEST_MYSQL_USER') ?: 'root',
+                getenv('CRAB_TEST_MYSQL_PASSWORD') ?: '',
+            );
         }
         return new \PDO('sqlite:' . $this->directory . '/app.sqlite');
     }
@@ -1597,9 +1735,12 @@ final class QueueTest extends TestCase
     private function captured(): array
     {
         $stream = fopen('php://memory', 'w+');
-        return [new Output($stream, $stream), static function () use ($stream): string {
-            rewind($stream);
-            return (string) stream_get_contents($stream);
-        }];
+        return [
+            new Output($stream, $stream),
+            static function () use ($stream): string {
+                rewind($stream);
+                return (string) stream_get_contents($stream);
+            },
+        ];
     }
 }

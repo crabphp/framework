@@ -6,14 +6,14 @@ namespace Crab\Routing;
 
 use Crab\Contracts\Auth\Identity;
 use Crab\Contracts\Http\Request;
-use Crab\Contracts\WebSocket\Socket;
-use Crab\WebSocket\Connections;
 use Crab\Contracts\Validation\Rule;
 use Crab\Contracts\Validation\Validator;
+use Crab\Contracts\WebSocket\Socket;
 use Crab\Http\ErrorResponse;
 use Crab\Http\Response;
 use Crab\Validation\Data;
 use Crab\Validation\ValidationException;
+use Crab\WebSocket\Connections;
 use Psr\Container\ContainerInterface;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface;
@@ -130,13 +130,19 @@ final class ActionHandler implements RequestHandlerInterface
             $this->read($parameter, $names, $route);
         }
         if ($method === 'WS' && $this->socket === null) {
-            throw new \LogicException("The action of {$route} needs a " . Socket::class . ' parameter. Declare handle(Socket $socket, ...).');
+            throw new \LogicException(
+                "The action of {$route} needs a " . Socket::class . ' parameter. Declare handle(Socket $socket, ...).',
+            );
         }
         if ($method === 'WS' && $this->input !== null) {
-            throw new \LogicException("The action of {$route} takes an input class. A socket upgrade has no request body; take query fields as typed parameters instead.");
+            throw new \LogicException(
+                "The action of {$route} takes an input class. A socket upgrade has no request body; take query fields as typed parameters instead.",
+            );
         }
         if ($this->input !== null && $this->fields !== []) {
-            throw new \LogicException("The action of {$route} takes the input {$this->input[1]} and also the field \${$this->fields[0]}; put every field in the class, or take them all as parameters.");
+            throw new \LogicException(
+                "The action of {$route} takes the input {$this->input[1]} and also the field \${$this->fields[0]}; put every field in the class, or take them all as parameters.",
+            );
         }
         try {
             // Read now, so that a field or class that cannot be validated is reported at startup.
@@ -148,7 +154,10 @@ final class ActionHandler implements RequestHandlerInterface
                 $validator->inspectParameters($this->signature, $this->fields);
             }
         } catch (\LogicException $error) {
-            throw new \LogicException("The action of {$route} cannot take the request's data: {$error->getMessage()} If it is a service, it belongs in the constructor of an action class.", previous: $error);
+            throw new \LogicException(
+                "The action of {$route} cannot take the request's data: {$error->getMessage()} If it is a service, it belongs in the constructor of an action class.",
+                previous: $error,
+            );
         }
     }
 
@@ -185,7 +194,12 @@ final class ActionHandler implements RequestHandlerInterface
                 $data = [];
             }
             // A query string and a form carry everything as text, "3" for 3; JSON says what each value is.
-            $text = $this->fromQuery || preg_match('~^(?:application/x-www-form-urlencoded|multipart/form-data)\b~i', $request->getHeaderLine('Content-Type')) === 1;
+            $text =
+                $this->fromQuery
+                || preg_match(
+                    '~^(?:application/x-www-form-urlencoded|multipart/form-data)\b~i',
+                    $request->getHeaderLine('Content-Type'),
+                ) === 1;
             try {
                 if ($this->input !== null && $this->input[1] === Data::class) {
                     $arguments += $this->described($data, $text);
@@ -204,16 +218,24 @@ final class ActionHandler implements RequestHandlerInterface
         // By name, so that a field the request leaves out takes the default the action gives it.
         if ($this->socket !== null) {
             if (!$request instanceof Request) {
-                throw new \LogicException('A socket route needs a Crab HTTP request; use Http\\Request or the engine adapter.');
+                throw new \LogicException(
+                    'A socket route needs a Crab HTTP request; use Http\\Request or the engine adapter.',
+                );
             }
             $action = $this->closure ??= $this->callable();
             $name = $this->socket;
             try {
                 $logger = $this->container !== null && $this->container->has(\Psr\Log\LoggerInterface::class)
-                    ? $this->container->get(\Psr\Log\LoggerInterface::class) : null;
-                return $this->websockets->upgrade($request, $this->route, static function (Socket $socket) use ($action, $name, $arguments): mixed {
-                    return $action(...[$name => $socket, ...$arguments]);
-                }, $logger);
+                    ? $this->container->get(\Psr\Log\LoggerInterface::class)
+                    : null;
+                return $this->websockets->upgrade(
+                    $request,
+                    $this->route,
+                    static function (Socket $socket) use ($action, $name, $arguments): mixed {
+                        return $action(...[$name => $socket, ...$arguments]);
+                    },
+                    $logger,
+                );
             } catch (ValidationException $invalid) {
                 return ErrorResponse::make($request, 422, 'The request is invalid.', fields: $invalid->errors);
             }
@@ -264,7 +286,11 @@ final class ActionHandler implements RequestHandlerInterface
         $type = $parameter->getType();
         if ($type === null) {
             // Check before route names, since a name alone cannot declare the parameter's type.
-            throw new \LogicException("The action {$this->name} of {$route} takes \${$name} with no type. Say what it is: a field by its type, such as string \${$name}, or the request, as " . ServerRequestInterface::class . '.');
+            throw new \LogicException(
+                "The action {$this->name} of {$route} takes \${$name} with no type. Say what it is: a field by its type, such as string \${$name}, or the request, as "
+                . ServerRequestInterface::class
+                . '.',
+            );
         }
         if ($parameter->isVariadic() || !$type instanceof \ReflectionNamedType) {
             throw new \LogicException("The action of {$route} takes \${$name}, which must have one plain type.");
@@ -272,18 +298,26 @@ final class ActionHandler implements RequestHandlerInterface
         $typeName = $type->getName();
         if (is_a($typeName, Socket::class, true)) {
             if ($this->websockets === null) {
-                throw new \LogicException("The action of {$route} takes a Socket parameter. Declare it with Route::websocket() instead of an HTTP route.");
+                throw new \LogicException(
+                    "The action of {$route} takes a Socket parameter. Declare it with Route::websocket() instead of an HTTP route.",
+                );
             }
             if ($typeName !== Socket::class && $typeName !== \Crab\WebSocket\Socket::class) {
-                throw new \LogicException("The action of {$route} takes {$typeName}; use " . Socket::class . ' for the socket parameter.');
+                throw new \LogicException(
+                    "The action of {$route} takes {$typeName}; use " . Socket::class . ' for the socket parameter.',
+                );
             }
             if ($this->socket !== null || $type->allowsNull() || $parameter->isPassedByReference()) {
-                throw new \LogicException("The action of {$route} needs one non-null Socket parameter, passed by value.");
+                throw new \LogicException(
+                    "The action of {$route} needs one non-null Socket parameter, passed by value.",
+                );
             }
             $this->socket = $name;
         } elseif (in_array($name, $names, true)) {
             if (!in_array($typeName, ['string', 'int', 'float', 'bool'], true)) {
-                throw new \LogicException("The action of {$route} takes the route parameter \${$name} as {$typeName}; it can be string, int, float or bool.");
+                throw new \LogicException(
+                    "The action of {$route} takes the route parameter \${$name} as {$typeName}; it can be string, int, float or bool.",
+                );
             }
             $this->parameters[$name] = $typeName;
             // The rules on it, #[Range(min: 1)] int $id, hold for a part of the address as for any field.
@@ -299,16 +333,22 @@ final class ActionHandler implements RequestHandlerInterface
         } elseif ($typeName === Data::class) {
             // The whole of the request's data, described on the parameter with #[Fields].
             if ($this->input !== null) {
-                throw new \LogicException("The action of {$route} takes two inputs, {$this->input[1]} and {$typeName}; describe their fields in one.");
+                throw new \LogicException(
+                    "The action of {$route} takes two inputs, {$this->input[1]} and {$typeName}; describe their fields in one.",
+                );
             }
             $this->input = [$name, $typeName];
         } elseif (class_exists($typeName)) {
             if ($this->input !== null) {
-                throw new \LogicException("The action of {$route} takes two inputs, {$this->input[1]} and {$typeName}; put their fields in one class.");
+                throw new \LogicException(
+                    "The action of {$route} takes two inputs, {$this->input[1]} and {$typeName}; put their fields in one class.",
+                );
             }
             $this->input = [$name, $typeName];
         } else {
-            throw new \LogicException("The action of {$route} takes {$typeName} \${$name}, which is neither the request, the user, a parameter of the pattern, a field nor an input class. Services belong in the constructor of an action class.");
+            throw new \LogicException(
+                "The action of {$route} takes {$typeName} \${$name}, which is neither the request, the user, a parameter of the pattern, a field nor an input class. Services belong in the constructor of an action class.",
+            );
         }
     }
 
@@ -317,10 +357,12 @@ final class ActionHandler implements RequestHandlerInterface
      */
     private static function isField(string $type): bool
     {
-        return in_array($type, ['int', 'float', 'string', 'bool', 'array', 'mixed'], true)
+        return (
+            in_array($type, ['int', 'float', 'string', 'bool', 'array', 'mixed'], true)
             || $type === \DateTimeImmutable::class
             || $type === \DateTimeInterface::class
-            || enum_exists($type);
+            || enum_exists($type)
+        );
     }
 
     /**
@@ -336,14 +378,18 @@ final class ActionHandler implements RequestHandlerInterface
         }
         $wellFormed = array_is_list($action) && count($action) === 2 && is_string($action[0]) && is_string($action[1]);
         if (!$wellFormed) {
-            throw new \LogicException("The action of {$route} is an array, which must be a class and the name of its method: [Users::class, 'show'].");
+            throw new \LogicException(
+                "The action of {$route} is an array, which must be a class and the name of its method: [Users::class, 'show'].",
+            );
         }
         [$class, $method] = $action;
         if (!class_exists($class)) {
             throw new \LogicException("The action of {$route} names the class {$class}, which does not exist.");
         }
-        if (!method_exists($class, $method) || !(new \ReflectionMethod($class, $method))->isPublic()) {
-            throw new \LogicException("The action of {$route} names {$class}::{$method}(), which is not a public method of that class.");
+        if (!method_exists($class, $method) || !new \ReflectionMethod($class, $method)->isPublic()) {
+            throw new \LogicException(
+                "The action of {$route} names {$class}::{$method}(), which is not a public method of that class.",
+            );
         }
         return [$class, $method];
     }
@@ -364,13 +410,21 @@ final class ActionHandler implements RequestHandlerInterface
      *
      * @param array<string, list<string>> $errors
      */
-    private static function parameter(string $value, string $type, string $name, array &$errors): string|int|float|bool|null
-    {
+    private static function parameter(
+        string $value,
+        string $type,
+        string $name,
+        array &$errors,
+    ): string|int|float|bool|null {
         if ($type === 'string') {
             return $value;
         }
         // Only when the number read is the number written: one past what an integer holds would be another.
-        if ($type === 'int' && preg_match('/^-?\d+$/D', $value) === 1 && (string) (int) $value === preg_replace('/^(-?)0+(?=\d)/', '$1', $value)) {
+        if (
+            $type === 'int'
+            && preg_match('/^-?\d+$/D', $value) === 1
+            && (string) (int) $value === preg_replace('/^(-?)0+(?=\d)/', '$1', $value)
+        ) {
             return (int) $value;
         }
         if ($type === 'float' && is_numeric($value)) {

@@ -24,7 +24,12 @@ final class ServerTest extends TestCase
         $this->directory = realpath(sys_get_temp_dir()) . '/crab-ws-route-' . bin2hex(random_bytes(6));
         mkdir($this->directory);
         $autoload = dirname(__DIR__, 2) . '/vendor/autoload.php';
-        file_put_contents($this->directory . '/cua', "<?php\nrequire " . var_export($autoload, true) . ";\n\$app = require __DIR__ . '/app.php';\nexit(\$app->console->run(array_slice(\$argv, 1)));\n");
+        file_put_contents(
+            $this->directory . '/cua',
+            "<?php\nrequire "
+            . var_export($autoload, true)
+            . ";\n\$app = require __DIR__ . '/app.php';\nexit(\$app->console->run(array_slice(\$argv, 1)));\n",
+        );
         $this->version('one');
         for ($port = 8200; $port <= 8299; ++$port) {
             $probe = @stream_socket_server("tcp://127.0.0.1:{$port}");
@@ -39,12 +44,21 @@ final class ServerTest extends TestCase
 
     protected function tearDown(): void
     {
-        if (!isset($this->directory)) { return; }
+        if (!isset($this->directory)) {
+            return;
+        }
         foreach ($this->clients as $client) {
-            if (is_resource($client)) { fclose($client); }
+            if (!is_resource($client)) {
+                continue;
+            }
+
+            fclose($client);
         }
         $this->command('stop', '--force', '--timeout=3');
-        $files = new \RecursiveIteratorIterator(new \RecursiveDirectoryIterator($this->directory, \FilesystemIterator::SKIP_DOTS), \RecursiveIteratorIterator::CHILD_FIRST);
+        $files = new \RecursiveIteratorIterator(
+            new \RecursiveDirectoryIterator($this->directory, \FilesystemIterator::SKIP_DOTS),
+            \RecursiveIteratorIterator::CHILD_FIRST,
+        );
         foreach ($files as $file) {
             $file->isDir() ? rmdir($file->getPathname()) : unlink($file->getPathname());
         }
@@ -59,7 +73,7 @@ final class ServerTest extends TestCase
         [$opcode, $payload] = $this->readFrame($failed);
         self::assertSame([8, 1011], [$opcode, unpack('n', $payload)[1]]);
         $this->replyClose($failed, $payload);
-        $this->waitFor(fn (): bool => is_file($this->directory . '/app.log'));
+        $this->waitFor(fn(): bool => is_file($this->directory . '/app.log'));
         $log = file_get_contents($this->directory . '/app.log');
         self::assertSame(1, substr_count($log, 'ERROR Unhandled failure: The action of WS /failure failed:'));
         self::assertStringContainsString('Crab\\Http\\HttpException', $log);
@@ -83,7 +97,7 @@ final class ServerTest extends TestCase
         self::assertStringStartsWith('two ', $greeting);
         $newPid = (int) substr($greeting, 4);
         self::assertNotSame($oldPid, $newPid);
-        $this->waitFor(fn (): bool => is_file($this->directory . '/finished-' . $oldPid));
+        $this->waitFor(fn(): bool => is_file($this->directory . '/finished-' . $oldPid));
 
         [$process, $pipes] = $this->startCommand('stop');
         try {
@@ -95,7 +109,10 @@ final class ServerTest extends TestCase
             [$status, $output] = $this->finishCommand($process, $pipes);
         }
         self::assertSame(0, $status, $output);
-        self::assertFileExists($this->directory . '/finished-' . $newPid, 'Stop waited for asynchronous code after receive().');
+        self::assertFileExists(
+            $this->directory . '/finished-' . $newPid,
+            'Stop waited for asynchronous code after receive().',
+        );
         self::assertFileDoesNotExist($this->directory . '/storage/crab.pid');
         $rows = array_filter(explode("\n", file_get_contents($this->directory . '/stopped')));
         self::assertCount(2, $rows);
@@ -115,34 +132,34 @@ final class ServerTest extends TestCase
     private function version(string $generation): void
     {
         $source = <<<'PHP'
-<?php
-final class SocketObserver implements Crab\Contracts\WorkerProvider
-{
-    public function register(Crab\Contracts\Container\Container $container): void {}
-    public function start(Crab\Engine\Process\Worker $worker, Crab\Contracts\Container\Container $container): void {}
-    public function stop(Crab\Engine\Process\Worker $worker, Crab\Contracts\Container\Container $container): void
-    {
-        file_put_contents(__DIR__ . '/stopped', getmypid() . ' ' . $worker->stats()['cutConnections'] . "\n", FILE_APPEND | LOCK_EX);
-    }
-}
-$app = new Crab\App(new Crab\Config\Config([
-    'server' => ['drain' => 2.0],
-    'websocket' => ['ping' => 0],
-    'log' => ['path' => __DIR__ . '/app.log'],
-]), basePath: __DIR__);
-$app->register(new SocketObserver());
-Crab\Route::websocket('/live', static function (Crab\Contracts\WebSocket\Socket $socket): void {
-    $socket->send('GENERATION ' . getmypid());
-    foreach ($socket as $message) {}
-    Crab\Engine\Async\Async::sleep(Crab\Engine\EventLoop::current(), 0.05);
-    file_put_contents(__DIR__ . '/finished-' . getmypid(), 'yes');
-});
-Crab\Route::websocket('/failure', static function (Crab\Contracts\WebSocket\Socket $socket): void {
-    $socket->accept();
-    throw new Crab\Http\HttpException(404, 'After upgrading');
-});
-return $app;
-PHP;
+            <?php
+            final class SocketObserver implements Crab\Contracts\WorkerProvider
+            {
+                public function register(Crab\Contracts\Container\Container $container): void {}
+                public function start(Crab\Engine\Process\Worker $worker, Crab\Contracts\Container\Container $container): void {}
+                public function stop(Crab\Engine\Process\Worker $worker, Crab\Contracts\Container\Container $container): void
+                {
+                    file_put_contents(__DIR__ . '/stopped', getmypid() . ' ' . $worker->stats()['cutConnections'] . "\n", FILE_APPEND | LOCK_EX);
+                }
+            }
+            $app = new Crab\App(new Crab\Config\Config([
+                'server' => ['drain' => 2.0],
+                'websocket' => ['ping' => 0],
+                'log' => ['path' => __DIR__ . '/app.log'],
+            ]), basePath: __DIR__);
+            $app->register(new SocketObserver());
+            Crab\Route::websocket('/live', static function (Crab\Contracts\WebSocket\Socket $socket): void {
+                $socket->send('GENERATION ' . getmypid());
+                foreach ($socket as $message) {}
+                Crab\Engine\Async\Async::sleep(Crab\Engine\EventLoop::current(), 0.05);
+                file_put_contents(__DIR__ . '/finished-' . getmypid(), 'yes');
+            });
+            Crab\Route::websocket('/failure', static function (Crab\Contracts\WebSocket\Socket $socket): void {
+                $socket->accept();
+                throw new Crab\Http\HttpException(404, 'After upgrading');
+            });
+            return $app;
+            PHP;
         file_put_contents($this->directory . '/app.php', str_replace('GENERATION', $generation, $source));
     }
 
@@ -152,9 +169,16 @@ PHP;
         self::assertIsResource($client, $error);
         $this->clients[] = $client;
         stream_set_timeout($client, 3);
-        fwrite($client, "GET {$path} HTTP/1.1\r\nHost: localhost\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Version: 13\r\nSec-WebSocket-Key: " . base64_encode(random_bytes(16)) . "\r\n\r\n");
+        fwrite(
+            $client,
+            "GET {$path} HTTP/1.1\r\nHost: localhost\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Version: 13\r\nSec-WebSocket-Key: "
+            . base64_encode(random_bytes(16))
+            . "\r\n\r\n",
+        );
         $head = '';
-        while (!str_ends_with($head, "\r\n\r\n")) { $head .= $this->readBytes($client, 1); }
+        while (!str_ends_with($head, "\r\n\r\n")) {
+            $head .= $this->readBytes($client, 1);
+        }
         self::assertStringStartsWith('HTTP/1.1 101', $head);
         return $client;
     }
@@ -163,7 +187,9 @@ PHP;
     {
         $head = $this->readBytes($client, 2);
         $length = ord($head[1]) & 127;
-        if ($length === 126) { $length = unpack('n', $this->readBytes($client, 2))[1]; }
+        if ($length === 126) {
+            $length = unpack('n', $this->readBytes($client, 2))[1];
+        }
         return [ord($head[0]) & 15, $this->readBytes($client, $length)];
     }
 
@@ -183,12 +209,23 @@ PHP;
     private function replyClose(mixed $client, string $payload): void
     {
         $mask = random_bytes(4);
-        fwrite($client, chr(136) . chr(128 | strlen($payload)) . $mask . ($payload ^ str_repeat($mask, (int) ceil(strlen($payload) / 4))));
+        fwrite(
+            $client,
+            chr(136)
+            . chr(128 | strlen($payload))
+            . $mask
+            . ($payload ^ str_repeat($mask, (int) ceil(strlen($payload) / 4))),
+        );
     }
 
     private function startCommand(string ...$arguments): array
     {
-        $process = proc_open([PHP_BINARY, $this->directory . '/cua', ...$arguments], [1 => ['pipe', 'w'], 2 => ['pipe', 'w']], $pipes, $this->directory);
+        $process = proc_open(
+            [PHP_BINARY, $this->directory . '/cua', ...$arguments],
+            [1 => ['pipe', 'w'], 2 => ['pipe', 'w']],
+            $pipes,
+            $this->directory,
+        );
         self::assertIsResource($process);
         return [$process, $pipes];
     }
@@ -210,7 +247,9 @@ PHP;
     private function waitFor(\Closure $ready): void
     {
         $deadline = microtime(true) + 3;
-        while (!$ready() && microtime(true) < $deadline) { usleep(5000); }
+        while (!$ready() && microtime(true) < $deadline) {
+            usleep(5000);
+        }
         self::assertTrue($ready());
     }
 }

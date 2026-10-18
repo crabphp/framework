@@ -5,9 +5,9 @@ declare(strict_types=1);
 namespace Crab\Engine\Network;
 
 use Closure;
-use InvalidArgumentException;
 use Crab\Engine\EventLoop;
 use Crab\Engine\FailureReporter;
+use InvalidArgumentException;
 use RuntimeException;
 use Throwable;
 
@@ -26,13 +26,22 @@ final class Connector
         float $timeout = 5.0,
     ): Closure {
         $parts = parse_url($address);
-        if ($parts === false || ($parts['scheme'] ?? '') !== 'tcp'
+        if (
+            $parts === false
+            || ($parts['scheme'] ?? '') !== 'tcp'
             || !isset($parts['host'], $parts['port'])
             || filter_var(trim($parts['host'], '[]'), FILTER_VALIDATE_IP) === false
-            || $parts['port'] < 1 || $parts['port'] > 65535
-            || isset($parts['user']) || isset($parts['pass']) || isset($parts['path'])
-            || isset($parts['query']) || isset($parts['fragment'])) {
-            throw new InvalidArgumentException('Connect requires a numeric tcp://IPv4:port or tcp://[IPv6]:port endpoint.');
+            || $parts['port'] < 1
+            || $parts['port'] > 65_535
+            || isset($parts['user'])
+            || isset($parts['pass'])
+            || isset($parts['path'])
+            || isset($parts['query'])
+            || isset($parts['fragment'])
+        ) {
+            throw new InvalidArgumentException(
+                'Connect requires a numeric tcp://IPv4:port or tcp://[IPv6]:port endpoint.',
+            );
         }
         if (!is_finite($timeout) || $timeout <= 0) {
             throw new InvalidArgumentException('Connect timeout must be positive.');
@@ -48,16 +57,25 @@ final class Connector
         $watcher = $timer = $deferred = null;
         $done = false;
         $finish = static function (?Throwable $failure = null) use (
-            $loop, $address, $completion, &$stream, &$watcher, &$timer, &$deferred, &$done,
+            $loop,
+            $address,
+            $completion,
+            &$stream,
+            &$watcher,
+            &$timer,
+            &$deferred,
+            &$done,
         ): void {
             if ($done) {
                 return;
             }
             $done = true;
             foreach ([$watcher, $timer, $deferred] as $id) {
-                if ($id !== null) {
-                    $loop->cancel($id);
+                if ($id === null) {
+                    continue;
                 }
+
+                $loop->cancel($id);
             }
             $connection = null;
             if ($failure !== null) {
@@ -76,7 +94,9 @@ final class Connector
             }
         };
         if ($stream === false) {
-            $deferred = $loop->defer(static fn () => $finish(new RuntimeException("Connect to {$address} failed: {$error}", $errno)));
+            $deferred = $loop->defer(static fn() => $finish(
+                new RuntimeException("Connect to {$address} failed: {$error}", $errno),
+            ));
         } else {
             stream_set_blocking($stream, false);
             $watcher = $loop->onWritable($stream, static function () use (&$stream, $address, $finish): void {
@@ -87,8 +107,10 @@ final class Connector
                     $finish();
                 }
             });
-            $timer = $loop->delay($timeout, static fn () => $finish(new RuntimeException("Connect to {$address} timed out.")));
+            $timer = $loop->delay($timeout, static fn() => $finish(
+                new RuntimeException("Connect to {$address} timed out."),
+            ));
         }
-        return static fn () => $finish(new RuntimeException("Connect to {$address} cancelled."));
+        return static fn() => $finish(new RuntimeException("Connect to {$address} cancelled."));
     }
 }

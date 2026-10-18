@@ -19,9 +19,9 @@ use PHPUnit\Framework\TestCase;
 
 final readonly class Caller implements Identity
 {
-    public function __construct(public int|string $id)
-    {
-    }
+    public function __construct(
+        public int|string $id,
+    ) {}
 }
 
 final class RateLimitTest extends TestCase
@@ -29,8 +29,8 @@ final class RateLimitTest extends TestCase
     public function testAClientIsLetThroughUpToTheLimitAndToldWhenToTryAgain(): void
     {
         [$app, $clock] = self::app();
-        $app->router->post('/login', static fn (): array => ['ok' => true])->middleware(new RateLimit(3, per: 60));
-        $app->router->get('/open', static fn (): array => ['ok' => true]);
+        $app->router->post('/login', static fn(): array => ['ok' => true])->middleware(new RateLimit(3, per: 60));
+        $app->router->get('/open', static fn(): array => ['ok' => true]);
         $api = new Api($app);
 
         $remaining = [];
@@ -41,10 +41,13 @@ final class RateLimitTest extends TestCase
 
         // 12:00:00 is the start of a window, so the next is a minute away.
         $refused = $api->post('/login');
-        self::assertSame(
-            [429, '60', '3', '0', 'Too many requests. Try again in 60 seconds.'],
-            [$refused->status, $refused->header('Retry-After'), $refused->header('X-RateLimit-Limit'), $refused->header('X-RateLimit-Remaining'), $refused->json('error.message')],
-        );
+        self::assertSame([429, '60', '3', '0', 'Too many requests. Try again in 60 seconds.'], [
+            $refused->status,
+            $refused->header('Retry-After'),
+            $refused->header('X-RateLimit-Limit'),
+            $refused->header('X-RateLimit-Remaining'),
+            $refused->json('error.message'),
+        ]);
         $api->get('/open')->assertStatus(200);
 
         $clock->advance('+59 seconds');
@@ -57,12 +60,21 @@ final class RateLimitTest extends TestCase
     {
         [$app] = self::app();
         $limit = new RateLimit(1, per: 60);
-        $app->router->get('/a', static fn (): array => [])->middleware($limit);
-        $app->router->get('/b', static fn (): array => [])->middleware($limit);
-        $app->router->get('/named', static fn (): array => [])->middleware(new RateLimit(1, per: 60, name: 'other'));
-        $app->router->get('/tenant', static fn (): array => [])->middleware(new RateLimit(1, per: 60, name: 'tenant', by: static fn ($request): string => $request->getHeaderLine('X-Tenant')));
+        $app->router->get('/a', static fn(): array => [])->middleware($limit);
+        $app->router->get('/b', static fn(): array => [])->middleware($limit);
+        $app->router->get('/named', static fn(): array => [])->middleware(new RateLimit(1, per: 60, name: 'other'));
+        $app->router->get('/tenant', static fn(): array => [])->middleware(new RateLimit(
+            1,
+            per: 60,
+            name: 'tenant',
+            by: static fn($request): string => $request->getHeaderLine('X-Tenant'),
+        ));
         $api = new Api($app);
-        $from = static fn (string $address, string $path = '/a'): int => $app->handle(new Request('GET', $path, serverParams: ['REMOTE_ADDR' => $address]))->getStatusCode();
+        $from = static fn(string $address, string $path = '/a'): int => $app->handle(new Request(
+            'GET',
+            $path,
+            serverParams: ['REMOTE_ADDR' => $address],
+        ))->getStatusCode();
 
         self::assertSame([200, 429, 200], [$from('203.0.113.7'), $from('203.0.113.7'), $from('203.0.113.8')]);
         // One limit on two routes is one count; a limit of another name is another.
@@ -85,7 +97,7 @@ final class RateLimitTest extends TestCase
     public function testItSaysWhatItNeedsWhenItHasNoCacheOrImpossibleNumbers(): void
     {
         $app = new App();
-        $app->router->get('/a', static fn (): array => [])->middleware(new RateLimit(1));
+        $app->router->get('/a', static fn(): array => [])->middleware(new RateLimit(1));
         try {
             // As a worker does when it starts.
             $app->router->assemble();

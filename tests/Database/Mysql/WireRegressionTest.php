@@ -37,7 +37,7 @@ final class WireRegressionTest extends TestCase
                 self::assertSame("\x17" . pack('V', 2), substr($server->receive(), 0, 5));
                 $server->ok();
             }, static function (string $dsn) use ($number): void {
-                $connection = new Connection(static fn () => null, $dsn);
+                $connection = new Connection(static fn() => null, $dsn);
                 try {
                     try {
                         $connection->execute('UPDATE example SET n = 1');
@@ -55,33 +55,36 @@ final class WireRegressionTest extends TestCase
 
     public function testContinuousFastAuthenticationCannotBypassTheSetupBound(): void
     {
-        ScriptedServer::run(static function (ScriptedServer $server): void {
-            $server->greeting('caching_sha2_password');
-            $server->receive();
-            try {
-                for ($i = 0; $i < 100_000; ++$i) {
-                    $server->send("\x01\x03");
-                }
-                $server->ok();
-                $server->prepare();
-                $server->sequence = 0;
+        ScriptedServer::run(
+            static function (ScriptedServer $server): void {
+                $server->greeting('caching_sha2_password');
                 $server->receive();
-                $server->ok();
-            } catch (\RuntimeException) {
-                // The bounded client closes while this peer is still talking.
-            }
-        }, static function (string $dsn): void {
-            $connection = new Connection(static fn () => null, $dsn, timeout: 0.01);
-            $start = hrtime(true);
-            try {
-                $connection->execute('SELECT 1');
-                self::fail('Repeated fast-auth replies bypassed connection setup.');
-            } catch (DatabaseException) {
-                self::assertLessThan(0.15, (hrtime(true) - $start) / 1e9);
-            } finally {
-                $connection->close();
-            }
-        });
+                try {
+                    for ($i = 0; $i < 100_000; ++$i) {
+                        $server->send("\x01\x03");
+                    }
+                    $server->ok();
+                    $server->prepare();
+                    $server->sequence = 0;
+                    $server->receive();
+                    $server->ok();
+                } catch (\RuntimeException) {
+                    // The bounded client closes while this peer is still talking.
+                }
+            },
+            static function (string $dsn): void {
+                $connection = new Connection(static fn() => null, $dsn, timeout: 0.01);
+                $start = hrtime(true);
+                try {
+                    $connection->execute('SELECT 1');
+                    self::fail('Repeated fast-auth replies bypassed connection setup.');
+                } catch (DatabaseException) {
+                    self::assertLessThan(0.15, (hrtime(true) - $start) / 1e9);
+                } finally {
+                    $connection->close();
+                }
+            },
+        );
     }
 
     public function testAProgressingAuthenticationSwitchStillSharesTheSetupDeadline(): void
@@ -93,7 +96,7 @@ final class WireRegressionTest extends TestCase
             $server->send("\xfemysql_native_password\0abcdefghijklmnopqrst\0");
             self::assertTrue($server->eof());
         }, static function (string $dsn): void {
-            $connection = new Connection(static fn () => null, $dsn, timeout: 0.01);
+            $connection = new Connection(static fn() => null, $dsn, timeout: 0.01);
             try {
                 $connection->execute('SELECT 1');
                 self::fail('An authentication switch started after the deadline.');
@@ -111,7 +114,7 @@ final class WireRegressionTest extends TestCase
             $server->send(str_repeat('x', 10_000));
         }, static function (string $dsn, Worker $worker): void {
             $stream = new Stream($worker->loop);
-            $deadline = hrtime(true) / 1e9 + 0.05;
+            $deadline = (hrtime(true) / 1e9) + 0.05;
             try {
                 $stream->open(new Settings($dsn), new DnsResolver(fallback: false), $deadline, null);
                 self::assertSame(4, strlen($stream->read(4, $deadline)));
@@ -139,7 +142,7 @@ final class WireRegressionTest extends TestCase
             $server->send("\0\0\0\x02\0");
             self::assertTrue($server->eof());
         }, static function (string $dsn): void {
-            $connection = new Connection(static fn () => null, $dsn);
+            $connection = new Connection(static fn() => null, $dsn);
             try {
                 $connection->execute('UPDATE example SET n = 1');
                 self::fail('The acknowledgement omitted its mandatory warnings field.');
@@ -208,7 +211,9 @@ final class WireRegressionTest extends TestCase
                 $server->sequence = 0;
                 self::assertSame("\x01", $server->receive(), 'Application SQL ran before the failed TLS status check.');
             }, static function (string $dsn) use ($path): void {
-                $manager = new DatabaseManager(['main' => ['dsn' => $dsn, 'options' => ['ssl' => ['cafile' => $path]]]], 'main');
+                $manager = new DatabaseManager([
+                    'main' => ['dsn' => $dsn, 'options' => ['ssl' => ['cafile' => $path]]],
+                ], 'main');
                 try {
                     $manager->connection()->first('SELECT application_work');
                     self::fail('A session reporting no SSL cipher was lent to application work.');

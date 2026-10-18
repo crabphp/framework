@@ -23,8 +23,7 @@ final readonly class Broadcaster implements BroadcasterContract
         private Carrier $carrier,
         private array $channels = [],
         private ?Connection $transaction = null,
-    ) {
-    }
+    ) {}
 
     public function to(string ...$channels): BroadcasterContract
     {
@@ -58,7 +57,10 @@ final readonly class Broadcaster implements BroadcasterContract
                 try {
                     $this->carrier->publish($this->channels, $encoded);
                 } catch (\Throwable $error) {
-                    FailureReporter::report('Broadcast failed after commit; the write is committed and clients must refetch state', $error);
+                    FailureReporter::report(
+                        'Broadcast failed after commit; the write is committed and clients must refetch state',
+                        $error,
+                    );
                 }
             });
         }

@@ -22,8 +22,7 @@ final class Connections
     public function __construct(
         private readonly Settings $settings = new Settings(),
         private readonly ?\Closure $memberships = null,
-    ) {
-    }
+    ) {}
 
     /**
      * Reserves before running application code. The request fiber waits for
@@ -31,10 +30,16 @@ final class Connections
      *
      * @param \Closure(Socket): mixed $action The action with its validated arguments.
      */
-    public function upgrade(Request $request, string $route, \Closure $action, ?LoggerInterface $logger = null): ResponseInterface
-    {
+    public function upgrade(
+        Request $request,
+        string $route,
+        \Closure $action,
+        ?LoggerInterface $logger = null,
+    ): ResponseInterface {
         if ($request->getBody()->getSize() !== 0) {
-            return ErrorResponse::make($request, 400, 'A WebSocket upgrade cannot carry a request body.', ['Connection' => 'close']);
+            return ErrorResponse::make($request, 400, 'A WebSocket upgrade cannot carry a request body.', [
+                'Connection' => 'close',
+            ]);
         }
         $handshake = $this->handshake($request);
         $response = $handshake->response;
@@ -42,11 +47,27 @@ final class Connections
             return ErrorResponse::make($request, $response->status, $response->body, $response->headers);
         }
         if ($this->reserved >= $this->settings->maxConnections) {
-            return ErrorResponse::make($request, 503, 'The worker has reached websocket.max_connections. Try again shortly.', ['Retry-After' => '1']);
+            return ErrorResponse::make(
+                $request,
+                503,
+                'The worker has reached websocket.max_connections. Try again shortly.',
+                ['Retry-After' => '1'],
+            );
         }
         ++$this->reserved;
-        $admission = new Admission(function (): void { --$this->reserved; });
-        $opening = new Opening($request, $response, $action, $this->settings, $admission, $route, $logger, $this->memberships);
+        $admission = new Admission(function (): void {
+            --$this->reserved;
+        });
+        $opening = new Opening(
+            $request,
+            $response,
+            $action,
+            $this->settings,
+            $admission,
+            $route,
+            $logger,
+            $this->memberships,
+        );
         return $opening->response();
     }
 
@@ -56,7 +77,12 @@ final class Connections
         foreach ($request->getHeaders() as $name => $values) {
             $headers[strtolower($name)] = $values;
         }
-        $engineRequest = new EngineRequest($request->getMethod(), $request->getRequestTarget(), $request->getProtocolVersion(), $headers);
+        $engineRequest = new EngineRequest(
+            $request->getMethod(),
+            $request->getRequestTarget(),
+            $request->getProtocolVersion(),
+            $headers,
+        );
         return new Handshake($engineRequest);
     }
 }

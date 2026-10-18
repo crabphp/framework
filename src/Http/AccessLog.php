@@ -32,8 +32,14 @@ final readonly class AccessLog implements Middleware, UsesContainer
      * PSR-3 level names, checked before the middleware serves a request.
      */
     private const LEVELS = [
-        LogLevel::DEBUG, LogLevel::INFO, LogLevel::NOTICE, LogLevel::WARNING,
-        LogLevel::ERROR, LogLevel::CRITICAL, LogLevel::ALERT, LogLevel::EMERGENCY,
+        LogLevel::DEBUG,
+        LogLevel::INFO,
+        LogLevel::NOTICE,
+        LogLevel::WARNING,
+        LogLevel::ERROR,
+        LogLevel::CRITICAL,
+        LogLevel::ALERT,
+        LogLevel::EMERGENCY,
     ];
 
     /**
@@ -47,7 +53,13 @@ final readonly class AccessLog implements Middleware, UsesContainer
         private ?LoggerInterface $logger = null,
     ) {
         if (!in_array($level, self::LEVELS, true)) {
-            throw new \InvalidArgumentException('"' . $level . '" is not a log level. Set the access log level to one of ' . implode(', ', self::LEVELS) . '.');
+            throw new \InvalidArgumentException(
+                '"'
+                . $level
+                . '" is not a log level. Set the access log level to one of '
+                . implode(', ', self::LEVELS)
+                . '.',
+            );
         }
     }
 
@@ -60,7 +72,9 @@ final readonly class AccessLog implements Middleware, UsesContainer
             return $this;
         }
         if (!$container->has(LoggerInterface::class)) {
-            throw new \LogicException('An access log needs a PSR-3 logger: register a log provider that binds Psr\Log\LoggerInterface.');
+            throw new \LogicException(
+                'An access log needs a PSR-3 logger: register a log provider that binds Psr\Log\LoggerInterface.',
+            );
         }
         return new self($this->skip, $this->level, $container->get(LoggerInterface::class));
     }
@@ -72,7 +86,9 @@ final readonly class AccessLog implements Middleware, UsesContainer
     public function process(ServerRequestInterface $request, RequestHandlerInterface $handler): ResponseInterface
     {
         if ($this->logger === null) {
-            throw new \LogicException('This access log has no logger. Register a log provider that binds Psr\Log\LoggerInterface and put it in withMiddleware(), or give it one: new AccessLog(logger: $logger).');
+            throw new \LogicException(
+                'This access log has no logger. Register a log provider that binds Psr\Log\LoggerInterface and put it in withMiddleware(), or give it one: new AccessLog(logger: $logger).',
+            );
         }
         try {
             $path = $request->getUri()->getPath();
@@ -98,7 +114,9 @@ final readonly class AccessLog implements Middleware, UsesContainer
                     'path' => $path,
                     'status' => $status,
                     'ms' => $ms,
-                    'ip' => $request instanceof Request ? $request->ip() : ($request->getServerParams()['REMOTE_ADDR'] ?? ''),
+                    'ip' => $request instanceof Request
+                        ? $request->ip()
+                        : $request->getServerParams()['REMOTE_ADDR'] ?? '',
                     'bytes' => $response?->getBody()->getSize(),
                 ];
                 $id = $request->getAttribute(RequestId::ATTRIBUTE);

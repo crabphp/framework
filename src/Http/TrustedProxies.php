@@ -31,12 +31,15 @@ final readonly class TrustedProxies implements Middleware
     /**
      * @param list<string> $proxies Addresses, or ranges such as "10.0.0.0/8" and "fd00::/8".
      */
-    public function __construct(private array $proxies)
-    {
+    public function __construct(
+        private array $proxies,
+    ) {
         foreach ($proxies as $proxy) {
             $address = explode('/', $proxy)[0];
             if (@inet_pton($address) === false) {
-                throw new \InvalidArgumentException("\"{$proxy}\" is not an address or a range of addresses, such as 10.0.0.0/8.");
+                throw new \InvalidArgumentException(
+                    "\"{$proxy}\" is not an address or a range of addresses, such as 10.0.0.0/8.",
+                );
             }
         }
     }
@@ -48,7 +51,10 @@ final readonly class TrustedProxies implements Middleware
             return $handler->handle($request);
         }
         $client = $peer;
-        $hops = array_filter(array_map(trim(...), explode(',', $request->getHeaderLine('X-Forwarded-For'))), static fn (string $hop): bool => $hop !== '');
+        $hops = array_filter(
+            array_map(trim(...), explode(',', $request->getHeaderLine('X-Forwarded-For'))),
+            static fn(string $hop): bool => $hop !== '',
+        );
         foreach (array_reverse($hops) as $hop) {
             if (@inet_pton($hop) === false) {
                 break;

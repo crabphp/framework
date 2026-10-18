@@ -43,8 +43,8 @@ final class ResponseEncoderOptimizationTest extends TestCase
         $wire = self::encode(new Response(headers: ['DaTe' => $explicit], body: 'explicit'));
 
         self::assertSame($explicit, self::dateHeader($wire));
-        self::assertSame($cachedSecond, (new ReflectionProperty(ResponseEncoder::class, 'dateSecond'))->getValue());
-        self::assertSame($cachedDate, (new ReflectionProperty(ResponseEncoder::class, 'date'))->getValue());
+        self::assertSame($cachedSecond, new ReflectionProperty(ResponseEncoder::class, 'dateSecond')->getValue());
+        self::assertSame($cachedDate, new ReflectionProperty(ResponseEncoder::class, 'date')->getValue());
 
         $before = time();
         $next = self::encode(new Response(body: 'generated'));
@@ -60,7 +60,10 @@ final class ResponseEncoderOptimizationTest extends TestCase
         $wire = implode('', iterator_to_array($encoder->bytes()));
 
         self::assertSame($expectedClose, $encoder->close);
-        self::assertStringContainsString("\r\nconnection: " . ($expectedClose ? 'close' : 'keep-alive') . "\r\n", $wire);
+        self::assertStringContainsString(
+            "\r\nconnection: " . ($expectedClose ? 'close' : 'keep-alive') . "\r\n",
+            $wire,
+        );
         self::assertStringEndsWith("\r\n\r\nok", $wire);
     }
 
@@ -109,7 +112,12 @@ final class ResponseEncoderOptimizationTest extends TestCase
         $dateProperty = new ReflectionProperty(ResponseEncoder::class, 'date');
         $previousSecond = $secondProperty->getValue();
         $previousDate = $dateProperty->getValue();
-        $this->deferCleanup(static function () use ($secondProperty, $dateProperty, $previousSecond, $previousDate): void {
+        $this->deferCleanup(static function () use (
+            $secondProperty,
+            $dateProperty,
+            $previousSecond,
+            $previousDate,
+        ): void {
             $secondProperty->setValue(null, $previousSecond);
             $dateProperty->setValue(null, $previousDate);
         });
@@ -124,7 +132,7 @@ final class ResponseEncoderOptimizationTest extends TestCase
 
     private static function encode(Response $response): string
     {
-        return implode('', iterator_to_array((new ResponseEncoder($response, self::request()))->bytes()));
+        return implode('', iterator_to_array(new ResponseEncoder($response, self::request())->bytes()));
     }
 
     private static function dateHeader(string $wire): string

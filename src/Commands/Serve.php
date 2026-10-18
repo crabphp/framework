@@ -12,9 +12,9 @@ use Crab\Server;
 
 final readonly class Serve implements Command
 {
-    public function __construct(private App $app)
-    {
-    }
+    public function __construct(
+        private App $app,
+    ) {}
 
     public function description(): string
     {
@@ -54,12 +54,16 @@ final readonly class Serve implements Command
                 return 1;
             }
             if ($input->option('watch') !== null) {
-                $output->error('--watch restarts the server when a file changes, which a server in the background does not do; use `reload`.');
+                $output->error(
+                    '--watch restarts the server when a file changes, which a server in the background does not do; use `reload`.',
+                );
                 return 1;
             }
             $running = $server->running();
             if ($running !== null) {
-                $output->error("A server is already running in the background, pid {$running}. Use `reload` to give it new code, or `stop` to end it.");
+                $output->error(
+                    "A server is already running in the background, pid {$running}. Use `reload` to give it new code, or `stop` to end it.",
+                );
                 return 1;
             }
             try {
@@ -74,7 +78,11 @@ final readonly class Serve implements Command
         $paths = $this->watched($input);
         if ($paths !== null) {
             // This process only watches; a child serves, and is started again when a file changes.
-            return $server->watch([...self::withoutWatch($_SERVER['argv'] ?? []), '--no-watch'], $paths, $output->line(...));
+            return $server->watch(
+                [...self::withoutWatch($_SERVER['argv'] ?? []), '--no-watch'],
+                $paths,
+                $output->line(...),
+            );
         }
         if (!$input->flag('quiet')) {
             $this->announce($output, $address, $workers, $single);
@@ -131,9 +139,16 @@ final readonly class Serve implements Command
             $runs = $servers->label($id);
             if ($servers->kind($id) === 'groups' && count($groups) > 1) {
                 // Which groups of workers it brought: "queue:mail" is "mail".
-                $runs .= ($runs === '' ? '' : ': ') . implode(', ', array_map(static fn ($group): string => preg_replace('/^[^:]+:/', '', $group->group) . ' x' . $group->workers, $groups));
+                $runs .=
+                    ($runs === '' ? '' : ': ')
+                    . implode(', ', array_map(
+                        static fn($group): string => (
+                            preg_replace('/^[^:]+:/', '', $group->group) . ' x' . $group->workers
+                        ),
+                        $groups,
+                    ));
             }
-            $rows[] = [$id, (string) array_sum(array_map(static fn ($group): int => $group->workers, $groups)), $runs];
+            $rows[] = [$id, (string) array_sum(array_map(static fn($group): int => $group->workers, $groups)), $runs];
         }
         foreach (array_diff($servers->ids(), $with) as $id) {
             $rows[] = [$id, 'off', $servers->label($id)];
@@ -141,7 +156,7 @@ final readonly class Serve implements Command
         // A rule under the heading, as wide as each column.
         $rule = [];
         foreach ($rows[0] as $column => $heading) {
-            $rule[] = str_repeat('-', max(array_map(static fn (array $row): int => strlen($row[$column]), $rows)));
+            $rule[] = str_repeat('-', max(array_map(static fn(array $row): int => strlen($row[$column]), $rows)));
         }
         array_splice($rows, 1, 0, [$rule]);
         $output->line();
@@ -210,9 +225,11 @@ final readonly class Serve implements Command
     {
         $kept = [];
         foreach ($arguments as $argument) {
-            if ($argument !== '--watch' && !str_starts_with($argument, '--watch=')) {
-                $kept[] = $argument;
+            if (!($argument !== '--watch' && !str_starts_with($argument, '--watch='))) {
+                continue;
             }
+
+            $kept[] = $argument;
         }
         return $kept;
     }

@@ -25,10 +25,15 @@ final class StreamSlice implements StreamInterface
      * @param int $offset Where the part starts in the resource.
      * @param int $length How many bytes the part is.
      */
-    public function __construct(mixed $resource, private readonly int $offset, private readonly int $length)
-    {
+    public function __construct(
+        mixed $resource,
+        private readonly int $offset,
+        private readonly int $length,
+    ) {
         if (!is_resource($resource) || $offset < 0 || $length < 0) {
-            throw new \InvalidArgumentException('A stream slice needs a stream resource, and an offset and a length that are not negative.');
+            throw new \InvalidArgumentException(
+                'A stream slice needs a stream resource, and an offset and a length that are not negative.',
+            );
         }
         $this->resource = $resource;
     }
@@ -153,7 +158,7 @@ final class StreamSlice implements StreamInterface
             return $key === null ? [] : null;
         }
         $metadata = stream_get_meta_data($this->resource);
-        return $key === null ? $metadata : ($metadata[$key] ?? null);
+        return $key === null ? $metadata : $metadata[$key] ?? null;
     }
 
     /**

@@ -1014,4 +1014,4 @@ php bin/crab examples/servers.php --single   # the engine alone
 
 The design is described in [ARCHITECTURE.md](ARCHITECTURE.md), the flow for building a component in [COMPONENTS.md](COMPONENTS.md) and the conventions in [AGENTS.md](AGENTS.md).
 
-`composer test:linux` and `composer soak` are manual checks, described in the engine README.
+`composer test:linux` and `composer soak` are manual checks, described in the engine README. [CONTRIBUTING.md](CONTRIBUTING.md) says how to set up, test, format and lint, and [RELEASING.md](RELEASING.md) is the release checklist.

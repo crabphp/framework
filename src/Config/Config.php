@@ -14,9 +14,9 @@ final class Config implements ConfigContract
     /**
      * @param array<string, mixed> $items
      */
-    public function __construct(private array $items = [])
-    {
-    }
+    public function __construct(
+        private array $items = [],
+    ) {}
 
     /**
      * Reads every PHP file of a directory; each returns an array and is
@@ -92,7 +92,10 @@ final class Config implements ConfigContract
     {
         foreach ($set as $key => $value) {
             $default = $defaults[$key] ?? null;
-            $defaults[$key] = is_array($value) && is_array($default) && !array_is_list($value) && !array_is_list($default)
+            $defaults[$key] = is_array($value)
+            && is_array($default)
+            && !array_is_list($value)
+            && !array_is_list($default)
                 ? self::over($default, $value)
                 : $value;
         }

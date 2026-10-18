@@ -1,0 +1,69 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  quality:
+    name: Format, lint, docs
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          coverage: none
+      - run: composer install --no-interaction --no-progress
+      - run: composer format:check
+      - run: composer lint
+      - run: composer docs:check
+
+  linux:
+    name: Tests (Linux, SQLite and MySQL)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      mysql:
+        image: mysql:8.4
+        env:
+          MYSQL_ALLOW_EMPTY_PASSWORD: 'yes'
+          MYSQL_DATABASE: crab_test
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1"
+          --health-interval=5s --health-timeout=5s --health-retries=30
+    env:
+      CRAB_TEST_MYSQL_DSN: mysql:host=127.0.0.1;port=3306;dbname=crab_test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          extensions: mbstring, pcntl, posix, sockets, pdo_sqlite, pdo_mysql
+          coverage: none
+      - run: composer install --no-interaction --no-progress
+      - run: vendor/bin/phpunit
+
+  macos:
+    name: Tests (macOS)
+    runs-on: macos-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          extensions: mbstring, pcntl, posix, sockets, pdo_sqlite
+          coverage: none
+      - run: composer install --no-interaction --no-progress
+      - run: vendor/bin/phpunit

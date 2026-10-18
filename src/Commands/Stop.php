@@ -12,9 +12,9 @@ use Crab\Server;
 
 final readonly class Stop implements Command
 {
-    public function __construct(private App $app)
-    {
-    }
+    public function __construct(
+        private App $app,
+    ) {}
 
     public function description(): string
     {

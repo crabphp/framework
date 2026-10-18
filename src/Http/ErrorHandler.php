@@ -19,9 +19,10 @@ use Psr\Log\LoggerInterface;
  */
 final readonly class ErrorHandler implements Middleware
 {
-    public function __construct(private LoggerInterface $logger, private bool $debug = false)
-    {
-    }
+    public function __construct(
+        private LoggerInterface $logger,
+        private bool $debug = false,
+    ) {}
 
     public function process(ServerRequestInterface $request, RequestHandlerInterface $handler): ResponseInterface
     {

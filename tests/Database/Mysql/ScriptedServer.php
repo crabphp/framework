@@ -17,8 +17,11 @@ use Crab\Testing\WorkerHarness;
 final class ScriptedServer
 {
     public int $sequence = 0;
-    public function __construct(private mixed $socket, private readonly EventLoop $loop)
-    {
+
+    public function __construct(
+        private mixed $socket,
+        private readonly EventLoop $loop,
+    ) {
         stream_set_blocking($socket, false);
         stream_set_read_buffer($socket, 0);
     }
@@ -29,7 +32,7 @@ final class ScriptedServer
             $offset = 0;
             while ($offset < strlen($packet)) {
                 $written = @fwrite($this->socket, substr($packet, $offset));
-                if ($written === false || ($written === 0 && feof($this->socket))) {
+                if ($written === false || $written === 0 && feof($this->socket)) {
                     throw new \RuntimeException('The fake MySQL client closed while its peer was sending.');
                 }
                 if ($written === 0) {
@@ -97,7 +100,9 @@ final class ScriptedServer
     private function wait(bool $writable): void
     {
         $suspension = $this->loop->getSuspension();
-        $watcher = $writable ? $this->loop->onWritable($this->socket, static fn () => $suspension->resume()) : $this->loop->onReadable($this->socket, static fn () => $suspension->resume());
+        $watcher = $writable
+            ? $this->loop->onWritable($this->socket, static fn() => $suspension->resume())
+            : $this->loop->onReadable($this->socket, static fn() => $suspension->resume());
         try {
             $suspension->suspend();
         } finally {
@@ -107,8 +112,21 @@ final class ScriptedServer
 
     public function greeting(string $plugin, int $extraFlags = 0): void
     {
-        $flags = 0x28820d | 0x60000 | $extraFlags;
-        $this->send("\x0a8.0.0-test\0" . pack('V', 123) . '12345678' . "\0" . pack('v', $flags & 65535) . "\x2d\x02\0" . pack('v', $flags >> 16) . "\x15" . str_repeat("\0", 10) . "abcdefgh1234\0" . $plugin . "\0");
+        $flags = 0x28_820d | 0x6_0000 | $extraFlags;
+        $this->send(
+            "\x0a8.0.0-test\0"
+            . pack('V', 123)
+            . '12345678'
+            . "\0"
+            . pack('v', $flags & 65_535)
+            . "\x2d\x02\0"
+            . pack('v', $flags >> 16)
+            . "\x15"
+            . str_repeat("\0", 10)
+            . "abcdefgh1234\0"
+            . $plugin
+            . "\0",
+        );
     }
 
     public function ok(): void
@@ -133,8 +151,15 @@ final class ScriptedServer
 
     public static function column(string $name, int $type = 3): string
     {
-        return Codec::string('def') . str_repeat("\0", 3) . Codec::string($name) . Codec::string($name)
-            . "\x0c" . pack('vVCvC', 45, 11, $type, 0, 0) . "\0\0";
+        return (
+            Codec::string('def')
+            . str_repeat("\0", 3)
+            . Codec::string($name)
+            . Codec::string($name)
+            . "\x0c"
+            . pack('vVCvC', 45, 11, $type, 0, 0)
+            . "\0\0"
+        );
     }
 
     /**
@@ -148,14 +173,30 @@ final class ScriptedServer
             throw new \RuntimeException('Cannot create the fake MySQL socket: ' . $reason);
         }
         stream_set_blocking($listener, false);
-        $dsn = $unix ? 'mysql:unix_socket=' . $path . ';dbname=crab_test' : 'mysql:host=' . str_replace(':', ';port=', stream_socket_get_name($listener, false)) . ';dbname=crab_test';
+        $dsn = $unix
+            ? 'mysql:unix_socket=' . $path . ';dbname=crab_test'
+            : 'mysql:host='
+            . str_replace(':', ';port=', stream_socket_get_name($listener, false))
+            . ';dbname=crab_test';
         try {
-            return WorkerHarness::run([], static function (Worker $worker) use ($listener, $dsn, $script, $client, $connections): mixed {
+            return WorkerHarness::run([], static function (Worker $worker) use (
+                $listener,
+                $dsn,
+                $script,
+                $client,
+                $connections,
+            ): mixed {
                 $servers = [];
-                $watcher = $worker->loop->onReadable($listener, static function (string $watcher) use ($listener, $worker, $script, $connections, &$servers): void {
+                $watcher = $worker->loop->onReadable($listener, static function (string $watcher) use (
+                    $listener,
+                    $worker,
+                    $script,
+                    $connections,
+                    &$servers,
+                ): void {
                     $socket = stream_socket_accept($listener, 0);
                     $index = count($servers);
-                    if ($index + 1 >= $connections) {
+                    if (($index + 1) >= $connections) {
                         $worker->loop->cancel($watcher);
                     }
                     $peer = new self($socket, $worker->loop);
@@ -194,7 +235,8 @@ final class ScriptedServer
             \PHPUnit\Framework\TestCase::markTestSkipped('Scripted PDO peers need pcntl.');
         }
         $listener = stream_socket_server('tcp://127.0.0.1:0');
-        $dsn = 'mysql:host=' . str_replace(':', ';port=', stream_socket_get_name($listener, false)) . ';dbname=crab_test';
+        $dsn =
+            'mysql:host=' . str_replace(':', ';port=', stream_socket_get_name($listener, false)) . ';dbname=crab_test';
         $log = tempnam(sys_get_temp_dir(), 'crab-pdo-peer-');
         $pid = pcntl_fork();
         if ($pid === -1) {
@@ -230,7 +272,11 @@ final class ScriptedServer
             pcntl_waitpid($pid, $status);
             $error = (string) file_get_contents($log);
             unlink($log);
-            \PHPUnit\Framework\Assert::assertSame(0, pcntl_wifexited($status) ? pcntl_wexitstatus($status) : -1, $error);
+            \PHPUnit\Framework\Assert::assertSame(
+                0,
+                pcntl_wifexited($status) ? pcntl_wexitstatus($status) : -1,
+                $error,
+            );
         }
     }
 }

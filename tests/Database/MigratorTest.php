@@ -7,6 +7,7 @@ namespace Crab\Tests\Database;
 use Crab\App;
 use Crab\Config\Config;
 use Crab\Console\Output;
+use Crab\Contracts\Clock\Clock;
 use Crab\Contracts\Database\Database as DatabaseContract;
 use Crab\Contracts\Database\Migrator as MigratorContract;
 use Crab\Contracts\Database\Schema as SchemaContract;
@@ -19,7 +20,6 @@ use Crab\Database\Schema;
 use Crab\Testing\FrozenClock;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
-use Crab\Contracts\Clock\Clock;
 
 /**
  * Runs against SQLite always, and against MySQL too when
@@ -29,7 +29,14 @@ final class MigratorTest extends TestCase
 {
     use \Crab\Tests\Database\Mysql\AsyncDriverMatrix;
 
-    private const TABLES = ['migrator_posts', 'migrator_users', 'migrator_teams', 'migrator_half', 'migrations', 'migrator_log'];
+    private const TABLES = [
+        'migrator_posts',
+        'migrator_users',
+        'migrator_teams',
+        'migrator_half',
+        'migrations',
+        'migrator_log',
+    ];
 
     private string $directory;
 
@@ -60,9 +67,11 @@ final class MigratorTest extends TestCase
         }
         @unlink($this->directory . '/app.sqlite');
         foreach (glob($this->directory . '/*') ?: [] as $file) {
-            if (is_file($file)) {
-                unlink($file);
+            if (!is_file($file)) {
+                continue;
             }
+
+            unlink($file);
         }
         rmdir($this->directory);
         if (getenv('CRAB_TEST_MYSQL_DSN') !== false) {
@@ -83,26 +92,52 @@ final class MigratorTest extends TestCase
         $clock = new FrozenClock('2026-01-31 12:00:00');
         $migrator = new Migrator($db, $this->directory . '/migrations/', clock: $clock);
         // Written out of order: the names decide.
-        $this->migration('migrations/2026_01_02_000000_create_posts', "\$schema->create('migrator_posts', function (Table \$t) { \$t->id(); \$t->foreignId('user_id')->references('migrator_users'); });", "\$schema->drop('migrator_posts');");
-        $this->migration('migrations/2026_01_01_000000_create_users', "\$schema->create('migrator_users', function (Table \$t) { \$t->id(); \$t->string('name'); }); \$schema->connection()->table('migrator_users')->insert(['name' => 'seeded']);", "\$schema->drop('migrator_users');");
+        $this->migration(
+            'migrations/2026_01_02_000000_create_posts',
+            "\$schema->create('migrator_posts', function (Table \$t) { \$t->id(); \$t->foreignId('user_id')->references('migrator_users'); });",
+            "\$schema->drop('migrator_posts');",
+        );
+        $this->migration(
+            'migrations/2026_01_01_000000_create_users',
+            "\$schema->create('migrator_users', function (Table \$t) { \$t->id(); \$t->string('name'); }); \$schema->connection()->table('migrator_users')->insert(['name' => 'seeded']);",
+            "\$schema->drop('migrator_users');",
+        );
 
-        self::assertSame(['2026_01_01_000000_create_users' => null, '2026_01_02_000000_create_posts' => null], $migrator->status());
+        self::assertSame(
+            ['2026_01_01_000000_create_users' => null, '2026_01_02_000000_create_posts' => null],
+            $migrator->status(),
+        );
         self::assertSame(['2026_01_01_000000_create_users', '2026_01_02_000000_create_posts'], $migrator->run());
         self::assertSame([true, true], [$schema->hasTable('migrator_users'), $schema->hasTable('migrator_posts')]);
-        self::assertSame(['seeded'], $db->table('migrator_users')->pluck('name'), 'A migration may fill rows through the schema\'s connection.');
-        self::assertSame(['2026_01_01_000000_create_users' => 1, '2026_01_02_000000_create_posts' => 1], $migrator->status());
+        self::assertSame(
+            ['seeded'],
+            $db->table('migrator_users')->pluck('name'),
+            'A migration may fill rows through the schema\'s connection.',
+        );
+        self::assertSame(
+            ['2026_01_01_000000_create_users' => 1, '2026_01_02_000000_create_posts' => 1],
+            $migrator->status(),
+        );
         self::assertSame(['2026-01-31 12:00:00', '2026-01-31 12:00:00'], $db->table('migrations')->pluck('ran_at'));
         self::assertSame([], $migrator->run(), 'What has run does not run again.');
 
         $migrator->path($this->directory . '/package');
-        $this->migration('package/2026_01_03_000000_create_teams', "\$schema->create('migrator_teams', function (Table \$t) { \$t->id(); });", "\$schema->drop('migrator_teams');");
+        $this->migration(
+            'package/2026_01_03_000000_create_teams',
+            "\$schema->create('migrator_teams', function (Table \$t) { \$t->id(); });",
+            "\$schema->drop('migrator_teams');",
+        );
         self::assertSame(['2026_01_03_000000_create_teams'], $migrator->run());
         self::assertSame(2, $migrator->status()['2026_01_03_000000_create_teams'], 'A later run is a later batch.');
 
         self::assertSame(['2026_01_03_000000_create_teams'], $migrator->rollback());
         self::assertSame([false, true], [$schema->hasTable('migrator_teams'), $schema->hasTable('migrator_posts')]);
         self::assertNull($migrator->status()['2026_01_03_000000_create_teams']);
-        self::assertSame(['2026_01_02_000000_create_posts', '2026_01_01_000000_create_users'], $migrator->rollback(), 'Newest first, so that what points at a table goes before it.');
+        self::assertSame(
+            ['2026_01_02_000000_create_posts', '2026_01_01_000000_create_users'],
+            $migrator->rollback(),
+            'Newest first, so that what points at a table goes before it.',
+        );
         self::assertSame([false, false], [$schema->hasTable('migrator_users'), $schema->hasTable('migrator_posts')]);
         self::assertSame([], $migrator->rollback());
         self::assertCount(3, $migrator->run(), 'Everything runs again after being taken back.');
@@ -114,32 +149,66 @@ final class MigratorTest extends TestCase
         $db = $this->database($driver);
         $schema = new Schema($db);
         $migrator = new Migrator($db, $this->directory . '/migrations');
-        $this->migration('migrations/2026_01_01_000000_create_users', "\$schema->create('migrator_users', function (Table \$t) { \$t->id(); });", "\$schema->drop('migrator_users');");
-        $this->migration('migrations/2026_01_02_000000_half', "\$schema->create('migrator_half', function (Table \$t) { \$t->id(); }); \$schema->drop('no_such_table');", "throw new \\DomainException('cannot undo');");
-        $this->migration('migrations/2026_01_03_000000_never', "\$schema->create('migrator_teams', function (Table \$t) { \$t->id(); });", '');
+        $this->migration(
+            'migrations/2026_01_01_000000_create_users',
+            "\$schema->create('migrator_users', function (Table \$t) { \$t->id(); });",
+            "\$schema->drop('migrator_users');",
+        );
+        $this->migration(
+            'migrations/2026_01_02_000000_half',
+            "\$schema->create('migrator_half', function (Table \$t) { \$t->id(); }); \$schema->drop('no_such_table');",
+            "throw new \\DomainException('cannot undo');",
+        );
+        $this->migration(
+            'migrations/2026_01_03_000000_never',
+            "\$schema->create('migrator_teams', function (Table \$t) { \$t->id(); });",
+            '',
+        );
 
         try {
             $migrator->run();
             self::fail('A failing migration was reported as run.');
         } catch (DatabaseException $error) {
-            self::assertStringStartsWith('The migration "2026_01_02_000000_half" could not be run: ', $error->getMessage());
+            self::assertStringStartsWith(
+                'The migration "2026_01_02_000000_half" could not be run: ',
+                $error->getMessage(),
+            );
             self::assertInstanceOf(DatabaseException::class, $error->getPrevious());
         }
-        self::assertSame(['2026_01_01_000000_create_users' => 1, '2026_01_02_000000_half' => null, '2026_01_03_000000_never' => null], $migrator->status(), 'Those before it stay; it and those after it have not run.');
+        self::assertSame(
+            [
+                '2026_01_01_000000_create_users' => 1,
+                '2026_01_02_000000_half' => null,
+                '2026_01_03_000000_never' => null,
+            ],
+            $migrator->status(),
+            'Those before it stay; it and those after it have not run.',
+        );
         self::assertFalse($schema->hasTable('migrator_teams'));
         // SQLite takes the half-made table back with the transaction; MySQL cannot.
         self::assertSame($driver === 'mysql', $schema->hasTable('migrator_half'));
 
         unlink($this->directory . '/migrations/2026_01_02_000000_half.php');
-        $this->migration('migrations/2026_01_02_000000_half', "\$schema->create('migrator_log', function (Table \$t) { \$t->id(); });", "throw new \\DomainException('cannot undo');");
+        $this->migration(
+            'migrations/2026_01_02_000000_half',
+            "\$schema->create('migrator_log', function (Table \$t) { \$t->id(); });",
+            "throw new \\DomainException('cannot undo');",
+        );
         self::assertCount(2, $migrator->run());
         try {
             $migrator->rollback();
             self::fail('A rollback that failed was reported as done.');
         } catch (DatabaseException $error) {
-            self::assertSame('The migration "2026_01_02_000000_half" could not be rolled back: cannot undo', $error->getMessage());
+            self::assertSame(
+                'The migration "2026_01_02_000000_half" could not be rolled back: cannot undo',
+                $error->getMessage(),
+            );
         }
-        self::assertSame(['2026_01_01_000000_create_users' => 1, '2026_01_02_000000_half' => 2, '2026_01_03_000000_never' => null], $migrator->status(), 'The newest of the batch was taken back; the one that failed is still recorded.');
+        self::assertSame(
+            ['2026_01_01_000000_create_users' => 1, '2026_01_02_000000_half' => 2, '2026_01_03_000000_never' => null],
+            $migrator->status(),
+            'The newest of the batch was taken back; the one that failed is still recorded.',
+        );
 
         unlink($this->directory . '/migrations/2026_01_02_000000_half.php');
         try {
@@ -154,9 +223,13 @@ final class MigratorTest extends TestCase
     {
         $db = $this->database('sqlite');
         $mistakes = [
-            'No migration directory is configured. Set "migrations" on its connection' => static fn () => (new Migrator($db))->run(),
-            'No migration directory is configured' => static fn () => (new Migrator($db))->make('create users table'),
-            'needs a name that says what it does' => fn () => (new Migrator($db, $this->directory . '/migrations'))->make(' !! '),
+            'No migration directory is configured. Set "migrations" on its connection' => static fn() => new Migrator(
+                $db,
+            )->run(),
+            'No migration directory is configured' => static fn() => new Migrator($db)->make('create users table'),
+            'needs a name that says what it does' => fn() => new Migrator($db, $this->directory . '/migrations')->make(
+                ' !! ',
+            ),
         ];
         foreach ($mistakes as $expected => $mistake) {
             try {
@@ -167,22 +240,35 @@ final class MigratorTest extends TestCase
             }
         }
 
-        file_put_contents($this->directory . '/migrations/2026_01_01_000000_wrong.php', "<?php return ['not' => 'a migration'];");
+        file_put_contents(
+            $this->directory . '/migrations/2026_01_01_000000_wrong.php',
+            "<?php return ['not' => 'a migration'];",
+        );
         try {
-            (new Migrator($db, $this->directory . '/migrations'))->run();
+            new Migrator($db, $this->directory . '/migrations')->run();
             self::fail('A file that returns an array was run.');
         } catch (DatabaseException $error) {
-            self::assertStringContainsString('"2026_01_01_000000_wrong" must return an object that implements Crab\Contracts\Database\Migration', $error->getMessage());
+            self::assertStringContainsString(
+                '"2026_01_01_000000_wrong" must return an object that implements Crab\Contracts\Database\Migration',
+                $error->getMessage(),
+            );
             self::assertStringContainsString('returned array', $error->getMessage());
         }
         file_put_contents($this->directory . '/package/2026_01_01_000000_wrong.php', '<?php return null;');
         try {
-            (new Migrator($db, [$this->directory . '/migrations', $this->directory . '/package']))->status();
+            new Migrator($db, [$this->directory . '/migrations', $this->directory . '/package'])->status();
             self::fail('Two migrations of one name were accepted.');
         } catch (DatabaseException $error) {
-            self::assertStringContainsString('Two migrations are named "2026_01_01_000000_wrong"', $error->getMessage());
+            self::assertStringContainsString(
+                'Two migrations are named "2026_01_01_000000_wrong"',
+                $error->getMessage(),
+            );
         }
-        self::assertSame([], (new Migrator($db, $this->directory . '/empty'))->status(), 'A folder that is not there yet holds no migrations.');
+        self::assertSame(
+            [],
+            new Migrator($db, $this->directory . '/empty')->status(),
+            'A folder that is not there yet holds no migrations.',
+        );
     }
 
     public function testNewMigrationFilesAreWrittenAndRun(): void
@@ -196,12 +282,18 @@ final class MigratorTest extends TestCase
         $source = (string) file_get_contents($created);
         self::assertStringContainsString("\$schema->create('migrator_users', function (Table \$table) {", $source);
         self::assertStringContainsString("\$schema->drop('migrator_users');", $source);
-        self::assertStringStartsWith("<?php\n\ndeclare(strict_types=1);\n\nuse Crab\\Contracts\\Database\\Migration;", $source);
+        self::assertStringStartsWith(
+            "<?php\n\ndeclare(strict_types=1);\n\nuse Crab\\Contracts\\Database\\Migration;",
+            $source,
+        );
 
         $clock->advance('+1 minute');
         $plain = $migrator->make('add phone to users');
         self::assertStringEndsWith('/2026_01_31_120100_add_phone_to_users.php', $plain);
-        self::assertStringContainsString("    public function up(Schema \$schema): void\n    {\n        //\n    }", (string) file_get_contents($plain));
+        self::assertStringContainsString(
+            "    public function up(Schema \$schema): void\n    {\n        //\n    }",
+            (string) file_get_contents($plain),
+        );
         try {
             $migrator->make('add  phone  to users');
             self::fail('An existing migration file was overwritten.');
@@ -218,10 +310,14 @@ final class MigratorTest extends TestCase
 
     public function testTheProviderBindsTheSchemaAndMigratorAndAddsTheCommands(): void
     {
-        $app = new App(new Config(['database' => ['connections' => ['main' => [
-            'dsn' => 'sqlite:' . $this->directory . '/app.sqlite',
-            'migrations' => $this->directory . '/migrations',
-        ]]]]));
+        $app = new App(new Config([
+            'database' => [
+                'connections' => ['main' => [
+                    'dsn' => 'sqlite:' . $this->directory . '/app.sqlite',
+                    'migrations' => $this->directory . '/migrations',
+                ]],
+            ],
+        ]));
         $app->container->instance(Clock::class, new FrozenClock('2026-01-31 12:00:00'));
         $app->register(DatabaseProvider::class);
         self::assertInstanceOf(Schema::class, $app->container->get(SchemaContract::class));
@@ -230,13 +326,29 @@ final class MigratorTest extends TestCase
         self::assertSame("There are no migrations.\n", $this->run_($app, 'migrate:status'));
         self::assertSame("Nothing to migrate.\n", $this->run_($app, 'migrate'));
         self::assertSame("Nothing to roll back.\n", $this->run_($app, 'migrate:rollback'));
-        self::assertSame("Created {$this->directory}/migrations/2026_01_31_120000_create_migrator_users_table.php\n", $this->run_($app, 'make:migration', 'create_migrator_users_table'));
+        self::assertSame(
+            "Created {$this->directory}/migrations/2026_01_31_120000_create_migrator_users_table.php\n",
+            $this->run_($app, 'make:migration', 'create_migrator_users_table'),
+        );
         self::assertStringContainsString('Give the migration a name', $this->run_($app, 'make:migration', expect: 1));
-        $this->migration('migrations/2026_02_01_000000_create_posts', "\$schema->create('migrator_posts', function (Table \$t) { \$t->id(); \$t->foreignId('user_id')->references('migrator_users'); });", "\$schema->drop('migrator_posts');");
+        $this->migration(
+            'migrations/2026_02_01_000000_create_posts',
+            "\$schema->create('migrator_posts', function (Table \$t) { \$t->id(); \$t->foreignId('user_id')->references('migrator_users'); });",
+            "\$schema->drop('migrator_posts');",
+        );
 
-        self::assertSame("Pending  2026_01_31_120000_create_migrator_users_table\nPending  2026_02_01_000000_create_posts\n", $this->run_($app, 'migrate:status'));
-        self::assertSame("Migrated     2026_01_31_120000_create_migrator_users_table\nMigrated     2026_02_01_000000_create_posts\n", $this->run_($app, 'migrate'));
-        self::assertSame("Ran (1)  2026_01_31_120000_create_migrator_users_table\nRan (1)  2026_02_01_000000_create_posts\n", $this->run_($app, 'migrate:status'));
+        self::assertSame("Pending  2026_01_31_120000_create_migrator_users_table\nPending  2026_02_01_000000_create_posts\n", $this->run_(
+            $app,
+            'migrate:status',
+        ));
+        self::assertSame("Migrated     2026_01_31_120000_create_migrator_users_table\nMigrated     2026_02_01_000000_create_posts\n", $this->run_(
+            $app,
+            'migrate',
+        ));
+        self::assertSame("Ran (1)  2026_01_31_120000_create_migrator_users_table\nRan (1)  2026_02_01_000000_create_posts\n", $this->run_(
+            $app,
+            'migrate:status',
+        ));
 
         $db = $app->container->get(DatabaseContract::class);
         try {
@@ -244,33 +356,69 @@ final class MigratorTest extends TestCase
             self::fail('SQLite did not check a foreign key on a connection the provider opened.');
         } catch (DatabaseException) {
         }
-        self::assertSame("Rolled back  2026_02_01_000000_create_posts\nRolled back  2026_01_31_120000_create_migrator_users_table\n", $this->run_($app, 'migrate:rollback'));
+        self::assertSame("Rolled back  2026_02_01_000000_create_posts\nRolled back  2026_01_31_120000_create_migrator_users_table\n", $this->run_(
+            $app,
+            'migrate:rollback',
+        ));
         $db->close();
 
         $unset = new App(new Config(['database' => ['connections' => ['main' => ['dsn' => 'sqlite::memory:']]]]));
         $unset->register(DatabaseProvider::class);
-        self::assertStringContainsString('Set "migrations" on its connection', $this->run_($unset, 'migrate', expect: 1));
+        self::assertStringContainsString('Set "migrations" on its connection', $this->run_(
+            $unset,
+            'migrate',
+            expect: 1,
+        ));
     }
 
     public function testSeveralDatabasesAreConfiguredByNameAndReachedFromOneAnother(): void
     {
         mkdir($this->directory . '/reports');
-        $app = new App(new Config(['database' => [
-            'default' => 'main',
-            'connections' => [
-                'reports' => ['dsn' => 'sqlite:' . $this->directory . '/reports.sqlite', 'migrations' => $this->directory . '/reports', 'pool' => 3],
-                'main' => ['dsn' => 'sqlite:' . $this->directory . '/app.sqlite', 'migrations' => $this->directory . '/migrations'],
-                'broken' => ['username' => 'nobody'],
+        $app = new App(new Config([
+            'database' => [
+                'default' => 'main',
+                'connections' => [
+                    'reports' => [
+                        'dsn' => 'sqlite:' . $this->directory . '/reports.sqlite',
+                        'migrations' => $this->directory . '/reports',
+                        'pool' => 3,
+                    ],
+                    'main' => [
+                        'dsn' => 'sqlite:' . $this->directory . '/app.sqlite',
+                        'migrations' => $this->directory . '/migrations',
+                    ],
+                    'broken' => ['username' => 'nobody'],
+                ],
             ],
-        ]]));
+        ]));
         $app->register(DatabaseProvider::class);
-        $this->migration('migrations/2026_01_01_000000_create_users', "\$schema->create('migrator_users', function (Table \$t) { \$t->id(); \$t->string('name'); });", "\$schema->drop('migrator_users');");
-        $this->migration('reports/2026_01_01_000000_create_totals', "\$schema->create('totals', function (Table \$t) { \$t->id(); \$t->integer('amount'); });", "\$schema->drop('totals');");
+        $this->migration(
+            'migrations/2026_01_01_000000_create_users',
+            "\$schema->create('migrator_users', function (Table \$t) { \$t->id(); \$t->string('name'); });",
+            "\$schema->drop('migrator_users');",
+        );
+        $this->migration(
+            'reports/2026_01_01_000000_create_totals',
+            "\$schema->create('totals', function (Table \$t) { \$t->id(); \$t->integer('amount'); });",
+            "\$schema->drop('totals');",
+        );
 
         self::assertSame("Migrated     2026_01_01_000000_create_users\n", $this->run_($app, 'migrate'));
-        self::assertSame("Pending  2026_01_01_000000_create_totals\n", $this->run_($app, 'migrate:status', '--database=reports'));
-        self::assertSame("Migrated     2026_01_01_000000_create_totals\n", $this->run_($app, 'migrate', '--database=reports'));
-        self::assertStringContainsString('/reports/', $this->run_($app, 'make:migration', '--database=reports add_day_to_totals'));
+        self::assertSame("Pending  2026_01_01_000000_create_totals\n", $this->run_(
+            $app,
+            'migrate:status',
+            '--database=reports',
+        ));
+        self::assertSame("Migrated     2026_01_01_000000_create_totals\n", $this->run_(
+            $app,
+            'migrate',
+            '--database=reports',
+        ));
+        self::assertStringContainsString('/reports/', $this->run_(
+            $app,
+            'make:migration',
+            '--database=reports add_day_to_totals',
+        ));
 
         $main = $app->container->get(DatabaseContract::class);
         $reports = $main->connection('reports');
@@ -283,15 +431,31 @@ final class MigratorTest extends TestCase
         $reports->table('totals')->insert(['amount' => 7]);
         self::assertSame([1, 7], [$main->table('migrator_users')->count(), $reports->table('totals')->sum('amount')]);
         $schema = $app->container->get(SchemaContract::class);
-        self::assertSame([true, false], [$schema->hasTable('migrator_users'), $schema->hasTable('totals')], 'Each database has its own tables, and the schema is the default one\'s.');
-        self::assertSame([false, true, true], [(new Schema($reports))->hasTable('migrator_users'), (new Schema($reports))->hasTable('totals'), (new Schema($reports))->hasTable('migrations')]);
-        self::assertSame($app->container->get(MigratorContract::class), $app->container->get(\Crab\Database\DatabaseManager::class)->migrator('main'), 'The bound migrator is the default database\'s, so a path a package adds is used by the commands.');
+        self::assertSame(
+            [true, false],
+            [$schema->hasTable('migrator_users'), $schema->hasTable('totals')],
+            'Each database has its own tables, and the schema is the default one\'s.',
+        );
+        self::assertSame([false, true, true], [
+            new Schema($reports)->hasTable('migrator_users'),
+            new Schema($reports)->hasTable('totals'),
+            new Schema($reports)->hasTable('migrations'),
+        ]);
+        self::assertSame(
+            $app->container->get(MigratorContract::class),
+            $app->container->get(\Crab\Database\DatabaseManager::class)->migrator('main'),
+            'The bound migrator is the default database\'s, so a path a package adds is used by the commands.',
+        );
 
         $mistakes = [
-            'There is no database named "archive"; the configured ones are: reports, main, broken.' => static fn () => $main->connection('archive'),
-            'The database "broken" has no "dsn" configured' => static fn () => $main->connection('broken'),
-            'was made on its own and knows no other, so it has none named "reports"' => static fn () => (new Database(static fn () => new \PDO('sqlite::memory:')))->connection('reports'),
-            'The default database is "missing", and no database of that name is configured' => static fn () => new \Crab\Database\DatabaseManager(['main' => []], 'missing'),
+            'There is no database named "archive"; the configured ones are: reports, main, broken.' =>
+                static fn() => $main->connection('archive'),
+            'The database "broken" has no "dsn" configured' => static fn() => $main->connection('broken'),
+            'was made on its own and knows no other, so it has none named "reports"' => static fn() => new Database(
+                static fn() => new \PDO('sqlite::memory:'),
+            )->connection('reports'),
+            'The default database is "missing", and no database of that name is configured' =>
+                static fn() => new \Crab\Database\DatabaseManager(['main' => []], 'missing'),
         ];
         foreach ($mistakes as $expected => $mistake) {
             try {
@@ -301,7 +465,10 @@ final class MigratorTest extends TestCase
                 self::assertStringContainsString($expected, $error->getMessage());
             }
         }
-        self::assertStringContainsString('no database named \"archive\"', addslashes($this->run_($app, 'migrate', '--database=archive', expect: 1)));
+        self::assertStringContainsString(
+            'no database named \"archive\"',
+            addslashes($this->run_($app, 'migrate', '--database=archive', expect: 1)),
+        );
 
         $app->container->get(\Crab\Database\DatabaseManager::class)->close();
         self::assertSame(1, $main->table('migrator_users')->count(), 'Closed databases reconnect when used.');
@@ -358,11 +525,13 @@ final class MigratorTest extends TestCase
         $database = $this->database($driver);
         $first = '2026_01_01_000000_first';
         $second = '2026_01_02_000000_second';
-        $this->migration('migrations/' . $first,
+        $this->migration(
+            'migrations/' . $first,
             "\$schema->create('migrator_users', function (Table \$table) { \$table->id(); }); \$schema->connection()->afterCommit(static fn () => throw new \\DomainException('commit callback failed'));",
             "\$schema->drop('migrator_users');",
         );
-        $this->migration('migrations/' . $second,
+        $this->migration(
+            'migrations/' . $second,
             "\$schema->create('migrator_posts', function (Table \$table) { \$table->id(); });",
             "\$schema->drop('migrator_posts');",
         );
@@ -371,13 +540,16 @@ final class MigratorTest extends TestCase
             $migrator->run();
             self::fail('The commit callback should fail the run.');
         } catch (DatabaseException $error) {
-            self::assertStringContainsString('The migration "' . $first . '" could not be run: commit callback failed', $error->getMessage());
+            self::assertStringContainsString(
+                'The migration "' . $first . '" could not be run: commit callback failed',
+                $error->getMessage(),
+            );
             self::assertInstanceOf(\DomainException::class, $error->getPrevious());
         }
         self::assertSame([$first => $driver === 'sqlite' ? 1 : null, $second => null], $migrator->status());
         self::assertSame($driver === 'sqlite' ? [$first] : [], $database->table('migrations')->pluck('name'));
-        self::assertTrue((new Schema($database))->hasTable('migrator_users'));
-        self::assertFalse((new Schema($database))->hasTable('migrator_posts'));
+        self::assertTrue(new Schema($database)->hasTable('migrator_users'));
+        self::assertFalse(new Schema($database)->hasTable('migrator_posts'));
         $this->assertLockIsFree($database);
         $database->close();
     }
@@ -388,11 +560,13 @@ final class MigratorTest extends TestCase
         $database = $this->database($driver);
         $first = '2026_01_01_000000_first';
         $second = '2026_01_02_000000_second';
-        $this->migration('migrations/' . $first,
+        $this->migration(
+            'migrations/' . $first,
             "\$schema->create('migrator_users', function (Table \$table) { \$table->id(); });",
             "\$schema->drop('migrator_users');",
         );
-        $this->migration('migrations/' . $second,
+        $this->migration(
+            'migrations/' . $second,
             "\$schema->create('migrator_posts', function (Table \$table) { \$table->id(); });",
             "\$schema->drop('migrator_posts'); \$schema->connection()->afterCommit(static fn () => throw new \\DomainException('rollback callback failed'));",
         );
@@ -402,12 +576,15 @@ final class MigratorTest extends TestCase
             $migrator->rollback();
             self::fail('The commit callback should fail the rollback.');
         } catch (DatabaseException $error) {
-            self::assertStringContainsString('The migration "' . $second . '" could not be rolled back: rollback callback failed', $error->getMessage());
+            self::assertStringContainsString(
+                'The migration "' . $second . '" could not be rolled back: rollback callback failed',
+                $error->getMessage(),
+            );
             self::assertInstanceOf(\DomainException::class, $error->getPrevious());
         }
         self::assertSame([$first => 1, $second => $driver === 'sqlite' ? null : 1], $migrator->status());
-        self::assertTrue((new Schema($database))->hasTable('migrator_users'));
-        self::assertFalse((new Schema($database))->hasTable('migrator_posts'));
+        self::assertTrue(new Schema($database)->hasTable('migrator_users'));
+        self::assertFalse(new Schema($database)->hasTable('migrator_posts'));
         $this->assertLockIsFree($database);
         $database->close();
     }
@@ -417,19 +594,20 @@ final class MigratorTest extends TestCase
         $this->requireFork();
         $this->prepareConcurrentDatabase('sqlite');
         $database = $this->concurrentDatabase('sqlite');
-        (new Migrator($database, $this->directory . '/migrations'))->run();
+        new Migrator($database, $this->directory . '/migrations')->run();
         $database->close();
         $ready = $this->directory . '/snapshot-read';
         $release = $this->directory . '/release';
         $called = $this->directory . '/up-called';
         $name = '2026_01_01_000000_other_deployment';
-        $this->migration('migrations/' . $name,
+        $this->migration(
+            'migrations/' . $name,
             'file_put_contents(' . var_export($called, true) . ", 'up');",
             '',
             $this->barrierCode($ready, $release),
         );
         $job = $this->forkWork('sqlite', function (Database $database): array {
-            return (new Migrator($database, $this->directory . '/migrations'))->run();
+            return new Migrator($database, $this->directory . '/migrations')->run();
         });
         $this->waitForFile($ready);
         $database = $this->concurrentDatabase('sqlite');
@@ -459,17 +637,29 @@ final class MigratorTest extends TestCase
             $name = '2026_01_0' . ($index + 1) . '_000000_create_' . $table;
             $names[] = $name;
             $down = $driver === 'mysql' && $index === 2 ? $this->barrierCode($held, $release) : '';
-            $down .= 'file_put_contents(' . var_export($log, true) . ', ' . var_export($name . "\n", true) . ', FILE_APPEND | LOCK_EX);';
+            $down .=
+                'file_put_contents('
+                . var_export($log, true)
+                . ', '
+                . var_export($name . "\n", true)
+                . ', FILE_APPEND | LOCK_EX);';
             $down .= "\$schema->drop('migrator_{$table}');";
-            $beforeLoad = $driver === 'sqlite' ? 'if (is_file(' . var_export($phase, true) . ')) {' . $this->barrierCode($loaded, $release, perProcess: true) . '}' : '';
-            $this->migration('migrations/' . $name,
+            $beforeLoad = $driver === 'sqlite'
+                ? 'if (is_file('
+                . var_export($phase, true)
+                . ')) {'
+                . $this->barrierCode($loaded, $release, perProcess: true)
+                . '}'
+                : '';
+            $this->migration(
+                'migrations/' . $name,
                 "\$schema->create('migrator_{$table}', function (Table \$table) { \$table->id(); });",
                 $down,
                 $beforeLoad,
             );
         }
         $database = $this->concurrentDatabase($driver);
-        self::assertSame($names, (new Migrator($database, $this->directory . '/migrations'))->run());
+        self::assertSame($names, new Migrator($database, $this->directory . '/migrations')->run());
         $database->close();
         file_put_contents($phase, 'rollback');
         $start = $this->directory . '/start';
@@ -479,7 +669,7 @@ final class MigratorTest extends TestCase
             $jobs[] = $this->forkWork($driver, function (Database $database) use ($ready, $start): array {
                 file_put_contents($ready, 'ready');
                 $this->waitForFile($start);
-                return (new Migrator($database, $this->directory . '/migrations'))->rollback();
+                return new Migrator($database, $this->directory . '/migrations')->rollback();
             });
         }
         $this->waitForFile($this->directory . '/ready-0');
@@ -502,7 +692,7 @@ final class MigratorTest extends TestCase
         $database = $this->concurrentDatabase($driver);
         self::assertSame(0, $database->table('migrations')->count());
         foreach (['users', 'posts', 'teams'] as $table) {
-            self::assertFalse((new Schema($database))->hasTable('migrator_' . $table));
+            self::assertFalse(new Schema($database)->hasTable('migrator_' . $table));
         }
         $database->close();
     }
@@ -521,12 +711,16 @@ final class MigratorTest extends TestCase
             self::assertStringContainsString('broken migration', $error->getMessage());
         }
         $this->assertLockIsFree($database);
-        $this->migration('migrations/' . $name, "\$schema->create('migrator_users', function (Table \$table) { \$table->id(); });", "\$schema->drop('migrator_users');");
+        $this->migration(
+            'migrations/' . $name,
+            "\$schema->create('migrator_users', function (Table \$table) { \$table->id(); });",
+            "\$schema->drop('migrator_users');",
+        );
         self::assertSame([$name], $migrator->run());
         $this->assertLockIsFree($database);
 
         $other = $this->concurrentDatabase($driver);
-        self::assertSame([], (new Migrator($other, $this->directory . '/migrations', lockTimeout: 0))->run());
+        self::assertSame([], new Migrator($other, $this->directory . '/migrations', lockTimeout: 0)->run());
         $other->close();
         $database->close();
     }
@@ -549,7 +743,7 @@ final class MigratorTest extends TestCase
         $this->assertLockIsFree($database);
         $this->migration('migrations/' . $name, $up, "\$schema->drop('migrator_users');");
         $other = $this->concurrentDatabase($driver);
-        self::assertSame([$name], (new Migrator($other, $this->directory . '/migrations', lockTimeout: 0))->rollback());
+        self::assertSame([$name], new Migrator($other, $this->directory . '/migrations', lockTimeout: 0)->rollback());
         $other->close();
         $database->close();
     }
@@ -563,12 +757,12 @@ final class MigratorTest extends TestCase
         $release = $this->directory . '/release';
         $names = $this->lockMigrations($started, $release);
         $job = $this->forkWork($driver, function (Database $database): array {
-            return (new Migrator($database, $this->directory . '/migrations'))->run();
+            return new Migrator($database, $this->directory . '/migrations')->run();
         });
         $this->waitForFile($started);
         $database = $this->concurrentDatabase($driver);
         try {
-            (new Migrator($database, $this->directory . '/migrations', lockTimeout: 0))->run();
+            new Migrator($database, $this->directory . '/migrations', lockTimeout: 0)->run();
             self::fail('The waiting deployment should time out.');
         } catch (DatabaseException $error) {
             self::assertStringContainsString('Another process has been migrating for 0 seconds', $error->getMessage());
@@ -581,7 +775,7 @@ final class MigratorTest extends TestCase
         }
         self::assertSame($names, $this->childResult($job));
         self::assertSame(3, $database->table('migrations')->count());
-        self::assertSame([], (new Migrator($database, $this->directory . '/migrations', lockTimeout: 0))->run());
+        self::assertSame([], new Migrator($database, $this->directory . '/migrations', lockTimeout: 0)->run());
         $database->close();
     }
 
@@ -594,7 +788,7 @@ final class MigratorTest extends TestCase
         $release = $this->directory . '/release';
         $names = $this->lockMigrations($started, $release);
         $job = $this->forkWork($driver, function (Database $database): array {
-            return (new Migrator($database, $this->directory . '/migrations'))->run();
+            return new Migrator($database, $this->directory . '/migrations')->run();
         });
         $this->waitForFile($started);
         $database = $this->concurrentDatabase($driver);
@@ -614,9 +808,9 @@ final class MigratorTest extends TestCase
             file_put_contents($release, 'go');
         }
         self::assertSame($names, $this->childResult($job));
-        self::assertSame(array_reverse($names), (new Migrator($database, $this->directory . '/migrations'))->rollback());
+        self::assertSame(array_reverse($names), new Migrator($database, $this->directory . '/migrations')->rollback());
         self::assertSame(0, $database->table('migrations')->count());
-        self::assertFalse((new Schema($database))->hasTable('migrator_users'));
+        self::assertFalse(new Schema($database)->hasTable('migrator_users'));
         $database->close();
     }
 
@@ -629,7 +823,7 @@ final class MigratorTest extends TestCase
         $release = $this->directory . '/release';
         $names = $this->lockMigrations($started, $release);
         $job = $this->forkWork($driver, function (Database $database): array {
-            return (new Migrator($database, $this->directory . '/migrations'))->run();
+            return new Migrator($database, $this->directory . '/migrations')->run();
         });
         $this->waitForFile($started);
         $database = $this->concurrentDatabase($driver);
@@ -653,8 +847,8 @@ final class MigratorTest extends TestCase
     public function testStatusDoesNotCreateTheMigrationsTable(): void
     {
         $database = $this->database('sqlite');
-        self::assertSame([], (new Migrator($database, $this->directory . '/migrations'))->status());
-        self::assertFalse((new Schema($database))->hasTable('migrations'));
+        self::assertSame([], new Migrator($database, $this->directory . '/migrations')->status());
+        self::assertFalse(new Schema($database)->hasTable('migrations'));
         $database->close();
     }
 
@@ -666,13 +860,18 @@ final class MigratorTest extends TestCase
         $release = $this->directory . '/release';
         $names = $this->lockMigrations($started, $release);
         $job = $this->forkWork('sqlite', function (Database $database): array {
-            return (new Migrator($database, $this->directory . '/migrations'))->run();
+            return new Migrator($database, $this->directory . '/migrations')->run();
         });
         $this->waitForFile($started);
         try {
             foreach ([false, true] as $several) {
-                $settings = ['dsn' => 'sqlite:' . $this->directory . '/app.sqlite', 'migrations' => $this->directory . '/migrations'];
-                $configuration = ['connections' => $several ? ['main' => $settings, 'reports' => $settings] : ['main' => $settings]];
+                $settings = [
+                    'dsn' => 'sqlite:' . $this->directory . '/app.sqlite',
+                    'migrations' => $this->directory . '/migrations',
+                ];
+                $configuration = [
+                    'connections' => $several ? ['main' => $settings, 'reports' => $settings] : ['main' => $settings],
+                ];
                 $configuration['migration_lock_timeout'] = 0;
                 $app = new App(new Config(['database' => $configuration]));
                 $app->register(DatabaseProvider::class);
@@ -708,14 +907,19 @@ final class MigratorTest extends TestCase
         } catch (\InvalidArgumentException $error) {
             self::assertStringContainsString('database.migration_lock_timeout', $error->getMessage());
         }
-        self::assertSame([], (new Migrator($database, $this->directory . '/migrations', lockTimeout: 0))->run());
+        self::assertSame([], new Migrator($database, $this->directory . '/migrations', lockTimeout: 0)->run());
         $database->close();
     }
 
     public function testTheProviderRefusesInvalidLockTimeoutsAndCastsFractionsToWholeSeconds(): void
     {
         foreach ([-1, 'later', null, INF, NAN] as $timeout) {
-            $app = new App(new Config(['database' => ['connections' => ['main' => ['dsn' => 'sqlite::memory:']], 'migration_lock_timeout' => $timeout]]));
+            $app = new App(new Config([
+                'database' => [
+                    'connections' => ['main' => ['dsn' => 'sqlite::memory:']],
+                    'migration_lock_timeout' => $timeout,
+                ],
+            ]));
             $app->register(DatabaseProvider::class);
             try {
                 $app->container->get(MigratorContract::class);
@@ -725,12 +929,21 @@ final class MigratorTest extends TestCase
             }
         }
         $settings = ['dsn' => 'sqlite::memory:', 'migrations' => $this->directory . '/migrations'];
-        $app = new App(new Config(['database' => ['connections' => ['main' => $settings, 'reports' => $settings], 'migration_lock_timeout' => 1.9]]));
+        $app = new App(new Config([
+            'database' => [
+                'connections' => ['main' => $settings, 'reports' => $settings],
+                'migration_lock_timeout' => 1.9,
+            ],
+        ]));
         $app->register(DatabaseProvider::class);
         $manager = $app->container->get(\Crab\Database\DatabaseManager::class);
         $timeout = new \ReflectionProperty(Migrator::class, 'lockTimeout');
         foreach ($manager->names() as $name) {
-            self::assertSame(1, $timeout->getValue($manager->migrator($name)), 'The provider must cast before calling the integer constructor.');
+            self::assertSame(
+                1,
+                $timeout->getValue($manager->migrator($name)),
+                'The provider must cast before calling the integer constructor.',
+            );
         }
         $manager->close();
     }
@@ -751,7 +964,10 @@ final class MigratorTest extends TestCase
         $first = '2026_01_01_000000_first';
         $second = '2026_01_02_000000_second';
         $up = "\$schema->create('migrator_users', function (Table \$table) { \$table->id(); });";
-        $up .= 'file_put_contents(' . var_export($session, true) . ', (string) $schema->connection()->first(\'SELECT CONNECTION_ID() AS id\')[\'id\']);';
+        $up .=
+            'file_put_contents('
+            . var_export($session, true)
+            . ', (string) $schema->connection()->first(\'SELECT CONNECTION_ID() AS id\')[\'id\']);';
         if (!$betweenMigrations) {
             // Keep the session usable so the history insert finishes and
             // only the final ownership check can detect this lost lock.
@@ -761,7 +977,8 @@ final class MigratorTest extends TestCase
         if ($betweenMigrations) {
             // File loading happens after the first migration and its history
             // insert finish, but before the next migration's ownership check.
-            $this->migration('migrations/' . $second,
+            $this->migration(
+                'migrations/' . $second,
                 "\$schema->create('migrator_posts', function (Table \$table) { \$table->id(); });",
                 "\$schema->drop('migrator_posts');",
                 $this->mysqlKillCode($session),
@@ -777,7 +994,7 @@ final class MigratorTest extends TestCase
             self::assertStringContainsString('migrate:status', $error->getMessage());
         }
         self::assertSame([$first], $database->table('migrations')->pluck('name'));
-        self::assertFalse((new Schema($database))->hasTable('migrator_posts'));
+        self::assertFalse(new Schema($database)->hasTable('migrator_posts'));
         $this->assertLockIsFree($database);
         $database->close();
     }
@@ -810,9 +1027,12 @@ final class MigratorTest extends TestCase
         $lock = 'crab_migrations_migrations';
         self::assertSame(1, (int) $holder->first('SELECT GET_LOCK(?, ?) AS acquired', [$lock, 0])['acquired']);
         try {
-            self::assertSame([], (new Migrator($other, $this->directory . '/migrations', table: 'migrator_log', lockTimeout: 0))->run());
+            self::assertSame(
+                [],
+                new Migrator($other, $this->directory . '/migrations', table: 'migrator_log', lockTimeout: 0)->run(),
+            );
             try {
-                (new Migrator($other, $this->directory . '/migrations', lockTimeout: 0))->run();
+                new Migrator($other, $this->directory . '/migrations', lockTimeout: 0)->run();
                 self::fail('Migrators sharing a table must share a lock.');
             } catch (DatabaseException $error) {
                 self::assertStringContainsString('migrate:status', $error->getMessage());
@@ -829,7 +1049,7 @@ final class MigratorTest extends TestCase
     {
         $this->database($driver)->close();
         $names = $this->lockMigrations();
-        $owner = fn (): \PDO => $this->pdo($driver);
+        $owner = fn(): \PDO => $this->pdo($driver);
         $factory = $this->mysqlFactory($driver);
         $connection = $factory === null ? new PdoConnection($owner) : $factory($owner);
         if ($this->matrixWorker !== null) {
@@ -908,14 +1128,18 @@ final class MigratorTest extends TestCase
      */
     private function concurrentDatabase(string $driver): Database
     {
-        return new Database(function () use ($driver): \PDO {
-            $pdo = $this->pdo($driver);
-            if ($driver === 'sqlite') {
-                $pdo->exec('PRAGMA journal_mode = wal');
-                $pdo->exec('PRAGMA busy_timeout = 5000');
-            }
-            return $pdo;
-        }, 1, factory: $this->mysqlFactory($driver));
+        return new Database(
+            function () use ($driver): \PDO {
+                $pdo = $this->pdo($driver);
+                if ($driver === 'sqlite') {
+                    $pdo->exec('PRAGMA journal_mode = wal');
+                    $pdo->exec('PRAGMA busy_timeout = 5000');
+                }
+                return $pdo;
+            },
+            1,
+            factory: $this->mysqlFactory($driver),
+        );
     }
 
     /**
@@ -1019,9 +1243,14 @@ final class MigratorTest extends TestCase
     private function assertLockIsFree(Database $database): void
     {
         if ($database->driver() === 'mysql') {
-            self::assertSame(1, (int) $database->first('SELECT IS_FREE_LOCK(?) AS available', ['crab_migrations_migrations'])['available']);
+            self::assertSame(
+                1,
+                (int) $database->first('SELECT IS_FREE_LOCK(?) AS available', [
+                    'crab_migrations_migrations',
+                ])['available'],
+            );
         } else {
-            self::assertSame(60000, $database->first('PRAGMA busy_timeout')['timeout']);
+            self::assertSame(60_000, $database->first('PRAGMA busy_timeout')['timeout']);
         }
     }
 
@@ -1063,7 +1292,7 @@ final class MigratorTest extends TestCase
 
     private function database(string $driver): Database
     {
-        $db = new Database(fn (): \PDO => $this->pdo($driver), 1, factory: $this->mysqlFactory($driver));
+        $db = new Database(fn(): \PDO => $this->pdo($driver), 1, factory: $this->mysqlFactory($driver));
         foreach (self::TABLES as $table) {
             $db->execute("drop table if exists {$table}");
         }
@@ -1073,7 +1302,11 @@ final class MigratorTest extends TestCase
     private function pdo(string $driver): \PDO
     {
         if ($driver === 'mysql') {
-            return new \PDO(getenv('CRAB_TEST_MYSQL_DSN'), getenv('CRAB_TEST_MYSQL_USER') ?: 'root', getenv('CRAB_TEST_MYSQL_PASSWORD') ?: '');
+            return new \PDO(
+                getenv('CRAB_TEST_MYSQL_DSN'),
+                getenv('CRAB_TEST_MYSQL_USER') ?: 'root',
+                getenv('CRAB_TEST_MYSQL_PASSWORD') ?: '',
+            );
         }
         $pdo = new \PDO('sqlite:' . $this->directory . '/app.sqlite');
         $pdo->exec('pragma foreign_keys = on');

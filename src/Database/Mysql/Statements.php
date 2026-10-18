@@ -22,9 +22,9 @@ final class Statements
      */
     private array $kept = [];
 
-    public function __construct(private readonly Protocol $protocol)
-    {
-    }
+    public function __construct(
+        private readonly Protocol $protocol,
+    ) {}
 
     /**
      * @param array<int|string, mixed> $bindings
@@ -34,7 +34,10 @@ final class Statements
     {
         $statement = $this->kept[$sql] ?? $this->prepare($sql, $bindings);
         if ($statement['takes'] !== count($bindings)) {
-            throw new DatabaseException('The statement takes ' . $statement['takes'] . ' values and was given ' . count($bindings), $sql);
+            throw new DatabaseException(
+                'The statement takes ' . $statement['takes'] . ' values and was given ' . count($bindings),
+                $sql,
+            );
         }
         if ($statement['keys'] === null && array_is_list($bindings)) {
             $values = $bindings;
@@ -72,10 +75,12 @@ final class Statements
             $noBackslashEscapes = (bool) ($this->protocol->status & Protocol::NO_BACKSLASH_ESCAPES);
             [$prepared, $parsed] = Parameters::parse($sql, $noBackslashEscapes, $this->protocol->serverVersion);
             foreach ($parsed as $key) {
-                if (is_string($key)) {
-                    $keys = $parsed;
-                    break;
+                if (!is_string($key)) {
+                    continue;
                 }
+
+                $keys = $parsed;
+                break;
             }
         }
         $sent = false;

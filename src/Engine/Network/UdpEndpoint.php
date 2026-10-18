@@ -26,12 +26,18 @@ final class UdpEndpoint
         private readonly EventLoop $loop,
         private mixed $socket,
         callable $handler,
-        public readonly int $maxDatagramSize = 65507,
-        private readonly int $maxQueueBytes = 1048576,
+        public readonly int $maxDatagramSize = 65_507,
+        private readonly int $maxQueueBytes = 1_048_576,
         private readonly int $maxQueuePackets = 1024,
     ) {
-        if (!is_resource($socket) || get_resource_type($socket) !== 'stream' || $maxDatagramSize < 0 || $maxDatagramSize > 65507
-            || $maxQueueBytes < 1 || $maxQueuePackets < 1) {
+        if (
+            !is_resource($socket)
+            || get_resource_type($socket) !== 'stream'
+            || $maxDatagramSize < 0
+            || $maxDatagramSize > 65_507
+            || $maxQueueBytes < 1
+            || $maxQueuePackets < 1
+        ) {
             throw new \InvalidArgumentException('Invalid UDP endpoint limits or socket.');
         }
         if (!stream_set_blocking($socket, false)) {
@@ -50,15 +56,11 @@ final class UdpEndpoint
         if (!str_starts_with($address, 'udp://')) {
             throw new \InvalidArgumentException('UDP endpoints use udp:// addresses.');
         }
-        $socket = @stream_socket_server(
-            $address,
-            $code,
-            $message,
-            STREAM_SERVER_BIND,
-            stream_context_create(['socket' => $options]),
-        );
+        $socket = @stream_socket_server($address, $code, $message, STREAM_SERVER_BIND, stream_context_create([
+            'socket' => $options,
+        ]));
         if ($socket === false) {
-            throw new \RuntimeException("UDP bind failed: $message ($code)");
+            throw new \RuntimeException("UDP bind failed: {$message} ({$code})");
         }
         stream_set_blocking($socket, false);
         return $socket;
@@ -72,7 +74,11 @@ final class UdpEndpoint
     public function onClose(callable $callback): self
     {
         if ($this->closed) {
-            try { $callback($this); } catch (\Throwable $error) { FailureReporter::report('UDP close callback failed', $error); }
+            try {
+                $callback($this);
+            } catch (\Throwable $error) {
+                FailureReporter::report('UDP close callback failed', $error);
+            }
         } else {
             $this->closeCallbacks[] = $callback(...);
         }
@@ -88,12 +94,19 @@ final class UdpEndpoint
         if ($size > $this->maxDatagramSize) {
             throw new \LengthException('Datagram exceeds the configured size limit.');
         }
-        if (!preg_match('/^(?:\[([^]]+)\]|([^:]+)):([0-9]+)$/D', $peer, $parts)
-            || filter_var($parts[1] !== '' ? $parts[1] : $parts[2], FILTER_VALIDATE_IP, $parts[1] !== '' ? FILTER_FLAG_IPV6 : FILTER_FLAG_IPV4) === false
-            || (int) $parts[3] < 1 || (int) $parts[3] > 65535) {
+        if (
+            !preg_match('/^(?:\[([^]]+)\]|([^:]+)):([0-9]+)$/D', $peer, $parts)
+            || filter_var(
+                $parts[1] !== '' ? $parts[1] : $parts[2],
+                FILTER_VALIDATE_IP,
+                $parts[1] !== '' ? FILTER_FLAG_IPV6 : FILTER_FLAG_IPV4,
+            ) === false
+            || (int) $parts[3] < 1
+            || (int) $parts[3] > 65_535
+        ) {
             throw new \InvalidArgumentException('UDP peer must be a numeric IP:port address with a valid port.');
         }
-        if ($this->output->count() >= $this->maxQueuePackets || $this->queuedBytes + $size > $this->maxQueueBytes) {
+        if ($this->output->count() >= $this->maxQueuePackets || ($this->queuedBytes + $size) > $this->maxQueueBytes) {
             ++$this->dropped;
             return false;
         }
@@ -147,9 +160,11 @@ final class UdpEndpoint
         }
         $this->closed = true;
         foreach ([$this->readWatcher, $this->writeWatcher] as $watcher) {
-            if ($watcher !== null) {
-                $this->loop->cancel($watcher);
+            if ($watcher === null) {
+                continue;
             }
+
+            $this->loop->cancel($watcher);
         }
         $this->readWatcher = $this->writeWatcher = null;
         if (is_resource($this->socket)) {
@@ -160,23 +175,36 @@ final class UdpEndpoint
         $callbacks = $this->closeCallbacks;
         $this->closeCallbacks = [];
         foreach ($callbacks as $callback) {
-            try { $callback($this); } catch (\Throwable $error) { FailureReporter::report('UDP close callback failed', $error); }
+            try {
+                $callback($this);
+            } catch (\Throwable $error) {
+                FailureReporter::report('UDP close callback failed', $error);
+            }
         }
     }
 
-    public function isClosed(): bool { return $this->closed; }
+    public function isClosed(): bool
+    {
+        return $this->closed;
+    }
 
     public function stats(): array
     {
-        return ['received' => $this->received, 'sent' => $this->sent, 'dropped' => $this->dropped,
-            'errors' => $this->errors, 'queuedBytes' => $this->queuedBytes, 'queuedPackets' => $this->output->count()];
+        return [
+            'received' => $this->received,
+            'sent' => $this->sent,
+            'dropped' => $this->dropped,
+            'errors' => $this->errors,
+            'queuedBytes' => $this->queuedBytes,
+            'queuedPackets' => $this->output->count(),
+        ];
     }
 
     private function read(): void
     {
         for ($i = 0; $i < 64 && !$this->closed && !$this->draining; ++$i) {
             $peer = '';
-            $payload = @stream_socket_recvfrom($this->socket, 65536, 0, $peer);
+            $payload = @stream_socket_recvfrom($this->socket, 65_536, 0, $peer);
             if ($payload === false || $peer === '') {
                 return;
             }

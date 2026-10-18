@@ -19,8 +19,11 @@ final class Delivery
     /**
      * @param array<int, Recipient> $sockets
      */
-    public function __construct(array $sockets, public readonly string $message, public readonly string $channelKey)
-    {
+    public function __construct(
+        array $sockets,
+        public readonly string $message,
+        public readonly string $channelKey,
+    ) {
         $this->recipients = $this->iterate($sockets);
     }
 

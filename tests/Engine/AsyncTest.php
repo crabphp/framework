@@ -10,11 +10,11 @@ use Crab\Engine\Async\Cancellation;
 use Crab\Engine\Async\CancelledException;
 use Crab\Engine\Async\ConnectionStream;
 use Crab\Engine\Async\Task;
+use Crab\Engine\EventLoop;
+use Crab\Engine\EventLoop\RevoltEventLoop;
 use Crab\Engine\Network\Connection;
 use Crab\Engine\Tests\Support\TestCase;
 use LogicException;
-use Crab\Engine\EventLoop;
-use Crab\Engine\EventLoop\RevoltEventLoop;
 use RuntimeException;
 
 final class AsyncTest extends TestCase
@@ -23,12 +23,18 @@ final class AsyncTest extends TestCase
     {
         $loop = $this->newLoop();
         $order = [];
-        $one = $this->spawn($loop, static function (Cancellation $token) use ($loop, &$order): int {
+        $one = $this->spawn($loop, static function (#[\SensitiveParameter] Cancellation $token) use (
+            $loop,
+            &$order,
+        ): int {
             Async::sleep($loop, 0.03, $token);
             $order[] = 'slow';
             return 41;
         });
-        $two = $this->spawn($loop, static function (Cancellation $token) use ($loop, &$order): int {
+        $two = $this->spawn($loop, static function (#[\SensitiveParameter] Cancellation $token) use (
+            $loop,
+            &$order,
+        ): int {
             Async::sleep($loop, 0.001, $token);
             $order[] = 'fast';
             return 1;
@@ -47,7 +53,9 @@ final class AsyncTest extends TestCase
     {
         $loop = $this->newLoop();
         $ran = false;
-        $task = $this->spawn($loop, static function () use (&$ran): void { $ran = true; });
+        $task = $this->spawn($loop, static function () use (&$ran): void {
+            $ran = true;
+        });
         $task->cancel();
         $this->assertTaskCancelled($loop, $task);
         self::assertFalse($ran, 'Cancelled task started.');
@@ -55,12 +63,18 @@ final class AsyncTest extends TestCase
         self::assertSame([], $loop->getIdentifiers());
         $token = new Cancellation();
         $count = 0;
-        $unsubscribe = $token->subscribe(static function () use (&$count): void { $count += 100; });
+        $unsubscribe = $token->subscribe(static function () use (&$count): void {
+            $count += 100;
+        });
         $unsubscribe();
-        $token->subscribe(static function () use (&$count): void { $count++; });
+        $token->subscribe(static function () use (&$count): void {
+            $count++;
+        });
         $token->cancel();
         $token->cancel();
-        $token->subscribe(static function () use (&$count): void { $count++; });
+        $token->subscribe(static function () use (&$count): void {
+            $count++;
+        });
         self::assertSame(2, $count, 'Unsubscribe, late subscription, or cancellation idempotence failed.');
     }
 
@@ -68,11 +82,17 @@ final class AsyncTest extends TestCase
     {
         $loop = $this->newLoop();
         $cleaned = false;
-        $task = $this->spawn($loop, static function (Cancellation $token) use ($loop, &$cleaned): void {
-            try { Async::sleep($loop, 60, $token); }
-            finally { $cleaned = true; }
+        $task = $this->spawn($loop, static function (#[\SensitiveParameter] Cancellation $token) use (
+            $loop,
+            &$cleaned,
+        ): void {
+            try {
+                Async::sleep($loop, 60, $token);
+            } finally {
+                $cleaned = true;
+            }
         });
-        $loop->delay(0.005, static fn () => $task->cancel());
+        $loop->delay(0.005, static fn() => $task->cancel());
         $this->assertTaskCancelled($loop, $task);
         self::assertTrue($cleaned, 'Task cancellation skipped finally.');
         self::assertTrue($task->isComplete());
@@ -86,8 +106,10 @@ final class AsyncTest extends TestCase
             Async::sleep($loop, 0.02);
             return 7;
         });
-        $waiter = $this->spawn($loop, static fn (Cancellation $token): int => $target->await($token));
-        $loop->delay(0.001, static fn () => $waiter->cancel());
+        $waiter = $this->spawn($loop, static fn(#[\SensitiveParameter] Cancellation $token): int => $target->await(
+            $token,
+        ));
+        $loop->delay(0.001, static fn() => $waiter->cancel());
         $this->assertTaskCancelled($loop, $waiter);
         self::assertFalse($target->isComplete(), 'Cancelling await cancelled its target.');
         self::assertSame(7, $this->awaitTask($loop, $target));
@@ -101,9 +123,11 @@ final class AsyncTest extends TestCase
         fwrite($peer, "ab\0cdef");
         stream_socket_shutdown($peer, STREAM_SHUT_WR);
         $stream->shutdownWrite();
-        $task = $this->spawn($loop, static function (Cancellation $token) use ($stream): array {
+        $task = $this->spawn($loop, static function (#[\SensitiveParameter] Cancellation $token) use ($stream): array {
             $chunks = [];
-            while (($chunk = $stream->read(2, $token)) !== null) { $chunks[] = $chunk; }
+            while (($chunk = $stream->read(2, $token)) !== null) {
+                $chunks[] = $chunk;
+            }
             return $chunks;
         });
         self::assertSame(['ab', "\0c", 'de', 'f'], $this->awaitTask($loop, $task), 'Sliced reads or EOF lost data.');
@@ -115,12 +139,14 @@ final class AsyncTest extends TestCase
     {
         $loop = $this->newLoop();
         [$stream, $connection, $peer] = $this->connectedStream($loop);
-        $task = $this->spawn($loop, static fn (Cancellation $token) => $stream->read(cancellation: $token));
-        $loop->delay(0.002, static fn () => $task->cancel());
+        $task = $this->spawn($loop, static fn(#[\SensitiveParameter] Cancellation $token) => $stream->read(
+            cancellation: $token,
+        ));
+        $loop->delay(0.002, static fn() => $task->cancel());
         $this->assertTaskCancelled($loop, $task);
         self::assertFalse($connection->isClosed(), 'Read cancellation closed the socket.');
         fwrite($peer, 'next');
-        $nextReader = $this->spawn($loop, static fn () => $stream->read());
+        $nextReader = $this->spawn($loop, static fn() => $stream->read());
         self::assertSame('next', $this->awaitTask($loop, $nextReader), 'New reader did not acquire ownership.');
         $stream->close();
         self::assertSame([], $loop->getIdentifiers());
@@ -130,11 +156,16 @@ final class AsyncTest extends TestCase
     {
         $loop = $this->newLoop();
         [$stream] = $this->connectedStream($loop);
-        $first = $this->spawn($loop, static fn (Cancellation $token) => $stream->read(cancellation: $token));
-        $second = $this->spawn($loop, static fn () => $stream->read());
+        $first = $this->spawn($loop, static fn(#[\SensitiveParameter] Cancellation $token) => $stream->read(
+            cancellation: $token,
+        ));
+        $second = $this->spawn($loop, static fn() => $stream->read());
         $rejected = false;
-        try { $this->awaitTask($loop, $second); }
-        catch (LogicException) { $rejected = true; }
+        try {
+            $this->awaitTask($loop, $second);
+        } catch (LogicException) {
+            $rejected = true;
+        }
         self::assertTrue($rejected, 'Concurrent read was accepted.');
         $first->cancel();
         $this->assertTaskCancelled($loop, $first);
@@ -149,12 +180,17 @@ final class AsyncTest extends TestCase
         $watcher = $loop->onReadable($peer, static function () use ($peer, &$received): void {
             $received .= fread($peer, 262_144);
         });
-        $writer = $this->spawn($loop, static function (Cancellation $token) use ($stream, $payload): void {
+        $writer = $this->spawn($loop, static function (#[\SensitiveParameter] Cancellation $token) use (
+            $stream,
+            $payload,
+        ): void {
             $stream->write($payload, $token);
         });
         $this->awaitTask($loop, $writer);
         self::assertSame(0, $connection->bufferedBytes(), 'Write returned before flushing.');
-        $this->until($loop, static function () use (&$received, $payload): bool { return strlen($received) >= strlen($payload); });
+        $this->until($loop, static function () use (&$received, $payload): bool {
+            return strlen($received) >= strlen($payload);
+        });
         self::assertSame($payload, $received);
         $loop->cancel($watcher);
         $stream->close();
@@ -165,10 +201,10 @@ final class AsyncTest extends TestCase
     {
         $loop = $this->newLoop();
         [$stream, $connection] = $this->connectedStream($loop, 4096);
-        $writer = $this->spawn($loop, static function (Cancellation $token) use ($stream): void {
+        $writer = $this->spawn($loop, static function (#[\SensitiveParameter] Cancellation $token) use ($stream): void {
             $stream->write(str_repeat('x', 4_194_304), $token);
         });
-        $loop->delay(0.005, static fn () => $writer->cancel());
+        $loop->delay(0.005, static fn() => $writer->cancel());
         $this->assertTaskCancelled($loop, $writer);
         self::assertTrue($connection->isClosed(), 'Partial write cancellation did not close the socket.');
         self::assertSame([], $loop->getIdentifiers());
@@ -178,11 +214,14 @@ final class AsyncTest extends TestCase
     {
         $loop = $this->newLoop();
         [$stream, $connection] = $this->connectedStream($loop);
-        $reader = $this->spawn($loop, static fn () => $stream->read());
-        $loop->delay(0.001, static fn () => $connection->close());
+        $reader = $this->spawn($loop, static fn() => $stream->read());
+        $loop->delay(0.001, static fn() => $connection->close());
         $failure = null;
-        try { $this->awaitTask($loop, $reader); }
-        catch (RuntimeException $error) { $failure = $error; }
+        try {
+            $this->awaitTask($loop, $reader);
+        } catch (RuntimeException $error) {
+            $failure = $error;
+        }
         self::assertInstanceOf(RuntimeException::class, $failure);
         self::assertSame('Connection closed.', $failure->getMessage());
         self::assertSame([], $loop->getIdentifiers());
@@ -192,7 +231,9 @@ final class AsyncTest extends TestCase
     {
         $loop = RevoltEventLoop::create();
         $this->deferCleanup(static function () use ($loop): void {
-            foreach ($loop->getIdentifiers() as $id) { $loop->cancel($id); }
+            foreach ($loop->getIdentifiers() as $id) {
+                $loop->cancel($id);
+            }
         });
         return $loop;
     }
@@ -206,7 +247,9 @@ final class AsyncTest extends TestCase
         self::assertNotFalse($pair, 'Socket pair creation failed.');
         foreach ($pair as $socket) {
             $this->deferCleanup(static function () use ($socket): void {
-                if (is_resource($socket)) { fclose($socket); }
+                if (is_resource($socket)) {
+                    fclose($socket);
+                }
             });
         }
         stream_set_blocking($pair[1], false);
@@ -224,16 +267,22 @@ final class AsyncTest extends TestCase
 
     private function awaitTask(EventLoop $loop, Task $task): mixed
     {
-        $deadline = $loop->delay(2, static fn () => throw new RuntimeException('Async test exceeded its deadline.'));
-        try { return $task->await(); }
-        finally { $loop->cancel($deadline); }
+        $deadline = $loop->delay(2, static fn() => throw new RuntimeException('Async test exceeded its deadline.'));
+        try {
+            return $task->await();
+        } finally {
+            $loop->cancel($deadline);
+        }
     }
 
     private function assertTaskCancelled(EventLoop $loop, Task $task): void
     {
         $cancelled = false;
-        try { $this->awaitTask($loop, $task); }
-        catch (CancelledException) { $cancelled = true; }
+        try {
+            $this->awaitTask($loop, $task);
+        } catch (CancelledException) {
+            $cancelled = true;
+        }
         self::assertTrue($cancelled, 'Task cancellation was ignored.');
     }
 
@@ -241,14 +290,17 @@ final class AsyncTest extends TestCase
     {
         $timedOut = false;
         $poll = $loop->repeat(0.001, static function () use ($complete, $loop): void {
-            if ($complete()) { $loop->stop(); }
+            if ($complete()) {
+                $loop->stop();
+            }
         });
         $deadline = $loop->delay(2, static function () use (&$timedOut, $loop): void {
             $timedOut = true;
             $loop->stop();
         });
-        try { $loop->run(); }
-        finally {
+        try {
+            $loop->run();
+        } finally {
             $loop->cancel($poll);
             $loop->cancel($deadline);
         }

@@ -16,16 +16,16 @@ final readonly class PasswordHasher implements PasswordHasherContract
     /**
      * @param array<string, mixed> $options Options of password_hash(), such as ['cost' => 12].
      */
-    public function __construct(private array $options = [])
-    {
-    }
+    public function __construct(
+        private array $options = [],
+    ) {}
 
-    public function hash(string $password): string
+    public function hash(#[\SensitiveParameter] string $password): string
     {
         return password_hash($password, PASSWORD_DEFAULT, $this->options);
     }
 
-    public function verify(string $password, string $hash): bool
+    public function verify(#[\SensitiveParameter] string $password, string $hash): bool
     {
         return password_verify($password, $hash);
     }

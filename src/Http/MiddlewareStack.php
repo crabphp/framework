@@ -30,14 +30,15 @@ final class MiddlewareStack implements MiddlewareStackContract, RequestHandlerIn
     public function __construct(
         private readonly RequestHandlerInterface $handler,
         private readonly ?ContainerInterface $container = null,
-    ) {
-    }
+    ) {}
 
     public function add(MiddlewareInterface|string ...$middleware): static
     {
         foreach ($middleware as $layer) {
             if (is_string($layer) && $this->container === null) {
-                throw new \LogicException("Middleware {$layer} is given by name, which needs a stack with a container.");
+                throw new \LogicException(
+                    "Middleware {$layer} is given by name, which needs a stack with a container.",
+                );
             }
             $this->middleware[] = $layer;
         }

@@ -51,8 +51,8 @@ final class HttpSession
     public function __construct(
         private readonly Connection $connection,
         private readonly \Closure $handler,
-        int $maxHeaderBytes = 16384,
-        int $maxBodyBytes = 1048576,
+        int $maxHeaderBytes = 16_384,
+        int $maxBodyBytes = 1_048_576,
         private readonly int $maxRequests = 1000,
         private readonly float $headerTimeout = 10,
         private readonly float $bodyTimeout = 30,
@@ -62,36 +62,43 @@ final class HttpSession
         $this->parser = new Parser($maxHeaderBytes, $maxBodyBytes);
         $this->inlineLimit = min(8192, $connection->maxWriteSize());
         $weak = \WeakReference::create($this);
-        $connection->onClose(static function () use ($weak): void { $weak->get()?->retire(); });
-        $connection->onDrain(static function () use ($weak): void { $weak->get()?->pump(); });
+        $connection->onClose(static function () use ($weak): void {
+            $weak->get()?->retire();
+        });
+        $connection->onDrain(static function () use ($weak): void {
+            $weak->get()?->pump();
+        });
         $connection->onEof(function (): void {
             if (!$this->retired) {
                 $this->peerEof = true;
                 $this->schedule();
             }
         });
-        $connection->onDrainRequest(function (): void {
-            if ($this->retired) {
-                return;
-            }
-            $this->draining = true;
-            if ($this->busy) {
-                // The response in hand is finished, and the connection closed after it.
-                $this->connection->pauseRead();
-                return;
-            }
-            // Idle, as far as this side can tell. Go on reading for a moment: a request
-            // that arrives is answered, with "Connection: close", like any last one.
-            $this->drainGrace = $this->connection->loop()->delay(self::DRAIN_GRACE, function (): void {
-                $this->drainGrace = null;
-                // Part of a request has come: its own deadlines, and the connection's, end the wait.
-                if ($this->retired || $this->busy || $this->parser->phase() !== 'idle') {
+        $connection->onDrainRequest(
+            function (): void {
+                if ($this->retired) {
                     return;
                 }
-                $this->retire();
-                $this->connection->end();
-            });
-        }, $this->hasPendingWork(...));
+                $this->draining = true;
+                if ($this->busy) {
+                    // The response in hand is finished, and the connection closed after it.
+                    $this->connection->pauseRead();
+                    return;
+                }
+                // Idle, as far as this side can tell. Go on reading for a moment: a request
+                // that arrives is answered, with "Connection: close", like any last one.
+                $this->drainGrace = $this->connection->loop()->delay(self::DRAIN_GRACE, function (): void {
+                    $this->drainGrace = null;
+                    // Part of a request has come: its own deadlines, and the connection's, end the wait.
+                    if ($this->retired || $this->busy || $this->parser->phase() !== 'idle') {
+                        return;
+                    }
+                    $this->retire();
+                    $this->connection->end();
+                });
+            },
+            $this->hasPendingWork(...),
+        );
         // The first request of a read turn runs without a scheduler round
         // trip; pipelined successors keep their own deferred turns.
         $connection->onData($this->process(...));
@@ -104,8 +111,11 @@ final class HttpSession
      */
     private function hasPendingWork(): bool
     {
-        return $this->connection->bufferedBytes() > 0
-            || (!$this->retired && ($this->busy || $this->parser->phase() !== 'idle'));
+        return (
+            $this->connection->bufferedBytes() > 0
+            || !$this->retired
+            && ($this->busy || $this->parser->phase() !== 'idle')
+        );
     }
 
     private function schedule(): void
@@ -113,10 +123,12 @@ final class HttpSession
         if ($this->scheduled !== null || $this->retired || $this->busy) {
             return;
         }
-        $this->scheduled = $this->connection->loop()->defer(function (): void {
-            $this->scheduled = null;
-            $this->process();
-        });
+        $this->scheduled = $this->connection
+            ->loop()
+            ->defer(function (): void {
+                $this->scheduled = null;
+                $this->process();
+            });
     }
 
     /**
@@ -176,7 +188,7 @@ final class HttpSession
                 $this->connection->pauseRead();
             }
             $this->deadlinePhase = 'response';
-            $this->deadlineAt = hrtime(true) / 1_000_000_000 + $this->responseTimeout;
+            $this->deadlineAt = (hrtime(true) / 1_000_000_000) + $this->responseTimeout;
             if ($this->deadline === null || $this->deadlineScheduledAt > $this->deadlineAt) {
                 $this->scheduleDeadline($this->responseTimeout);
             }
@@ -186,8 +198,10 @@ final class HttpSession
             if ($this->retired || $this->connection->isClosed()) {
                 return;
             }
-            $close = $this->draining || $this->requests >= $this->maxRequests
-                || ($this->peerEof && $this->parser->phase() === 'idle');
+            $close =
+                $this->draining
+                || $this->requests >= $this->maxRequests
+                || $this->peerEof && $this->parser->phase() === 'idle';
             $upgrade = null;
             if ($response instanceof Response || is_string($response)) {
                 // A string is encoded directly; only an unusual one needs its Response.
@@ -196,8 +210,12 @@ final class HttpSession
                     $response = Response::text($response);
                 }
             } elseif ($response instanceof Upgrade) {
-                if ($this->draining || $request->version !== '1.1'
-                    || !$request->hasToken('connection', 'upgrade') || $request->header('upgrade') === null) {
+                if (
+                    $this->draining
+                    || $request->version !== '1.1'
+                    || !$request->hasToken('connection', 'upgrade')
+                    || $request->header('upgrade') === null
+                ) {
                     throw new \UnexpectedValueException('Upgrade requires an active connection and upgrade request.');
                 }
                 $upgrade = $response;
@@ -206,15 +224,20 @@ final class HttpSession
                 throw new \UnexpectedValueException('HTTP handlers must return Response, Upgrade, or string.');
             }
             if ($message === null) {
-                $encoder = new ResponseEncoder($upgrade?->response ?? $response, $request, $close, $upgrade !== null);
+                $encoder = new ResponseEncoder($upgrade->response ?? $response, $request, $close, $upgrade !== null);
                 $close = $encoder->close;
                 $message = $encoder->message();
                 if ($message === null) {
                     $this->output = $encoder->bytes();
                 }
             }
-            if ($message !== null && $upgrade === null && !$close && $this->pending === ''
-                && strlen($message) <= $this->inlineLimit) {
+            if (
+                $message !== null
+                && $upgrade === null
+                && !$close
+                && $this->pending === ''
+                && strlen($message) <= $this->inlineLimit
+            ) {
                 // A complete persistent response needs no output state when
                 // the transport accepts it at once.
                 $result = $this->connection->tryWrite($message);
@@ -232,7 +255,7 @@ final class HttpSession
                         return;
                     }
                     $this->deadlinePhase = 'idle';
-                    $this->deadlineAt = hrtime(true) / 1_000_000_000 + $this->idleTimeout;
+                    $this->deadlineAt = (hrtime(true) / 1_000_000_000) + $this->idleTimeout;
                     if ($this->deadline === null || $this->deadlineScheduledAt > $this->deadlineAt) {
                         $this->scheduleDeadline($this->idleTimeout);
                     }
@@ -324,8 +347,12 @@ final class HttpSession
 
     private function pump(): void
     {
-        if ($this->pumping || $this->retired || $this->completion === self::COMPLETE_NONE
-            || !$this->connection->enterActivity()) {
+        if (
+            $this->pumping
+            || $this->retired
+            || $this->completion === self::COMPLETE_NONE
+            || !$this->connection->enterActivity()
+        ) {
             return;
         }
         $this->pumping = true;
@@ -362,10 +389,12 @@ final class HttpSession
                 }
             }
             if ($this->writeScheduled === null) {
-                $this->writeScheduled = $this->connection->loop()->defer(function (): void {
-                    $this->writeScheduled = null;
-                    $this->pump();
-                });
+                $this->writeScheduled = $this->connection
+                    ->loop()
+                    ->defer(function (): void {
+                        $this->writeScheduled = null;
+                        $this->pump();
+                    });
             }
         } catch (\Throwable $error) {
             // Headers are already sent, so the only signal left for the client is the close.
@@ -413,7 +442,7 @@ final class HttpSession
             'response' => $this->responseTimeout,
             default => $this->headerTimeout,
         };
-        $this->deadlineAt = hrtime(true) / 1_000_000_000 + $seconds;
+        $this->deadlineAt = (hrtime(true) / 1_000_000_000) + $seconds;
         // An earlier wake-up can check the current phase without allocating
         // another timer on every successful request/response transition.
         if ($this->deadline === null || $this->deadlineScheduledAt > $this->deadlineAt) {
@@ -439,7 +468,7 @@ final class HttpSession
         if ($this->retired) {
             return;
         }
-        $remaining = $this->deadlineAt - hrtime(true) / 1_000_000_000;
+        $remaining = $this->deadlineAt - (hrtime(true) / 1_000_000_000);
         if ($remaining > 0) {
             $this->deadlineScheduledAt = $this->deadlineAt;
             $this->deadline = $this->connection->loop()->delay($remaining, $this->checkDeadline(...));
@@ -461,9 +490,11 @@ final class HttpSession
         $this->retired = true;
         $this->releaseRequest();
         foreach ([$this->deadline, $this->scheduled, $this->writeScheduled, $this->drainGrace] as $id) {
-            if ($id !== null) {
-                $this->connection->loop()->cancel($id);
+            if ($id === null) {
+                continue;
             }
+
+            $this->connection->loop()->cancel($id);
         }
         $this->deadline = $this->scheduled = $this->writeScheduled = $this->drainGrace = null;
         $this->output = null;

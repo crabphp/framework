@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace Crab\Database;
 
-
 /**
  * One PDO connection, opened when it is first used. PDO blocks: while a
  * statement runs, its worker serves nothing else.
@@ -15,9 +14,18 @@ final class PdoConnection implements ManagedConnection
      * Failures that mean the connection is gone; it is reopened on next use.
      */
     private const LOST = [
-        'server has gone away', 'no connection to the server', 'Lost connection', 'is dead or not enabled',
-        'Error while sending', 'server closed the connection unexpectedly', 'SSL connection has been closed unexpectedly',
-        'Error writing data to the connection', 'Connection timed out', 'reset by peer', 'Broken pipe', 'Packets out of order',
+        'server has gone away',
+        'no connection to the server',
+        'Lost connection',
+        'is dead or not enabled',
+        'Error while sending',
+        'server closed the connection unexpectedly',
+        'SSL connection has been closed unexpectedly',
+        'Error writing data to the connection',
+        'Connection timed out',
+        'reset by peer',
+        'Broken pipe',
+        'Packets out of order',
     ];
     /**
      * Of those, the ones raised before the statement reached the server,
@@ -54,8 +62,9 @@ final class PdoConnection implements ManagedConnection
     /**
      * @param \Closure(): \PDO $connect Opens the connection; called again after one is lost.
      */
-    public function __construct(private readonly \Closure $connect)
-    {
+    public function __construct(
+        private readonly \Closure $connect,
+    ) {
         $this->scope = new SessionScope();
     }
 
@@ -96,7 +105,11 @@ final class PdoConnection implements ManagedConnection
         try {
             $id = (string) $this->pdo->lastInsertId();
         } catch (\PDOException $error) {
-            throw new DatabaseException('The database did not report an inserted id: ' . $error->getMessage(), $sql, $error);
+            throw new DatabaseException(
+                'The database did not report an inserted id: ' . $error->getMessage(),
+                $sql,
+                $error,
+            );
         }
         return ctype_digit($id) ? (int) $id : $id;
     }
@@ -116,7 +129,7 @@ final class PdoConnection implements ManagedConnection
         $this->begin();
         $level = $this->depth;
         try {
-            $result = $this->scope->transaction(fn (): mixed => $callback($this));
+            $result = $this->scope->transaction(fn(): mixed => $callback($this));
         } catch (\Throwable $error) {
             // A lost connection took the transaction with it; there is nothing left to roll back.
             if ($this->depth === $level) {
@@ -125,7 +138,9 @@ final class PdoConnection implements ManagedConnection
             throw $error;
         }
         if ($this->depth !== $level) {
-            throw new DatabaseException('The transaction lost its session; let this callback unwind before using the connection again.');
+            throw new DatabaseException(
+                'The transaction lost its session; let this callback unwind before using the connection again.',
+            );
         }
         $this->commit();
         return $result;
@@ -176,7 +191,7 @@ final class PdoConnection implements ManagedConnection
     public function withoutReconnect(\Closure $callback): mixed
     {
         $this->pdo();
-        return $this->scope->fixed(fn (): mixed => $callback($this));
+        return $this->scope->fixed(fn(): mixed => $callback($this));
     }
 
     public function isOpen(): bool
@@ -187,14 +202,14 @@ final class PdoConnection implements ManagedConnection
     private function begin(): void
     {
         if ($this->depth > 0) {
-            $this->attempt(fn () => $this->pdo()->exec('SAVEPOINT crab_' . $this->depth), 'SAVEPOINT');
+            $this->attempt(fn() => $this->pdo()->exec('SAVEPOINT crab_' . $this->depth), 'SAVEPOINT');
         } elseif ($this->driver() === 'sqlite') {
             // SQLite's own BEGIN waits to lock until the first write, and a transaction that has
             // read and then finds another writer is refused at once, "database is locked",
             // however long it would wait. Taking the write lock at the start makes it queue.
-            $this->attempt(fn () => $this->pdo()->exec('BEGIN IMMEDIATE'), 'BEGIN IMMEDIATE');
+            $this->attempt(fn() => $this->pdo()->exec('BEGIN IMMEDIATE'), 'BEGIN IMMEDIATE');
         } else {
-            $this->attempt(fn () => $this->pdo()->beginTransaction(), 'BEGIN');
+            $this->attempt(fn() => $this->pdo()->beginTransaction(), 'BEGIN');
         }
         ++$this->depth;
     }
@@ -204,8 +219,8 @@ final class PdoConnection implements ManagedConnection
         $depth = $this->depth - 1;
         try {
             $depth === 0
-                ? $this->attempt(fn () => $this->pdo()->commit(), 'COMMIT')
-                : $this->attempt(fn () => $this->pdo()->exec('RELEASE SAVEPOINT crab_' . $depth), 'RELEASE SAVEPOINT');
+                ? $this->attempt(fn() => $this->pdo()->commit(), 'COMMIT')
+                : $this->attempt(fn() => $this->pdo()->exec('RELEASE SAVEPOINT crab_' . $depth), 'RELEASE SAVEPOINT');
         } catch (\Throwable $error) {
             // Its state is unknown now; a fresh connection is the only safe one.
             $this->close();
@@ -243,7 +258,10 @@ final class PdoConnection implements ManagedConnection
             }
             $this->depth = $depth;
             // What this transaction, and any inside it, asked to run after a commit is not to run.
-            $this->afterCommit = array_values(array_filter($this->afterCommit, static fn (array $waiting): bool => $waiting[0] <= $depth));
+            $this->afterCommit = array_values(array_filter(
+                $this->afterCommit,
+                static fn(array $waiting): bool => $waiting[0] <= $depth,
+            ));
         } catch (\Throwable) {
             // The failure being rolled back is the one to report; dropping the connection rolls back too.
             $this->close();
@@ -258,29 +276,34 @@ final class PdoConnection implements ManagedConnection
      */
     private function statement(string $sql, array $bindings): \PDOStatement
     {
-        return $this->attempt(function () use ($sql, $bindings): \PDOStatement {
-            $statement = $this->statements[$sql] ?? $this->pdo()->prepare($sql);
-            // A statement kept from before still holds the values it was last given: one left out now
-            // would be answered with another caller's. So it must be given as many as it takes.
-            $takes = $this->takes[$sql] ?? null;
-            if ($takes !== null && $takes !== count($bindings)) {
-                throw new DatabaseException("The statement takes {$takes} values and was given " . count($bindings) . " (SQL: {$sql})");
-            }
-            foreach ($bindings as $key => $value) {
-                [$value, $type] = self::bound($value);
-                $statement->bindValue(is_int($key) ? $key + 1 : $key, $value, $type);
-            }
-            $statement->execute();
-            if (!isset($this->statements[$sql])) {
-                if (count($this->statements) >= self::STATEMENTS) {
-                    unset($this->takes[(string) array_key_first($this->statements)]);
-                    array_shift($this->statements);
+        return $this->attempt(
+            function () use ($sql, $bindings): \PDOStatement {
+                $statement = $this->statements[$sql] ?? $this->pdo()->prepare($sql);
+                // A statement kept from before still holds the values it was last given: one left out now
+                // would be answered with another caller's. So it must be given as many as it takes.
+                $takes = $this->takes[$sql] ?? null;
+                if ($takes !== null && $takes !== count($bindings)) {
+                    throw new DatabaseException(
+                        "The statement takes {$takes} values and was given " . count($bindings) . " (SQL: {$sql})",
+                    );
                 }
-                $this->statements[$sql] = $statement;
-                $this->takes[$sql] = count($bindings);
-            }
-            return $statement;
-        }, $sql);
+                foreach ($bindings as $key => $value) {
+                    [$value, $type] = self::bound($value);
+                    $statement->bindValue(is_int($key) ? $key + 1 : $key, $value, $type);
+                }
+                $statement->execute();
+                if (!isset($this->statements[$sql])) {
+                    if (count($this->statements) >= self::STATEMENTS) {
+                        unset($this->takes[(string) array_key_first($this->statements)]);
+                        array_shift($this->statements);
+                    }
+                    $this->statements[$sql] = $statement;
+                    $this->takes[$sql] = count($bindings);
+                }
+                return $statement;
+            },
+            $sql,
+        );
     }
 
     /**
@@ -291,7 +314,7 @@ final class PdoConnection implements ManagedConnection
     private function attempt(\Closure $operation, string $sql): mixed
     {
         $this->scope->check($sql);
-        for ($attempt = 0; ; ++$attempt) {
+        for ($attempt = 0;; ++$attempt) {
             $inTransaction = $this->inTransaction();
             try {
                 return $operation();
@@ -304,7 +327,12 @@ final class PdoConnection implements ManagedConnection
                 }
                 if (self::mentions($message, self::LOST)) {
                     $this->close();
-                    if ($attempt === 0 && !$inTransaction && $this->scope->canReconnect() && self::mentions($message, self::NOT_SENT)) {
+                    if (
+                        $attempt === 0
+                        && !$inTransaction
+                        && $this->scope->canReconnect()
+                        && self::mentions($message, self::NOT_SENT)
+                    ) {
                         continue;
                     }
                 }
@@ -320,7 +348,10 @@ final class PdoConnection implements ManagedConnection
             try {
                 $pdo = ($this->connect)();
             } catch (\PDOException $error) {
-                throw new DatabaseException('Cannot connect to the database: ' . $error->getMessage(), previous: $error);
+                throw new DatabaseException(
+                    'Cannot connect to the database: ' . $error->getMessage(),
+                    previous: $error,
+                );
             }
             if (!$pdo instanceof \PDO) {
                 throw new \LogicException('The connect closure must return a PDO.');
@@ -347,7 +378,9 @@ final class PdoConnection implements ManagedConnection
             is_float($value) => [(string) $value, \PDO::PARAM_STR],
             $value instanceof \DateTimeInterface => [$value->format('Y-m-d H:i:s'), \PDO::PARAM_STR],
             $value instanceof \Stringable => [(string) $value, \PDO::PARAM_STR],
-            default => throw new \InvalidArgumentException('A ' . get_debug_type($value) . ' cannot be bound to a statement.'),
+            default => throw new \InvalidArgumentException(
+                'A ' . get_debug_type($value) . ' cannot be bound to a statement.',
+            ),
         };
     }
 

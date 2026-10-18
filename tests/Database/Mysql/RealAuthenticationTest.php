@@ -30,14 +30,14 @@ final class RealAuthenticationTest extends TestCase
 
     public function testAFreshCachingAccountUsesTheRealServersRsaKey(): void
     {
-        $this->usingAccount(function (\PDO $admin, string $user, string $password): void {
+        $this->usingAccount(function (\PDO $admin, string $user, #[\SensitiveParameter] string $password): void {
             $this->observeLogin($user, $password, false);
         });
     }
 
     public function testAWarmedCachingAccountUsesTheRealServersFastPath(): void
     {
-        $this->usingAccount(function (\PDO $admin, string $user, string $password): void {
+        $this->usingAccount(function (\PDO $admin, string $user, #[\SensitiveParameter] string $password): void {
             $this->query($user, $password);
             $this->observeLogin($user, $password, true);
         });
@@ -46,7 +46,9 @@ final class RealAuthenticationTest extends TestCase
     public function testAFreshCachingAccountAuthenticatesOverVerifiedTls(): void
     {
         $ssl = $this->tlsOptions();
-        $this->usingAccount(function (\PDO $admin, string $user, string $password) use ($ssl): void {
+        $this->usingAccount(function (\PDO $admin, string $user, #[\SensitiveParameter] string $password) use (
+            $ssl,
+        ): void {
             $this->query($user, $password, $ssl, true);
         });
     }
@@ -55,7 +57,9 @@ final class RealAuthenticationTest extends TestCase
     {
         $ssl = $this->tlsOptions();
         unset($ssl['cafile']);
-        $this->usingAccount(function (\PDO $admin, string $user, string $password) use ($ssl): void {
+        $this->usingAccount(function (\PDO $admin, string $user, #[\SensitiveParameter] string $password) use (
+            $ssl,
+        ): void {
             try {
                 $this->query($user, $password, $ssl);
                 self::fail('An untrusted server certificate was accepted.');
@@ -67,7 +71,7 @@ final class RealAuthenticationTest extends TestCase
 
     public function testNativePasswordLogsInOrReportsTheServersDisabledPlugin(): void
     {
-        $this->usingAccount(function (\PDO $admin, string $user, string $password): void {
+        $this->usingAccount(function (\PDO $admin, string $user, #[\SensitiveParameter] string $password): void {
             $alter = $admin->prepare("ALTER USER ?@'%' IDENTIFIED WITH mysql_native_password BY ?");
             try {
                 $alter->execute([$user, $password]);
@@ -76,7 +80,9 @@ final class RealAuthenticationTest extends TestCase
                 // Only this disposable account is changed: a disabled plugin
                 // cannot provision it normally, but must also refuse its login.
                 $hash = '*' . strtoupper(sha1(sha1($password, true)));
-                $update = $admin->prepare("UPDATE mysql.user SET plugin='mysql_native_password', authentication_string=? WHERE User=? AND Host='%'");
+                $update = $admin->prepare(
+                    "UPDATE mysql.user SET plugin='mysql_native_password', authentication_string=? WHERE User=? AND Host='%'",
+                );
                 $update->execute([$hash, $user]);
                 $admin->exec('FLUSH PRIVILEGES');
                 try {
@@ -85,7 +91,10 @@ final class RealAuthenticationTest extends TestCase
                 } catch (DatabaseException $failure) {
                     self::assertSame(1524, $failure->code());
                     self::assertSame('HY000', $failure->sqlState());
-                    self::assertStringContainsString("Plugin 'mysql_native_password' is not loaded", $failure->getMessage());
+                    self::assertStringContainsString(
+                        "Plugin 'mysql_native_password' is not loaded",
+                        $failure->getMessage(),
+                    );
                 }
                 return;
             }
@@ -104,14 +113,21 @@ final class RealAuthenticationTest extends TestCase
         $ca = getenv('CRAB_TEST_MYSQL_CA');
         $name = getenv('CRAB_TEST_MYSQL_TLS_PEER_NAME');
         if ($ca === false || $name === false) {
-            self::markTestSkipped('Set CRAB_TEST_MYSQL_CA and CRAB_TEST_MYSQL_TLS_PEER_NAME to verify the real server certificate.');
+            self::markTestSkipped(
+                'Set CRAB_TEST_MYSQL_CA and CRAB_TEST_MYSQL_TLS_PEER_NAME to verify the real server certificate.',
+            );
         }
         return ['cafile' => $ca, 'peer_name' => $name];
     }
 
     private function usingAccount(\Closure $body): void
     {
-        $admin = new \PDO((string) getenv('CRAB_TEST_MYSQL_DSN'), getenv('CRAB_TEST_MYSQL_USER') ?: 'root', getenv('CRAB_TEST_MYSQL_PASSWORD') ?: '', [\PDO::ATTR_ERRMODE => \PDO::ERRMODE_EXCEPTION]);
+        $admin = new \PDO(
+            (string) getenv('CRAB_TEST_MYSQL_DSN'),
+            getenv('CRAB_TEST_MYSQL_USER') ?: 'root',
+            getenv('CRAB_TEST_MYSQL_PASSWORD') ?: '',
+            [\PDO::ATTR_ERRMODE => \PDO::ERRMODE_EXCEPTION],
+        );
         $user = 'crab_auth_' . bin2hex(random_bytes(6));
         $password = bin2hex(random_bytes(16));
         $create = $admin->prepare("CREATE USER ?@'%' IDENTIFIED WITH caching_sha2_password BY ?");
@@ -126,11 +142,23 @@ final class RealAuthenticationTest extends TestCase
         }
     }
 
-    private function query(string $user, string $password, ?array $ssl = null, bool $encrypted = false): void
-    {
+    private function query(
+        string $user,
+        #[\SensitiveParameter]
+        string $password,
+        ?array $ssl = null,
+        bool $encrypted = false,
+    ): void {
         WorkerHarness::run([], static function (Worker $worker) use ($user, $password, $ssl, $encrypted): void {
             $options = $ssl === null ? [] : ['ssl' => $ssl];
-            $connection = new Connection(static fn () => null, (string) getenv('CRAB_TEST_MYSQL_DSN'), $user, $password, $options, worker: $worker);
+            $connection = new Connection(
+                static fn() => null,
+                (string) getenv('CRAB_TEST_MYSQL_DSN'),
+                $user,
+                $password,
+                $options,
+                worker: $worker,
+            );
             try {
                 self::assertSame(['value' => 42], $connection->first('SELECT :number AS value', ['number' => 42]));
                 $cipher = $connection->first("SHOW SESSION STATUS LIKE 'Ssl_cipher'")['Value'];
@@ -149,11 +177,13 @@ final class RealAuthenticationTest extends TestCase
      * Relays only login packets, unchanged, to the DSN's host and port.
      * No scripted success can replace the real server's final OK packet.
      */
-    private function observeLogin(string $user, string $password, bool $fast): void
+    private function observeLogin(string $user, #[\SensitiveParameter] string $password, bool $fast): void
     {
         ScriptedServer::run(static function (ScriptedServer $client) use ($fast): void {
             $settings = new Settings((string) getenv('CRAB_TEST_MYSQL_DSN'));
-            $address = $settings->socket !== null ? 'unix://' . $settings->socket : "tcp://{$settings->host}:{$settings->port}";
+            $address = $settings->socket !== null
+                ? 'unix://' . $settings->socket
+                : "tcp://{$settings->host}:{$settings->port}";
             $socket = stream_socket_client($address, $number, $reason, 5);
             if ($socket === false) {
                 throw new \RuntimeException('Cannot connect the authentication relay: ' . $reason);
@@ -187,7 +217,7 @@ final class RealAuthenticationTest extends TestCase
         }, static function (string $dsn, Worker $worker) use ($user, $password): void {
             $settings = new Settings($dsn);
             $stream = new Stream($worker->loop);
-            $deadline = hrtime(true) / 1e9 + 5;
+            $deadline = (hrtime(true) / 1e9) + 5;
             try {
                 $stream->open($settings, new DnsResolver(fallback: false), $deadline, null);
                 Authentication::login($stream, $settings, $user, $password, $deadline, null);

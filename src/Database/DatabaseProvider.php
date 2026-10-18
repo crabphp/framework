@@ -44,23 +44,36 @@ final class DatabaseProvider implements WorkerProvider
             $config = $container->get(Config::class);
             $connections = $config->get('database.connections');
             if ($config->get('database.dsn') !== null) {
-                throw new DatabaseException('"database.dsn" is not read. A database is described under "database.connections", by name: \'connections\' => [\'main\' => [\'dsn\' => ...]].');
+                throw new DatabaseException(
+                    '"database.dsn" is not read. A database is described under "database.connections", by name: \'connections\' => [\'main\' => [\'dsn\' => ...]].',
+                );
             }
             if (!is_array($connections)) {
-                throw new DatabaseException('"database.connections" holds each database by name: \'connections\' => [\'main\' => [\'dsn\' => \'sqlite:/path/app.sqlite\']].');
+                throw new DatabaseException(
+                    '"database.connections" holds each database by name: \'connections\' => [\'main\' => [\'dsn\' => \'sqlite:/path/app.sqlite\']].',
+                );
             }
             $default = (string) ($config->get('database.default') ?? array_key_first($connections));
             $clock = $container->has(ClockInterface::class) ? $container->get(ClockInterface::class) : null;
             $lockTimeout = $config->get('database.migration_lock_timeout');
             if (!is_numeric($lockTimeout) || !is_finite((float) $lockTimeout) || (float) $lockTimeout < 0) {
-                throw new \InvalidArgumentException('Set "database.migration_lock_timeout" to a nonnegative number of whole seconds; zero does not wait.');
+                throw new \InvalidArgumentException(
+                    'Set "database.migration_lock_timeout" to a nonnegative number of whole seconds; zero does not wait.',
+                );
             }
             return new DatabaseManager($connections, $default, $clock, (int) $lockTimeout);
         });
-        $container->singleton(DatabaseContract::class, static fn (Container $container): Database => $container->get(DatabaseManager::class)->connection());
+        $container->singleton(DatabaseContract::class, static fn(Container $container): Database => $container->get(
+            DatabaseManager::class,
+        )->connection());
         $container->singleton(Connection::class, DatabaseContract::class);
-        $container->singleton(SchemaContract::class, static fn (Container $container): Schema => new Schema($container->get(DatabaseContract::class)));
-        $container->singleton(MigratorContract::class, static fn (Container $container): Migrator => $container->get(DatabaseManager::class)->migrator());
+        $container->singleton(
+            SchemaContract::class,
+            static fn(Container $container): Schema => new Schema($container->get(DatabaseContract::class)),
+        );
+        $container->singleton(MigratorContract::class, static fn(Container $container): Migrator => $container->get(
+            DatabaseManager::class,
+        )->migrator());
         $container->singleton(Migrators::class, DatabaseManager::class);
         if ($container->has(Console::class)) {
             $console = $container->get(Console::class);

@@ -12,9 +12,14 @@ use Crab\Contracts\HttpClient\Response as ResponseContract;
  */
 final class ResponseException extends ClientException
 {
-    public function __construct(public readonly ResponseContract $response, string $request)
-    {
+    public function __construct(
+        public readonly ResponseContract $response,
+        string $request,
+    ) {
         $what = $request === '' ? 'The request' : $request;
-        parent::__construct("{$what} was answered with {$response->getStatusCode()} {$response->getReasonPhrase()}.", $response->getStatusCode());
+        parent::__construct(
+            "{$what} was answered with {$response->getStatusCode()} {$response->getReasonPhrase()}.",
+            $response->getStatusCode(),
+        );
     }
 }

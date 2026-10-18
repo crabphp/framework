@@ -21,6 +21,5 @@ final readonly class RouteInfo
         public string $action,
         public array $middleware = [],
         public ?string $name = null,
-    ) {
-    }
+    ) {}
 }

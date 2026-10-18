@@ -4,11 +4,11 @@ declare(strict_types=1);
 
 namespace Crab\Engine;
 
+use Crab\Engine\EventLoop\RevoltEventLoop;
 use Crab\Engine\Network\Listener;
 use Crab\Engine\Network\UdpEndpoint;
 use Crab\Engine\Process\Supervisor;
 use Crab\Engine\Process\Worker;
-use Crab\Engine\EventLoop\RevoltEventLoop;
 
 final class Runtime
 {
@@ -30,8 +30,10 @@ final class Runtime
      * stream-select loop. `fn () => RevoltEventLoop::create('uv')` chooses a
      * native backend.
      */
-    public function __construct(?callable $loopFactory = null, public readonly float $shutdownTimeout = 5.0)
-    {
+    public function __construct(
+        ?callable $loopFactory = null,
+        public readonly float $shutdownTimeout = 5.0,
+    ) {
         if (!is_finite($shutdownTimeout) || $shutdownTimeout <= 0) {
             throw new \InvalidArgumentException('Shutdown timeout must be finite and positive.');
         }
@@ -44,8 +46,13 @@ final class Runtime
      * A group may have a shorter drain deadline than the runtime's other
      * workers; its supervisor still allows time for cleanup and exit.
      */
-    public function group(string $name = 'default', int $workers = 1, int $maxConnections = 512, int $maxTasks = 1024, ?float $shutdownTimeout = null): Crab
-    {
+    public function group(
+        string $name = 'default',
+        int $workers = 1,
+        int $maxConnections = 512,
+        int $maxTasks = 1024,
+        ?float $shutdownTimeout = null,
+    ): Crab {
         if ($this->running || isset($this->groups[$name])) {
             throw new \LogicException('Groups must be unique and configured before startup.');
         }
@@ -104,13 +111,22 @@ final class Runtime
                     $bindings[$name]['tcp'][] = $socket;
                 }
                 foreach ($group->datagrams() as $definition) {
-                    $bindings[$name]['udp'][] = UdpEndpoint::bind($definition['address'], $definition['options']['socket'] ?? []);
+                    $bindings[$name]['udp'][] = UdpEndpoint::bind(
+                        $definition['address'],
+                        $definition['options']['socket'] ?? [],
+                    );
                 }
             }
             if ($singleProcess) {
                 $group = reset($this->groups);
                 $driver = EventLoop::install(($this->loopFactory)());
-                $this->runner = new Worker($driver, $group, 0, $bindings[$group->name], $group->shutdownTimeout ?? $this->shutdownTimeout);
+                $this->runner = new Worker(
+                    $driver,
+                    $group,
+                    0,
+                    $bindings[$group->name],
+                    $group->shutdownTimeout ?? $this->shutdownTimeout,
+                );
                 if ($this->onReady !== null) {
                     // The first turn of the loop comes after the worker has started.
                     $onReady = $this->onReady;
@@ -126,16 +142,25 @@ final class Runtime
                     }
                 }
             } else {
-                $this->runner = new Supervisor($this->groups, $bindings, $this->loopFactory, $this->shutdownTimeout, onReady: $this->onReady, onSignal: $this->onSignal);
+                $this->runner = new Supervisor(
+                    $this->groups,
+                    $bindings,
+                    $this->loopFactory,
+                    $this->shutdownTimeout,
+                    onReady: $this->onReady,
+                    onSignal: $this->onSignal,
+                );
             }
             $this->runner->run();
         } finally {
             foreach ($bindings as $groupBindings) {
                 foreach ($groupBindings as $streams) {
                     foreach ($streams as $stream) {
-                        if (is_resource($stream)) {
-                            fclose($stream);
+                        if (!is_resource($stream)) {
+                            continue;
                         }
+
+                        fclose($stream);
                     }
                 }
             }

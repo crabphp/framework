@@ -36,9 +36,10 @@ final class Daemon
      * @param resource|null $channel What the two processes talk over.
      * @param bool $background Whether this is the background process.
      */
-    private function __construct(private mixed $channel, public readonly bool $background)
-    {
-    }
+    private function __construct(
+        private mixed $channel,
+        public readonly bool $background,
+    ) {}
 
     /**
      * @param string $output The file the background process's output is appended to.
@@ -50,7 +51,9 @@ final class Daemon
         }
         $directory = dirname($output);
         if (!is_dir($directory) && !@mkdir($directory, 0o775, true) && !is_dir($directory)) {
-            throw new \RuntimeException("The directory for the background process's output, {$directory}, cannot be created.");
+            throw new \RuntimeException(
+                "The directory for the background process's output, {$directory}, cannot be created.",
+            );
         }
         if (@file_put_contents($output, '', FILE_APPEND) === false) {
             throw new \RuntimeException("The background process's output file, {$output}, cannot be written.");
@@ -99,7 +102,10 @@ final class Daemon
             }
             $read = [$this->channel];
             $write = $except = [];
-            if (@stream_select($read, $write, $except, (int) $remaining, (int) (($remaining - (int) $remaining) * 1e6)) < 1) {
+            if (
+                @stream_select($read, $write, $except, (int) $remaining, (int) (($remaining - (int) $remaining) * 1e6))
+                < 1
+            ) {
                 continue;
             }
             $bytes = fread($this->channel, 8192);
@@ -114,7 +120,11 @@ final class Daemon
             if ($end !== false) {
                 $report = json_decode(substr($buffer, 0, $end), true);
                 $this->close();
-                return is_array($report) ? [(bool) $report[0], (string) $report[1]] : [false, 'It sent a report that could not be read.'];
+                return (
+                    is_array($report)
+                        ? [(bool) $report[0], (string) $report[1]]
+                        : [false, 'It sent a report that could not be read.']
+                );
             }
         }
         $this->close();

@@ -38,7 +38,10 @@ final class Body implements \Stringable
         $this->length += $length;
     }
 
-    public function size(): int { return $this->length; }
+    public function size(): int
+    {
+        return $this->length;
+    }
 
     /**
      * The storage itself, for reading a large body where it lies and not
@@ -47,7 +50,10 @@ final class Body implements \Stringable
      *
      * @return resource|null
      */
-    public function stream(): mixed { return $this->stream; }
+    public function stream(): mixed
+    {
+        return $this->stream;
+    }
 
     public function rewind(): void
     {
@@ -100,5 +106,8 @@ final class Body implements \Stringable
         return $bytes;
     }
 
-    public function __toString(): string { return $this->contents(); }
+    public function __toString(): string
+    {
+        return $this->contents();
+    }
 }

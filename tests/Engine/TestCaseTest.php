@@ -22,14 +22,18 @@ final class TestCaseTest extends TestCase
             public function failWhileTheLoopIsSuspended(RevoltEventLoop $loop, bool $inCallback): void
             {
                 $this->deferCleanup(static function () use ($loop): void {
-                    foreach ($loop->getIdentifiers() as $id) { $loop->cancel($id); }
+                    foreach ($loop->getIdentifiers() as $id) {
+                        $loop->cancel($id);
+                    }
                 });
                 if ($inCallback) {
-                    $loop->defer($this->guardCallback(static function (): void { self::fail('original assertion'); }));
+                    $loop->defer($this->guardCallback(static function (): void {
+                        self::fail('original assertion');
+                    }));
                     $loop->run();
                 } else {
                     $suspension = $loop->getSuspension();
-                    $loop->defer(static fn () => $suspension->resume());
+                    $loop->defer(static fn() => $suspension->resume());
                     $suspension->suspend();
                     self::fail('original assertion');
                 }
@@ -61,14 +65,20 @@ final class TestCaseTest extends TestCase
             $next = RevoltEventLoop::create();
             EventLoop::install($next);
             $ran = false;
-            $next->defer(static function () use (&$ran): void { $ran = true; });
+            $next->defer(static function () use (&$ran): void {
+                $ran = true;
+            });
             $next->run();
             self::assertTrue($ran, 'The next test could not run its own loop.');
         } finally {
             // Even a regression in teardown must not contaminate this test's successors.
-            foreach ($loop->getIdentifiers() as $id) { $loop->cancel($id); }
+            foreach ($loop->getIdentifiers() as $id) {
+                $loop->cancel($id);
+            }
             $loop->stop();
-            if ($loop->driver->isRunning()) { $loop->run(); }
+            if ($loop->driver->isRunning()) {
+                $loop->run();
+            }
         }
     }
 

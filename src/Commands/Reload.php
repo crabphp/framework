@@ -12,9 +12,9 @@ use Crab\Server;
 
 final readonly class Reload implements Command
 {
-    public function __construct(private App $app)
-    {
-    }
+    public function __construct(
+        private App $app,
+    ) {}
 
     public function description(): string
     {
@@ -43,7 +43,11 @@ final readonly class Reload implements Command
             $output->error($error->getMessage());
             return 1;
         }
-        $output->line("Reloaded the server, pid {$pid}, on " . Server::describe($address, $workers) . '. It now runs the code as it is.');
+        $output->line(
+            "Reloaded the server, pid {$pid}, on "
+            . Server::describe($address, $workers)
+            . '. It now runs the code as it is.',
+        );
         $output->line("Process {$new} took over from process {$old}, which finishes the requests it has and stops.");
         return 0;
     }

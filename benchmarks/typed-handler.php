@@ -35,18 +35,22 @@ use Psr\Http\Server\RequestHandlerInterface;
 final readonly class CreateUser
 {
     public function __construct(
-        #[Email] public string $email,
-        #[Length(min: 2, max: 50)] public string $name,
+        #[Email]
+        public string $email,
+        #[Length(min: 2, max: 50)]
+        public string $name,
         public ?int $age = null,
-    ) {
-    }
+    ) {}
 }
 
 final readonly class User
 {
-    public function __construct(public int $id, public string $email, public string $name, public ?int $age)
-    {
-    }
+    public function __construct(
+        public int $id,
+        public string $email,
+        public string $name,
+        public ?int $age,
+    ) {}
 }
 
 final class ManualCreateUser implements RequestHandlerInterface
@@ -78,28 +82,57 @@ final class ManualCreateUser implements RequestHandlerInterface
 }
 
 $options = getopt('', ['iterations:', 'trials:']);
-$iterations = (int) ($options['iterations'] ?? 200000);
+$iterations = (int) ($options['iterations'] ?? 200_000);
 $trials = (int) ($options['trials'] ?? 5);
 
 $router = new Router();
-$router->get('/psr15', new ClosureHandler(static fn (ServerRequestInterface $request) => Response::text('ok')));
-$router->get('/closure', static fn (ServerRequestInterface $request) => Response::text('ok'));
-$router->get('/users/{id}', static fn (int $id) => Response::text('ok'));
+$router->get('/psr15', new ClosureHandler(static fn(ServerRequestInterface $request) => Response::text('ok')));
+$router->get('/closure', static fn(ServerRequestInterface $request) => Response::text('ok'));
+$router->get('/users/{id}', static fn(int $id) => Response::text('ok'));
 $router->post('/manual', new ManualCreateUser());
-$router->post('/typed', static fn (CreateUser $input): User => new User(1, $input->email, $input->name, $input->age));
-$router->post('/fields', static fn (#[Email] string $email, #[Length(min: 2, max: 50)] string $name, ?int $age = null): User => new User(1, $email, $name, $age));
+$router->post('/typed', static fn(CreateUser $input): User => new User(1, $input->email, $input->name, $input->age));
+$router->post(
+    '/fields',
+    static fn(#[Email] string $email, #[Length(min: 2, max: 50)] string $name, ?int $age = null): User => new User(
+        1,
+        $email,
+        $name,
+        $age,
+    ),
+);
 
 $json = ['Content-Type' => 'application/json'];
 $cases = [
-    'psr15' => static fn (int $i): Request => new Request('GET', '/psr15'),
-    'closure' => static fn (int $i): Request => new Request('GET', '/closure'),
-    'parameter' => static fn (int $i): Request => new Request('GET', '/users/' . $i),
-    'manual input' => static fn (int $i): Request => new Request('POST', '/manual', $json, '{"email":"user' . $i . '@example.com","name":"User ' . $i . '","age":' . ($i % 90) . '}'),
-    'typed input' => static fn (int $i): Request => new Request('POST', '/typed', $json, '{"email":"user' . $i . '@example.com","name":"User ' . $i . '","age":' . ($i % 90) . '}'),
-    'typed fields' => static fn (int $i): Request => new Request('POST', '/fields', $json, '{"email":"user' . $i . '@example.com","name":"User ' . $i . '","age":' . ($i % 90) . '}'),
+    'psr15' => static fn(int $i): Request => new Request('GET', '/psr15'),
+    'closure' => static fn(int $i): Request => new Request('GET', '/closure'),
+    'parameter' => static fn(int $i): Request => new Request('GET', '/users/' . $i),
+    'manual input' => static fn(int $i): Request => new Request(
+        'POST',
+        '/manual',
+        $json,
+        '{"email":"user' . $i . '@example.com","name":"User ' . $i . '","age":' . ($i % 90) . '}',
+    ),
+    'typed input' => static fn(int $i): Request => new Request(
+        'POST',
+        '/typed',
+        $json,
+        '{"email":"user' . $i . '@example.com","name":"User ' . $i . '","age":' . ($i % 90) . '}',
+    ),
+    'typed fields' => static fn(int $i): Request => new Request(
+        'POST',
+        '/fields',
+        $json,
+        '{"email":"user' . $i . '@example.com","name":"User ' . $i . '","age":' . ($i % 90) . '}',
+    ),
 ];
 
-printf("PHP %s, JIT %s, %d iterations, best of %d trials\n\n", PHP_VERSION, (opcache_get_status(false)['jit']['on'] ?? false) ? 'on' : 'off', $iterations, $trials);
+printf(
+    "PHP %s, JIT %s, %d iterations, best of %d trials\n\n",
+    PHP_VERSION,
+    opcache_get_status(false)['jit']['on'] ?? false ? 'on' : 'off',
+    $iterations,
+    $trials,
+);
 foreach ($cases as $name => $make) {
     $best = INF;
     for ($trial = 0; $trial <= $trials; ++$trial) {
@@ -118,7 +151,9 @@ foreach ($cases as $name => $make) {
             fwrite(STDERR, "{$name} answered {$response->getStatusCode()}: {$response->getBody()}\n");
             exit(1);
         }
-        $micros = ($after['ru_utime.tv_sec'] - $before['ru_utime.tv_sec']) * 1e6 + ($after['ru_utime.tv_usec'] - $before['ru_utime.tv_usec']);
+        $micros =
+            (($after['ru_utime.tv_sec'] - $before['ru_utime.tv_sec']) * 1e6)
+            + ($after['ru_utime.tv_usec'] - $before['ru_utime.tv_usec']);
         if ($trial > 0) {
             $best = min($best, $micros / $iterations);
         }

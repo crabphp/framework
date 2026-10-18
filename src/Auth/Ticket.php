@@ -30,8 +30,7 @@ final readonly class Ticket implements Middleware, UsesContainer
         private array $origins = [],
         private ?Tickets $tickets = null,
         private ?TokenAuth $tokens = null,
-    ) {
-    }
+    ) {}
 
     public function withContainer(ContainerInterface $container): static
     {
@@ -48,7 +47,9 @@ final readonly class Ticket implements Middleware, UsesContainer
             return ErrorResponse::make($request, 403, 'This origin is not allowed.');
         }
         if ($this->tickets === null || $this->tokens === null) {
-            throw new \LogicException('Ticket authentication needs its services. Register AuthProvider, CacheProvider and TokenAuthProvider, and put Ticket on a route or supply its tickets and tokens.');
+            throw new \LogicException(
+                'Ticket authentication needs its services. Register AuthProvider, CacheProvider and TokenAuthProvider, and put Ticket on a route or supply its tickets and tokens.',
+            );
         }
         $query = $request->getQueryParams();
         if (!array_key_exists('ticket', $query)) {

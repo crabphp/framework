@@ -25,17 +25,21 @@ final class BroadcastProvider implements WorkerProvider
             'prefix' => 'crab:broadcast:',
             'max_channels' => 64,
             'batch' => 128,
-            'max_pending_bytes' => 1048576,
-            'max_backlog_bytes' => 524288,
+            'max_pending_bytes' => 1_048_576,
+            'max_backlog_bytes' => 524_288,
         ]);
         $container->instance(Lifecycle::class, new Lifecycle());
         $container->singleton(Carrier::class, static function (Container $container): Carrier {
             $name = $container->get(Config::class)->get('broadcast.carrier');
             if ($name !== 'local') {
-                throw new \LogicException("Unknown broadcast carrier {$name}. For redis, install crabphp/redis and register RedisProvider after BroadcastProvider; otherwise bind " . Carrier::class . '.');
+                throw new \LogicException(
+                    "Unknown broadcast carrier {$name}. For redis, install crabphp/redis and register RedisProvider after BroadcastProvider; otherwise bind "
+                    . Carrier::class
+                    . '.',
+                );
             }
             $life = $container->get(Lifecycle::class);
-            return $life->carrier = new LocalCarrier(static fn (): bool => $life->serving);
+            return $life->carrier = new LocalCarrier(static fn(): bool => $life->serving);
         });
         $container->singleton(BroadcasterContract::class, static function (Container $container): Broadcaster {
             $life = $container->get(Lifecycle::class);
@@ -55,7 +59,13 @@ final class BroadcastProvider implements WorkerProvider
             }
             $life = $container->get(Lifecycle::class);
             $life->carrier = $container->get(Carrier::class);
-            return $life->channels = new Channels($life->carrier, $limits['max_channels'], $limits['batch'], $limits['max_pending_bytes'], $limits['max_backlog_bytes']);
+            return $life->channels = new Channels(
+                $life->carrier,
+                $limits['max_channels'],
+                $limits['batch'],
+                $limits['max_pending_bytes'],
+                $limits['max_backlog_bytes'],
+            );
         });
         $container->singleton(Channels::class, ChannelsContract::class);
     }

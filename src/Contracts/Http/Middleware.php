@@ -17,6 +17,4 @@ use Psr\Http\Server\MiddlewareInterface;
  * around every request, in App::configure()->withMiddleware(), or around
  * some routes, with ->middleware() on a route or a group.
  */
-interface Middleware extends MiddlewareInterface
-{
-}
+interface Middleware extends MiddlewareInterface {}

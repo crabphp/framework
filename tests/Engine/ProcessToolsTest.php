@@ -39,7 +39,11 @@ final class ProcessToolsTest extends TestCase
         $file = new PidFile($this->directory . '/run/deep/server.pid');
         self::assertNull($file->pid(), 'No file, no process.');
         $file->write();
-        self::assertSame(getmypid() . "\n", file_get_contents($file->path), 'The file holds the number and nothing else.');
+        self::assertSame(
+            getmypid() . "\n",
+            file_get_contents($file->path),
+            'The file holds the number and nothing else.',
+        );
         self::assertSame(getmypid(), $file->pid());
         self::assertSame([], glob($file->path . '.*'), 'Nothing is left of writing it.');
 
@@ -55,23 +59,39 @@ final class ProcessToolsTest extends TestCase
         self::assertFileDoesNotExist($file->path);
         $file->remove();
         self::assertTrue(PidFile::alive(getmypid()));
-        self::assertFalse(PidFile::alive(999999999));
+        self::assertFalse(PidFile::alive(999_999_999));
 
         $this->expectException(\RuntimeException::class);
         $this->expectExceptionMessage('cannot be');
-        (new PidFile('/dev/null/server.pid'))->write();
+        new PidFile('/dev/null/server.pid')->write();
     }
 
     public function testAFileWatcherReportsWhatWasAddedChangedAndRemoved(): void
     {
         $long = time() - 3600;
-        $files = ['/app/One.php', '/app/Deep/Two.php', '/app/notes.txt', '/vendor/package/Three.php', '/storage/Cache.php', '/.env'];
+        $files = [
+            '/app/One.php',
+            '/app/Deep/Two.php',
+            '/app/notes.txt',
+            '/vendor/package/Three.php',
+            '/storage/Cache.php',
+            '/.env',
+        ];
         foreach ($files as $file) {
             file_put_contents($this->directory . $file, 'first');
             touch($this->directory . $file, $long);
         }
-        $watcher = new FileWatcher([$this->directory . '/app', $this->directory . '/.env', $this->directory . '/missing', $this->directory]);
-        self::assertSame(3, $watcher->count(), 'PHP files below a directory, a file named outright, and nothing under vendor or storage.');
+        $watcher = new FileWatcher([
+            $this->directory . '/app',
+            $this->directory . '/.env',
+            $this->directory . '/missing',
+            $this->directory,
+        ]);
+        self::assertSame(
+            3,
+            $watcher->count(),
+            'PHP files below a directory, a file named outright, and nothing under vendor or storage.',
+        );
         self::assertSame([], $watcher->changes());
 
         file_put_contents($this->directory . '/app/One.php', 'changed, and longer');
@@ -89,7 +109,14 @@ final class ProcessToolsTest extends TestCase
         unlink($this->directory . '/app/Deep/Two.php');
         $changed = $watcher->changes();
         sort($changed);
-        self::assertSame([$this->directory . '/.env', $this->directory . '/app/Deep/New.php', $this->directory . '/app/Deep/Two.php'], $changed);
+        self::assertSame(
+            [
+                $this->directory . '/.env',
+                $this->directory . '/app/Deep/New.php',
+                $this->directory . '/app/Deep/Two.php',
+            ],
+            $changed,
+        );
 
         touch($this->directory . '/app/One.php', $long + 60);
         self::assertSame([$this->directory . '/app/One.php'], $watcher->changes(), 'A new time alone is a change.');
@@ -102,9 +129,17 @@ final class ProcessToolsTest extends TestCase
 
     public function testPidOneCannotBecomeABroadcastOrAGroupProbe(): void
     {
-        $process = proc_open([PHP_BINARY, __DIR__ . '/Fixtures/drain.php', 'guard',
-            dirname(__DIR__, 2) . '/vendor/autoload.php', $this->directory],
-            [1 => ['pipe', 'w'], 2 => ['pipe', 'w']], $pipes);
+        $process = proc_open(
+            [
+                PHP_BINARY,
+                __DIR__ . '/Fixtures/drain.php',
+                'guard',
+                dirname(__DIR__, 2) . '/vendor/autoload.php',
+                $this->directory,
+            ],
+            [1 => ['pipe', 'w'], 2 => ['pipe', 'w']],
+            $pipes,
+        );
         self::assertIsResource($process);
         $result = json_decode(stream_get_contents($pipes[1]), true);
         $errors = stream_get_contents($pipes[2]);
@@ -142,10 +177,12 @@ final class ProcessToolsTest extends TestCase
     {
         $events = [];
         $runtime = new Runtime(shutdownTimeout: 0.1);
-        $runtime->group()->onStart(static function (Worker $worker) use (&$events): void {
-            $events[] = 'worker started';
-            $worker->loop->delay(0.02, $worker->stop(...));
-        });
+        $runtime
+            ->group()
+            ->onStart(static function (Worker $worker) use (&$events): void {
+                $events[] = 'worker started';
+                $worker->loop->delay(0.02, $worker->stop(...));
+            });
         self::assertSame($runtime, $runtime->onReady(static function () use (&$events): void {
             $events[] = 'ready';
         }));
@@ -173,12 +210,20 @@ final class ProcessToolsTest extends TestCase
             $runtime->run();
             fwrite(STDOUT, "stopped\n");
             PHP;
-        $process = proc_open([PHP_BINARY, '-r', $code, dirname(__DIR__, 2) . '/vendor/autoload.php'], [1 => ['pipe', 'w'], 2 => ['pipe', 'w']], $pipes);
+        $process = proc_open(
+            [PHP_BINARY, '-r', $code, dirname(__DIR__, 2) . '/vendor/autoload.php'],
+            [1 => ['pipe', 'w'], 2 => ['pipe', 'w']],
+            $pipes,
+        );
         self::assertIsResource($process);
         $output = stream_get_contents($pipes[1]);
         $errors = stream_get_contents($pipes[2]);
         self::assertSame(0, proc_close($process), $errors);
-        self::assertSame("started\nstarted\nstarted\nready\nstopped\n", $output, 'Ready comes once, after all three workers.');
+        self::assertSame(
+            "started\nstarted\nstarted\nready\nstopped\n",
+            $output,
+            'Ready comes once, after all three workers.',
+        );
     }
 
     public function testASignalToTheParentRunsItsCallbackAndIsIgnoredByWorkers(): void
@@ -207,7 +252,11 @@ final class ProcessToolsTest extends TestCase
             fwrite(STDOUT, "stopped\n");
             PHP;
         foreach (['supervised', 'single'] as $mode) {
-            $process = proc_open([PHP_BINARY, '-r', $code, dirname(__DIR__, 2) . '/vendor/autoload.php', $mode], [1 => ['pipe', 'w'], 2 => ['pipe', 'w']], $pipes);
+            $process = proc_open(
+                [PHP_BINARY, '-r', $code, dirname(__DIR__, 2) . '/vendor/autoload.php', $mode],
+                [1 => ['pipe', 'w'], 2 => ['pipe', 'w']],
+                $pipes,
+            );
             $output = stream_get_contents($pipes[1]);
             $errors = stream_get_contents($pipes[2]);
             self::assertSame(0, proc_close($process), $errors);
@@ -232,7 +281,11 @@ final class ProcessToolsTest extends TestCase
             $runtime->onReady(static fn () => fwrite(STDOUT, "ready\n"));
             $runtime->run(singleProcess: true);
             PHP;
-        $server = proc_open([PHP_BINARY, '-r', $code, dirname(__DIR__, 2) . '/vendor/autoload.php', $address], [1 => ['pipe', 'w'], 2 => ['pipe', 'w']], $pipes);
+        $server = proc_open(
+            [PHP_BINARY, '-r', $code, dirname(__DIR__, 2) . '/vendor/autoload.php', $address],
+            [1 => ['pipe', 'w'], 2 => ['pipe', 'w']],
+            $pipes,
+        );
         self::assertSame("ready\n", fgets($pipes[1]));
 
         // Three clients the server cannot tell apart yet: all connected, none has sent anything.
@@ -254,7 +307,11 @@ final class ProcessToolsTest extends TestCase
             $response = (string) stream_get_contents($client);
             self::assertStringContainsString('200 OK', $response);
             self::assertStringContainsString('served', $response);
-            self::assertMatchesRegularExpression('/connection: close/i', $response, 'It is answered as the last on its connection.');
+            self::assertMatchesRegularExpression(
+                '/connection: close/i',
+                $response,
+                'It is answered as the last on its connection.',
+            );
         }
         stream_set_timeout($silent, 5);
         self::assertSame('', stream_get_contents($silent), 'One that sends nothing is closed.');
@@ -298,8 +355,11 @@ final class ProcessToolsTest extends TestCase
         $run = function (string $mode) use ($code): array {
             $log = $this->directory . "/logs/{$mode}.log";
             $marker = $this->directory . "/{$mode}.marker";
-            $process = proc_open([PHP_BINARY, '-r', $code, dirname(__DIR__, 2) . '/vendor/autoload.php', $log, $mode, $marker],
-                [1 => ['pipe', 'w'], 2 => ['pipe', 'w']], $pipes);
+            $process = proc_open(
+                [PHP_BINARY, '-r', $code, dirname(__DIR__, 2) . '/vendor/autoload.php', $log, $mode, $marker],
+                [1 => ['pipe', 'w'], 2 => ['pipe', 'w']],
+                $pipes,
+            );
             $output = stream_get_contents($pipes[1]);
             $errors = stream_get_contents($pipes[2]);
             $status = proc_close($process);
@@ -310,12 +370,20 @@ final class ProcessToolsTest extends TestCase
         $pid = (int) $report[1];
         self::assertNotSame(getmypid(), $pid);
         for ($waited = 0; $waited < 100 && !is_file($marker); ++$waited) {
-            usleep(20000);
+            usleep(20_000);
         }
         [$session, $parent, $terminal] = json_decode((string) file_get_contents($marker), true);
-        self::assertSame(['in a session of its own', false], [$session, $terminal], 'It left the terminal and cannot take one back.');
+        self::assertSame(
+            ['in a session of its own', false],
+            [$session, $terminal],
+            'It left the terminal and cannot take one back.',
+        );
         self::assertNotSame(getmypid(), $parent, 'It is no child of the process that launched it.');
-        self::assertSame("echoed\nto standard output\nto standard error\n[Crab] A report from the background\n", file_get_contents($log), 'Everything it prints goes to its file.');
+        self::assertSame(
+            "echoed\nto standard output\nto standard error\n[Crab] A report from the background\n",
+            file_get_contents($log),
+            'Everything it prints goes to its file.',
+        );
 
         [$status, $report] = $run('fail');
         self::assertSame([1, [false, "it could not\nstart"]], [$status, $report]);
@@ -324,6 +392,6 @@ final class ProcessToolsTest extends TestCase
         [$status, $report] = $run('silent');
         self::assertSame([1, [false, 'It did not report within 0.3 seconds.']], [$status, $report]);
         // Let the one that stayed silent end before its files are removed.
-        usleep(700000);
+        usleep(700_000);
     }
 }

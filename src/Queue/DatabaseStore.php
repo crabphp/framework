@@ -28,20 +28,26 @@ final readonly class DatabaseStore implements TransactionalStore
      */
     private const CANDIDATES = 5;
 
-    public function __construct(private Connection $connection, private string $table = 'jobs')
-    {
-    }
+    public function __construct(
+        private Connection $connection,
+        private string $table = 'jobs',
+    ) {}
 
     public function push(string $queue, string $job, array $data, int $availableAt, int $now): int|string
     {
-        return $this->connection->table($this->table)->insert([
-            'queue' => $queue,
-            'job' => $job,
-            'payload' => json_encode($data, JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_PRESERVE_ZERO_FRACTION),
-            'attempts' => 0,
-            'available_at' => $availableAt,
-            'created_at' => $now,
-        ]);
+        return $this->connection
+            ->table($this->table)
+            ->insert([
+                'queue' => $queue,
+                'job' => $job,
+                'payload' => json_encode(
+                    $data,
+                    JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_PRESERVE_ZERO_FRACTION,
+                ),
+                'attempts' => 0,
+                'available_at' => $availableAt,
+                'created_at' => $now,
+            ]);
     }
 
     public function through(Connection $transaction): ?Store
@@ -58,9 +64,14 @@ final readonly class DatabaseStore implements TransactionalStore
     public function reserve(array $queues, int $now, int $retryAfter): ?Message
     {
         $stale = $now - $retryAfter;
-        $free = static fn (Query $query): Query => $query->whereNull('reserved_at')->orWhere('reserved_at', '<=', $stale);
+        $free = static fn(Query $query): Query => $query->whereNull('reserved_at')->orWhere(
+            'reserved_at',
+            '<=',
+            $stale,
+        );
         foreach ($queues as $queue) {
-            $ids = $this->connection->table($this->table)
+            $ids = $this->connection
+                ->table($this->table)
                 ->where('queue', $queue)
                 ->whereNull('failed_at')
                 ->where('available_at', '<=', $now)
@@ -70,7 +81,8 @@ final readonly class DatabaseStore implements TransactionalStore
                 ->pluck('id');
             foreach ($ids as $id) {
                 // Whoever changes the row has the job; anyone else finds it taken and moves on.
-                $taken = $this->connection->table($this->table)
+                $taken = $this->connection
+                    ->table($this->table)
                     ->where('id', $id)
                     ->whereNull('failed_at')
                     // Again here: another worker may have taken it, failed it and put it back for later since it was listed.
@@ -143,7 +155,7 @@ final readonly class DatabaseStore implements TransactionalStore
 
     public function counts(string $queue, int $now): array
     {
-        $jobs = fn (): Query => $this->connection->table($this->table)->where('queue', $queue)->whereNull('failed_at');
+        $jobs = fn(): Query => $this->connection->table($this->table)->where('queue', $queue)->whereNull('failed_at');
         $oldest = $jobs()->whereNull('reserved_at')->where('available_at', '<=', $now)->min('available_at');
         return [
             'oldest' => $oldest === null ? null : (int) $oldest,
@@ -162,10 +174,20 @@ final readonly class DatabaseStore implements TransactionalStore
     {
         $query = $this->connection->table($this->table)->where('queue', $queue)->whereNull('failed_at');
         $query = match ($state) {
-            'pending' => $query->whereNull('reserved_at')->where('available_at', '<=', $now)->orderBy('available_at')->orderBy('id'),
-            'delayed' => $query->whereNull('reserved_at')->where('available_at', '>', $now)->orderBy('available_at')->orderBy('id'),
+            'pending' => $query
+                ->whereNull('reserved_at')
+                ->where('available_at', '<=', $now)
+                ->orderBy('available_at')
+                ->orderBy('id'),
+            'delayed' => $query
+                ->whereNull('reserved_at')
+                ->where('available_at', '>', $now)
+                ->orderBy('available_at')
+                ->orderBy('id'),
             'processing' => $query->whereNotNull('reserved_at')->orderBy('reserved_at')->orderBy('id'),
-            default => throw new \InvalidArgumentException("\"{$state}\" is not a state a waiting job is in: pending, delayed or processing."),
+            default => throw new \InvalidArgumentException(
+                "\"{$state}\" is not a state a waiting job is in: pending, delayed or processing.",
+            ),
         };
         return array_map(self::message(...), $query->limit(max(0, $limit))->get());
     }
@@ -177,7 +199,8 @@ final readonly class DatabaseStore implements TransactionalStore
      */
     private function held(Message $message): Query
     {
-        return $this->connection->table($this->table)
+        return $this->connection
+            ->table($this->table)
             ->where('id', $message->id)
             ->where('attempts', $message->attempts)
             ->whereNotNull('reserved_at')

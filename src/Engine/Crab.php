@@ -45,10 +45,14 @@ final class Crab
         public readonly ?float $shutdownTimeout = null,
     ) {
         if ($name === '' || $workers < 1 || $maxConnections < 1 || $maxTasks < 1) {
-            throw new \InvalidArgumentException('Group name, worker count, connection limit and task limit must be valid.');
+            throw new \InvalidArgumentException(
+                'Group name, worker count, connection limit and task limit must be valid.',
+            );
         }
         if ($shutdownTimeout !== null && (!is_finite($shutdownTimeout) || $shutdownTimeout <= 0)) {
-            throw new \InvalidArgumentException('Set the worker shutdown timeout to a finite number of seconds greater than zero.');
+            throw new \InvalidArgumentException(
+                'Set the worker shutdown timeout to a finite number of seconds greater than zero.',
+            );
         }
     }
 
@@ -61,7 +65,12 @@ final class Crab
         if ($socket !== null && !is_resource($socket)) {
             throw new \InvalidArgumentException('An inherited socket must be an open stream.');
         }
-        $this->listeners[] = ['address' => $address, 'handler' => $handler(...), 'options' => $options, 'socket' => $socket];
+        $this->listeners[] = [
+            'address' => $address,
+            'handler' => $handler(...),
+            'options' => $options,
+            'socket' => $socket,
+        ];
         return $this;
     }
 
@@ -106,12 +115,35 @@ final class Crab
         return $this;
     }
 
-    public function listeners(): array { return $this->listeners; }
-    public function datagrams(): array { return $this->datagrams; }
-    public function startCallbacks(): array { return $this->startCallbacks; }
-    public function stopCallbacks(): array { return $this->stopCallbacks; }
-    public function failureCallbacks(): array { return $this->failureCallbacks; }
-    public function freeze(): void { $this->frozen = true; }
+    public function listeners(): array
+    {
+        return $this->listeners;
+    }
+
+    public function datagrams(): array
+    {
+        return $this->datagrams;
+    }
+
+    public function startCallbacks(): array
+    {
+        return $this->startCallbacks;
+    }
+
+    public function stopCallbacks(): array
+    {
+        return $this->stopCallbacks;
+    }
+
+    public function failureCallbacks(): array
+    {
+        return $this->failureCallbacks;
+    }
+
+    public function freeze(): void
+    {
+        $this->frozen = true;
+    }
 
     private function assertMutable(): void
     {

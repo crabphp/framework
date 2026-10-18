@@ -31,7 +31,7 @@ interface Cache extends CacheInterface
      *
      * @param \Closure(): mixed $make
      */
-    public function remember(string $key, null|int|\DateInterval $ttl, \Closure $make): mixed;
+    public function remember(string $key, int|\DateInterval|null $ttl, \Closure $make): mixed;
 
     /**
      * Sets the value only when the key holds none, as one step, so that
@@ -39,7 +39,7 @@ interface Cache extends CacheInterface
      *
      * @return bool Whether this call set it.
      */
-    public function add(string $key, mixed $value, null|int|\DateInterval $ttl = null): bool;
+    public function add(string $key, mixed $value, int|\DateInterval|null $ttl = null): bool;
 
     /**
      * Takes a lock, or returns null when another caller holds it. The
@@ -63,5 +63,5 @@ interface Cache extends CacheInterface
      * @param int $by How much to add; less than zero takes away.
      * @return int The number now at the key.
      */
-    public function increment(string $key, int $by = 1, null|int|\DateInterval $ttl = null): int;
+    public function increment(string $key, int $by = 1, int|\DateInterval|null $ttl = null): int;
 }

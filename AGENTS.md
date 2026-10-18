@@ -265,6 +265,7 @@
 ## Workflow
 
 - Commit directly on `main`, without feature branches. Commit and push only when asked.
+- PHP is formatted and linted by Mago (`composer format`, `composer format:check`, `composer lint`) with one `mago.toml` shared by every repository, differing only in paths. A default rule is turned off only in `mago.toml`, with a comment saying why. Mago's automatic fixes are reviewed and tested like any change: a loop whose condition does the work is not empty.
 
 ## Application skeleton
 

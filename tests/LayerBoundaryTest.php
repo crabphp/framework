@@ -38,9 +38,11 @@ final class LayerBoundaryTest extends TestCase
         $violations = [];
         foreach (self::references('Contracts') as $location => $names) {
             foreach ($names as $name) {
-                if (!in_array(explode('\\', $name)[1], ['Contracts', 'Engine'], true)) {
-                    $violations[] = "{$location} {$name}";
+                if (in_array(explode('\\', $name)[1], ['Contracts', 'Engine'], true)) {
+                    continue;
                 }
+
+                $violations[] = "{$location} {$name}";
             }
         }
         self::assertSame([], $violations, 'A contract must not depend on a component.');
@@ -62,9 +64,11 @@ final class LayerBoundaryTest extends TestCase
             foreach (self::references($component) as $location => $names) {
                 foreach ($names as $name) {
                     // The segment after Crab\ is a layer, a component, or a glue class such as App.
-                    if (!in_array(explode('\\', $name)[1], $allowed, true)) {
-                        $violations[] = "{$location} {$name}";
+                    if (in_array(explode('\\', $name)[1], $allowed, true)) {
+                        continue;
                     }
+
+                    $violations[] = "{$location} {$name}";
                 }
             }
         }
@@ -78,15 +82,20 @@ final class LayerBoundaryTest extends TestCase
     {
         $root = dirname(__DIR__) . '/src/';
         $found = [];
-        $files = new \RecursiveIteratorIterator(new \RecursiveDirectoryIterator($root . $folder, \FilesystemIterator::SKIP_DOTS));
+        $files = new \RecursiveIteratorIterator(new \RecursiveDirectoryIterator(
+            $root . $folder,
+            \FilesystemIterator::SKIP_DOTS,
+        ));
         foreach ($files as $file) {
             if ($file->getExtension() !== 'php') {
                 continue;
             }
             foreach (file($file->getPathname()) as $number => $line) {
-                if (preg_match_all('/\bCrab\\\\[A-Za-z_\\\\]*[A-Za-z_]/', $line, $matches)) {
-                    $found[substr($file->getPathname(), strlen($root)) . ':' . ($number + 1)] = $matches[0];
+                if (!preg_match_all('/\bCrab\\\\[A-Za-z_\\\\]*[A-Za-z_]/', $line, $matches)) {
+                    continue;
                 }
+
+                $found[substr($file->getPathname(), strlen($root)) . ':' . ($number + 1)] = $matches[0];
             }
         }
         return $found;

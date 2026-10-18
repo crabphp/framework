@@ -65,7 +65,15 @@ final class FakeClient extends Client implements Transport
         int $retries = 0,
     ) {
         // Retries wait no time in a test.
-        parent::__construct($baseUrl, $headers, redirects: $redirects, cookies: $cookies, retries: $retries, retryDelay: 0.0, transport: $this);
+        parent::__construct(
+            $baseUrl,
+            $headers,
+            redirects: $redirects,
+            cookies: $cookies,
+            retries: $retries,
+            retryDelay: 0.0,
+            transport: $this,
+        );
     }
 
     /**
@@ -110,11 +118,18 @@ final class FakeClient extends Client implements Transport
      */
     public function sent(string $pattern = '*'): array
     {
-        return array_values(array_filter($this->requests, static fn (RequestInterface $request): bool => self::matches($pattern, $request)));
+        return array_values(array_filter($this->requests, static fn(RequestInterface $request): bool => self::matches(
+            $pattern,
+            $request,
+        )));
     }
 
-    public function exchange(RequestInterface $request, float $deadline, float $timeout, ?Cancellation $cancellation): Response
-    {
+    public function exchange(
+        RequestInterface $request,
+        float $deadline,
+        float $timeout,
+        ?Cancellation $cancellation,
+    ): Response {
         $cancellation?->throwIfCancelled();
         $this->requests[] = $request;
         $what = Exchange::describe($request);
@@ -134,9 +149,20 @@ final class FakeClient extends Client implements Transport
                 $reply = self::response(200, $reply);
             }
             // Made again so that it knows which request it answers, for throw() to name.
-            return new Response($reply->getStatusCode(), $reply->getHeaders(), new Stream((string) $reply->getBody()), $reply->getReasonPhrase(), $reply->getProtocolVersion(), $what);
+            return new Response(
+                $reply->getStatusCode(),
+                $reply->getHeaders(),
+                new Stream((string) $reply->getBody()),
+                $reply->getReasonPhrase(),
+                $reply->getProtocolVersion(),
+                $what,
+            );
         }
-        $patterns = array_map(static fn (string $pattern): string => substr($pattern, 0, strcspn($pattern, '?#')), array_keys($this->replies));
+        $patterns = array_map(static fn(string $pattern): string => substr(
+            $pattern,
+            0,
+            strcspn($pattern, '?#'),
+        ), array_keys($this->replies));
         $known = $patterns === [] ? 'It has none.' : 'It has: ' . implode(', ', $patterns) . '.';
         throw new \LogicException("Nothing fakes {$what}. Add a reply for it to the FakeClient. {$known}");
     }
@@ -144,9 +170,7 @@ final class FakeClient extends Client implements Transport
     /**
      * There are no connections to close.
      */
-    public function close(): void
-    {
-    }
+    public function close(): void {}
 
     private static function matches(string $pattern, RequestInterface $request): bool
     {

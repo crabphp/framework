@@ -16,8 +16,10 @@ final readonly class ApiResponse
     /**
      * @param string $request What was asked, for a failure to say: "POST /orders".
      */
-    public function __construct(public ResponseInterface $response, private string $request = '')
-    {
+    public function __construct(
+        public ResponseInterface $response,
+        private string $request = '',
+    ) {
         $this->status = $response->getStatusCode();
     }
 
@@ -40,11 +42,15 @@ final readonly class ApiResponse
         try {
             $value = json_decode($this->body(), true, flags: JSON_THROW_ON_ERROR);
         } catch (\JsonException) {
-            throw new \LogicException("{$this->request} answered {$this->status} with a body that is not JSON: " . self::short($this->body()));
+            throw new \LogicException(
+                "{$this->request} answered {$this->status} with a body that is not JSON: " . self::short($this->body()),
+            );
         }
         foreach ($path === null || $path === '' ? [] : explode('.', $path) as $key) {
             if (!is_array($value) || !array_key_exists($key, $value)) {
-                throw new \LogicException("{$this->request} answered without \"{$path}\": " . self::short($this->body()));
+                throw new \LogicException(
+                    "{$this->request} answered without \"{$path}\": " . self::short($this->body()),
+                );
             }
             $value = $value[$key];
         }
@@ -68,7 +74,11 @@ final readonly class ApiResponse
      */
     public function assertJson(string $path, mixed $expected): static
     {
-        $message = "{$this->request} answered {$this->status}: JSON path \"{$path}\" must be identical to " . var_export($expected, true) . '. Body: ' . self::short($this->body());
+        $message =
+            "{$this->request} answered {$this->status}: JSON path \"{$path}\" must be identical to "
+            . var_export($expected, true)
+            . '. Body: '
+            . self::short($this->body());
         try {
             $actual = $this->json($path);
         } catch (\LogicException $error) {
@@ -85,7 +95,13 @@ final readonly class ApiResponse
     public function assertHeader(string $name, string $expected): static
     {
         $actual = $this->header($name);
-        $message = "{$this->request} answered {$this->status}: header \"{$name}\" must be " . var_export($expected, true) . ', but was ' . var_export($actual, true) . '. Body: ' . self::short($this->body());
+        $message =
+            "{$this->request} answered {$this->status}: header \"{$name}\" must be "
+            . var_export($expected, true)
+            . ', but was '
+            . var_export($actual, true)
+            . '. Body: '
+            . self::short($this->body());
         if (!$this->response->hasHeader($name)) {
             self::fail($message . ' The header is not there.');
         }

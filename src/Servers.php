@@ -26,12 +26,22 @@ final class Servers implements ServersContract
 
     public function command(string $id, string $command): void
     {
-        $this->register($id, ['kind' => 'command', 'runs' => self::checked($id, $command), 'grace' => 30.0, 'label' => 'php cua ' . trim($command)]);
+        $this->register($id, [
+            'kind' => 'command',
+            'runs' => self::checked($id, $command),
+            'grace' => 30.0,
+            'label' => 'php cua ' . trim($command),
+        ]);
     }
 
     public function process(string $id, string $command): void
     {
-        $this->register($id, ['kind' => 'process', 'runs' => self::checked($id, $command), 'grace' => 30.0, 'label' => trim($command)]);
+        $this->register($id, [
+            'kind' => 'process',
+            'runs' => self::checked($id, $command),
+            'grace' => 30.0,
+            'label' => trim($command),
+        ]);
     }
 
     public function ids(): array
@@ -74,9 +84,15 @@ final class Servers implements ServersContract
     public function groups(string $id): array
     {
         $groups = [];
-        foreach (($this->servers[$id]['runs'])() as $workers) {
+        foreach ($this->servers[$id]['runs']() as $workers) {
             if (!$workers instanceof Workers) {
-                throw new \LogicException("The server \"{$id}\" must give a list of " . Workers::class . ', and gave ' . get_debug_type($workers) . '.');
+                throw new \LogicException(
+                    "The server \"{$id}\" must give a list of "
+                    . Workers::class
+                    . ', and gave '
+                    . get_debug_type($workers)
+                    . '.',
+                );
             }
             $groups[] = $workers;
         }
@@ -102,7 +118,9 @@ final class Servers implements ServersContract
     private function register(string $id, array $server): void
     {
         if (preg_match('/^[a-z][a-z0-9_-]*$/D', $id) !== 1 || $id === 'http') {
-            throw new \LogicException("\"{$id}\" cannot be a server's id: use lower-case letters, digits, \"-\" and \"_\", as in \"queue\"; \"http\" is the server's own.");
+            throw new \LogicException(
+                "\"{$id}\" cannot be a server's id: use lower-case letters, digits, \"-\" and \"_\", as in \"queue\"; \"http\" is the server's own.",
+            );
         }
         // Again under the same id: this one takes its place, where the first stood.
         $this->servers[$id] = $server;

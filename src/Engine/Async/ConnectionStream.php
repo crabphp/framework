@@ -26,24 +26,27 @@ final class ConnectionStream
     private ?Closure $reader = null;
     private ?Closure $writer = null;
 
-    public function __construct(private readonly Connection $connection)
-    {
+    public function __construct(
+        private readonly Connection $connection,
+    ) {
         $connection->pauseRead();
         $connection->onData(function (Connection $connection, string $bytes): void {
             $connection->pauseRead();
             $this->buffer = $bytes;
-            ($this->reader)?->__invoke();
+            $this->reader?->__invoke();
         });
         $connection->onEof(function (): void {
             $this->eof = true;
-            ($this->reader)?->__invoke();
+            $this->reader?->__invoke();
         });
         $connection->onClose(function (): void {
             $error = new RuntimeException('Connection closed.');
-            ($this->reader)?->__invoke($error);
-            ($this->writer)?->__invoke($error);
+            $this->reader?->__invoke($error);
+            $this->writer?->__invoke($error);
         });
-        $connection->onDrain(function (): void { ($this->writer)?->__invoke(); });
+        $connection->onDrain(function (): void {
+            $this->writer?->__invoke();
+        });
     }
 
     /**
@@ -86,7 +89,7 @@ final class ConnectionStream
             }
         };
         $this->reader = $finish;
-        $unsubscribe = $cancellation?->subscribe(static fn (CancelledException $error) => $finish($error));
+        $unsubscribe = $cancellation?->subscribe(static fn(CancelledException $error) => $finish($error));
         $this->connection->resumeRead();
         try {
             return $suspension->suspend();
@@ -195,7 +198,7 @@ final class ConnectionStream
             }
         };
         $this->writer = $finish;
-        $unsubscribe = $cancellation?->subscribe(static fn (CancelledException $error) => $finish($error));
+        $unsubscribe = $cancellation?->subscribe(static fn(CancelledException $error) => $finish($error));
         try {
             $suspension->suspend();
         } finally {

@@ -31,16 +31,16 @@ final readonly class Input implements InputContract
         $arguments = [];
         $options = [];
         $literal = false;
-        foreach ($tokens as $token) {
-            if ($literal || $token === '-' || $token === '' || $token[0] !== '-' || is_numeric($token)) {
-                $arguments[] = $token;
-            } elseif ($token === '--') {
+        foreach ($tokens as $word) {
+            if ($literal || $word === '-' || $word === '' || $word[0] !== '-' || is_numeric($word)) {
+                $arguments[] = $word;
+            } elseif ($word === '--') {
                 $literal = true;
-            } elseif ($token[1] === '-') {
-                [$name, $value] = explode('=', substr($token, 2), 2) + [1 => true];
+            } elseif ($word[1] === '-') {
+                [$name, $value] = explode('=', substr($word, 2), 2) + [1 => true];
                 $options[$name] = $value;
             } else {
-                foreach (str_split(substr($token, 1)) as $letter) {
+                foreach (str_split(substr($word, 1)) as $letter) {
                     $options[$letter] = true;
                 }
             }
@@ -72,6 +72,6 @@ final readonly class Input implements InputContract
     public function flag(string $name): bool
     {
         $value = $this->options[$name] ?? false;
-        return $value === true || (is_string($value) && !in_array(strtolower($value), ['false', '0', 'no', ''], true));
+        return $value === true || is_string($value) && !in_array(strtolower($value), ['false', '0', 'no', ''], true);
     }
 }

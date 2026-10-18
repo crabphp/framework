@@ -23,26 +23,32 @@ final readonly class DatabaseTokenStore implements TokenStore
         private Connection $connection,
         private string $table = 'auth_tokens',
         private ?ClockInterface $clock = null,
-    ) {
-    }
+    ) {}
 
     public function issue(Identity|int|string $for, string $name = '', ?\DateTimeInterface $expiresAt = null): string
     {
         $token = bin2hex(random_bytes(32));
-        $this->connection->table($this->table)->insert([
-            'owner_id' => (string) self::id($for),
-            'name' => $name,
-            'token_hash' => hash('sha256', $token),
-            // As the clock tells the time, so that the two compare whatever zone the expiry was given in.
-            'expires_at' => $expiresAt === null ? null : \DateTimeImmutable::createFromInterface($expiresAt)->setTimezone($this->clock()->getTimezone())->format('Y-m-d H:i:s'),
-            'created_at' => $this->now(),
-        ]);
+        $this->connection
+            ->table($this->table)
+            ->insert([
+                'owner_id' => (string) self::id($for),
+                'name' => $name,
+                'token_hash' => hash('sha256', $token),
+                // As the clock tells the time, so that the two compare whatever zone the expiry was given in.
+                'expires_at' => $expiresAt === null
+                    ? null
+                    : \DateTimeImmutable::createFromInterface($expiresAt)
+                        ->setTimezone($this->clock()->getTimezone())
+                        ->format('Y-m-d H:i:s'),
+                'created_at' => $this->now(),
+            ]);
         return $token;
     }
 
-    public function owner(string $token): int|string|null
+    public function owner(#[\SensitiveParameter] string $token): int|string|null
     {
-        $row = $this->connection->table($this->table)
+        $row = $this->connection
+            ->table($this->table)
             ->select('owner_id', 'expires_at')
             ->where('token_hash', hash('sha256', $token))
             ->first();
@@ -58,14 +64,17 @@ final readonly class DatabaseTokenStore implements TokenStore
         return (string) (int) $owner === $owner ? (int) $owner : $owner;
     }
 
-    public function revoke(string $token): void
+    public function revoke(#[\SensitiveParameter] string $token): void
     {
         $this->connection->table($this->table)->where('token_hash', hash('sha256', $token))->delete();
     }
 
     public function revokeAll(Identity|int|string $of): void
     {
-        $this->connection->table($this->table)->where('owner_id', (string) self::id($of))->delete();
+        $this->connection
+            ->table($this->table)
+            ->where('owner_id', (string) self::id($of))
+            ->delete();
     }
 
     private static function id(Identity|int|string $user): int|string

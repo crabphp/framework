@@ -35,8 +35,9 @@ final class TestTunnel
     /**
      * @param string|null $refuseWith A status line to answer every CONNECT with in place of making the tunnel.
      */
-    public function __construct(private readonly ?string $refuseWith = null)
-    {
+    public function __construct(
+        private readonly ?string $refuseWith = null,
+    ) {
         $this->socket = stream_socket_server('tcp://127.0.0.1:0');
         stream_set_blocking($this->socket, false);
         $this->port = (int) substr(strrchr(stream_socket_get_name($this->socket, false), ':'), 1);
@@ -50,8 +51,13 @@ final class TestTunnel
             $this->open[] = $client;
             $buffer = '';
             $target = null;
-            $this->watchers[] = $loop->onReadable($client, function (string $watcher) use ($loop, $client, &$buffer, &$target): void {
-                $bytes = @fread($client, 65536);
+            $this->watchers[] = $loop->onReadable($client, function (string $watcher) use (
+                $loop,
+                $client,
+                &$buffer,
+                &$target,
+            ): void {
+                $bytes = @fread($client, 65_536);
                 if ($bytes === '' || $bytes === false) {
                     if ($bytes === false || feof($client)) {
                         $loop->cancel($watcher);
@@ -82,8 +88,12 @@ final class TestTunnel
                 $target = stream_socket_client('tcp://' . explode(' ', $line)[1]);
                 stream_set_blocking($target, false);
                 $this->open[] = $target;
-                $this->watchers[] = $loop->onReadable($target, static function (string $back) use ($loop, $client, $target): void {
-                    $bytes = @fread($target, 65536);
+                $this->watchers[] = $loop->onReadable($target, static function (string $back) use (
+                    $loop,
+                    $client,
+                    $target,
+                ): void {
+                    $bytes = @fread($target, 65_536);
                     if ($bytes === '' || $bytes === false) {
                         if ($bytes === false || feof($target)) {
                             $loop->cancel($back);

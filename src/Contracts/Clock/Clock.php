@@ -11,6 +11,4 @@ use Psr\Clock\ClockInterface;
  * under Crab's own name, so application code can ask for a Crab type; a
  * clock from any PSR-20 library fits wherever only now() is needed.
  */
-interface Clock extends ClockInterface
-{
-}
+interface Clock extends ClockInterface {}

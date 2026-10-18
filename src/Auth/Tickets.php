@@ -15,10 +15,15 @@ use Crab\Contracts\Cache\Cache;
  */
 final readonly class Tickets implements TicketsContract
 {
-    public function __construct(private Cache $cache, private IdentityResolver $users, private int $ttl = 30)
-    {
+    public function __construct(
+        private Cache $cache,
+        private IdentityResolver $users,
+        private int $ttl = 30,
+    ) {
         if ($ttl < 1) {
-            throw new \InvalidArgumentException('A ticket needs a positive lifetime. Set auth.ticket_ttl to a whole number of seconds greater than zero.');
+            throw new \InvalidArgumentException(
+                'A ticket needs a positive lifetime. Set auth.ticket_ttl to a whole number of seconds greater than zero.',
+            );
         }
     }
 

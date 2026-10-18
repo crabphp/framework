@@ -45,7 +45,9 @@ final class Concurrency implements Middleware
             throw new \InvalidArgumentException("A worker works on at least one request at once, not {$limit}.");
         }
         if (!is_finite($wait) || $wait <= 0) {
-            throw new \InvalidArgumentException("A request waits a finite number of seconds greater than zero for its turn, not {$wait}.");
+            throw new \InvalidArgumentException(
+                "A request waits a finite number of seconds greater than zero for its turn, not {$wait}.",
+            );
         }
     }
 
@@ -56,7 +58,9 @@ final class Concurrency implements Middleware
             $place = $places->acquire();
         } catch (PoolExhaustedException) {
             $after = (string) max(1, (int) ceil($this->wait));
-            return ErrorResponse::make($request, 503, 'The server is busy. Try again shortly.', ['Retry-After' => $after]);
+            return ErrorResponse::make($request, 503, 'The server is busy. Try again shortly.', [
+                'Retry-After' => $after,
+            ]);
         }
         try {
             return $handler->handle($request);
@@ -85,7 +89,7 @@ final class Concurrency implements Middleware
         $loop = EventLoop::current();
         if ($this->places === null || $this->loop !== $loop) {
             $this->loop = $loop;
-            $this->places = new Pool($loop, static fn (): \stdClass => new \stdClass(), $this->limit, $this->wait);
+            $this->places = new Pool($loop, static fn(): \stdClass => new \stdClass(), $this->limit, $this->wait);
         }
         return $this->places;
     }

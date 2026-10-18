@@ -19,7 +19,9 @@ abstract class SchemaGrammar
         return match ($driver) {
             'mysql' => new MySqlSchemaGrammar(),
             'sqlite' => new SqliteSchemaGrammar(),
-            default => throw new DatabaseException("The schema builder does not support the \"{$driver}\" driver; MySQL and SQLite are supported."),
+            default => throw new DatabaseException(
+                "The schema builder does not support the \"{$driver}\" driver; MySQL and SQLite are supported.",
+            ),
         };
     }
 
@@ -65,9 +67,11 @@ abstract class SchemaGrammar
             $lines[] = 'primary key (' . $this->names($table->primary) . ')';
         }
         foreach ($table->columns as $column) {
-            if ($column->references !== null) {
-                $lines[] = 'foreign key (' . $this->quote($column->name) . ') ' . $this->references($column);
+            if ($column->references === null) {
+                continue;
             }
+
+            $lines[] = 'foreign key (' . $this->quote($column->name) . ') ' . $this->references($column);
         }
         $statements = ['create table ' . $this->quote($table->name) . ' (' . implode(', ', $lines) . ')'];
         return [...$statements, ...$this->indexes($table)];
@@ -142,7 +146,12 @@ abstract class SchemaGrammar
      */
     protected function references(Column $column): string
     {
-        $sql = 'references ' . $this->quote($column->references['table']) . ' (' . $this->quote($column->references['column']) . ')';
+        $sql =
+            'references '
+            . $this->quote($column->references['table'])
+            . ' ('
+            . $this->quote($column->references['column'])
+            . ')';
         if ($column->references['onDelete'] !== null) {
             $sql .= ' on delete ' . $column->references['onDelete'];
         }
@@ -185,16 +194,30 @@ abstract class SchemaGrammar
         $indexes = [];
         foreach ($table->columns as $column) {
             if ($column->unique) {
-                $indexes[] = ['unique' => true, 'columns' => [$column->name], 'name' => $table->indexName([$column->name], 'unique')];
+                $indexes[] = [
+                    'unique' => true,
+                    'columns' => [$column->name],
+                    'name' => $table->indexName([$column->name], 'unique'),
+                ];
             }
             if ($column->index) {
-                $indexes[] = ['unique' => false, 'columns' => [$column->name], 'name' => $table->indexName([$column->name], 'index')];
+                $indexes[] = [
+                    'unique' => false,
+                    'columns' => [$column->name],
+                    'name' => $table->indexName([$column->name], 'index'),
+                ];
             }
         }
         $statements = [];
         foreach ([...$indexes, ...$table->indexes] as $index) {
-            $statements[] = ($index['unique'] ? 'create unique index ' : 'create index ') . $this->quote($index['name'])
-                . ' on ' . $this->quote($table->name) . ' (' . $this->names($index['columns']) . ')';
+            $statements[] =
+                ($index['unique'] ? 'create unique index ' : 'create index ')
+                . $this->quote($index['name'])
+                . ' on '
+                . $this->quote($table->name)
+                . ' ('
+                . $this->names($index['columns'])
+                . ')';
         }
         return $statements;
     }

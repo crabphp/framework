@@ -12,8 +12,10 @@ use Crab\Contracts\Validation\Rule;
 #[\Attribute(\Attribute::TARGET_PARAMETER | \Attribute::TARGET_PROPERTY)]
 final readonly class Range implements Rule
 {
-    public function __construct(public int|float|null $min = null, public int|float|null $max = null)
-    {
+    public function __construct(
+        public int|float|null $min = null,
+        public int|float|null $max = null,
+    ) {
         if ($min === null && $max === null) {
             throw new \LogicException('Range needs a min, a max or both.');
         }

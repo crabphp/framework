@@ -63,7 +63,7 @@ final readonly class Api
      * Sends a token on every request when a test exercises authentication
      * itself. An empty scheme sends the token alone in Authorization.
      */
-    public function withToken(string $token, string $scheme = 'Bearer'): static
+    public function withToken(#[\SensitiveParameter] string $token, string $scheme = 'Bearer'): static
     {
         $value = $scheme === '' ? $token : "{$scheme} {$token}";
         return $this->withHeaders(['Authorization' => $value]);

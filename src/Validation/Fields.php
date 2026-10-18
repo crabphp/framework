@@ -38,7 +38,7 @@ final readonly class Fields
     /**
      * @param array<string, mixed> $fields Each field's name with its description.
      */
-    public function __construct(public array $fields)
-    {
-    }
+    public function __construct(
+        public array $fields,
+    ) {}
 }

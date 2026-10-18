@@ -10,9 +10,16 @@ namespace Crab\Database;
  */
 final class DatabaseException extends \RuntimeException
 {
-    public function __construct(string $message, public readonly string $sql = '', ?\Throwable $previous = null)
-    {
-        parent::__construct($sql === '' ? $message : $message . ' (SQL: ' . $sql . ')', $previous instanceof \PDOException ? (int) ($previous->errorInfo[1] ?? 0) : 0, $previous);
+    public function __construct(
+        string $message,
+        public readonly string $sql = '',
+        ?\Throwable $previous = null,
+    ) {
+        parent::__construct(
+            $sql === '' ? $message : $message . ' (SQL: ' . $sql . ')',
+            $previous instanceof \PDOException ? (int) ($previous->errorInfo[1] ?? 0) : 0,
+            $previous,
+        );
     }
 
     /**
@@ -21,12 +28,14 @@ final class DatabaseException extends \RuntimeException
     public function code(): ?int
     {
         $previous = $this->getPrevious();
-        return $previous instanceof \PDOException && isset($previous->errorInfo[1]) ? (int) $previous->errorInfo[1] : null;
+        return $previous instanceof \PDOException && isset($previous->errorInfo[1])
+            ? (int) $previous->errorInfo[1]
+            : null;
     }
 
     public function sqlState(): ?string
     {
         $previous = $this->getPrevious();
-        return $previous instanceof \PDOException ? ($previous->errorInfo[0] ?? null) : null;
+        return $previous instanceof \PDOException ? $previous->errorInfo[0] ?? null : null;
     }
 }

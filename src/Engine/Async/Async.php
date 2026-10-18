@@ -4,8 +4,8 @@ declare(strict_types=1);
 
 namespace Crab\Engine\Async;
 
-use InvalidArgumentException;
 use Crab\Engine\EventLoop;
+use InvalidArgumentException;
 use Throwable;
 
 final class Async
@@ -23,7 +23,13 @@ final class Async
         $settled = false;
         $timer = null;
         $unsubscribe = null;
-        $finish = static function (?Throwable $error = null) use ($suspension, $loop, &$settled, &$timer, &$unsubscribe): void {
+        $finish = static function (?Throwable $error = null) use (
+            $suspension,
+            $loop,
+            &$settled,
+            &$timer,
+            &$unsubscribe,
+        ): void {
             if ($settled) {
                 return;
             }
@@ -39,9 +45,9 @@ final class Async
             }
         };
         $timer = $seconds === 0
-            ? $loop->defer(static fn () => $finish())
-            : $loop->delay($seconds, static fn () => $finish());
-        $unsubscribe = $cancellation?->subscribe(static fn (CancelledException $error) => $finish($error));
+            ? $loop->defer(static fn() => $finish())
+            : $loop->delay($seconds, static fn() => $finish());
+        $unsubscribe = $cancellation?->subscribe(static fn(CancelledException $error) => $finish($error));
         try {
             $suspension->suspend();
         } finally {

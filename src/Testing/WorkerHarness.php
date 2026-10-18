@@ -30,11 +30,15 @@ final class WorkerHarness
         foreach ($providers as $provider) {
             $provider->register($container);
         }
-        $workerProviders = array_values(array_filter($providers, static fn(Provider $provider): bool => $provider instanceof WorkerProvider));
+        $workerProviders = array_values(array_filter(
+            $providers,
+            static fn(Provider $provider): bool => $provider instanceof WorkerProvider,
+        ));
         $result = null;
         $failure = null;
         $runtime = new Runtime(shutdownTimeout: 1.0);
-        $runtime->group('test')
+        $runtime
+            ->group('test')
             ->onStart(static function (Worker $worker) use ($workerProviders, $container, $body, &$result): void {
                 foreach ($workerProviders as $provider) {
                     $provider->start($worker, $container);

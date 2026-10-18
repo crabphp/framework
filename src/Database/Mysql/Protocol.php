@@ -20,12 +20,14 @@ final class Protocol
 
     private int $sequence = 0;
     public int $status = 0;
-    public int $serverVersion = 999999;
+    public int $serverVersion = 999_999;
     private readonly \Closure $read;
 
-    public function __construct(private readonly Stream $stream, private readonly ?Cancellation $cancellation = null)
-    {
-        $this->read = fn (int $length): string => $this->stream->read($length, cancellation: $this->cancellation);
+    public function __construct(
+        private readonly Stream $stream,
+        private readonly ?Cancellation $cancellation = null,
+    ) {
+        $this->read = fn(int $length): string => $this->stream->read($length, cancellation: $this->cancellation);
     }
 
     public function command(string $payload, bool &$sent): void
@@ -90,7 +92,9 @@ final class Protocol
                 $this->status = $ok['status'];
             } elseif (($packet[0] ?? '') === "\xfb") {
                 // Refusing without closing would leave the server waiting for a file.
-                throw new \UnexpectedValueException('The async MySQL driver refuses LOCAL INFILE; load data through bound statements instead.');
+                throw new \UnexpectedValueException(
+                    'The async MySQL driver refuses LOCAL INFILE; load data through bound statements instead.',
+                );
             } else {
                 $offset = 0;
                 $count = Codec::readLength($packet, $offset);
@@ -107,7 +111,7 @@ final class Protocol
                     }
                     ++$affected;
                     $row = $rowDecoder->row($packet, $binary);
-                    if ($first === null && ($mode === 'select' || ($mode === 'first' && $rows === []))) {
+                    if ($first === null && ($mode === 'select' || $mode === 'first' && $rows === [])) {
                         $rows[] = $row;
                     }
                 }

@@ -83,8 +83,17 @@ class Client implements ClientContract
         bool $http2 = true,
         ?Transport $transport = null,
     ) {
-        if ($timeout <= 0 || $connectTimeout <= 0 || $redirects < 0 || $connections < 1 || $retries < 0 || $retryDelay < 0) {
-            throw new \LogicException('An HTTP client needs timeouts above zero, at least one connection per server, and numbers of redirects and retries that are not negative.');
+        if (
+            $timeout <= 0
+            || $connectTimeout <= 0
+            || $redirects < 0
+            || $connections < 1
+            || $retries < 0
+            || $retryDelay < 0
+        ) {
+            throw new \LogicException(
+                'An HTTP client needs timeouts above zero, at least one connection per server, and numbers of redirects and retries that are not negative.',
+            );
         }
         $this->timeout = $timeout;
         $this->retries = $retries;
@@ -138,13 +147,17 @@ class Client implements ClientContract
         string|StreamInterface|null $body = null,
         ?Cancellation $cancellation = null,
     ): ResponseContract {
-        if (($json !== null) + ($form !== [] || $files !== []) + ($body !== null) > 1) {
-            throw new \LogicException('A request has one body: give json:, a form (form: and files:) or body:, not several.');
+        if ((($json !== null) + ($form !== [] || $files !== []) + ($body !== null)) > 1) {
+            throw new \LogicException(
+                'A request has one body: give json:, a form (form: and files:) or body:, not several.',
+            );
         }
         if (preg_match('~^[a-z][a-z0-9+.-]*://~i', $url) !== 1) {
             if ($this->baseUrl === '') {
                 $shown = substr($url, 0, strcspn($url, '?#'));
-                throw new \LogicException("\"{$shown}\" is not a whole URL, and this client has no base URL to add it to. Give \"https://...\", or make the client with a base URL.");
+                throw new \LogicException(
+                    "\"{$shown}\" is not a whole URL, and this client has no base URL to add it to. Give \"https://...\", or make the client with a base URL.",
+                );
             }
             $url = rtrim($this->baseUrl, '/') . '/' . ltrim($url, '/');
         }
@@ -166,9 +179,11 @@ class Client implements ClientContract
             if ($files !== []) {
                 // Only this type names the boundary the body was written with.
                 foreach (array_keys($headers) as $name) {
-                    if (strtolower((string) $name) === 'content-type') {
-                        unset($headers[$name]);
+                    if (strtolower((string) $name) !== 'content-type') {
+                        continue;
                     }
+
+                    unset($headers[$name]);
                 }
                 $headers['Content-Type'] = $type;
             } elseif (!isset($names['content-type'])) {
@@ -186,18 +201,33 @@ class Client implements ClientContract
         return $this->request('GET', $url, $query, $headers);
     }
 
-    public function post(string $url, mixed $json = null, array $form = [], array $files = [], array $headers = []): ResponseContract
-    {
+    public function post(
+        string $url,
+        mixed $json = null,
+        array $form = [],
+        array $files = [],
+        array $headers = [],
+    ): ResponseContract {
         return $this->request('POST', $url, [], $headers, $json, $form, $files);
     }
 
-    public function put(string $url, mixed $json = null, array $form = [], array $files = [], array $headers = []): ResponseContract
-    {
+    public function put(
+        string $url,
+        mixed $json = null,
+        array $form = [],
+        array $files = [],
+        array $headers = [],
+    ): ResponseContract {
         return $this->request('PUT', $url, [], $headers, $json, $form, $files);
     }
 
-    public function patch(string $url, mixed $json = null, array $form = [], array $files = [], array $headers = []): ResponseContract
-    {
+    public function patch(
+        string $url,
+        mixed $json = null,
+        array $form = [],
+        array $files = [],
+        array $headers = [],
+    ): ResponseContract {
         return $this->request('PATCH', $url, [], $headers, $json, $form, $files);
     }
 
@@ -221,28 +251,30 @@ class Client implements ClientContract
      */
     private function send(RequestInterface $request, ?Cancellation $cancellation): Response
     {
-        $deadline = hrtime(true) / 1_000_000_000 + $this->timeout;
+        $deadline = (hrtime(true) / 1_000_000_000) + $this->timeout;
         $body = $request->getBody();
         $resendable = $body->getSize() === 0 || $body->isSeekable();
         $safe = in_array($request->getMethod(), self::REPEATABLE, true);
-        for ($tried = 0; ; ++$tried) {
+        for ($tried = 0;; ++$tried) {
             $response = null;
             try {
                 $redirected = false;
                 $response = $this->once($request, $deadline, $cancellation, $redirected);
                 // An answer that redirected means the server acted on the request: what failed was
                 // where it sent us next, and sending a POST again would do its work a second time.
-                $again = ($safe || !$redirected) && in_array($response->getStatusCode(), $safe ? [429, 502, 503, 504] : [429, 503], true);
+                $again =
+                    ($safe || !$redirected)
+                    && in_array($response->getStatusCode(), $safe ? [429, 502, 503, 504] : [429, 503], true);
             } catch (NetworkException $error) {
-                $again = $safe || ($error->unsent && !$redirected);
+                $again = $safe || $error->unsent && !$redirected;
             }
             $wait = $again && $resendable && $tried < $this->retries ? $this->wait($tried, $response) : null;
-            if ($wait === null || hrtime(true) / 1_000_000_000 + $wait >= $deadline) {
+            if ($wait === null || ((hrtime(true) / 1_000_000_000) + $wait) >= $deadline) {
                 return $response ?? throw $error;
             }
             Async::sleep(EventLoop::current(), $wait, $cancellation);
             // The worker may have been busy after the pause ended; do not send a late retry.
-            if (hrtime(true) / 1_000_000_000 >= $deadline) {
+            if ((hrtime(true) / 1_000_000_000) >= $deadline) {
                 return $response ?? throw $error;
             }
         }
@@ -275,9 +307,13 @@ class Client implements ClientContract
      *
      * @param bool $redirected Set once an answer has redirected, whatever comes after.
      */
-    private function once(RequestInterface $request, float $deadline, ?Cancellation $cancellation, bool &$redirected = false): Response
-    {
-        for ($followed = 0; ; ++$followed) {
+    private function once(
+        RequestInterface $request,
+        float $deadline,
+        ?Cancellation $cancellation,
+        bool &$redirected = false,
+    ): Response {
+        for ($followed = 0;; ++$followed) {
             $sending = $request;
             $cookies = $this->jar?->header($request->getUri()) ?? '';
             if ($cookies !== '') {
@@ -285,8 +321,14 @@ class Client implements ClientContract
                 $sending = $request->withHeader('Cookie', $own === '' ? $cookies : "{$own}; {$cookies}");
             }
             $cancellation?->throwIfCancelled();
-            if (hrtime(true) / 1_000_000_000 >= $deadline) {
-                throw new NetworkException(Exchange::describe($sending) . " failed: it took more than {$this->timeout} seconds, and was preparing to send when given up.", $sending, new TimedOut('preparing to send'), unsent: true);
+            if ((hrtime(true) / 1_000_000_000) >= $deadline) {
+                throw new NetworkException(
+                    Exchange::describe($sending)
+                        . " failed: it took more than {$this->timeout} seconds, and was preparing to send when given up.",
+                    $sending,
+                    new TimedOut('preparing to send'),
+                    unsent: true,
+                );
             }
             $response = $this->transport->exchange($sending, $deadline, $this->timeout, $cancellation);
             $this->jar?->store($request->getUri(), $response->getHeader('Set-Cookie'));
@@ -295,7 +337,9 @@ class Client implements ClientContract
                 return $response;
             }
             if ($followed === $this->redirects) {
-                throw new ClientException(Exchange::describe($request) . " was redirected more than {$this->redirects} times.");
+                throw new ClientException(
+                    Exchange::describe($request) . " was redirected more than {$this->redirects} times.",
+                );
             }
             $request = $next;
             $redirected = true;
@@ -320,14 +364,18 @@ class Client implements ClientContract
         }
         $method = $request->getMethod();
         $next = $request->withUri($to);
-        if (($status === 303 && $method !== 'HEAD') || ($status !== 307 && $status !== 308 && $method === 'POST')) {
+        if ($status === 303 && $method !== 'HEAD' || $status !== 307 && $status !== 308 && $method === 'POST') {
             // As browsers do: what was posted is not posted again, the result is fetched.
             $next = $next->withMethod('GET')->withBody(new Stream(''))->withoutHeader('Content-Type');
         } elseif ($request->getBody()->getSize() !== 0 && !$request->getBody()->isSeekable()) {
             // A body that can be read only once cannot be sent again.
             return null;
         }
-        if (strtolower($from->getScheme() . '://' . $from->getAuthority()) !== strtolower($to->getScheme() . '://' . $to->getAuthority())) {
+        if (
+            strtolower($from->getScheme() . '://' . $from->getAuthority()) !== strtolower(
+                $to->getScheme() . '://' . $to->getAuthority(),
+            )
+        ) {
             // What proved who is asking was meant for the first server, not for wherever it points.
             $next = $next->withoutHeader('Authorization')->withoutHeader('Cookie');
         }
@@ -380,20 +428,37 @@ class Client implements ClientContract
             throw new \RuntimeException('Cannot allocate storage for the request body.');
         }
         foreach (self::fields($form, '') as [$name, $value]) {
-            fwrite($body, "--{$boundary}\r\nContent-Disposition: form-data; name=\"" . self::quoted($name) . "\"\r\n\r\n{$value}\r\n");
+            fwrite(
+                $body,
+                "--{$boundary}\r\nContent-Disposition: form-data; name=\""
+                . self::quoted($name)
+                . "\"\r\n\r\n{$value}\r\n",
+            );
         }
         foreach ($files as $field => $given) {
             $several = is_array($given);
             foreach ($several ? $given : [$given] as $file) {
                 if ($file instanceof UploadedFileInterface) {
-                    [$name, $type] = [(string) $file->getClientFilename(), $file->getClientMediaType() ?? 'application/octet-stream'];
+                    [$name, $type] = [
+                        (string) $file->getClientFilename(),
+                        $file->getClientMediaType() ?? 'application/octet-stream',
+                    ];
                 } elseif ($file instanceof File) {
                     [$name, $type] = [$file->name, $file->type];
                 } else {
-                    throw new \LogicException("files: takes File::fromPath(), File::fromContents() or an uploaded file for \"{$field}\", not " . get_debug_type($file) . '.');
+                    throw new \LogicException(
+                        "files: takes File::fromPath(), File::fromContents() or an uploaded file for \"{$field}\", not "
+                        . get_debug_type($file)
+                        . '.',
+                    );
                 }
                 $fieldName = self::quoted($several ? "{$field}[]" : (string) $field);
-                fwrite($body, "--{$boundary}\r\nContent-Disposition: form-data; name=\"{$fieldName}\"; filename=\"" . self::quoted($name) . "\"\r\nContent-Type: {$type}\r\n\r\n");
+                fwrite(
+                    $body,
+                    "--{$boundary}\r\nContent-Disposition: form-data; name=\"{$fieldName}\"; filename=\""
+                    . self::quoted($name)
+                    . "\"\r\nContent-Type: {$type}\r\n\r\n",
+                );
                 self::copy($file, $body);
                 fwrite($body, "\r\n");
             }
@@ -425,7 +490,7 @@ class Client implements ClientContract
             $stream->rewind();
         }
         while (!$stream->eof()) {
-            fwrite($into, $stream->read(65536));
+            fwrite($into, $stream->read(65_536));
         }
     }
 

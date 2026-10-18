@@ -47,6 +47,7 @@ final class Connection implements ManagedConnection
         private readonly \Closure $connect,
         string $dsn,
         private readonly string $username = '',
+        #[\SensitiveParameter]
         private readonly string $password = '',
         array $options = [],
         private readonly float $timeout = 5.0,
@@ -55,7 +56,9 @@ final class Connection implements ManagedConnection
         private readonly DnsResolver $resolver = new DnsResolver(fallback: false),
     ) {
         if (!is_finite($timeout) || $timeout <= 0) {
-            throw new \InvalidArgumentException('Set the MySQL connection timeout to a finite positive number of seconds.');
+            throw new \InvalidArgumentException(
+                'Set the MySQL connection timeout to a finite positive number of seconds.',
+            );
         }
         $this->settings = new Settings($dsn, $options);
         $this->scope = new SessionScope();
@@ -118,7 +121,7 @@ final class Connection implements ManagedConnection
         ++$this->depth;
         $level = $this->depth;
         try {
-            $result = $this->scope->transaction(fn (): mixed => $callback($this));
+            $result = $this->scope->transaction(fn(): mixed => $callback($this));
         } catch (\Throwable $error) {
             if ($this->depth === $level) {
                 $this->rollBack();
@@ -126,7 +129,9 @@ final class Connection implements ManagedConnection
             throw $error;
         }
         if ($this->depth !== $level) {
-            throw new DatabaseException('The transaction lost its session; let this callback unwind before using the connection again.');
+            throw new DatabaseException(
+                'The transaction lost its session; let this callback unwind before using the connection again.',
+            );
         }
         $this->commit();
         return $result;
@@ -159,7 +164,7 @@ final class Connection implements ManagedConnection
         } finally {
             $this->busy = false;
         }
-        return $this->scope->fixed(fn (): mixed => $callback($this));
+        return $this->scope->fixed(fn(): mixed => $callback($this));
     }
 
     public function isOpen(): bool
@@ -176,7 +181,10 @@ final class Connection implements ManagedConnection
         $depth = $this->depth - 1;
         try {
             if ($depth === 0 && !$this->serverInTransaction()) {
-                throw new DatabaseException('There is no active transaction; a statement ended it before commit.', 'COMMIT');
+                throw new DatabaseException(
+                    'There is no active transaction; a statement ended it before commit.',
+                    'COMMIT',
+                );
             }
             $this->execute($depth === 0 ? 'COMMIT' : 'RELEASE SAVEPOINT crab_' . $depth);
         } catch (\Throwable $error) {
@@ -218,9 +226,11 @@ final class Connection implements ManagedConnection
             $this->depth = $depth;
             $remaining = [];
             foreach ($this->afterCommit as $waiting) {
-                if ($waiting[0] <= $depth) {
-                    $remaining[] = $waiting;
+                if ($waiting[0] > $depth) {
+                    continue;
                 }
+
+                $remaining[] = $waiting;
             }
             $this->afterCommit = $remaining;
         } catch (\Throwable) {
@@ -237,7 +247,7 @@ final class Connection implements ManagedConnection
         $this->assertAvailable($sql);
         $this->busy = true;
         try {
-            for ($attempt = 0; ; ++$attempt) {
+            for ($attempt = 0;; ++$attempt) {
                 $sent = false;
                 $ready = $this->protocol !== null;
                 $inTransaction = $this->inTransaction();
@@ -248,7 +258,10 @@ final class Connection implements ManagedConnection
                     $this->open();
                     $ready = true;
                     if ($managedBegin && $this->serverInTransaction()) {
-                        throw new DatabaseException('There is already an active transaction; finish the raw transaction before calling transaction().', $sql);
+                        throw new DatabaseException(
+                            'There is already an active transaction; finish the raw transaction before calling transaction().',
+                            $sql,
+                        );
                     }
                     return $this->statements->run($sql, $bindings, $mode, $sent);
                 } catch (\Throwable $error) {
@@ -274,13 +287,15 @@ final class Connection implements ManagedConnection
     {
         $this->scope->check($sql);
         if ($this->busy) {
-            throw new \LogicException('Two fibers are using one MySQL connection at once; borrow a separate connection from the database pool.');
+            throw new \LogicException(
+                'Two fibers are using one MySQL connection at once; borrow a separate connection from the database pool.',
+            );
         }
     }
 
     private function serverInTransaction(): bool
     {
-        return (bool) (($this->protocol?->status ?? 0) & Protocol::IN_TRANSACTION);
+        return (bool) (($this->protocol->status ?? 0) & Protocol::IN_TRANSACTION);
     }
 
     /**
@@ -309,7 +324,11 @@ final class Connection implements ManagedConnection
 
     private function failure(\Throwable $error, string $sql): \Throwable
     {
-        if ($error instanceof DatabaseException || $error instanceof \InvalidArgumentException || $error instanceof CancelledException) {
+        if (
+            $error instanceof DatabaseException
+            || $error instanceof \InvalidArgumentException
+            || $error instanceof CancelledException
+        ) {
             return $error;
         }
         return new DatabaseException($error->getMessage(), $sql, $error);
@@ -323,11 +342,18 @@ final class Connection implements ManagedConnection
         if ($this->worker?->isDraining()) {
             throw new \RuntimeException('The worker is stopping; do not start a new MySQL connection during drain.');
         }
-        $loop = $this->worker?->loop ?? EventLoop::current();
-        $deadline = hrtime(true) / 1e9 + $this->timeout;
+        $loop = $this->worker->loop ?? EventLoop::current();
+        $deadline = (hrtime(true) / 1e9) + $this->timeout;
         $this->stream = new Stream($loop);
         $this->stream->open($this->settings, $this->resolver, $deadline, $this->cancellation);
-        $session = Authentication::login($this->stream, $this->settings, $this->username, $this->password, $deadline, $this->cancellation);
+        $session = Authentication::login(
+            $this->stream,
+            $this->settings,
+            $this->username,
+            $this->password,
+            $deadline,
+            $this->cancellation,
+        );
         $this->protocol = new Protocol($this->stream, $this->cancellation);
         $this->protocol->status = $session['status'];
         $this->protocol->serverVersion = $session['version'];

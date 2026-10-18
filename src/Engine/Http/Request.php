@@ -138,7 +138,7 @@ final class Request
         return $values === null ? null : implode(', ', $values);
     }
 
-    public function hasToken(string $name, string $token): bool
+    public function hasToken(string $name, #[\SensitiveParameter] string $token): bool
     {
         $header = $this->header($name);
         if ($header === null) {
@@ -168,8 +168,7 @@ final class Request
             return false;
         }
         $tokens = array_map(trim(...), explode(',', strtolower($connection)));
-        return !in_array('close', $tokens, true)
-            && ($this->version === '1.1' || in_array('keep-alive', $tokens, true));
+        return !in_array('close', $tokens, true) && ($this->version === '1.1' || in_array('keep-alive', $tokens, true));
     }
 
     public function path(): string

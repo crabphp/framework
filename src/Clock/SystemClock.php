@@ -15,9 +15,9 @@ final readonly class SystemClock implements Clock
     /**
      * @param \DateTimeZone|null $timezone The zone times are given in; PHP's default when left out.
      */
-    public function __construct(private ?\DateTimeZone $timezone = null)
-    {
-    }
+    public function __construct(
+        private ?\DateTimeZone $timezone = null,
+    ) {}
 
     public function now(): \DateTimeImmutable
     {

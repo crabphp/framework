@@ -42,7 +42,7 @@ final class Backlog
         $this->messages = new \SplQueue();
         $this->cancellation = new Cancellation();
         $this->loop = EventLoop::current();
-        $this->timer = $this->loop->delay($socket->broadcastTimeout(), fn () => $this->cancellation->cancel());
+        $this->timer = $this->loop->delay($socket->broadcastTimeout(), fn() => $this->cancellation->cancel());
         $this->task = Task::spawn($this->loop, $this->drain(...));
     }
 
@@ -50,7 +50,7 @@ final class Backlog
     {
         // Empty messages consume queue objects too; charge their metadata.
         $bytes = strlen($message) + 256;
-        if ($this->bytes + $bytes > $this->maxBytes) {
+        if (($this->bytes + $bytes) > $this->maxBytes) {
             return false;
         }
         $this->messages->enqueue($message);

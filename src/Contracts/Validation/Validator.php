@@ -41,7 +41,12 @@ interface Validator
      * @param array<mixed> $data
      * @return array<string, mixed> The values by parameter name. A parameter the data leaves out is left out here too, so that its default applies when the function is called with these as named arguments.
      */
-    public function validateParameters(\ReflectionFunctionAbstract $function, array $names, array $data, bool $coerce = false): array;
+    public function validateParameters(
+        \ReflectionFunctionAbstract $function,
+        array $names,
+        array $data,
+        bool $coerce = false,
+    ): array;
 
     /**
      * The same as inspect() for a function's parameters.

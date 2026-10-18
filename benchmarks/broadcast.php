@@ -26,21 +26,27 @@ $options = getopt('', ['mode:', 'source:', 'batch:', 'iterations:', 'trials:']);
 $mode = $options['mode'] ?? 'fanout';
 $batch = (int) ($options['batch'] ?? 128);
 $trials = (int) ($options['trials'] ?? 3);
-$iterations = (int) ($options['iterations'] ?? ($mode === 'echo' ? 5000 : 100000));
+$iterations = (int) ($options['iterations'] ?? ($mode === 'echo' ? 5000 : 100_000));
 if (isset($options['source'])) {
     $source = realpath($options['source']);
-    if ($source === false) { throw new InvalidArgumentException('Give --source the framework src directory.'); }
+    if ($source === false) {
+        throw new InvalidArgumentException('Give --source the framework src directory.');
+    }
     $loader->setPsr4('Crab\\', [$source]);
     $classes = [];
     foreach ($loader->getClassMap() as $class => $file) {
-        if (str_starts_with($class, 'Crab\\') && !str_starts_with($class, 'Crab\\Tests\\')) {
-            $classes[$class] = $source . '/' . str_replace('\\', '/', substr($class, 5)) . '.php';
+        if (!(str_starts_with($class, 'Crab\\') && !str_starts_with($class, 'Crab\\Tests\\'))) {
+            continue;
         }
+
+        $classes[$class] = $source . '/' . str_replace('\\', '/', substr($class, 5)) . '.php';
     }
     $loader->addClassMap($classes);
 }
 if (!in_array($mode, ['fanout', 'http', 'echo', 'empty'], true) || min($batch, $trials, $iterations) < 1) {
-    throw new InvalidArgumentException('Choose --mode=fanout|http|echo|empty and positive batch, trials and iterations.');
+    throw new InvalidArgumentException(
+        'Choose --mode=fanout|http|echo|empty and positive batch, trials and iterations.',
+    );
 }
 
 /**
@@ -53,8 +59,10 @@ final class FanOutProbe
     public int $finished = 0;
     private int $last;
 
-    public function __construct(private readonly EventLoop $loop, private readonly Channels $channels)
-    {
+    public function __construct(
+        private readonly EventLoop $loop,
+        private readonly Channels $channels,
+    ) {
         $this->last = hrtime(true);
     }
 
@@ -74,16 +82,18 @@ final class FanOutProbe
 
 $userMicroseconds = static function (): float {
     $usage = getrusage();
-    return $usage['ru_utime.tv_sec'] * 1e6 + $usage['ru_utime.tv_usec'];
+    return ($usage['ru_utime.tv_sec'] * 1e6) + $usage['ru_utime.tv_usec'];
 };
 $result = ['mode' => $mode, 'php' => PHP_VERSION, 'jit' => opcache_get_status(false)['jit']['on'] ?? false];
 if ($mode === 'fanout') {
     $result['batch'] = $batch;
     $result['backend'] = extension_loaded('ev') ? 'ev' : 'select';
     if (!extension_loaded('ev')) {
-        throw new RuntimeException('Load ev to measure 10,000 real socket pairs; select cannot watch their descriptors.');
+        throw new RuntimeException(
+            'Load ev to measure 10,000 real socket pairs; select cannot watch their descriptors.',
+        );
     }
-    foreach ([1000, 10000] as $count) {
+    foreach ([1000, 10_000] as $count) {
         $loop = EventLoop::install(RevoltEventLoop::create('ev'));
         $carrier = new LocalCarrier();
         $channels = new Channels($carrier, batch: $batch);
@@ -103,10 +113,14 @@ if ($mode === 'fanout') {
             $peers[] = $pair[1];
         }
         $memory = memory_get_usage();
-        foreach ($sockets as $socket) { $channels->join($socket, 'orders'); }
+        foreach ($sockets as $socket) {
+            $channels->join($socket, 'orders');
+        }
         $oneChannel = memory_get_usage() - $memory;
         $memory = memory_get_usage();
-        foreach ($sockets as $socket) { $channels->join($socket, 'announcements'); }
+        foreach ($sockets as $socket) {
+            $channels->join($socket, 'announcements');
+        }
         $secondChannel = memory_get_usage() - $memory;
         $rows = [];
         for ($trial = -2; $trial < $trials; ++$trial) {
@@ -119,9 +133,13 @@ if ($mode === 'fanout') {
             $errors = 0;
             foreach ($peers as $peer) {
                 $wire = fread($peer, 34);
-                if ($wire !== "\x81\x20" . str_repeat('x', 32)) { ++$errors; }
+                if ($wire !== "\x81\x20" . str_repeat('x', 32)) {
+                    ++$errors;
+                }
             }
-            if ($trial < 0) { continue; }
+            if ($trial < 0) {
+                continue;
+            }
             $rows[] = [
                 'fanout_ms' => ($probe->finished - $started) / 1e6,
                 'sender_us' => ($handedOff - $started) / 1e3,
@@ -129,14 +147,24 @@ if ($mode === 'fanout') {
                 'errors' => $errors,
             ];
         }
-        $result['connections'][] = ['count' => $count, 'first_channel_bytes_per_connection' => $oneChannel / $count,
-            'second_channel_bytes_per_connection' => $secondChannel / $count, 'trials' => $rows];
+        $result['connections'][] = [
+            'count' => $count,
+            'first_channel_bytes_per_connection' => $oneChannel / $count,
+            'second_channel_bytes_per_connection' => $secondChannel / $count,
+            'trials' => $rows,
+        ];
         $channels->close();
-        foreach ($transports as $transport) { $transport->close(); }
-        foreach ($peers as $peer) { fclose($peer); }
+        foreach ($transports as $transport) {
+            $transport->close();
+        }
+        foreach ($peers as $peer) {
+            fclose($peer);
+        }
         $loop->defer($loop->stop(...));
         $loop->run();
-        if ($loop->getIdentifiers() !== []) { throw new RuntimeException('The benchmark leaked a watcher.'); }
+        if ($loop->getIdentifiers() !== []) {
+            throw new RuntimeException('The benchmark leaked a watcher.');
+        }
         unset($socket, $session, $transport, $sockets, $transports, $peers);
         gc_collect_cycles();
     }
@@ -147,21 +175,27 @@ if ($mode === 'fanout') {
         $app->container->get(\Crab\Broadcast\Lifecycle::class)->serving = true;
         $broadcast = $app->container->get(\Crab\Contracts\Broadcast\Broadcaster::class)->to('nobody');
         $work = static function (int $count) use ($broadcast): void {
-            for ($index = 0; $index < $count; ++$index) { $broadcast->send('text'); }
+            for ($index = 0; $index < $count; ++$index) {
+                $broadcast->send('text');
+            }
         };
     } else {
         $app = App::configure()->withMiddleware(only: [])->create();
         if ($mode === 'http') {
-            $app->router->get('/hello/{id}', static fn (int $id): array => ['id' => $id]);
+            $app->router->get('/hello/{id}', static fn(int $id): array => ['id' => $id]);
             $work = static function (int $count) use ($app): void {
                 for ($index = 0; $index < $count; ++$index) {
                     $response = $app->handle(new Request('GET', '/hello/' . ($index % 997)));
-                    if ($response->getStatusCode() !== 200) { throw new RuntimeException('HTTP benchmark failed.'); }
+                    if ($response->getStatusCode() !== 200) {
+                        throw new RuntimeException('HTTP benchmark failed.');
+                    }
                 }
             };
         } else {
             $app->router->websocket('/live', static function (SocketContract $socket): void {
-                foreach ($socket as $message) { $socket->send($message); }
+                foreach ($socket as $message) {
+                    $socket->send($message);
+                }
             });
             $api = new Api($app);
             $client = $api->websocket('/live');
@@ -169,12 +203,14 @@ if ($mode === 'fanout') {
                 for ($index = 0; $index < $count; ++$index) {
                     $text = 'hello ' . $index;
                     $client->send($text);
-                    if ($client->receive() !== $text) { throw new RuntimeException('Echo benchmark failed.'); }
+                    if ($client->receive() !== $text) {
+                        throw new RuntimeException('Echo benchmark failed.');
+                    }
                 }
             };
         }
     }
-    $work(min(20000, $iterations));
+    $work(min(20_000, $iterations));
     $rows = [];
     for ($trial = 0; $trial < $trials; ++$trial) {
         $started = $userMicroseconds();
@@ -183,6 +219,8 @@ if ($mode === 'fanout') {
     }
     $result['iterations'] = $iterations;
     $result['user_us_per_operation'] = $rows;
-    if (isset($api)) { $api->closeSockets(); }
+    if (isset($api)) {
+        $api->closeSockets();
+    }
 }
 echo json_encode($result, JSON_PRETTY_PRINT | JSON_THROW_ON_ERROR) . "\n";

@@ -15,9 +15,11 @@ use Crab\Schedule\Scheduler;
 
 final readonly class Work implements Command
 {
-    public function __construct(private Runner $runner, private Scheduler $scheduler, private Schedule $schedule)
-    {
-    }
+    public function __construct(
+        private Runner $runner,
+        private Scheduler $scheduler,
+        private Schedule $schedule,
+    ) {}
 
     public function description(): string
     {
@@ -42,9 +44,13 @@ final readonly class Work implements Command
             $output->line('Press Ctrl+C to stop');
         }
         $scheduler = $this->scheduler;
-        $this->runner->run('schedule', static function (Worker $worker, Cancellation $cancellation) use ($scheduler): void {
-            $scheduler->work($worker, $cancellation);
-        }, single: $input->flag('single'));
+        $this->runner->run(
+            'schedule',
+            static function (Worker $worker, Cancellation $cancellation) use ($scheduler): void {
+                $scheduler->work($worker, $cancellation);
+            },
+            single: $input->flag('single'),
+        );
         return 0;
     }
 }

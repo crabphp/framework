@@ -18,9 +18,9 @@ final readonly class InstallTokens implements Command
 {
     private const NAME = 'create_auth_tokens_table';
 
-    public function __construct(private Migrator $migrator)
-    {
-    }
+    public function __construct(
+        private Migrator $migrator,
+    ) {}
 
     public function description(): string
     {
@@ -30,10 +30,12 @@ final readonly class InstallTokens implements Command
     public function handle(Input $input, Output $output): int
     {
         foreach (array_keys($this->migrator->status()) as $existing) {
-            if (str_ends_with($existing, self::NAME)) {
-                $output->line("Your migrations already have {$existing}; nothing was written.");
-                return 0;
+            if (!str_ends_with($existing, self::NAME)) {
+                continue;
             }
+
+            $output->line("Your migrations already have {$existing}; nothing was written.");
+            return 0;
         }
         $file = $this->migrator->make(self::NAME);
         file_put_contents($file, self::migration());

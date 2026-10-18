@@ -75,7 +75,7 @@ final class Request extends Message implements RequestContract
     public static function fromEngine(EngineRequest $source): self
     {
         // A clone skips the constructor's URI parsing and validation.
-        $request = clone (self::$blank ??= new self('GET'));
+        $request = clone self::$blank ??= new self('GET');
         $request->method = $source->method;
         $request->protocol = $source->version;
         $request->source = $source;
@@ -179,7 +179,7 @@ final class Request extends Message implements RequestContract
      */
     private function peer(): string
     {
-        $peer = $this->source?->peer ?? '';
+        $peer = $this->source->peer ?? '';
         if ($peer === '') {
             return (string) ($this->serverParams['REMOTE_ADDR'] ?? '');
         }
@@ -337,7 +337,7 @@ final class Request extends Message implements RequestContract
     public function cancellation(): Cancellation
     {
         // A request the engine did not receive is never cancelled.
-        return $this->source?->cancellation ?? $this->token ??= new Cancellation();
+        return $this->source->cancellation ?? ($this->token ??= new Cancellation());
     }
 
     protected function load(): void
@@ -393,7 +393,7 @@ final class Request extends Message implements RequestContract
             $body->rewind();
         }
         while (!$body->eof()) {
-            fwrite($copy, $body->read(65536));
+            fwrite($copy, $body->read(65_536));
         }
         return $copy;
     }

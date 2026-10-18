@@ -21,6 +21,5 @@ final readonly class TaskRan
         public string $task,
         public float $seconds,
         public ?\Throwable $error = null,
-    ) {
-    }
+    ) {}
 }

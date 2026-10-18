@@ -10,8 +10,9 @@ namespace Crab\Testing;
  */
 final class WebSocketRefused extends \RuntimeException
 {
-    public function __construct(public readonly ApiResponse $response)
-    {
+    public function __construct(
+        public readonly ApiResponse $response,
+    ) {
         parent::__construct("The WebSocket handshake was refused with HTTP {$response->status}: {$response->body()}");
     }
 }

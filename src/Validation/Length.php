@@ -13,8 +13,10 @@ use Crab\Contracts\Validation\Rule;
 #[\Attribute(\Attribute::TARGET_PARAMETER | \Attribute::TARGET_PROPERTY)]
 final readonly class Length implements Rule
 {
-    public function __construct(public ?int $min = null, public ?int $max = null)
-    {
+    public function __construct(
+        public ?int $min = null,
+        public ?int $max = null,
+    ) {
         if ($min === null && $max === null) {
             throw new \LogicException('Length needs a min, a max or both.');
         }

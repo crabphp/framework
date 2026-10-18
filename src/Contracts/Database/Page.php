@@ -39,7 +39,7 @@ final readonly class Page implements \IteratorAggregate, \Countable, \JsonSerial
         public ?int $total = null,
     ) {
         $this->lastPage = $total === null ? null : max(1, (int) ceil($total / $perPage));
-        $this->from = $items === [] ? null : ($currentPage - 1) * $perPage + 1;
+        $this->from = $items === [] ? null : (($currentPage - 1) * $perPage) + 1;
         $this->to = $items === [] ? null : $this->from + count($items) - 1;
     }
 

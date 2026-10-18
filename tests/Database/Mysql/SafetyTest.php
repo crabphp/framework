@@ -38,7 +38,7 @@ final class SafetyTest extends TestCase
     #[DataProvider('drivers')]
     public function testAManagedTransactionCannotCommitAnExistingRawTransaction(string $driver): void
     {
-        $this->using($driver, function (ManagedConnection $connection, \PDO $setup, string $table): void {
+        $this->using($driver, static function (ManagedConnection $connection, \PDO $setup, string $table): void {
             $connection->execute('BEGIN');
             $connection->insert("INSERT INTO {$table} VALUES (?)", [1]);
             $called = false;
@@ -62,10 +62,14 @@ final class SafetyTest extends TestCase
     #[DataProvider('drivers')]
     public function testALostTransactionRefusesLaterWritesUntilItsCallbackUnwinds(string $driver): void
     {
-        $this->using($driver, function (ManagedConnection $connection, \PDO $setup, string $table): void {
+        $this->using($driver, static function (ManagedConnection $connection, \PDO $setup, string $table): void {
             $blocked = false;
             try {
-                $connection->transaction(function (ConnectionContract $tx) use ($setup, $table, &$blocked): void {
+                $connection->transaction(static function (ConnectionContract $tx) use (
+                    $setup,
+                    $table,
+                    &$blocked,
+                ): void {
                     $tx->insert("INSERT INTO {$table} VALUES (?)", [1]);
                     $id = $tx->first('SELECT CONNECTION_ID() AS id')['id'];
                     $setup->exec('KILL CONNECTION ' . (int) $id);
@@ -95,7 +99,12 @@ final class SafetyTest extends TestCase
     #[DataProvider('drivers')]
     public function testMigrationWorkCannotReconnectAfterItsLockOwnershipGuard(string $driver): void
     {
-        $this->using($driver, function (ManagedConnection $connection, \PDO $setup, string $table, Worker $worker): void {
+        $this->using($driver, static function (
+            ManagedConnection $connection,
+            \PDO $setup,
+            string $table,
+            Worker $worker,
+        ): void {
             $history = $table . '_history';
             $lock = 'crab_migrations_' . $history;
             $directory = sys_get_temp_dir() . '/crab-migration-loss-' . bin2hex(random_bytes(6));
@@ -111,7 +120,7 @@ final class SafetyTest extends TestCase
             $probe = new LockLossConnection($connection, $setup, $lock, $worker);
             try {
                 try {
-                    (new Migrator($probe, $directory, table: $history, lockTimeout: 0))->run();
+                    new Migrator($probe, $directory, table: $history, lockTimeout: 0)->run();
                     self::fail('A migration continued on a replacement lock session.');
                 } catch (DatabaseException) {
                 }
@@ -147,7 +156,11 @@ final class SafetyTest extends TestCase
         $this->using($driver, static function (ManagedConnection $connection, \PDO $setup, string $table): void {
             $blocked = false;
             try {
-                $connection->transaction(static function (ConnectionContract $tx) use ($setup, $table, &$blocked): void {
+                $connection->transaction(static function (ConnectionContract $tx) use (
+                    $setup,
+                    $table,
+                    &$blocked,
+                ): void {
                     $tx->insert("INSERT INTO {$table} VALUES (?)", [7]);
                     $tx->execute('COMMIT');
                     $id = $tx->first('SELECT CONNECTION_ID() AS id')['id'];
@@ -172,7 +185,10 @@ final class SafetyTest extends TestCase
                 self::assertDoesNotMatchRegularExpression('/committed|rolled back/i', $error->getMessage());
             }
             self::assertTrue($blocked);
-            self::assertSame([7], array_map('intval', $setup->query("SELECT id FROM {$table}")->fetchAll(\PDO::FETCH_COLUMN)));
+            self::assertSame(
+                [7],
+                array_map('intval', $setup->query("SELECT id FROM {$table}")->fetchAll(\PDO::FETCH_COLUMN)),
+            );
         });
     }
 
@@ -186,17 +202,20 @@ final class SafetyTest extends TestCase
             self::markTestSkipped('The live deadlock sequence needs pcntl to coordinate PDO.');
         }
         $dsn = (string) getenv('CRAB_TEST_MYSQL_DSN');
-        $raw = static fn (): \PDO => new \PDO($dsn, 'root', '', [\PDO::ATTR_ERRMODE => \PDO::ERRMODE_EXCEPTION]);
+        $raw = static fn(): \PDO => new \PDO($dsn, 'root', '', [\PDO::ATTR_ERRMODE => \PDO::ERRMODE_EXCEPTION]);
         $table = 'mysql_fix_deadlock_' . bin2hex(random_bytes(6));
         $directory = sys_get_temp_dir() . '/crab-deadlock-' . bin2hex(random_bytes(6));
         mkdir($directory);
         $setup = $raw();
         $setup->exec("CREATE TABLE {$table} (id INT PRIMARY KEY, v INT) ENGINE=InnoDB");
-        $setup->exec("INSERT INTO {$table} VALUES " . implode(',', array_map(static fn (int $id): string => "({$id},0)", range(1, 30))));
+        $setup->exec(
+            "INSERT INTO {$table} VALUES "
+                . implode(',', array_map(static fn(int $id): string => "({$id},0)", range(1, 30))),
+        );
         $setup = null; // No live PDO socket is inherited by the child.
         $pid = pcntl_fork();
         if ($pid === -1) {
-            ($raw())->exec("DROP TABLE {$table}");
+            $raw()->exec("DROP TABLE {$table}");
             rmdir($directory);
             throw new \RuntimeException('Cannot fork the owned deadlock coordinator.');
         }
@@ -220,19 +239,35 @@ final class SafetyTest extends TestCase
             }
         }
         try {
-            WorkerHarness::run([], static function (Worker $worker) use ($dsn, $raw, $driver, $nested, $table, $directory): void {
-                $connection = $driver === 'pdo' ? new PdoConnection($raw) : new Connection($raw, $dsn, 'root', worker: $worker);
+            WorkerHarness::run([], static function (Worker $worker) use (
+                $dsn,
+                $raw,
+                $driver,
+                $nested,
+                $table,
+                $directory,
+            ): void {
+                $connection = $driver === 'pdo'
+                    ? new PdoConnection($raw)
+                    : new Connection($raw, $dsn, 'root', worker: $worker);
                 $callbackRan = false;
                 $attempts = 0;
                 try {
                     try {
-                        $connection->transaction(static function (ManagedConnection $tx) use ($worker, $nested, $table, $directory, &$callbackRan, &$attempts): void {
+                        $connection->transaction(static function (ManagedConnection $tx) use (
+                            $worker,
+                            $nested,
+                            $table,
+                            $directory,
+                            &$callbackRan,
+                            &$attempts,
+                        ): void {
                             $tx->execute("UPDATE {$table} SET v=100 WHERE id=1");
                             file_put_contents($directory . '/a', 'ready');
-                            $deadline = hrtime(true) / 1e9 + 5;
+                            $deadline = (hrtime(true) / 1e9) + 5;
                             while (!is_file($directory . '/b')) {
                                 clearstatcache(true, $directory . '/b');
-                                if (hrtime(true) / 1e9 >= $deadline) {
+                                if ((hrtime(true) / 1e9) >= $deadline) {
                                     throw new \RuntimeException('The deadlock coordinator did not acquire its rows.');
                                 }
                                 Async::sleep($worker->loop, 0.001);
@@ -253,10 +288,16 @@ final class SafetyTest extends TestCase
                                 self::assertSame(1213, $error->code());
                             }
                             foreach ([
-                                static fn () => $tx->insert("INSERT INTO {$table} VALUES (100,901)"),
-                                static fn () => $tx->transaction(static fn () => self::fail('A nested callback ran after deadlock.')),
-                                static fn () => $tx->afterCommit(static fn () => self::fail('A commit callback ran after deadlock.')),
-                                static fn () => $tx->withoutReconnect(static fn () => self::fail('A fixed-session callback ran after deadlock.')),
+                                static fn() => $tx->insert("INSERT INTO {$table} VALUES (100,901)"),
+                                static fn() => $tx->transaction(
+                                    static fn() => self::fail('A nested callback ran after deadlock.'),
+                                ),
+                                static fn() => $tx->afterCommit(
+                                    static fn() => self::fail('A commit callback ran after deadlock.'),
+                                ),
+                                static fn() => $tx->withoutReconnect(
+                                    static fn() => self::fail('A fixed-session callback ran after deadlock.'),
+                                ),
                             ] as $command) {
                                 try {
                                     $command();
@@ -280,7 +321,13 @@ final class SafetyTest extends TestCase
             });
             pcntl_waitpid($pid, $status);
             $pid = 0;
-            self::assertSame(0, pcntl_wifexited($status) ? pcntl_wexitstatus($status) : -1, is_file($directory . '/error') ? (string) file_get_contents($directory . '/error') : 'The coordinator did not finish.');
+            self::assertSame(
+                0,
+                pcntl_wifexited($status) ? pcntl_wexitstatus($status) : -1,
+                is_file($directory . '/error')
+                    ? (string) file_get_contents($directory . '/error')
+                    : 'The coordinator did not finish.',
+            );
             $setup = $raw();
             self::assertSame(0, (int) $setup->query("SELECT COUNT(*) FROM {$table} WHERE id=100")->fetchColumn());
             self::assertSame(902, (int) $setup->query("SELECT v FROM {$table} WHERE id=101")->fetchColumn());
@@ -306,8 +353,10 @@ final class SafetyTest extends TestCase
             $setup = new \PDO($dsn, 'root', '', [\PDO::ATTR_ERRMODE => \PDO::ERRMODE_EXCEPTION]);
             $table = 'mysql_fix_safety_' . bin2hex(random_bytes(6));
             $setup->exec("CREATE TABLE {$table} (id INT PRIMARY KEY) ENGINE=InnoDB");
-            $owner = static fn (): \PDO => new \PDO($dsn, 'root', '');
-            $connection = $driver === 'pdo' ? new PdoConnection($owner) : new Connection($owner, $dsn, 'root', worker: $worker);
+            $owner = static fn(): \PDO => new \PDO($dsn, 'root', '');
+            $connection = $driver === 'pdo'
+                ? new PdoConnection($owner)
+                : new Connection($owner, $dsn, 'root', worker: $worker);
             try {
                 $body($connection, $setup, $table, $worker);
             } finally {
@@ -332,8 +381,7 @@ final class LockLossConnection implements ManagedConnection
         private readonly \PDO $killer,
         private readonly string $lock,
         private readonly Worker $worker,
-    ) {
-    }
+    ) {}
 
     public function driver(): string
     {
@@ -377,7 +425,7 @@ final class LockLossConnection implements ManagedConnection
 
     public function transaction(\Closure $callback): mixed
     {
-        return $this->delegate->transaction(fn (): mixed => $callback($this));
+        return $this->delegate->transaction(fn(): mixed => $callback($this));
     }
 
     public function afterCommit(\Closure $callback): void
@@ -397,7 +445,7 @@ final class LockLossConnection implements ManagedConnection
 
     public function withoutReconnect(\Closure $callback): mixed
     {
-        return $this->delegate->withoutReconnect(fn (): mixed => $callback($this));
+        return $this->delegate->withoutReconnect(fn(): mixed => $callback($this));
     }
 
     public function isOpen(): bool

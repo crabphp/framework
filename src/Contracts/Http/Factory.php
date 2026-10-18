@@ -21,6 +21,4 @@ interface Factory extends
     ServerRequestFactoryInterface,
     StreamFactoryInterface,
     UploadedFileFactoryInterface,
-    UriFactoryInterface
-{
-}
+    UriFactoryInterface {}

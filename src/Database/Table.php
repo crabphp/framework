@@ -41,9 +41,9 @@ final class Table implements TableContract
      */
     public private(set) array $droppedIndexes = [];
 
-    public function __construct(public readonly string $name)
-    {
-    }
+    public function __construct(
+        public readonly string $name,
+    ) {}
 
     public function id(string $name = 'id'): Column
     {
@@ -86,7 +86,9 @@ final class Table implements TableContract
     public function decimal(string $name, int $total = 10, int $places = 2): Column
     {
         if ($total < 1 || $places < 0 || $places > $total) {
-            throw new \InvalidArgumentException("The decimal column \"{$name}\" needs at least one digit, and no more after the point than it has.");
+            throw new \InvalidArgumentException(
+                "The decimal column \"{$name}\" needs at least one digit, and no more after the point than it has.",
+            );
         }
         return $this->columns[] = new Column($name, 'decimal', $total, $places);
     }
@@ -125,13 +127,21 @@ final class Table implements TableContract
     public function index(string|array $columns, ?string $name = null): void
     {
         $columns = self::columns($columns);
-        $this->indexes[] = ['unique' => false, 'columns' => $columns, 'name' => $name ?? $this->indexName($columns, 'index')];
+        $this->indexes[] = [
+            'unique' => false,
+            'columns' => $columns,
+            'name' => $name ?? $this->indexName($columns, 'index'),
+        ];
     }
 
     public function unique(string|array $columns, ?string $name = null): void
     {
         $columns = self::columns($columns);
-        $this->indexes[] = ['unique' => true, 'columns' => $columns, 'name' => $name ?? $this->indexName($columns, 'unique')];
+        $this->indexes[] = [
+            'unique' => true,
+            'columns' => $columns,
+            'name' => $name ?? $this->indexName($columns, 'unique'),
+        ];
     }
 
     public function primary(array $columns): void

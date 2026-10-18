@@ -13,8 +13,11 @@ use Psr\Http\Message\RequestInterface;
  */
 final class RequestException extends ClientException implements RequestExceptionInterface
 {
-    public function __construct(string $message, private readonly RequestInterface $request, ?\Throwable $previous = null)
-    {
+    public function __construct(
+        string $message,
+        private readonly RequestInterface $request,
+        ?\Throwable $previous = null,
+    ) {
         parent::__construct($message, 0, $previous);
     }
 

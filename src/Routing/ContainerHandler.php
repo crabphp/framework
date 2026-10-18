@@ -15,9 +15,10 @@ use Psr\Http\Server\RequestHandlerInterface;
  */
 final readonly class ContainerHandler implements RequestHandlerInterface
 {
-    public function __construct(private ContainerInterface $container, private string $id)
-    {
-    }
+    public function __construct(
+        private ContainerInterface $container,
+        private string $id,
+    ) {}
 
     public function handle(ServerRequestInterface $request): ResponseInterface
     {

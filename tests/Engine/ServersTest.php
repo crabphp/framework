@@ -15,8 +15,12 @@ final class ServersTest extends TestCase
     {
         $ports = $reserved = [];
         foreach (['tcp', 'tcp', 'tcp', 'udp'] as $scheme) {
-            $socket = stream_socket_server("$scheme://127.0.0.1:0", $code, $error,
-                $scheme === 'udp' ? STREAM_SERVER_BIND : STREAM_SERVER_BIND | STREAM_SERVER_LISTEN);
+            $socket = stream_socket_server(
+                "{$scheme}://127.0.0.1:0",
+                $code,
+                $error,
+                $scheme === 'udp' ? STREAM_SERVER_BIND : STREAM_SERVER_BIND | STREAM_SERVER_LISTEN,
+            );
             self::assertIsResource($socket, 'Reserve server address.');
             $this->ownStream($socket);
             $ports[] = substr(strrchr(stream_socket_get_name($socket, false), ':'), 1);
@@ -31,16 +35,23 @@ final class ServersTest extends TestCase
             self::assertSame("ready\n", fgets($fixture->stdout), 'Combined server startup deadline.');
             foreach ($ports as $index => $port) {
                 $scheme = $index === 3 ? 'udp' : 'tcp';
-                $socket = stream_socket_client("$scheme://127.0.0.1:$port", $code, $error, 1);
+                $socket = stream_socket_client("{$scheme}://127.0.0.1:{$port}", $code, $error, 1);
                 self::assertIsResource($socket, 'Connect to server.');
                 $clients[$index] = $this->ownStream($socket);
                 stream_set_timeout($socket, 1);
             }
             $payload = "\0crab\xff";
-            fwrite($clients[0], "POST / HTTP/1.1\r\nHost: localhost\r\nContent-Length: 6\r\n\r\n" . $payload
-                . "GET /second HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n");
-            fwrite($clients[1], "GET /socket HTTP/1.1\r\nHost: localhost\r\nConnection: Upgrade\r\nUpgrade: websocket\r\n"
-                . "Sec-WebSocket-Version: 13\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\n\r\n");
+            fwrite(
+                $clients[0],
+                "POST / HTTP/1.1\r\nHost: localhost\r\nContent-Length: 6\r\n\r\n"
+                . $payload
+                . "GET /second HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n",
+            );
+            fwrite(
+                $clients[1],
+                "GET /socket HTTP/1.1\r\nHost: localhost\r\nConnection: Upgrade\r\nUpgrade: websocket\r\n"
+                . "Sec-WebSocket-Version: 13\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\n\r\n",
+            );
             fwrite($clients[2], $payload);
             stream_socket_sendto($clients[3], $payload);
 
@@ -65,9 +76,11 @@ final class ServersTest extends TestCase
             self::assertSame($payload, stream_socket_recvfrom($clients[3], 100), 'UDP binary echo.');
         } finally {
             foreach ($clients as $socket) {
-                if (is_resource($socket)) {
-                    fclose($socket);
+                if (!is_resource($socket)) {
+                    continue;
                 }
+
+                fclose($socket);
             }
             $result = $this->finishFixture($fixture);
         }
@@ -88,11 +101,14 @@ final class ServersTest extends TestCase
                 unlink($errorFile);
             }
         });
-        $process = proc_open([PHP_BINARY, __DIR__ . '/Fixtures/servers.php', ...$ports],
-            [0 => ['pipe', 'r'], 1 => ['pipe', 'w'], 2 => ['file', $errorFile, 'w']], $pipes);
+        $process = proc_open(
+            [PHP_BINARY, __DIR__ . '/Fixtures/servers.php', ...$ports],
+            [0 => ['pipe', 'r'], 1 => ['pipe', 'w'], 2 => ['file', $errorFile, 'w']],
+            $pipes,
+        );
         self::assertIsResource($process);
         $fixture = (object) ['process' => $process, 'stdout' => $pipes[1], 'stderr' => $errorFile, 'result' => null];
-        $this->deferCleanup(fn () => $this->finishFixture($fixture));
+        $this->deferCleanup(fn() => $this->finishFixture($fixture));
         fclose($pipes[0]);
         stream_set_timeout($pipes[1], 2);
         return $fixture;

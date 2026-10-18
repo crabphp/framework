@@ -21,7 +21,8 @@ final class Exchange
     /**
      * How long the answer's status line and headers may be.
      */
-    private const MAX_HEAD = 65536;
+    private const MAX_HEAD = 65_536;
+
     /**
      * Bytes that have arrived and are not yet read.
      */
@@ -43,8 +44,7 @@ final class Exchange
         private readonly Connection $connection,
         private readonly float $deadline,
         private readonly ?Cancellation $cancellation = null,
-    ) {
-    }
+    ) {}
 
     /**
      * @throws \RuntimeException Saying what went wrong, to be put after the name of the request.
@@ -54,7 +54,7 @@ final class Exchange
         $unsent = null;
         try {
             $this->send($request);
-        } catch (TimedOut | CancelledException $error) {
+        } catch (TimedOut|CancelledException $error) {
             throw $error;
         } catch (\RuntimeException $error) {
             // A server may answer before it has read everything, a body too large for it, and close. Its answer is what matters then.
@@ -63,6 +63,7 @@ final class Exchange
         try {
             do {
                 [$version, $status, $reason, $headers] = $this->head();
+
                 // An interim answer, such as 100 Continue, is followed by the real one.
             } while ($status < 200 && $status !== 101);
         } catch (\RuntimeException $error) {
@@ -74,7 +75,7 @@ final class Exchange
         $length = $headers['content-length'][0] ?? null;
         $bodiless = $method === 'HEAD' || $status === 204 || $status === 304 || $status < 200;
         // These have no body, whatever their headers say.
-        $sink = new BodySink($bodiless ? '' : ($headers['content-encoding'][0] ?? ''));
+        $sink = new BodySink($bodiless ? '' : $headers['content-encoding'][0] ?? '');
         $store = $sink->write(...);
         $delimited = true;
         if ($bodiless) {
@@ -95,11 +96,24 @@ final class Exchange
             // The body is handed on as what it says, so what described its compressed form no longer holds.
             unset($headers['content-encoding'], $headers['content-length']);
         }
-        $closing = static fn (array $values): bool => str_contains(strtolower(implode(',', $values)), 'close');
-        $this->reusable = $unsent === null && $delimited && $version === '1.1' && $status !== 101 && $this->buffer === ''
-            && !$closing($headers['connection'] ?? []) && !$closing($request->getHeader('Connection'));
+        $closing = static fn(array $values): bool => str_contains(strtolower(implode(',', $values)), 'close');
+        $this->reusable =
+            $unsent === null
+            && $delimited
+            && $version === '1.1'
+            && $status !== 101
+            && $this->buffer === ''
+            && !$closing($headers['connection'] ?? [])
+            && !$closing($request->getHeader('Connection'));
         try {
-            return new Response($status, $headers, new Stream($sink->stream()), $reason, $version, self::describe($request));
+            return new Response(
+                $status,
+                $headers,
+                new Stream($sink->stream()),
+                $reason,
+                $version,
+                self::describe($request),
+            );
         } catch (\InvalidArgumentException $error) {
             throw new \RuntimeException('the answer is not valid HTTP: ' . $error->getMessage(), previous: $error);
         }
@@ -119,7 +133,12 @@ final class Exchange
         if ($this->connection->forwarded) {
             // A proxy that forwards is told the whole URL, and who is asking when it wants to know.
             $uri = $request->getUri();
-            $target = $uri->getScheme() . '://' . $uri->getHost() . ($uri->getPort() === null ? '' : ':' . $uri->getPort()) . $target;
+            $target =
+                $uri->getScheme()
+                . '://'
+                . $uri->getHost()
+                . ($uri->getPort() === null ? '' : ':' . $uri->getPort())
+                . $target;
         }
         $head = "{$method} {$target} HTTP/1.1\r\n";
         if ($this->connection->forwarded && $this->connection->proxyAuthorization !== null) {
@@ -163,12 +182,12 @@ final class Exchange
         // A small body goes out with the head, in one write.
         $pending = $head;
         while (!$body->eof()) {
-            $bytes = $body->read(65536);
+            $bytes = $body->read(65_536);
             if ($bytes === '') {
                 continue;
             }
             $pending .= $size === null ? dechex(strlen($bytes)) . "\r\n{$bytes}\r\n" : $bytes;
-            if (strlen($pending) >= 65536) {
+            if (strlen($pending) >= 65_536) {
                 $this->connection->write($pending, $this->deadline, $this->cancellation, $this->sent);
                 $pending = '';
             }
@@ -188,7 +207,13 @@ final class Exchange
     public static function describe(RequestInterface $request): string
     {
         $uri = $request->getUri();
-        $where = $uri->getHost() === '' ? $uri->getPath() : $uri->getScheme() . '://' . $uri->getHost() . ($uri->getPort() === null ? '' : ':' . $uri->getPort()) . $uri->getPath();
+        $where = $uri->getHost() === ''
+            ? $uri->getPath()
+            : $uri->getScheme()
+            . '://'
+            . $uri->getHost()
+            . ($uri->getPort() === null ? '' : ':' . $uri->getPort())
+            . $uri->getPath();
         return $request->getMethod() . ' ' . $where;
     }
 
@@ -202,7 +227,11 @@ final class Exchange
                 throw new \RuntimeException('the answer\'s headers are too long');
             }
             if (!$this->more()) {
-                throw new \RuntimeException($this->answered ? 'the connection was lost in the middle of the answer' : 'the server closed the connection without answering');
+                throw new \RuntimeException(
+                    $this->answered
+                        ? 'the connection was lost in the middle of the answer'
+                        : 'the server closed the connection without answering',
+                );
             }
         }
         $lines = explode("\r\n", substr($this->buffer, 0, $end));
@@ -263,6 +292,7 @@ final class Exchange
                 throw new \RuntimeException('the answer is not valid HTTP');
             }
         }
+
         // Trailers, which nothing here reads, up to the empty line that ends the body.
         while ($this->line() !== '') {
         }
@@ -274,10 +304,12 @@ final class Exchange
     private function untilClosed(\Closure $store): void
     {
         do {
-            if ($this->buffer !== '') {
-                $store($this->buffer);
-                $this->buffer = '';
+            if ($this->buffer === '') {
+                continue;
             }
+
+            $store($this->buffer);
+            $this->buffer = '';
         } while ($this->more());
     }
 

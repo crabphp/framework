@@ -24,8 +24,9 @@ final class Greet implements Command
 {
     public static int $made = 0;
 
-    public function __construct(private Prefix $prefix = new Prefix())
-    {
+    public function __construct(
+        private Prefix $prefix = new Prefix(),
+    ) {
         ++self::$made;
     }
 
@@ -61,9 +62,23 @@ final class ConsoleTest extends TestCase
 
     public function testInputSeparatesArgumentsFromOptions(): void
     {
-        $input = new Input(['one', '--name=Crab', '--force', '-vq', '--empty=', '--path=a=b', '-', '--', '--literal', 'two']);
+        $input = new Input([
+            'one',
+            '--name=Crab',
+            '--force',
+            '-vq',
+            '--empty=',
+            '--path=a=b',
+            '-',
+            '--',
+            '--literal',
+            'two',
+        ]);
         self::assertSame(['one', '-', '--literal', 'two'], $input->arguments());
-        self::assertSame(['name' => 'Crab', 'force' => true, 'v' => true, 'q' => true, 'empty' => '', 'path' => 'a=b'], $input->options());
+        self::assertSame(
+            ['name' => 'Crab', 'force' => true, 'v' => true, 'q' => true, 'empty' => '', 'path' => 'a=b'],
+            $input->options(),
+        );
         self::assertSame('one', $input->argument(0));
         self::assertSame('default', $input->argument(9, 'default'));
         self::assertNull($input->argument(9));
@@ -72,19 +87,23 @@ final class ConsoleTest extends TestCase
         self::assertSame('default', $input->option('missing', 'default'));
         self::assertTrue($input->flag('force') && $input->flag('name') && $input->flag('v'));
         self::assertFalse($input->flag('missing') || $input->flag('empty'));
-        self::assertFalse((new Input(['--single=false']))->flag('single'));
-        self::assertSame([['-5', '3', '-1.5'], []], [(new Input(['-5', '3', '-1.5']))->arguments(), (new Input(['-5', '3', '-1.5']))->options()]);
+        self::assertFalse(new Input(['--single=false'])->flag('single'));
+        self::assertSame([['-5', '3', '-1.5'], []], [
+            new Input(['-5', '3', '-1.5'])->arguments(),
+            new Input(['-5', '3', '-1.5'])->options(),
+        ]);
     }
 
     public function testRunsClosuresObjectsAndClasses(): void
     {
-        $console = (new Console())
-            ->add('sum', static function (Input $input, Output $output): int {
+        $console = new Console()->add(
+            'sum',
+            static function (Input $input, Output $output): int {
                 $output->line((string) array_sum($input->arguments()));
                 return 3;
-            }, 'Add numbers')
-            ->add('greet', Greet::class)
-            ->add('greet:object', new Greet());
+            },
+            'Add numbers',
+        )->add('greet', Greet::class)->add('greet:object', new Greet());
         self::assertTrue($console->has('sum'));
         self::assertFalse($console->has('missing'));
         self::assertSame(1, Greet::$made);
@@ -103,23 +122,26 @@ final class ConsoleTest extends TestCase
         $prefix = new Prefix();
         $prefix->value = 'Hi';
         $container->instance(Prefix::class, $prefix);
-        self::assertSame(0, $this->exec((new Console($container))->add('greet', Greet::class), 'greet'));
+        self::assertSame(0, $this->exec(new Console($container)->add('greet', Greet::class), 'greet'));
         self::assertSame("Hi, world\n", $this->written($this->out));
     }
 
     public function testListAndHelp(): void
     {
-        $console = (new Console())->add('zeta', static fn() => 0, 'Last')->add('greet', Greet::class);
+        $console = new Console()->add('zeta', static fn() => 0, 'Last')->add('greet', Greet::class);
         foreach ([[], ['list'], ['--help'], ['help']] as $arguments) {
             ftruncate($this->out, 0);
             rewind($this->out);
             self::assertSame(0, $this->exec($console, ...$arguments));
-            self::assertSame("Commands:\n  greet           Greet someone\n  zeta            Last\n"
-                . "  help <command>  Describe a command; so does <command> --help\n  list            List the commands\n", $this->written($this->out));
+            self::assertSame(
+                "Commands:\n  greet           Greet someone\n  zeta            Last\n"
+                . "  help <command>  Describe a command; so does <command> --help\n  list            List the commands\n",
+                $this->written($this->out),
+            );
         }
         ftruncate($this->out, 0);
         rewind($this->out);
-        self::assertSame(0, $this->exec((new Console(title: 'Shop'))->add('zeta', static fn() => 0, 'Last'), 'list'));
+        self::assertSame(0, $this->exec(new Console(title: 'Shop')->add('zeta', static fn() => 0, 'Last'), 'list'));
         self::assertStringStartsWith("Shop\n\nCommands:\n  zeta", $this->written($this->out));
 
         ftruncate($this->out, 0);
@@ -131,14 +153,21 @@ final class ConsoleTest extends TestCase
     public function testAskingACommandForHelpDescribesItAndDoesNotRunIt(): void
     {
         $ran = 0;
-        $console = (new Console())
-            ->add('greet', Greet::class)
-            ->add('count', static function () use (&$ran): int {
+        $console = new Console()->add('greet', Greet::class)->add(
+            'count',
+            static function () use (&$ran): int {
                 ++$ran;
                 return 0;
-            }, 'Count up');
+            },
+            'Count up',
+        );
         Greet::$made = 0;
-        foreach ([['greet', '--help'], ['greet', '-h'], ['greet', 'Ada', '--shout', '--help'], ['greet', '-sh']] as $index => $arguments) {
+        foreach ([
+            ['greet', '--help'],
+            ['greet', '-h'],
+            ['greet', 'Ada', '--shout', '--help'],
+            ['greet', '-sh'],
+        ] as $index => $arguments) {
             $out = fopen('php://memory', 'w+');
             self::assertSame(0, $console->run($arguments, new Output($out, $out)));
             rewind($out);
@@ -146,7 +175,11 @@ final class ConsoleTest extends TestCase
             if ($index < 3) {
                 self::assertSame("Greet someone\n\nArguments:\n  name\n", $written, implode(' ', $arguments));
             } else {
-                self::assertStringStartsWith('Hello, world', $written, 'A letter among others is that command\'s own option.');
+                self::assertStringStartsWith(
+                    'Hello, world',
+                    $written,
+                    'A letter among others is that command\'s own option.',
+                );
             }
         }
         $out = fopen('php://memory', 'w+');
@@ -159,18 +192,21 @@ final class ConsoleTest extends TestCase
 
     public function testListSurvivesACommandThatCannotBeMade(): void
     {
-        $console = (new Console())->add('fine', static fn() => 0, 'Fine')->add('broken', 'No\\Such\\Command');
+        $console = new Console()->add('fine', static fn() => 0, 'Fine')->add('broken', 'No\\Such\\Command');
         self::assertSame(0, $this->exec($console, 'list'));
-        self::assertStringContainsString("  broken          (unavailable: Command \"broken\" is No\\Such\\Command", $this->written($this->out));
+        self::assertStringContainsString(
+            "  broken          (unavailable: Command \"broken\" is No\\Such\\Command",
+            $this->written($this->out),
+        );
         self::assertStringContainsString("  fine            Fine\n", $this->written($this->out));
     }
 
     public function testFailuresReturnOne(): void
     {
-        $console = (new Console())
-            ->add('fail', static fn() => throw new \RuntimeException('broken'))
-            ->add('wrong', Prefix::class)
-            ->add('missing', 'No\\Such\\Command');
+        $console = new Console()->add('fail', static fn() => throw new \RuntimeException('broken'))->add(
+            'wrong',
+            Prefix::class,
+        )->add('missing', 'No\\Such\\Command');
         self::assertSame(1, $this->exec($console, 'nope'));
         self::assertSame(1, $this->exec($console, 'help', 'nope'));
         self::assertSame(1, $this->exec($console, 'fail'));
@@ -187,12 +223,12 @@ final class ConsoleTest extends TestCase
     {
         foreach (['', 'Has Space', 'list', 'help', '--flag'] as $name) {
             try {
-                (new Console())->add($name, static fn() => 0);
+                new Console()->add($name, static fn() => 0);
                 self::fail("\"{$name}\" was accepted.");
             } catch (\InvalidArgumentException) {
             }
         }
-        self::assertTrue((new Console())->add('make:thing-2', static fn() => 0)->has('make:thing-2'));
+        self::assertTrue(new Console()->add('make:thing-2', static fn() => 0)->has('make:thing-2'));
     }
 
     public function testApplicationCommands(): void
@@ -205,15 +241,34 @@ final class ConsoleTest extends TestCase
         $app->router->get('/', static fn() => 'home');
         $app->router->post('/users/{id}', \Crab\Http\Health::class);
         self::assertSame(0, $this->exec($app->console, 'route:list'));
-        self::assertSame("No routes are registered.\nGET   /            Closure\nPOST  /users/{id}  " . \Crab\Http\Health::class . "\n", $this->written($this->out));
+        self::assertSame(
+            "No routes are registered.\nGET   /            Closure\nPOST  /users/{id}  "
+            . \Crab\Http\Health::class
+            . "\n",
+            $this->written($this->out),
+        );
         $routes = $app->router->routes();
-        self::assertSame(['GET', '/', 'Closure', []], [$routes[0]->method, $routes[0]->pattern, $routes[0]->action, $routes[0]->middleware]);
-        self::assertSame(['POST', '/users/{id}', \Crab\Http\Health::class], [$routes[1]->method, $routes[1]->pattern, $routes[1]->action]);
+        self::assertSame(['GET', '/', 'Closure', []], [
+            $routes[0]->method,
+            $routes[0]->pattern,
+            $routes[0]->action,
+            $routes[0]->middleware,
+        ]);
+        self::assertSame(['POST', '/users/{id}', \Crab\Http\Health::class], [
+            $routes[1]->method,
+            $routes[1]->pattern,
+            $routes[1]->action,
+        ]);
 
         // A name column appears once a route has a name.
         $app->router->get('/orders/{id}', static fn() => 'order')->name('orders.show');
         self::assertSame(0, $this->exec($app->console, 'route:list'));
-        self::assertStringEndsWith("GET   /                          Closure\nPOST  /users/{id}                " . \Crab\Http\Health::class . "\nGET   /orders/{id}  orders.show  Closure\n", $this->written($this->out));
+        self::assertStringEndsWith(
+            "GET   /                          Closure\nPOST  /users/{id}                "
+            . \Crab\Http\Health::class
+            . "\nGET   /orders/{id}  orders.show  Closure\n",
+            $this->written($this->out),
+        );
 
         $app->console->add('hello', static function (Input $input, Output $output): int {
             $output->line('hello');

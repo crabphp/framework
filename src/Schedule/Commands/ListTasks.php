@@ -12,9 +12,10 @@ use Crab\Schedule\Scheduler;
 
 final readonly class ListTasks implements Command
 {
-    public function __construct(private Schedule $schedule, private Scheduler $scheduler)
-    {
-    }
+    public function __construct(
+        private Schedule $schedule,
+        private Scheduler $scheduler,
+    ) {}
 
     public function description(): string
     {
@@ -25,7 +26,9 @@ final readonly class ListTasks implements Command
     {
         $tasks = $this->schedule->tasks();
         if ($tasks === []) {
-            $output->line('Nothing is scheduled. Declare tasks on Contracts\Schedule\Schedule in a provider\'s register().');
+            $output->line(
+                'Nothing is scheduled. Declare tasks on Contracts\Schedule\Schedule in a provider\'s register().',
+            );
             return 0;
         }
         $now = $this->scheduler->now();

@@ -23,7 +23,14 @@ final class SchemaTest extends TestCase
 {
     use \Crab\Tests\Database\Mysql\AsyncDriverMatrix;
 
-    private const TABLES = ['schema_comments', 'schema_posts', 'schema_articles', 'schema_members', 'schema_users', 'schema_everything'];
+    private const TABLES = [
+        'schema_comments',
+        'schema_posts',
+        'schema_articles',
+        'schema_members',
+        'schema_users',
+        'schema_everything',
+    ];
 
     private string $file;
 
@@ -66,20 +73,23 @@ final class SchemaTest extends TestCase
         $table->index(['name', 'age']);
         $table->unique(['team_id', 'name'], 'one_name_per_team');
 
-        self::assertSame([
-            'create table `users` (`id` integer primary key autoincrement, `team_id` integer null, `email` varchar(120) not null,'
-            . " `name` varchar(255) not null default 'O''Brien \\ Co', `age` integer null, `views` integer not null default 0,"
-            . ' `active` integer not null default 1, `balance` numeric not null default 1.5, `score` real null default null,'
-            . ' `bio` text null, `born` date null, `seen_at` datetime not null default current_timestamp, `settings` text null,'
-            . ' `avatar` blob null, `created_at` datetime null, `updated_at` datetime null,'
-            . ' foreign key (`team_id`) references `teams` (`id`) on delete set null)',
-            'create unique index `users_email_unique` on `users` (`email`)',
-            'create index `users_name_index` on `users` (`name`)',
-            'create index `users_name_age_index` on `users` (`name`, `age`)',
-            'create unique index `one_name_per_team` on `users` (`team_id`, `name`)',
-        ], (new SqliteSchemaGrammar())->create($table));
+        self::assertSame(
+            [
+                'create table `users` (`id` integer primary key autoincrement, `team_id` integer null, `email` varchar(120) not null,'
+                    . " `name` varchar(255) not null default 'O''Brien \\ Co', `age` integer null, `views` integer not null default 0,"
+                    . ' `active` integer not null default 1, `balance` numeric not null default 1.5, `score` real null default null,'
+                    . ' `bio` text null, `born` date null, `seen_at` datetime not null default current_timestamp, `settings` text null,'
+                    . ' `avatar` blob null, `created_at` datetime null, `updated_at` datetime null,'
+                    . ' foreign key (`team_id`) references `teams` (`id`) on delete set null)',
+                'create unique index `users_email_unique` on `users` (`email`)',
+                'create index `users_name_index` on `users` (`name`)',
+                'create index `users_name_age_index` on `users` (`name`, `age`)',
+                'create unique index `one_name_per_team` on `users` (`team_id`, `name`)',
+            ],
+            new SqliteSchemaGrammar()->create($table),
+        );
 
-        $mysql = (new MySqlSchemaGrammar())->create($table);
+        $mysql = new MySqlSchemaGrammar()->create($table);
         self::assertSame(
             'create table `users` (`id` bigint unsigned not null auto_increment primary key, `team_id` bigint unsigned null, `email` varchar(120) not null,'
             . " `name` varchar(255) not null default 'O''Brien \\\\ Co', `age` int unsigned null, `views` bigint not null default 0,"
@@ -98,33 +108,44 @@ final class SchemaTest extends TestCase
         $change->dropColumn('bio', 'born');
         $change->foreignId('owner_id')->nullable()->references('users', 'id', 'cascade');
         $change->string('phone')->nullable()->unique();
-        self::assertSame([
-            'alter table `users` rename column `name` to `full_name`',
-            'drop index `users_name_age_index`',
-            'drop index `one_name_per_team`',
-            'alter table `users` drop column `bio`',
-            'alter table `users` drop column `born`',
-            'alter table `users` add column `owner_id` integer null references `users` (`id`) on delete cascade',
-            'alter table `users` add column `phone` varchar(255) null',
-            'create unique index `users_phone_unique` on `users` (`phone`)',
-        ], (new SqliteSchemaGrammar())->alter($change));
-        self::assertSame([
-            'alter table `users` rename column `name` to `full_name`',
-            'drop index `users_name_age_index` on `users`',
-            'drop index `one_name_per_team` on `users`',
-            'alter table `users` drop column `bio`',
-            'alter table `users` drop column `born`',
-            'alter table `users` add column `owner_id` bigint unsigned null',
-            'alter table `users` add foreign key (`owner_id`) references `users` (`id`) on delete cascade',
-            'alter table `users` add column `phone` varchar(255) null',
-            'create unique index `users_phone_unique` on `users` (`phone`)',
-        ], (new MySqlSchemaGrammar())->alter($change));
+        self::assertSame(
+            [
+                'alter table `users` rename column `name` to `full_name`',
+                'drop index `users_name_age_index`',
+                'drop index `one_name_per_team`',
+                'alter table `users` drop column `bio`',
+                'alter table `users` drop column `born`',
+                'alter table `users` add column `owner_id` integer null references `users` (`id`) on delete cascade',
+                'alter table `users` add column `phone` varchar(255) null',
+                'create unique index `users_phone_unique` on `users` (`phone`)',
+            ],
+            new SqliteSchemaGrammar()->alter($change),
+        );
+        self::assertSame(
+            [
+                'alter table `users` rename column `name` to `full_name`',
+                'drop index `users_name_age_index` on `users`',
+                'drop index `one_name_per_team` on `users`',
+                'alter table `users` drop column `bio`',
+                'alter table `users` drop column `born`',
+                'alter table `users` add column `owner_id` bigint unsigned null',
+                'alter table `users` add foreign key (`owner_id`) references `users` (`id`) on delete cascade',
+                'alter table `users` add column `phone` varchar(255) null',
+                'create unique index `users_phone_unique` on `users` (`phone`)',
+            ],
+            new MySqlSchemaGrammar()->alter($change),
+        );
 
         $members = new Table('members');
         $members->integer('team_id');
         $members->integer('user_id');
         $members->primary(['team_id', 'user_id']);
-        self::assertSame(['create table `members` (`team_id` integer not null, `user_id` integer not null, primary key (`team_id`, `user_id`))'], (new SqliteSchemaGrammar())->create($members));
+        self::assertSame(
+            [
+                'create table `members` (`team_id` integer not null, `user_id` integer not null, primary key (`team_id`, `user_id`))',
+            ],
+            new SqliteSchemaGrammar()->create($members),
+        );
 
         self::assertInstanceOf(MySqlSchemaGrammar::class, SchemaGrammar::for('mysql'));
         self::assertInstanceOf(SqliteSchemaGrammar::class, SchemaGrammar::for('sqlite'));
@@ -167,18 +188,46 @@ final class SchemaTest extends TestCase
         $rows = $db->table('schema_everything');
         self::assertSame(1, $rows->insert(['email' => 'ada@x']));
         $row = $rows->find(1);
-        self::assertSame(["O'Brien \\ Co", null, 0, 1, null, null], [$row['name'], $row['age'], $row['views'], $row['active'], $row['bio'], $row['created_at']]);
+        self::assertSame(["O'Brien \\ Co", null, 0, 1, null, null], [
+            $row['name'],
+            $row['age'],
+            $row['views'],
+            $row['active'],
+            $row['bio'],
+            $row['created_at'],
+        ]);
         self::assertEqualsWithDelta(1.5, (float) $row['balance'], 0.0001);
-        self::assertMatchesRegularExpression('/^\d{4}-\d\d-\d\d \d\d:\d\d:\d\d$/', $row['seen_at'], 'The time of insertion is the default.');
+        self::assertMatchesRegularExpression(
+            '/^\d{4}-\d\d-\d\d \d\d:\d\d:\d\d$/',
+            $row['seen_at'],
+            'The time of insertion is the default.',
+        );
 
         $rows->insert([
-            'email' => 'grace@x', 'name' => 'Grace', 'age' => 45, 'views' => 5000000000, 'active' => false, 'balance' => '12345.67', 'score' => 9.5,
-            'bio' => str_repeat('long ', 2000), 'born' => '1906-12-09', 'settings' => '{"theme":"dark"}', 'avatar' => "\x00\x01\xff", 'created_at' => new \DateTimeImmutable('2026-01-31 12:00:00'),
+            'email' => 'grace@x',
+            'name' => 'Grace',
+            'age' => 45,
+            'views' => 5_000_000_000,
+            'active' => false,
+            'balance' => '12345.67',
+            'score' => 9.5,
+            'bio' => str_repeat('long ', 2000),
+            'born' => '1906-12-09',
+            'settings' => '{"theme":"dark"}',
+            'avatar' => "\x00\x01\xff",
+            'created_at' => new \DateTimeImmutable('2026-01-31 12:00:00'),
         ]);
         $grace = $rows->find(2);
-        self::assertSame([5000000000, 0, '1906-12-09', "\x00\x01\xff", '2026-01-31 12:00:00', 10000], [$grace['views'], $grace['active'], $grace['born'], $grace['avatar'], $grace['created_at'], strlen($grace['bio'])]);
+        self::assertSame([5_000_000_000, 0, '1906-12-09', "\x00\x01\xff", '2026-01-31 12:00:00', 10_000], [
+            $grace['views'],
+            $grace['active'],
+            $grace['born'],
+            $grace['avatar'],
+            $grace['created_at'],
+            strlen($grace['bio']),
+        ]);
         self::assertSame(['theme' => 'dark'], json_decode($grace['settings'], true));
-        self::assertEqualsWithDelta(12345.67, (float) $grace['balance'], 0.0001);
+        self::assertEqualsWithDelta(12_345.67, (float) $grace['balance'], 0.0001);
 
         try {
             $rows->insert(['email' => 'ada@x']);
@@ -234,10 +283,14 @@ final class SchemaTest extends TestCase
         $db->table('schema_members')->insert(['user_id' => $grace, 'team' => 1]);
         $refused = 0;
         $attempts = [
-            static fn () => $db->table('schema_posts')->insert(['user_id' => 999, 'title' => 'Orphan', 'slug' => 'orphan']),
-            static fn () => $db->table('schema_posts')->insert(['user_id' => $ada, 'title' => 'Again', 'slug' => 'one']),
-            static fn () => $db->table('schema_members')->insertMany([['user_id' => $grace, 'team' => 1]]),
-            static fn () => $db->table('schema_users')->where('id', $grace)->delete(),
+            static fn() => $db->table('schema_posts')->insert([
+                'user_id' => 999,
+                'title' => 'Orphan',
+                'slug' => 'orphan',
+            ]),
+            static fn() => $db->table('schema_posts')->insert(['user_id' => $ada, 'title' => 'Again', 'slug' => 'one']),
+            static fn() => $db->table('schema_members')->insertMany([['user_id' => $grace, 'team' => 1]]),
+            static fn() => $db->table('schema_users')->where('id', $grace)->delete(),
         ];
         foreach ($attempts as $attempt) {
             try {
@@ -246,7 +299,11 @@ final class SchemaTest extends TestCase
                 ++$refused;
             }
         }
-        self::assertSame(4, $refused, 'A row pointing nowhere, a repeated unique pair, a repeated primary key, and deleting a row still pointed at.');
+        self::assertSame(
+            4,
+            $refused,
+            'A row pointing nowhere, a repeated unique pair, a repeated primary key, and deleting a row still pointed at.',
+        );
         $db->table('schema_users')->where('id', $ada)->delete();
         self::assertSame(['one'], $db->table('schema_posts')->pluck('slug'), 'Deleting a user deletes their posts.');
 
@@ -259,12 +316,24 @@ final class SchemaTest extends TestCase
             $table->index(['heading', 'views'], 'by_heading');
         });
         self::assertSame([true, false, true, true], [
-            $schema->hasColumn('schema_posts', 'heading'), $schema->hasColumn('schema_posts', 'title'),
-            $schema->hasColumn('schema_posts', 'views'), $schema->hasColumn('schema_posts', 'editor_id'),
+            $schema->hasColumn('schema_posts', 'heading'),
+            $schema->hasColumn('schema_posts', 'title'),
+            $schema->hasColumn('schema_posts', 'views'),
+            $schema->hasColumn('schema_posts', 'editor_id'),
         ]);
         $post = $db->table('schema_posts')->first();
-        self::assertSame(['One', 0, null, null], [$post['heading'], $post['views'], $post['summary'], $post['editor_id']]);
-        $db->table('schema_posts')->insert(['user_id' => $grace, 'heading' => 'Twin', 'slug' => 'one', 'editor_id' => $grace]);
+        self::assertSame(['One', 0, null, null], [
+            $post['heading'],
+            $post['views'],
+            $post['summary'],
+            $post['editor_id'],
+        ]);
+        $db->table('schema_posts')->insert([
+            'user_id' => $grace,
+            'heading' => 'Twin',
+            'slug' => 'one',
+            'editor_id' => $grace,
+        ]);
         self::assertSame(2, $db->table('schema_posts')->where('slug', 'one')->count(), 'The unique pair was dropped.');
         try {
             $db->table('schema_posts')->where('id', $post['id'])->update(['editor_id' => 999]);
@@ -277,25 +346,37 @@ final class SchemaTest extends TestCase
             $table->dropIndex(['summary']);
             $table->dropColumn('summary', 'views');
         });
-        self::assertSame([false, false, true], [$schema->hasColumn('schema_posts', 'summary'), $schema->hasColumn('schema_posts', 'views'), $schema->hasColumn('schema_posts', 'slug')]);
+        self::assertSame([false, false, true], [
+            $schema->hasColumn('schema_posts', 'summary'),
+            $schema->hasColumn('schema_posts', 'views'),
+            $schema->hasColumn('schema_posts', 'slug'),
+        ]);
     }
 
     public function testMistakesAreRefusedWithWhatToDoInstead(): void
     {
         $schema = new Schema($this->database('sqlite'));
         $mistakes = [
-            'was given no columns' => static fn () => $schema->create('schema_users', static fn () => null),
-            'is being created, so it has nothing to rename or drop; that belongs in table()' => static fn () => $schema->create('schema_users', static function (TableContract $table): void {
-                $table->id();
-                $table->dropColumn('old');
-            }),
-            'An id() column cannot be added to "schema_users" afterwards' => static fn () => $schema->table('schema_users', static fn (TableContract $table) => $table->id()),
-            'is chosen when the table is created and cannot be changed in table()' => static fn () => $schema->table('schema_users', static fn (TableContract $table) => $table->primary(['a'])),
-            '"explode" is not something a delete can do to "user_id"; use one of: cascade, set null, restrict, no action' => static fn () => (new Table('t'))->foreignId('user_id')->references('users', onDelete: 'explode'),
-            'needs a length of at least 1' => static fn () => (new Table('t'))->string('name', 0),
-            'no more after the point than it has' => static fn () => (new Table('t'))->decimal('price', 4, 6),
-            'over one column name or a list of them' => static fn () => (new Table('t'))->index([]),
-            'one column name or a list' => static fn () => (new Table('t'))->unique([1]),
+            'was given no columns' => static fn() => $schema->create('schema_users', static fn() => null),
+            'is being created, so it has nothing to rename or drop; that belongs in table()' =>
+                static fn() => $schema->create('schema_users', static function (TableContract $table): void {
+                    $table->id();
+                    $table->dropColumn('old');
+                }),
+            'An id() column cannot be added to "schema_users" afterwards' =>
+                static fn() => $schema->table('schema_users', static fn(TableContract $table) => $table->id()),
+            'is chosen when the table is created and cannot be changed in table()' =>
+                static fn() => $schema->table('schema_users', static fn(TableContract $table) => $table->primary([
+                    'a',
+                ])),
+            '"explode" is not something a delete can do to "user_id"; use one of: cascade, set null, restrict, no action' =>
+                static fn() => new Table('t')
+                    ->foreignId('user_id')
+                    ->references('users', onDelete: 'explode'),
+            'needs a length of at least 1' => static fn() => new Table('t')->string('name', 0),
+            'no more after the point than it has' => static fn() => new Table('t')->decimal('price', 4, 6),
+            'over one column name or a list of them' => static fn() => new Table('t')->index([]),
+            'one column name or a list' => static fn() => new Table('t')->unique([1]),
         ];
         foreach ($mistakes as $expected => $mistake) {
             try {
@@ -310,7 +391,7 @@ final class SchemaTest extends TestCase
 
     private function database(string $driver): Database
     {
-        $db = new Database(fn (): \PDO => $this->pdo($driver), 1, factory: $this->mysqlFactory($driver));
+        $db = new Database(fn(): \PDO => $this->pdo($driver), 1, factory: $this->mysqlFactory($driver));
         foreach (self::TABLES as $table) {
             $db->execute("drop table if exists {$table}");
         }
@@ -320,7 +401,11 @@ final class SchemaTest extends TestCase
     private function pdo(string $driver): \PDO
     {
         if ($driver === 'mysql') {
-            return new \PDO(getenv('CRAB_TEST_MYSQL_DSN'), getenv('CRAB_TEST_MYSQL_USER') ?: 'root', getenv('CRAB_TEST_MYSQL_PASSWORD') ?: '');
+            return new \PDO(
+                getenv('CRAB_TEST_MYSQL_DSN'),
+                getenv('CRAB_TEST_MYSQL_USER') ?: 'root',
+                getenv('CRAB_TEST_MYSQL_PASSWORD') ?: '',
+            );
         }
         $pdo = new \PDO('sqlite:' . $this->file);
         $pdo->exec('pragma foreign_keys = on');

@@ -21,6 +21,5 @@ final readonly class JobRan
         public float $seconds,
         public ?\Throwable $error = null,
         public bool $gaveUp = false,
-    ) {
-    }
+    ) {}
 }

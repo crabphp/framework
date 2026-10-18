@@ -15,13 +15,14 @@ if (function_exists('posix_setsid') && posix_setsid() === -1) {
 $mode = $argv[1];
 $port = (int) $argv[2];
 $runtime = new Runtime(shutdownTimeout: 0.3);
-$runtime->group('echo', workers: $mode === 'single' ? 1 : 2, maxConnections: 8)
-    ->listen("tcp://127.0.0.1:$port", static function (Connection $connection): void {
+$runtime
+    ->group('echo', workers: $mode === 'single' ? 1 : 2, maxConnections: 8)
+    ->listen("tcp://127.0.0.1:{$port}", static function (Connection $connection): void {
         $connection->onData(static function (Connection $connection, string $bytes): void {
             $connection->tryWrite(getmypid() . ':' . $bytes);
             if ($bytes === "block\n") {
                 while (true) {
-                    usleep(100000);
+                    usleep(100_000);
                 }
             }
         });

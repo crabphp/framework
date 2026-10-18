@@ -17,8 +17,14 @@ use Psr\Log\LogLevel;
 final class Logger extends AbstractLogger implements LoggerContract
 {
     private const LEVELS = [
-        LogLevel::DEBUG => 0, LogLevel::INFO => 1, LogLevel::NOTICE => 2, LogLevel::WARNING => 3,
-        LogLevel::ERROR => 4, LogLevel::CRITICAL => 5, LogLevel::ALERT => 6, LogLevel::EMERGENCY => 7,
+        LogLevel::DEBUG => 0,
+        LogLevel::INFO => 1,
+        LogLevel::NOTICE => 2,
+        LogLevel::WARNING => 3,
+        LogLevel::ERROR => 4,
+        LogLevel::CRITICAL => 5,
+        LogLevel::ALERT => 6,
+        LogLevel::EMERGENCY => 7,
     ];
 
     /**
@@ -31,8 +37,10 @@ final class Logger extends AbstractLogger implements LoggerContract
      * @param string|resource $target A path or stream URL, opened for appending on the first record, or an open stream.
      * @param string $level The least severe level that is written.
      */
-    public function __construct(private readonly mixed $target = 'php://stderr', string $level = LogLevel::DEBUG)
-    {
+    public function __construct(
+        private readonly mixed $target = 'php://stderr',
+        string $level = LogLevel::DEBUG,
+    ) {
         if (!is_string($target) && !is_resource($target)) {
             throw new \InvalidArgumentException('A log target is a path or an open stream.');
         }
@@ -54,18 +62,29 @@ final class Logger extends AbstractLogger implements LoggerContract
         if ($context !== [] && str_contains($message, '{')) {
             $replacements = [];
             foreach ($context as $key => $value) {
-                if ((is_scalar($value) || $value instanceof \Stringable) && str_contains($message, '{' . $key . '}')) {
-                    $replacements['{' . $key . '}'] = (string) $value;
-                    unset($context[$key]);
+                if (
+                    !((is_scalar($value) || $value instanceof \Stringable) && str_contains($message, '{' . $key . '}'))
+                ) {
+                    continue;
                 }
+
+                $replacements['{' . $key . '}'] = (string) $value;
+                unset($context[$key]);
             }
             // One pass, so a placeholder inside a value is left as text.
             $message = strtr($message, $replacements);
         }
-        $line = (new \DateTimeImmutable())->format('Y-m-d\TH:i:s.vP') . ' ' . strtoupper($level) . ' ' . $message;
+        $line = new \DateTimeImmutable()->format('Y-m-d\TH:i:s.vP') . ' ' . strtoupper($level) . ' ' . $message;
         if ($context !== []) {
-            $line .= ' ' . json_encode($context, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE
-                | JSON_PARTIAL_OUTPUT_ON_ERROR | JSON_INVALID_UTF8_SUBSTITUTE);
+            $line .=
+                ' '
+                . json_encode(
+                    $context,
+                    JSON_UNESCAPED_SLASHES
+                    | JSON_UNESCAPED_UNICODE
+                    | JSON_PARTIAL_OUTPUT_ON_ERROR
+                    | JSON_INVALID_UTF8_SUBSTITUTE,
+                );
         }
         if ($exception !== null) {
             $line .= "\n" . $exception;
@@ -88,7 +107,13 @@ final class Logger extends AbstractLogger implements LoggerContract
     private static function severity(mixed $level): int
     {
         if (!is_string($level) || !isset(self::LEVELS[$level])) {
-            throw new InvalidArgumentException('"' . (is_scalar($level) ? (string) $level : get_debug_type($level)) . '" is not a log level. Set "log.level" to one of ' . implode(', ', array_keys(self::LEVELS)) . '.');
+            throw new InvalidArgumentException(
+                '"'
+                . (is_scalar($level) ? (string) $level : get_debug_type($level))
+                . '" is not a log level. Set "log.level" to one of '
+                . implode(', ', array_keys(self::LEVELS))
+                . '.',
+            );
         }
         return self::LEVELS[$level];
     }

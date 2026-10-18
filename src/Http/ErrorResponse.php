@@ -36,8 +36,12 @@ final class ErrorResponse
                 $body['error']['fields'] = $fields;
             }
             if ($detail !== null) {
-                $body['error'] += ['exception' => $detail::class, 'file' => $detail->getFile(),
-                    'line' => $detail->getLine(), 'trace' => explode("\n", $detail->getTraceAsString())];
+                $body['error'] += [
+                    'exception' => $detail::class,
+                    'file' => $detail->getFile(),
+                    'line' => $detail->getLine(),
+                    'trace' => explode("\n", $detail->getTraceAsString()),
+                ];
             }
             // A failure's own text may not be valid UTF-8.
             return Response::json($body, $status, $headers, JSON_INVALID_UTF8_SUBSTITUTE);

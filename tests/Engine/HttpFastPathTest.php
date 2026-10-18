@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Crab\Engine\Tests;
 
+use Crab\Engine\EventLoop;
+use Crab\Engine\EventLoop\RevoltEventLoop;
 use Crab\Engine\Http\Body;
 use Crab\Engine\Http\HttpException;
 use Crab\Engine\Http\Parser;
@@ -15,8 +17,6 @@ use Crab\Engine\Server\HttpServer;
 use Crab\Engine\Tests\Support\TestCase;
 use PHPUnit\Framework\Attributes\DataProvider;
 use ReflectionProperty;
-use Crab\Engine\EventLoop;
-use Crab\Engine\EventLoop\RevoltEventLoop;
 use RuntimeException;
 
 /**
@@ -76,15 +76,23 @@ final class HttpFastPathTest extends TestCase
         foreach (['GET /a', 'GET http://absolute.example:81/b', 'GET /c', 'OPTIONS *', 'POST /d'] as $line) {
             $parser->append("{$line} HTTP/1.1\r\n{$fields}");
             $request = $parser->next();
-            $seen[] = [$request?->method, $request?->target, $request?->headers['host'][0] ?? null, $request?->headers['x-shared'] ?? null];
+            $seen[] = [
+                $request?->method,
+                $request?->target,
+                $request?->headers['host'][0] ?? null,
+                $request?->headers['x-shared'] ?? null,
+            ];
         }
-        self::assertSame([
-            ['GET', '/a', 'origin', ['1']],
-            ['GET', 'http://absolute.example:81/b', 'absolute.example:81', ['1']],
-            ['GET', '/c', 'origin', ['1']],
-            ['OPTIONS', '*', 'origin', ['1']],
-            ['POST', '/d', 'origin', ['1']],
-        ], $seen);
+        self::assertSame(
+            [
+                ['GET', '/a', 'origin', ['1']],
+                ['GET', 'http://absolute.example:81/b', 'absolute.example:81', ['1']],
+                ['GET', '/c', 'origin', ['1']],
+                ['OPTIONS', '*', 'origin', ['1']],
+                ['POST', '/d', 'origin', ['1']],
+            ],
+            $seen,
+        );
         // The same request line with different fields, then a version that
         // changes which fields are required.
         $parser->append("POST /d HTTP/1.1\r\nHost: other\r\n\r\n");
@@ -103,8 +111,28 @@ final class HttpFastPathTest extends TestCase
     #[DataProvider('lazyFieldProvider')]
     public function testSingleFieldLookupsMatchTheCompleteMap(string $wire, string $body = ''): void
     {
-        $names = ['host', 'Host', 'connection', 'expect', 'content-length', 'transfer-encoding', 'x-a', 'X-A', 'x',
-            'hostile', 'connection-x', 'user-agent', 'empty', 'missing', '', 'x-a: 1', 'host:', "x-a\r\n", 'x.a', 'x-b'];
+        $names = [
+            'host',
+            'Host',
+            'connection',
+            'expect',
+            'content-length',
+            'transfer-encoding',
+            'x-a',
+            'X-A',
+            'x',
+            'hostile',
+            'connection-x',
+            'user-agent',
+            'empty',
+            'missing',
+            '',
+            'x-a: 1',
+            'host:',
+            "x-a\r\n",
+            'x.a',
+            'x-b',
+        ];
         $lookups = [];
         foreach ([false, true] as $mapFirst) {
             $parser = new Parser();
@@ -128,15 +156,26 @@ final class HttpFastPathTest extends TestCase
 
     public static function lazyFieldProvider(): iterable
     {
-        yield 'usual request' => ["GET / HTTP/1.1\r\nHost: a\r\nUser-Agent: UA/1.0 \r\nX-A: 1\r\nx-a:  2\t\r\nEmpty:\r\n\r\n"];
-        yield 'names that extend framing names' => ["GET / HTTP/1.1\r\nHostile: h\r\nConnection-X: c\r\nHOST: a\r\nX: close\r\n\r\n"];
-        yield 'connection list' => ["GET / HTTP/1.1\r\nHost: a\r\nConnection: keep-alive , Close \r\nX-B: host: b\r\n\r\n"];
-        yield 'repeated connection' => ["GET / HTTP/1.1\r\nHost: a\r\nConnection: keep-alive\r\nX-A: 1\r\nconnection: close\r\n\r\n"];
+        yield 'usual request' => [
+            "GET / HTTP/1.1\r\nHost: a\r\nUser-Agent: UA/1.0 \r\nX-A: 1\r\nx-a:  2\t\r\nEmpty:\r\n\r\n",
+        ];
+        yield 'names that extend framing names' => [
+            "GET / HTTP/1.1\r\nHostile: h\r\nConnection-X: c\r\nHOST: a\r\nX: close\r\n\r\n",
+        ];
+        yield 'connection list' => [
+            "GET / HTTP/1.1\r\nHost: a\r\nConnection: keep-alive , Close \r\nX-B: host: b\r\n\r\n",
+        ];
+        yield 'repeated connection' => [
+            "GET / HTTP/1.1\r\nHost: a\r\nConnection: keep-alive\r\nX-A: 1\r\nconnection: close\r\n\r\n",
+        ];
         yield 'absolute-form' => ["GET http://other.example/p HTTP/1.1\r\nX-A: 1\r\nHost: a\r\n\r\n"];
         yield 'absolute-form on HTTP/1.0' => ["GET http://other.example/p HTTP/1.0\r\nX-A: 1\r\n\r\n"];
         yield 'no fields' => ["GET / HTTP/1.0\r\n\r\n"];
         yield 'fixed body' => ["POST / HTTP/1.1\r\nHost: a\r\nContent-Length: 2\r\nX-A: 1\r\n\r\n", 'ok'];
-        yield 'chunked body' => ["POST / HTTP/1.1\r\nX-A: 1\r\nHost: a\r\nTransfer-Encoding: chunked\r\n\r\n", "2\r\nok\r\n0\r\n\r\n"];
+        yield 'chunked body' => [
+            "POST / HTTP/1.1\r\nX-A: 1\r\nHost: a\r\nTransfer-Encoding: chunked\r\n\r\n",
+            "2\r\nok\r\n0\r\n\r\n",
+        ];
         yield 'expectation' => ["GET / HTTP/1.1\r\nHost: a\r\nExpect: 100-continue\r\nX-A: close\r\n\r\n"];
     }
 
@@ -153,7 +192,7 @@ final class HttpFastPathTest extends TestCase
         } catch (\Error) {
         }
         self::assertSame($first, $request->headers);
-        self::assertSame($first, (new Request('GET', '/', '1.1', $first, new Body()))->headers);
+        self::assertSame($first, new Request('GET', '/', '1.1', $first, new Body())->headers);
     }
 
     #[DataProvider('keepAliveProvider')]
@@ -194,15 +233,27 @@ final class HttpFastPathTest extends TestCase
     public static function acceptedHeadProvider(): iterable
     {
         yield 'no fields on HTTP/1.0' => ["GET / HTTP/1.0\r\n\r\n", '/', []];
-        yield 'empty and padded values' => ["GET / HTTP/1.1\r\nHost: x\r\nX-Empty:\r\nX-Pad: \t v \t\r\n\r\n", '/',
-            ['host' => ['x'], 'x-empty' => [''], 'x-pad' => ['v']]];
-        yield 'obs-text and repeated names' => ["GET / HTTP/1.1\r\nHOST: x\r\nA: \xC3\xA9\r\na: 2\r\n\r\n", '/',
-            ['host' => ['x'], 'a' => ["\xC3\xA9", '2']]];
-        yield 'absolute-form replaces Host' => ["GET http://example.org:8080/p HTTP/1.1\r\nHost: other\r\n\r\n",
-            'http://example.org:8080/p', ['host' => ['example.org:8080']]];
+        yield 'empty and padded values' => [
+            "GET / HTTP/1.1\r\nHost: x\r\nX-Empty:\r\nX-Pad: \t v \t\r\n\r\n",
+            '/',
+            ['host' => ['x'], 'x-empty' => [''], 'x-pad' => ['v']],
+        ];
+        yield 'obs-text and repeated names' => [
+            "GET / HTTP/1.1\r\nHOST: x\r\nA: \xC3\xA9\r\na: 2\r\n\r\n",
+            '/',
+            ['host' => ['x'], 'a' => ["\xC3\xA9", '2']],
+        ];
+        yield 'absolute-form replaces Host' => [
+            "GET http://example.org:8080/p HTTP/1.1\r\nHost: other\r\n\r\n",
+            'http://example.org:8080/p',
+            ['host' => ['example.org:8080']],
+        ];
         yield 'asterisk with OPTIONS' => ["OPTIONS * HTTP/1.1\r\nHost: x\r\n\r\n", '*', ['host' => ['x']]];
-        yield 'expectation without a body' => ["GET / HTTP/1.1\r\nHost: x\r\nExpect: 100-continue\r\n\r\n", '/',
-            ['host' => ['x'], 'expect' => ['100-continue']]];
+        yield 'expectation without a body' => [
+            "GET / HTTP/1.1\r\nHost: x\r\nExpect: 100-continue\r\n\r\n",
+            '/',
+            ['host' => ['x'], 'expect' => ['100-continue']],
+        ];
         yield 'bracketed host' => ["GET / HTTP/1.1\r\nHost: [::1]:8080\r\n\r\n", '/', ['host' => ['[::1]:8080']]];
     }
 
@@ -250,8 +301,16 @@ final class HttpFastPathTest extends TestCase
         yield 'unsupported version' => ["GET / HTTP/1.2\r\nHost: x\r\n\r\n", 505];
         yield 'expectation on HTTP/1.0' => ["GET / HTTP/1.0\r\nExpect: 100-continue\r\n\r\n", 417];
         yield 'too many fields' => ["GET / HTTP/1.1\r\nHost: x\r\nA: 1\r\nB: 2\r\n\r\n", 431, ['maxHeaderCount' => 2]];
-        yield 'too many fields, one malformed' => ["GET / HTTP/1.1\r\nHost: x\r\nbroken\r\nB: 2\r\n\r\n", 431, ['maxHeaderCount' => 2]];
-        yield 'malformed within the limit' => ["GET / HTTP/1.1\r\nHost: x\r\nbroken\r\n\r\n", 400, ['maxHeaderCount' => 2]];
+        yield 'too many fields, one malformed' => [
+            "GET / HTTP/1.1\r\nHost: x\r\nbroken\r\nB: 2\r\n\r\n",
+            431,
+            ['maxHeaderCount' => 2],
+        ];
+        yield 'malformed within the limit' => [
+            "GET / HTTP/1.1\r\nHost: x\r\nbroken\r\n\r\n",
+            400,
+            ['maxHeaderCount' => 2],
+        ];
     }
 
     public function testFieldCountLimitAcceptsExactlyTheMaximum(): void
@@ -262,8 +321,11 @@ final class HttpFastPathTest extends TestCase
     }
 
     #[DataProvider('smallResponseProvider')]
-    public function testSmallEncoderMatchesTheGeneralEncoder(Response $response, Request $request, bool $forceClose): void
-    {
+    public function testSmallEncoderMatchesTheGeneralEncoder(
+        Response $response,
+        Request $request,
+        bool $forceClose,
+    ): void {
         for ($attempt = 0; $attempt < 3; ++$attempt) {
             $close = $forceClose;
             $small = ResponseEncoder::small($response, $request, $close);
@@ -283,18 +345,35 @@ final class HttpFastPathTest extends TestCase
         yield 'empty body' => [new Response(), $get, false];
         yield 'forced close' => [Response::text('bye'), $get, true];
         yield 'request close' => [Response::text('bye'), self::request(headers: ['connection' => ['Close']]), false];
-        yield 'HTTP/1.0 without keep-alive' => [Response::text('old'), self::request(version: '1.0', headers: []), false];
-        yield 'HTTP/1.0 keep-alive' => [Response::text('old'),
-            self::request(version: '1.0', headers: ['connection' => ['keep-alive']]), false];
-        yield 'status and repeated fields' => [new Response(404, ['X-A' => ['1', '2'], 'Content-Type' => 'text/plain',
-            'x-a' => '3', 'Empty' => []], 'missing'), $get, false];
+        yield 'HTTP/1.0 without keep-alive' => [
+            Response::text('old'),
+            self::request(version: '1.0', headers: []),
+            false,
+        ];
+        yield 'HTTP/1.0 keep-alive' => [
+            Response::text('old'),
+            self::request(version: '1.0', headers: ['connection' => ['keep-alive']]),
+            false,
+        ];
+        yield 'status and repeated fields' => [
+            new Response(
+                404,
+                ['X-A' => ['1', '2'], 'Content-Type' => 'text/plain', 'x-a' => '3', 'Empty' => []],
+                'missing',
+            ),
+            $get,
+            false,
+        ];
         yield 'unknown status' => [new Response(599, body: 'odd'), $get, false];
         yield 'json' => [Response::json(['ok' => true], 201), $get, false];
     }
 
     #[DataProvider('stringResultProvider')]
-    public function testStringResultsEncodeExactlyLikeTextResponses(string $body, Request $request, bool $forceClose): void
-    {
+    public function testStringResultsEncodeExactlyLikeTextResponses(
+        string $body,
+        Request $request,
+        bool $forceClose,
+    ): void {
         $close = $forceClose;
         $direct = ResponseEncoder::small($body, $request, $close);
         $expectedClose = $forceClose;
@@ -303,7 +382,10 @@ final class HttpFastPathTest extends TestCase
         self::assertSame($expectedClose, $close);
         if ($direct !== null) {
             self::assertSame(self::withoutDate($expected), self::withoutDate($direct));
-            $general = implode('', iterator_to_array((new ResponseEncoder(Response::text($body), $request, $forceClose))->bytes(), false));
+            $general = implode('', iterator_to_array(
+                new ResponseEncoder(Response::text($body), $request, $forceClose)->bytes(),
+                false,
+            ));
             self::assertSame(self::withoutDate($general), self::withoutDate($direct));
         }
     }
@@ -322,15 +404,20 @@ final class HttpFastPathTest extends TestCase
     {
         $output = $this->converse(
             ["GET /a HTTP/1.1\r\nHost: x\r\n\r\n", "HEAD /b HTTP/1.1\r\nHost: x\r\n\r\n", "GET /c HTTP/1.0\r\n\r\n"],
-            static fn (Request $request): string => 'path ' . $request->path(),
+            static fn(Request $request): string => 'path ' . $request->path(),
         );
         self::assertSame(3, substr_count($output, " 200 OK\r\n"));
         self::assertSame(3, substr_count($output, "content-type: text/plain; charset=utf-8\r\n"));
         self::assertStringContainsString("content-length: 7\r\nconnection: keep-alive\r\ndate: ", $output);
         self::assertStringContainsString("\r\n\r\npath /aHTTP/1.1 200 OK\r\n", $output);
         self::assertStringNotContainsString('path /b', $output, 'HEAD sent a body.');
-        self::assertStringEndsWith("HTTP/1.0 200 OK\r\ncontent-type: text/plain; charset=utf-8\r\ncontent-length: 7\r\n"
-            . "connection: close\r\ndate: " . self::dateOf($output) . "\r\n\r\npath /c", $output);
+        self::assertStringEndsWith(
+            "HTTP/1.0 200 OK\r\ncontent-type: text/plain; charset=utf-8\r\ncontent-length: 7\r\n"
+            . "connection: close\r\ndate: "
+            . self::dateOf($output)
+            . "\r\n\r\npath /c",
+            $output,
+        );
     }
 
     public function testFactoryResponsesKeepTheirValidatedFields(): void
@@ -340,10 +427,16 @@ final class HttpFastPathTest extends TestCase
         self::assertSame("content-type: text/plain; charset=utf-8\r\n", Response::text('x')->headerBlock());
         self::assertSame("content-type: application/json\r\n", Response::json(1)->headerBlock());
         // Caller fields still pass through validation and may replace the default.
-        self::assertSame("content-type: text/html\r\nx-a: 1\r\n",
-            Response::text('x', 200, ['Content-Type' => 'text/html', 'X-A' => '1'])->headerBlock());
-        self::assertSame(['Content-Type' => 'text/plain; charset=utf-8', 'X-A' => '1'], Response::text('x', 200, ['X-A' => '1'])->headers);
-        self::assertSame("content-type: application/json\r\nx-a: 1\r\n", Response::json(1, 200, ['X-A' => '1'])->headerBlock());
+        self::assertSame("content-type: text/html\r\nx-a: 1\r\n", Response::text('x', 200, [
+            'Content-Type' => 'text/html',
+            'X-A' => '1',
+        ])->headerBlock());
+        self::assertSame(['Content-Type' => 'text/plain; charset=utf-8', 'X-A' => '1'], Response::text('x', 200, [
+            'X-A' => '1',
+        ])->headers);
+        self::assertSame("content-type: application/json\r\nx-a: 1\r\n", Response::json(1, 200, [
+            'X-A' => '1',
+        ])->headerBlock());
         $this->expectException(\InvalidArgumentException::class);
         Response::text('x', 200, ['X-Bad' => "a\nb"])->headerBlock();
     }
@@ -353,8 +446,8 @@ final class HttpFastPathTest extends TestCase
     {
         $stale = time() + $offset;
         $staleDate = gmdate('D, d M Y H:i:s', $stale) . ' GMT';
-        (new ReflectionProperty(ResponseEncoder::class, 'dateSecond'))->setValue(null, $stale);
-        (new ReflectionProperty(ResponseEncoder::class, 'date'))->setValue(null, $staleDate);
+        new ReflectionProperty(ResponseEncoder::class, 'dateSecond')->setValue(null, $stale);
+        new ReflectionProperty(ResponseEncoder::class, 'date')->setValue(null, $staleDate);
         $before = time();
         $close = false;
         $keepAlive = ResponseEncoder::small('ok', self::request(), $close);
@@ -417,7 +510,7 @@ final class HttpFastPathTest extends TestCase
                 $order[] = 'start ' . $request->target;
                 if ($request->target === '/slow') {
                     $suspension = EventLoop::current()->getSuspension();
-                    EventLoop::current()->delay(0.02, static fn () => $suspension->resume());
+                    EventLoop::current()->delay(0.02, static fn() => $suspension->resume());
                     $suspension->suspend();
                 }
                 $order[] = 'end ' . $request->target;
@@ -480,22 +573,28 @@ final class HttpFastPathTest extends TestCase
         foreach (['one', 'two', 'three'] as $next) {
             $value = $next;
             $close = false;
-            $seen[] = str_contains((string) ResponseEncoder::small($response, self::request(), $close), "x-live: {$next}\r\n");
+            $seen[] = str_contains(
+                (string) ResponseEncoder::small($response, self::request(), $close),
+                "x-live: {$next}\r\n",
+            );
         }
         self::assertSame([true, true, true], $seen, 'A referenced response field was cached.');
     }
 
     public function testRepeatedResponseFieldsAreValidatedIdenticallyFromTheMemo(): void
     {
-        $first = (new Response(headers: ['X-Memo-Check' => ' padded '], body: ''))->normalizedHeaders();
-        $second = (new Response(headers: ['X-Memo-Check' => ' padded '], body: ''))->normalizedHeaders();
+        $first = new Response(headers: ['X-Memo-Check' => ' padded '], body: '')->normalizedHeaders();
+        $second = new Response(headers: ['X-Memo-Check' => ' padded '], body: '')->normalizedHeaders();
         self::assertSame(['x-memo-check' => ['padded']], $first);
         self::assertSame($first, $second);
         // Enough distinct lines to cycle the bounded memo at least once.
         for ($index = 0; $index < 600; ++$index) {
-            self::assertSame(['x-n' => [(string) $index]], (new Response(headers: ['X-N' => (string) $index]))->normalizedHeaders());
+            self::assertSame(
+                ['x-n' => [(string) $index]],
+                new Response(headers: ['X-N' => (string) $index])->normalizedHeaders(),
+            );
         }
-        self::assertSame($first, (new Response(headers: ['X-Memo-Check' => ' padded '], body: ''))->normalizedHeaders());
+        self::assertSame($first, new Response(headers: ['X-Memo-Check' => ' padded '], body: '')->normalizedHeaders());
     }
 
     public function testPersistentRequestsShareOneReadTurnWithoutLosingOrder(): void
@@ -504,22 +603,32 @@ final class HttpFastPathTest extends TestCase
         [$server, $client] = $this->pair();
         $connection = $this->connection($loop, $server);
         $seen = [];
-        (new HttpServer(static function (Request $request) use (&$seen): Response {
+        new HttpServer(static function (Request $request) use (&$seen): Response {
             $seen[] = $request->target;
             return Response::text($request->target);
-        }))->attach($connection);
+        })->attach($connection);
         $output = '';
         $next = 0;
         $send = static function () use ($client, &$next): void {
-            fwrite($client, "GET /r{$next} HTTP/1.1\r\nHost: x\r\n" . ($next === 4 ? "Connection: close\r\n" : '') . "\r\n");
+            fwrite(
+                $client,
+                "GET /r{$next} HTTP/1.1\r\nHost: x\r\n" . ($next === 4 ? "Connection: close\r\n" : '') . "\r\n",
+            );
             ++$next;
         };
         $watchdog = $loop->delay(2, static function () use ($connection): void {
             $connection->close();
             throw new RuntimeException('Persistent exchange timed out.');
         });
-        $loop->onReadable($client, static function (string $id) use ($loop, $client, &$output, $send, &$next, $watchdog): void {
-            $output .= fread($client, 65536);
+        $loop->onReadable($client, static function (string $id) use (
+            $loop,
+            $client,
+            &$output,
+            $send,
+            &$next,
+            $watchdog,
+        ): void {
+            $output .= fread($client, 65_536);
             if (feof($client)) {
                 $loop->cancel($id);
                 $loop->cancel($watchdog);
@@ -543,15 +652,17 @@ final class HttpFastPathTest extends TestCase
         $loop = $this->newLoop();
         [$server, $client] = $this->pair();
         $connection = $this->connection($loop, $server, 16);
-        (new HttpServer(static fn (Request $request): Response => Response::text(str_repeat($request->target, 40))))
-            ->attach($connection);
+        new HttpServer(static fn(Request $request): Response => Response::text(str_repeat(
+            $request->target,
+            40,
+        )))->attach($connection);
         $output = '';
         $watchdog = $loop->delay(2, static function () use ($connection): void {
             $connection->close();
             throw new RuntimeException('Tiny-capacity exchange timed out.');
         });
         $loop->onReadable($client, static function (string $id) use ($loop, $client, &$output, $watchdog): void {
-            $output .= fread($client, 65536);
+            $output .= fread($client, 65_536);
             if (feof($client)) {
                 $loop->cancel($id);
                 $loop->cancel($watchdog);
@@ -573,7 +684,11 @@ final class HttpFastPathTest extends TestCase
         $watching = [];
         $suspension = null;
         $state = new ReflectionProperty(Connection::class, 'readWatching');
-        $connection->onData(static function (Connection $connection, string $bytes) use ($loop, &$received, &$suspension): void {
+        $connection->onData(static function (Connection $connection, string $bytes) use (
+            $loop,
+            &$received,
+            &$suspension,
+        ): void {
             $received[] = $bytes;
             if (count($received) === 1) {
                 $suspension = $loop->getSuspension();
@@ -581,14 +696,22 @@ final class HttpFastPathTest extends TestCase
             }
         });
         fwrite($client, 'first');
-        $loop->delay(0.01, static function () use ($client): void { fwrite($client, 'second'); });
+        $loop->delay(0.01, static function () use ($client): void {
+            fwrite($client, 'second');
+        });
         $loop->delay(0.03, static function () use ($connection, $state, &$watching): void {
             $watching[] = $state->getValue($connection);
         });
-        $loop->delay(0.04, static function () use (&$suspension): void { $suspension->resume(); });
-        $watchdog = $loop->delay(2, static function () use ($loop): void { $loop->stop(); });
+        $loop->delay(0.04, static function () use (&$suspension): void {
+            $suspension->resume();
+        });
+        $watchdog = $loop->delay(2, static function () use ($loop): void {
+            $loop->stop();
+        });
         $poll = $loop->repeat(0.001, static function () use ($loop, &$received): void {
-            if (count($received) === 2) { $loop->stop(); }
+            if (count($received) === 2) {
+                $loop->stop();
+            }
         });
         $loop->run();
         $loop->cancel($watchdog);
@@ -613,9 +736,13 @@ final class HttpFastPathTest extends TestCase
             }
         });
         fwrite($client, 'start');
-        $watchdog = $loop->delay(2, static function () use ($loop): void { $loop->stop(); });
+        $watchdog = $loop->delay(2, static function () use ($loop): void {
+            $loop->stop();
+        });
         $poll = $loop->repeat(0.001, static function () use ($loop, &$received): void {
-            if (count($received) === 3) { $loop->stop(); }
+            if (count($received) === 3) {
+                $loop->stop();
+            }
         });
         $loop->run();
         $loop->cancel($watchdog);
@@ -639,9 +766,13 @@ final class HttpFastPathTest extends TestCase
             self::assertSame(['start'], $received, 'A paused connection delivered bytes.');
             $connection->resumeRead();
         }));
-        $watchdog = $loop->delay(2, static function () use ($loop): void { $loop->stop(); });
+        $watchdog = $loop->delay(2, static function () use ($loop): void {
+            $loop->stop();
+        });
         $poll = $loop->repeat(0.001, static function () use ($loop, &$received): void {
-            if (count($received) === 2) { $loop->stop(); }
+            if (count($received) === 2) {
+                $loop->stop();
+            }
         });
         $loop->run();
         $loop->cancel($watchdog);
@@ -660,7 +791,7 @@ final class HttpFastPathTest extends TestCase
         $loop = $this->newLoop();
         [$server, $client] = $this->pair();
         $connection = $this->connection($loop, $server);
-        (new HttpServer($handler))->attach($connection);
+        new HttpServer($handler)->attach($connection);
         $output = '';
         $next = 0;
         $expected = 0;
@@ -680,10 +811,20 @@ final class HttpFastPathTest extends TestCase
             $connection->close();
             throw new RuntimeException('Conversation timed out.');
         });
-        $loop->onReadable($client, static function (string $id) use ($loop, $client, $connection, $messages, &$output, &$next, &$expected, $send, $watchdog): void {
-            $output .= fread($client, 65536);
+        $loop->onReadable($client, static function (string $id) use (
+            $loop,
+            $client,
+            $connection,
+            $messages,
+            &$output,
+            &$next,
+            &$expected,
+            $send,
+            $watchdog,
+        ): void {
+            $output .= fread($client, 65_536);
             $answered = preg_match_all('/HTTP\/1\.[01] \d{3} /', $output);
-            if (feof($client) || ($answered === $expected && $next === count($messages))) {
+            if (feof($client) || $answered === $expected && $next === count($messages)) {
                 $loop->cancel($id);
                 $loop->cancel($watchdog);
                 $connection->close();
@@ -702,8 +843,11 @@ final class HttpFastPathTest extends TestCase
     /**
      * @param array<string, list<string>> $headers
      */
-    private static function request(string $method = 'GET', string $version = '1.1', array $headers = ['host' => ['x']]): Request
-    {
+    private static function request(
+        string $method = 'GET',
+        string $version = '1.1',
+        array $headers = ['host' => ['x']],
+    ): Request {
         return new Request($method, '/', $version, $headers, new Body());
     }
 
@@ -723,7 +867,9 @@ final class HttpFastPathTest extends TestCase
         $loop = RevoltEventLoop::create();
         EventLoop::install($loop);
         $this->deferCleanup(static function () use ($loop): void {
-            foreach ($loop->getIdentifiers() as $id) { $loop->cancel($id); }
+            foreach ($loop->getIdentifiers() as $id) {
+                $loop->cancel($id);
+            }
         });
         return $loop;
     }
@@ -737,12 +883,18 @@ final class HttpFastPathTest extends TestCase
         self::assertIsArray($pair);
         stream_set_blocking($pair[1], false);
         $this->deferCleanup(static function () use ($pair): void {
-            foreach ($pair as $stream) { if (is_resource($stream)) { fclose($stream); } }
+            foreach ($pair as $stream) {
+                if (!is_resource($stream)) {
+                    continue;
+                }
+
+                fclose($stream);
+            }
         });
         return $pair;
     }
 
-    private function connection(RevoltEventLoop $loop, mixed $stream, int $capacity = 1048576): Connection
+    private function connection(RevoltEventLoop $loop, mixed $stream, int $capacity = 1_048_576): Connection
     {
         $connection = new Connection($loop, $stream, 'test-peer', $capacity);
         $this->deferCleanup($connection->close(...));

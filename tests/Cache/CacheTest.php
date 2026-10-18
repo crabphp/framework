@@ -133,12 +133,15 @@ final class CacheTest extends TestCase
                     }
                     $consumer = $kind === 'file'
                         ? new FileStore($this->directory . '/files')
-                        : new DatabaseStore(new Database(fn (): \PDO => $this->pdo($kind), 1), 'cache_test');
+                        : new DatabaseStore(new Database(fn(): \PDO => $this->pdo($kind), 1), 'cache_test');
                     $result = ['value' => $consumer->take('once', 100)];
                 } catch (\Throwable $error) {
                     $result = ['error' => $error->getMessage()];
                 }
-                file_put_contents($this->directory . '/take-' . $child . '.json', json_encode($result, JSON_THROW_ON_ERROR));
+                file_put_contents(
+                    $this->directory . '/take-' . $child . '.json',
+                    json_encode($result, JSON_THROW_ON_ERROR),
+                );
                 posix_kill(getmypid(), SIGKILL);
             }
             self::assertGreaterThan(0, $pid, 'The cache race could not fork its consumer.');
@@ -161,8 +164,8 @@ final class CacheTest extends TestCase
             self::assertArrayNotHasKey('error', $result, $result['error'] ?? '');
             $values[] = $result['value'];
         }
-        self::assertSame(1, count(array_filter($values, static fn ($value): bool => $value === 'winner')));
-        self::assertSame(1, count(array_filter($values, static fn ($value): bool => $value === null)));
+        self::assertSame(1, count(array_filter($values, static fn($value): bool => $value === 'winner')));
+        self::assertSame(1, count(array_filter($values, static fn($value): bool => $value === null)));
     }
 
     #[DataProvider('stores')]
@@ -174,7 +177,13 @@ final class CacheTest extends TestCase
         self::assertSame('none', $cache->get('user.7', 'none'));
         self::assertFalse($cache->has('user.7'));
 
-        $value = ['id' => 7, 'tags' => ['a', 'b'], 'at' => new \DateTimeImmutable('2026-01-01'), 'ratio' => 0.5, 'raw' => "\0\xff"];
+        $value = [
+            'id' => 7,
+            'tags' => ['a', 'b'],
+            'at' => new \DateTimeImmutable('2026-01-01'),
+            'ratio' => 0.5,
+            'raw' => "\0\xff",
+        ];
         self::assertTrue($cache->set('user.7', $value));
 
         self::assertEquals($value, $cache->get('user.7'));
@@ -393,10 +402,10 @@ final class CacheTest extends TestCase
         $cache->set('set', 'kept');
         $cache->set('count', 41);
         $writes = [
-            fn (int|\DateInterval $ttl): bool => $cache->set('set', 'changed', $ttl),
-            fn (int|\DateInterval $ttl): bool => $cache->add('add', 'changed', $ttl),
-            fn (int|\DateInterval $ttl): int => $cache->increment('count', ttl: $ttl),
-            fn (int|\DateInterval $ttl): ?Lock => $cache->lock('lock', $ttl),
+            static fn(int|\DateInterval $ttl): bool => $cache->set('set', 'changed', $ttl),
+            static fn(int|\DateInterval $ttl): bool => $cache->add('add', 'changed', $ttl),
+            static fn(int|\DateInterval $ttl): int => $cache->increment('count', ttl: $ttl),
+            static fn(int|\DateInterval $ttl): ?Lock => $cache->lock('lock', $ttl),
         ];
 
         foreach ([$seconds, $interval] as $ttl) {
@@ -470,7 +479,7 @@ final class CacheTest extends TestCase
         self::assertSame('kept', $cache->get('mixed'));
         $this->clock->set('@' . ($now->getTimestamp() + 5400));
         self::assertNull($cache->get('mixed'));
-        self::assertSame($now->add($weekday)->getTimestamp() > $now->getTimestamp() + 5400, $cache->has('weekday'));
+        self::assertSame($now->add($weekday)->getTimestamp() > ($now->getTimestamp() + 5400), $cache->has('weekday'));
     }
 
     #[DataProvider('stores')]
@@ -502,7 +511,7 @@ final class CacheTest extends TestCase
 
     public function testDatabaseConditionalDeletionComparesBytesEvenWithACaseInsensitiveColumn(): void
     {
-        $database = new Database(fn (): \PDO => $this->pdo('sqlite'), 1);
+        $database = new Database(fn(): \PDO => $this->pdo('sqlite'), 1);
         $database->execute('create table cache_nocase (key text unique, value text collate nocase, expires_at bigint)');
         $store = new DatabaseStore($database, 'cache_nocase');
         $store->set('owned', "\0", 110);
@@ -524,9 +533,17 @@ final class CacheTest extends TestCase
 
         $this->clock->advance('+11 seconds');
         self::assertSame(3, $store->prune($this->clock->now()->getTimestamp()));
-        self::assertSame([null, null, null, 4, 5, 6], array_values($cache->getMultiple([
-            'old.one', 'old.two', 'old.three', 'live.one', 'live.two', 'forever',
-        ])));
+        self::assertSame(
+            [null, null, null, 4, 5, 6],
+            array_values($cache->getMultiple([
+                'old.one',
+                'old.two',
+                'old.three',
+                'live.one',
+                'live.two',
+                'forever',
+            ])),
+        );
         self::assertSame(0, $store->prune($this->clock->now()->getTimestamp()));
     }
 
@@ -600,7 +617,10 @@ final class CacheTest extends TestCase
                 } catch (\Throwable $error) {
                     $result = ['error' => $error->getMessage() . "\n" . $error->getTraceAsString()];
                 }
-                file_put_contents($this->directory . '/child-' . $child . '.json', json_encode($result, JSON_THROW_ON_ERROR));
+                file_put_contents(
+                    $this->directory . '/child-' . $child . '.json',
+                    json_encode($result, JSON_THROW_ON_ERROR),
+                );
                 // Without the test's shutdown, which belongs to the parent.
                 posix_kill(getmypid(), SIGKILL);
             }
@@ -622,7 +642,7 @@ final class CacheTest extends TestCase
             $total += $added;
         }
         self::assertGreaterThan(0, $total);
-        self::assertNull((new FileStore($this->directory . '/files'))->get('lock', 100));
+        self::assertNull(new FileStore($this->directory . '/files')->get('lock', 100));
     }
 
     public function testPruningTheFileStoreLeavesForeignFilesAlone(): void
@@ -739,9 +759,11 @@ final class CacheTest extends TestCase
         self::assertTrue(symlink($target, $file));
 
         foreach ([
-            function () use ($store): void { $store->set('linked', 'changed', null); },
-            fn (): bool => $store->add('linked', 'changed', null, 100),
-            fn (): int => $store->increment('linked', 1, null, 100),
+            static function () use ($store): void {
+                $store->set('linked', 'changed', null);
+            },
+            static fn(): bool => $store->add('linked', 'changed', null, 100),
+            static fn(): int => $store->increment('linked', 1, null, 100),
         ] as $write) {
             $error = null;
             try {
@@ -768,9 +790,11 @@ final class CacheTest extends TestCase
 
         try {
             foreach ([
-                fn (): int => $store->prune(100),
-                function () use ($store): void { $store->delete('old'); },
-                fn (): bool => $store->deleteIf('old', 'expired', 50),
+                static fn(): int => $store->prune(100),
+                static function () use ($store): void {
+                    $store->delete('old');
+                },
+                static fn(): bool => $store->deleteIf('old', 'expired', 50),
             ] as $remove) {
                 $error = null;
                 try {
@@ -850,7 +874,10 @@ final class CacheTest extends TestCase
         self::assertSame('value', $cache->get('kept'));
         self::assertSame(0, $app->console->run(['cache:prune'], $output));
         rewind($stream);
-        self::assertSame("Removed 3 expired cache entries.\nRemoved 0 expired cache entries.\n", stream_get_contents($stream));
+        self::assertSame(
+            "Removed 3 expired cache entries.\nRemoved 0 expired cache entries.\n",
+            stream_get_contents($stream),
+        );
     }
 
     #[DataProvider('stores')]
@@ -907,7 +934,7 @@ final class CacheTest extends TestCase
             $this->waitForChild($pid);
         }
 
-        self::assertSame(1001, (new FileStore($this->directory))->increment('hits', 1, null, 100));
+        self::assertSame(1001, new FileStore($this->directory)->increment('hits', 1, null, 100));
     }
 
     #[DataProvider('stores')]
@@ -935,7 +962,10 @@ final class CacheTest extends TestCase
         $cache = $this->cache($kind);
 
         self::assertTrue($cache->setMultiple(['a' => 1, 'b' => 2, '10' => 'ten'], 60));
-        self::assertSame(['a' => 1, 'missing' => 'none', '10' => 'ten'], $cache->getMultiple(['a', 'missing', '10'], 'none'));
+        self::assertSame(
+            ['a' => 1, 'missing' => 'none', '10' => 'ten'],
+            $cache->getMultiple(['a', 'missing', '10'], 'none'),
+        );
 
         self::assertTrue($cache->deleteMultiple(['a', 'missing']));
         self::assertSame([false, true], [$cache->has('a'), $cache->has('b')]);
@@ -1058,7 +1088,12 @@ final class CacheTest extends TestCase
     {
         $app = new App(new Config([
             'cache' => ['store' => 'database'],
-            'database' => ['connections' => ['main' => ['dsn' => 'sqlite:' . $this->directory . '/app.sqlite', 'migrations' => $this->directory . '/migrations']]],
+            'database' => [
+                'connections' => ['main' => [
+                    'dsn' => 'sqlite:' . $this->directory . '/app.sqlite',
+                    'migrations' => $this->directory . '/migrations',
+                ]],
+            ],
         ]));
         $app->register(DatabaseProvider::class, CacheProvider::class);
 
@@ -1106,9 +1141,9 @@ final class CacheTest extends TestCase
         if ($kind === 'file') {
             return new FileStore($this->directory . '/files');
         }
-        $database = new Database(fn (): \PDO => $this->pdo($kind), 1, factory: $this->mysqlFactory($kind));
+        $database = new Database(fn(): \PDO => $this->pdo($kind), 1, factory: $this->mysqlFactory($kind));
         $database->execute('drop table if exists cache_test');
-        (new Schema($database))->create('cache_test', static function (Table $table): void {
+        new Schema($database)->create('cache_test', static function (Table $table): void {
             $table->string('key')->unique();
             $table->text('value');
             $table->bigInteger('expires_at')->nullable()->index();
@@ -1119,7 +1154,11 @@ final class CacheTest extends TestCase
     private function pdo(string $driver): \PDO
     {
         if ($driver === 'mysql') {
-            return new \PDO(getenv('CRAB_TEST_MYSQL_DSN'), getenv('CRAB_TEST_MYSQL_USER') ?: 'root', getenv('CRAB_TEST_MYSQL_PASSWORD') ?: '');
+            return new \PDO(
+                getenv('CRAB_TEST_MYSQL_DSN'),
+                getenv('CRAB_TEST_MYSQL_USER') ?: 'root',
+                getenv('CRAB_TEST_MYSQL_PASSWORD') ?: '',
+            );
         }
         return new \PDO('sqlite:' . $this->directory . '/app.sqlite');
     }
@@ -1136,6 +1175,10 @@ final class CacheTest extends TestCase
     {
         self::assertSame($pid, pcntl_waitpid($pid, $status));
         self::assertTrue(pcntl_wifsignaled($status), 'The cache child exited before reporting its result.');
-        self::assertSame(SIGKILL, pcntl_wtermsig($status), 'The cache child timed out or was interrupted before completing.');
+        self::assertSame(
+            SIGKILL,
+            pcntl_wtermsig($status),
+            'The cache child timed out or was interrupted before completing.',
+        );
     }
 }

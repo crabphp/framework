@@ -6,6 +6,4 @@ namespace Crab\Container;
 
 use Psr\Container\ContainerExceptionInterface;
 
-class ContainerException extends \RuntimeException implements ContainerExceptionInterface
-{
-}
+class ContainerException extends \RuntimeException implements ContainerExceptionInterface {}

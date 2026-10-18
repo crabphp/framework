@@ -35,8 +35,11 @@ final class ResponseEncoder
         }
         if (isset($headers['content-length'])) {
             $lengths = $headers['content-length'];
-            if (count($lengths) !== 1 || !preg_match('/^[0-9]+$/D', $lengths[0])
-                || strlen(ltrim($lengths[0], '0')) > 18) {
+            if (
+                count($lengths) !== 1
+                || !preg_match('/^[0-9]+$/D', $lengths[0])
+                || strlen(ltrim($lengths[0], '0')) > 18
+            ) {
                 throw new \InvalidArgumentException('Invalid response Content-Length.');
             }
             $this->expectedLength = (int) $lengths[0];
@@ -63,10 +66,21 @@ final class ResponseEncoder
             $headers['transfer-encoding'] = ['chunked'];
         }
 
-        $this->close = !$upgrade && ($forceClose || !$request->keepAlive()
-            || (isset($headers['connection']) && in_array('close',
-                array_map(trim(...), explode(',', strtolower(implode(',', $headers['connection'])))), true))
-            || (!$this->suppressBody && $this->expectedLength === null && !$this->chunked));
+        $this->close =
+            !$upgrade
+            && (
+                $forceClose
+                || !$request->keepAlive()
+                || isset($headers['connection'])
+                && in_array(
+                    'close',
+                    array_map(trim(...), explode(',', strtolower(implode(',', $headers['connection'])))),
+                    true,
+                )
+                || !$this->suppressBody
+                && $this->expectedLength === null
+                && !$this->chunked
+            );
         if (!$upgrade) {
             unset($headers['upgrade']);
             $headers['connection'] = [$this->close ? 'close' : 'keep-alive'];
@@ -74,11 +88,12 @@ final class ResponseEncoder
         if (!isset($headers['date'])) {
             $headers['date'] = [self::date()];
         }
-        $this->head = 'HTTP/' . $request->version . ' ' . $response->status . ' ' . Response::reason($response->status) . "\r\n";
+        $this->head =
+            'HTTP/' . $request->version . ' ' . $response->status . ' ' . Response::reason($response->status) . "\r\n";
         foreach ($headers as $name => $values) {
             foreach ($values as $value) {
                 $this->head .= $name . ': ' . $value . "\r\n";
-                if (strlen($this->head) > 16384) {
+                if (strlen($this->head) > 16_384) {
                     throw new \LengthException('Response headers exceed 16 KiB.');
                 }
             }
@@ -115,7 +130,7 @@ final class ResponseEncoder
         }
         $length = strlen($body);
         // Leaves room for the status line and generated fields within 8 KiB.
-        if ($block === null || strlen($block) + $length > 7936) {
+        if ($block === null || (strlen($block) + $length) > 7936) {
             return null;
         }
         $close = $close || !$request->keepAlive();
@@ -128,9 +143,10 @@ final class ResponseEncoder
         }
         $tail = $close ? self::$closeTail : self::$keepAliveTail;
         $version = $request->version;
-        $line = $status === 200 && $version === '1.1'
-            ? "HTTP/1.1 200 OK\r\n"
-            : "HTTP/{$version} {$status} " . Response::reason($status) . "\r\n";
+        $line =
+            $status === 200 && $version === '1.1'
+                ? "HTTP/1.1 200 OK\r\n"
+                : "HTTP/{$version} {$status} " . Response::reason($status) . "\r\n";
         return "{$line}{$block}content-length: {$length}{$tail}{$body}";
     }
 
@@ -158,7 +174,7 @@ final class ResponseEncoder
         }
         // Small fixed responses can reach the socket in one write without
         // constructing a second large copy for streamed or sizeable bodies.
-        if (is_string($this->response->body) && strlen($this->head) + strlen($this->response->body) <= 8192) {
+        if (is_string($this->response->body) && (strlen($this->head) + strlen($this->response->body)) <= 8192) {
             return $this->head . $this->response->body;
         }
         return null;
@@ -190,7 +206,7 @@ final class ResponseEncoder
                 throw new \UnexpectedValueException('Response producers must yield strings.');
             }
             $length = strlen($chunk);
-            if ($length > 65536) {
+            if ($length > 65_536) {
                 throw new \LengthException('Response producers must yield chunks no larger than 64 KiB.');
             }
             if ($length === 0) {

@@ -11,6 +11,4 @@ use Psr\Http\Client\ClientExceptionInterface;
  * host and the path, never the query string or a header, which may hold
  * a secret.
  */
-class ClientException extends \RuntimeException implements ClientExceptionInterface
-{
-}
+class ClientException extends \RuntimeException implements ClientExceptionInterface {}

@@ -96,8 +96,11 @@ final class Router implements RouterContract
      * The container makes handlers that are given by name; the validator
      * builds the inputs of typed handlers.
      */
-    public function __construct(private readonly ?ContainerInterface $container = null, ?ValidatorContract $validator = null, private readonly ?\Closure $socketFactory = null)
-    {
+    public function __construct(
+        private readonly ?ContainerInterface $container = null,
+        ?ValidatorContract $validator = null,
+        private readonly ?\Closure $socketFactory = null,
+    ) {
         $this->validator = $validator ?? new Validator();
     }
 
@@ -105,8 +108,11 @@ final class Router implements RouterContract
      * A parameter matches one path segment unless its expression says
      * otherwise.
      */
-    public function add(string $method, string $pattern, RequestHandlerInterface|\Closure|string|array $action): DeclaredRoute
-    {
+    public function add(
+        string $method,
+        string $pattern,
+        RequestHandlerInterface|\Closure|string|array $action,
+    ): DeclaredRoute {
         $middleware = [];
         $prefix = '';
         foreach ($this->groups as [$groupPrefix, $groupMiddleware]) {
@@ -123,7 +129,9 @@ final class Router implements RouterContract
             throw new \LogicException("Route {$method} {$pattern} is already defined.");
         }
         if ($method === 'WS' && !$action instanceof \Closure && !is_array($action) && !self::isActionClass($action)) {
-            throw new \LogicException("The action of WS {$pattern} must be a closure or a class with handle(Socket \$socket, ...). Use Route::websocket() with an action, rather than a PSR-15 handler.");
+            throw new \LogicException(
+                "The action of WS {$pattern} must be a closure or a class with handle(Socket \$socket, ...). Use Route::websocket() with an action, rather than a PSR-15 handler.",
+            );
         }
         if ($action instanceof \Closure || is_array($action) || self::isActionClass($action)) {
             $websockets = null;
@@ -131,15 +139,27 @@ final class Router implements RouterContract
                 $this->websockets ??= $this->socketFactory === null ? new Connections() : ($this->socketFactory)();
                 $websockets = $this->websockets;
             }
-            $handler = new ActionHandler($method, $pattern, $names, $action, $this->validator, $this->container, $websockets);
+            $handler = new ActionHandler(
+                $method,
+                $pattern,
+                $names,
+                $action,
+                $this->validator,
+                $this->container,
+                $websockets,
+            );
             $described = $handler->name;
         } elseif (is_string($action)) {
             if ($this->container === null) {
-                throw new \LogicException("Route {$method} {$pattern} names its handler, which needs a router with a container.");
+                throw new \LogicException(
+                    "Route {$method} {$pattern} names its handler, which needs a router with a container.",
+                );
             }
             if (!$this->container->has($action)) {
                 // Said now, and not by the first request for it.
-                throw new \LogicException("Route {$method} {$pattern} points at {$action}, and there is no such class or container entry.");
+                throw new \LogicException(
+                    "Route {$method} {$pattern} points at {$action}, and there is no such class or container entry.",
+                );
             }
             $handler = new ContainerHandler($this->container, $action);
             $described = $action;
@@ -157,8 +177,8 @@ final class Router implements RouterContract
         // A route's own middleware, chained onto it, goes inside its groups'.
         $this->wrap($key, $middleware);
         return new DeclaredRoute(
-            fn (string $name) => $this->name($key, $name),
-            fn (array $middleware) => $this->wrap($key, $this->checked($middleware, "Route {$key}")),
+            fn(string $name) => $this->name($key, $name),
+            fn(array $middleware) => $this->wrap($key, $this->checked($middleware, "Route {$key}")),
         );
     }
 
@@ -198,13 +218,17 @@ final class Router implements RouterContract
     {
         $route = $this->routes[$key];
         if (trim($name) === '') {
-            throw new \InvalidArgumentException("Route {$key} is given an empty name. Give one such as \"orders.show\".");
+            throw new \InvalidArgumentException(
+                "Route {$key} is given an empty name. Give one such as \"orders.show\".",
+            );
         }
         if ($route->name !== null) {
             throw new \LogicException("Route {$key} is named \"{$route->name}\" already. A route has one name.");
         }
         if (isset($this->names[$name])) {
-            throw new \LogicException("Route {$key} is named \"{$name}\", which route {$this->names[$name]} already is. Give each route its own name.");
+            throw new \LogicException(
+                "Route {$key} is named \"{$name}\", which route {$this->names[$name]} already is. Give each route its own name.",
+            );
         }
         $this->names[$name] = $key;
         $this->routes[$key] = new RouteInfo($route->method, $route->pattern, $route->action, $route->middleware, $name);
@@ -223,7 +247,10 @@ final class Router implements RouterContract
     private function newGroup(): RouteGroup
     {
         return new RouteGroup(function (string $prefix, array $middleware, \Closure $routes): void {
-            $this->groups[] = [$prefix, $this->checked($middleware, $prefix === '' ? 'A group' : "The group {$prefix}")];
+            $this->groups[] = [
+                $prefix,
+                $this->checked($middleware, $prefix === '' ? 'A group' : "The group {$prefix}"),
+            ];
             try {
                 $routes($this);
             } finally {
@@ -270,16 +297,26 @@ final class Router implements RouterContract
                 continue;
             }
             if (!is_string($layer)) {
-                throw new \InvalidArgumentException("{$of} takes PSR-15 middleware or their class names as its middleware, not " . get_debug_type($layer) . '.');
+                throw new \InvalidArgumentException(
+                    "{$of} takes PSR-15 middleware or their class names as its middleware, not "
+                    . get_debug_type($layer)
+                    . '.',
+                );
             }
             if (class_exists($layer) || interface_exists($layer)) {
                 if (!is_a($layer, MiddlewareInterface::class, true)) {
-                    throw new \InvalidArgumentException("{$of} names {$layer} as middleware, and it is not one. Make it implement " . Middleware::class . '.');
+                    throw new \InvalidArgumentException(
+                        "{$of} names {$layer} as middleware, and it is not one. Make it implement "
+                        . Middleware::class
+                        . '.',
+                    );
                 }
                 continue;
             }
             if ($this->container === null || !$this->container->has($layer)) {
-                throw new \InvalidArgumentException("{$of} names {$layer} as middleware, and there is no such class. Check the name and its namespace.");
+                throw new \InvalidArgumentException(
+                    "{$of} names {$layer} as middleware, and there is no such class. Check the name and its namespace.",
+                );
             }
         }
         return array_values($middleware);
@@ -350,7 +387,9 @@ final class Router implements RouterContract
     {
         $route = $this->route($name);
         if ($route === null) {
-            throw new \InvalidArgumentException("There is no route named \"{$name}\". `php cua route:list` shows the names routes have.");
+            throw new \InvalidArgumentException(
+                "There is no route named \"{$name}\". `php cua route:list` shows the names routes have.",
+            );
         }
         preg_match_all(self::PARAMETER, $route->pattern, $matches, PREG_SET_ORDER | PREG_OFFSET_CAPTURE);
         $path = '';
@@ -360,12 +399,20 @@ final class Router implements RouterContract
             $path .= self::encode(substr($route->pattern, $offset, $match[0][1] - $offset), keepSlashes: true);
             $parameter = $match[1][0];
             if (!array_key_exists($parameter, $parameters)) {
-                throw new \InvalidArgumentException("Route \"{$name}\" ({$route->pattern}) needs the parameter {$parameter}.");
+                throw new \InvalidArgumentException(
+                    "Route \"{$name}\" ({$route->pattern}) needs the parameter {$parameter}.",
+                );
             }
             $value = self::text($parameters[$parameter], $name, $parameter);
             $expression = $match[2][0] ?? null;
-            if ($expression === null ? $value === '' : preg_match('~^(?:' . str_replace('~', '\~', $expression) . ')$~D', $value) !== 1) {
-                throw new \InvalidArgumentException("Route \"{$name}\" ({$route->pattern}) cannot take \"{$value}\" as its parameter {$parameter}.");
+            if (
+                $expression === null
+                    ? $value === ''
+                    : preg_match('~^(?:' . str_replace('~', '\~', $expression) . ')$~D', $value) !== 1
+            ) {
+                throw new \InvalidArgumentException(
+                    "Route \"{$name}\" ({$route->pattern}) cannot take \"{$value}\" as its parameter {$parameter}.",
+                );
             }
             // A parameter with an expression of its own may span segments, "{path:.+}"; one without is one segment.
             $path .= self::encode($value, keepSlashes: $expression !== null);
@@ -375,7 +422,11 @@ final class Router implements RouterContract
         $path .= self::encode(substr($route->pattern, $offset), keepSlashes: true);
         $unknown = array_diff(array_keys($parameters), array_keys($used));
         if ($unknown !== []) {
-            throw new \InvalidArgumentException("Route \"{$name}\" ({$route->pattern}) has no parameter " . implode(', ', $unknown) . '. Pass what goes after "?" as the query.');
+            throw new \InvalidArgumentException(
+                "Route \"{$name}\" ({$route->pattern}) has no parameter "
+                . implode(', ', $unknown)
+                . '. Pass what goes after "?" as the query.',
+            );
         }
         if ($query !== []) {
             $path .= '?' . http_build_query($query, '', '&', PHP_QUERY_RFC3986);
@@ -394,7 +445,11 @@ final class Router implements RouterContract
         if (is_int($value) || is_string($value) || $value instanceof \Stringable) {
             return (string) $value;
         }
-        throw new \InvalidArgumentException("Route \"{$name}\" takes text, a whole number or a backed enum as its parameter {$parameter}, not " . get_debug_type($value) . '.');
+        throw new \InvalidArgumentException(
+            "Route \"{$name}\" takes text, a whole number or a backed enum as its parameter {$parameter}, not "
+            . get_debug_type($value)
+            . '.',
+        );
     }
 
     private static function encode(string $text, bool $keepSlashes): string
@@ -414,8 +469,11 @@ final class Router implements RouterContract
         $parameters = [];
         $handler = $this->find($method, $path, $parameters);
         // HTTP-only routers do not read upgrade headers or search another table.
-        if ($this->websockets !== null && $method === 'GET'
-            && ($handler === null || $request->getHeaderLine('Upgrade') !== '')) {
+        if (
+            $this->websockets !== null
+            && $method === 'GET'
+            && ($handler === null || $request->getHeaderLine('Upgrade') !== '')
+        ) {
             $socketParameters = [];
             $socketHandler = $this->find('WS', $path, $socketParameters);
             if ($socketHandler !== null) {
@@ -442,9 +500,11 @@ final class Router implements RouterContract
      */
     private static function isActionClass(mixed $action): bool
     {
-        return is_string($action)
+        return (
+            is_string($action)
             && method_exists($action, 'handle')
-            && !is_a($action, RequestHandlerInterface::class, true);
+            && !is_a($action, RequestHandlerInterface::class, true)
+        );
     }
 
     /**
@@ -461,13 +521,15 @@ final class Router implements RouterContract
             return $handler;
         }
         foreach ($this->combined[$method] ??= $this->combine($method) as $expression) {
-            if (preg_match($expression, $path, $match) === 1) {
-                [, $names, $handler] = $this->dynamic[$method][(int) $match['MARK']];
-                foreach ($names as $index => $name) {
-                    $parameters[$name] = rawurldecode($match[$index + 1]);
-                }
-                return $handler;
+            if (preg_match($expression, $path, $match) !== 1) {
+                continue;
             }
+
+            [, $names, $handler] = $this->dynamic[$method][(int) $match['MARK']];
+            foreach ($names as $index => $name) {
+                $parameters[$name] = rawurldecode($match[$index + 1]);
+            }
+            return $handler;
         }
         return null;
     }
@@ -481,10 +543,12 @@ final class Router implements RouterContract
         $ignored = [];
         $httpGet = false;
         foreach (array_keys($this->static + $this->dynamic) as $method) {
-            if ($this->find((string) $method, $path, $ignored) !== null) {
-                $allowed[] = $method === 'WS' ? 'GET' : (string) $method;
-                $httpGet = $httpGet || $method === 'GET';
+            if ($this->find((string) $method, $path, $ignored) === null) {
+                continue;
             }
+
+            $allowed[] = $method === 'WS' ? 'GET' : (string) $method;
+            $httpGet = $httpGet || $method === 'GET';
         }
         if ($allowed === []) {
             return ErrorResponse::make($request, 404);

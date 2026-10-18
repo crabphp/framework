@@ -27,28 +27,40 @@ final class RouteTest extends TestCase
     {
         $first = new App();
         $app = new App();
-        Route::get('/', static fn (): string => 'home');
+        Route::get('/', static fn(): string => 'home');
         Route::post('/ping/{id}', [Ping::class, 'show']);
-        Route::put('/a', static fn (): string => 'put');
-        Route::get('/chained', static fn (): string => 'chained');
-        Route::patch('/a', static fn (): string => 'patch');
-        Route::delete('/a', static fn (): string => 'delete');
-        Route::add('OPTIONS', '/a', static fn (): string => 'options');
+        Route::put('/a', static fn(): string => 'put');
+        Route::get('/chained', static fn(): string => 'chained');
+        Route::patch('/a', static fn(): string => 'patch');
+        Route::delete('/a', static fn(): string => 'delete');
+        Route::add('OPTIONS', '/a', static fn(): string => 'options');
 
         self::assertSame('home', (string) $app->handle(new Request('GET', '/'))->getBody());
         self::assertSame('{"id":7}', (string) $app->handle(new Request('POST', '/ping/7'))->getBody());
-        foreach (['PUT' => 'put', 'PATCH' => 'patch', 'DELETE' => 'delete', 'OPTIONS' => 'options'] as $method => $body) {
+        foreach ([
+            'PUT' => 'put',
+            'PATCH' => 'patch',
+            'DELETE' => 'delete',
+            'OPTIONS' => 'options',
+        ] as $method => $body) {
             self::assertSame($body, (string) $app->handle(new Request($method, '/a'))->getBody());
         }
         self::assertSame('chained', (string) $app->handle(new Request('GET', '/chained'))->getBody());
-        self::assertInstanceOf(\Crab\Contracts\Routing\DeclaredRoute::class, Route::get('/same', static fn (): string => '')->name('same'));
+        self::assertInstanceOf(
+            \Crab\Contracts\Routing\DeclaredRoute::class,
+            Route::get('/same', static fn(): string => '')->name('same'),
+        );
         self::assertSame('/same', $app->router->path('same'), 'It is declared on the application\'s own router.');
         self::assertSame([], $first->router->routes(), 'Only the application created last receives them.');
 
-        Command::add('hello', static function (Input $input, OutputContract $output): int {
-            $output->line('Hello, ' . $input->argument(0, 'world'));
-            return 0;
-        }, 'Say hello');
+        Command::add(
+            'hello',
+            static function (Input $input, OutputContract $output): int {
+                $output->line('Hello, ' . $input->argument(0, 'world'));
+                return 0;
+            },
+            'Say hello',
+        );
         $out = fopen('php://memory', 'w+');
         self::assertSame(0, $app->console->run(['hello', 'Crab'], new Output($out, $out)));
         rewind($out);
@@ -76,7 +88,10 @@ final class RouteTest extends TestCase
         $current->setValue(null, null);
         try {
             $refused = 0;
-            foreach ([static fn () => Route::get('/', static fn (): string => ''), static fn () => Command::add('x', static fn (): int => 0)] as $attempt) {
+            foreach ([
+                static fn() => Route::get('/', static fn(): string => ''),
+                static fn() => Command::add('x', static fn(): int => 0),
+            ] as $attempt) {
                 try {
                     $attempt();
                 } catch (\LogicException $error) {

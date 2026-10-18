@@ -63,7 +63,9 @@ final readonly class Cors implements Middleware
         int $maxAge = 600,
     ) {
         if ($origins === []) {
-            throw new \LogicException('Cors needs the origins that may call: [\'https://app.example.com\'], or [\'*\'] for any.');
+            throw new \LogicException(
+                'Cors needs the origins that may call: [\'https://app.example.com\'], or [\'*\'] for any.',
+            );
         }
         $exact = [];
         $patterns = [];
@@ -75,7 +77,9 @@ final readonly class Cors implements Middleware
             }
             if (!is_string($origin) || preg_match('~^[a-z][a-z0-9+.-]*://[^/?#\s]+$~i', $origin) !== 1) {
                 $given = is_string($origin) ? "\"{$origin}\"" : get_debug_type($origin);
-                throw new \LogicException("Cors takes an origin as a scheme and a host with nothing after it, \"https://app.example.com\", not {$given}.");
+                throw new \LogicException(
+                    "Cors takes an origin as a scheme and a host with nothing after it, \"https://app.example.com\", not {$given}.",
+                );
             }
             if (str_contains($origin, '*')) {
                 // A star stands for one part of the host, never for a dot or a port.
@@ -85,7 +89,9 @@ final readonly class Cors implements Middleware
             }
         }
         if ($any && $credentials) {
-            throw new \LogicException('Cors cannot allow credentials for any origin: every site could then act as its visitor. Name the origins.');
+            throw new \LogicException(
+                'Cors cannot allow credentials for any origin: every site could then act as its visitor. Name the origins.',
+            );
         }
         if ($maxAge < 0) {
             throw new \LogicException('Cors takes a max age of zero or more seconds.');
@@ -108,14 +114,18 @@ final readonly class Cors implements Middleware
         }
         $allowed = $this->allows($origin);
         if ($request->getMethod() === 'OPTIONS' && $request->hasHeader('Access-Control-Request-Method')) {
-            return $allowed ? $this->permission($request, $origin) : ErrorResponse::make($request, 403, 'This origin may not call the API.');
+            return $allowed
+                ? $this->permission($request, $origin)
+                : ErrorResponse::make($request, 403, 'This origin may not call the API.');
         }
         $response = $handler->handle($request);
         if (!$allowed) {
             return $response;
         }
         $response = $this->named($response, $origin);
-        return $this->exposed === '' ? $response : $response->withHeader('Access-Control-Expose-Headers', $this->exposed);
+        return $this->exposed === ''
+            ? $response
+            : $response->withHeader('Access-Control-Expose-Headers', $this->exposed);
     }
 
     private function allows(string $origin): bool
@@ -145,7 +155,8 @@ final readonly class Cors implements Middleware
         if ($headers !== '') {
             $response = $response->withHeader('Access-Control-Allow-Headers', $headers);
         }
-        return $this->named($response, $origin)
+        return $this
+            ->named($response, $origin)
             ->withAddedHeader('Vary', 'Access-Control-Request-Method')
             ->withAddedHeader('Vary', 'Access-Control-Request-Headers');
     }

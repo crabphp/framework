@@ -13,9 +13,9 @@ use Crab\Contracts\Auth\Tickets;
  */
 final readonly class IssueTicket
 {
-    public function __construct(private Tickets $tickets)
-    {
-    }
+    public function __construct(
+        private Tickets $tickets,
+    ) {}
 
     /**
      * @return array{ticket: string}

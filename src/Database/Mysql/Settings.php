@@ -41,7 +41,7 @@ final readonly class Settings
         }
         $this->host = $parts['host'] ?? 'localhost';
         $port = $parts['port'] ?? '3306';
-        if (!ctype_digit($port) || (int) $port < 1 || (int) $port > 65535) {
+        if (!ctype_digit($port) || (int) $port < 1 || (int) $port > 65_535) {
             throw new \InvalidArgumentException('Set the MySQL DSN port to an integer between 1 and 65535.');
         }
         $this->port = (int) $port;
@@ -92,11 +92,15 @@ final readonly class Settings
             'cp932' => 95,
             'eucjpms' => 97,
             'gb18030' => 248,
-            default => throw new \InvalidArgumentException("MySQL charset {$charset} is unknown; use a MySQL character set name such as utf8mb4."),
+            default => throw new \InvalidArgumentException(
+                "MySQL charset {$charset} is unknown; use a MySQL character set name such as utf8mb4.",
+            ),
         };
         $ssl = $options['ssl'] ?? false;
         if (!is_bool($ssl) && !is_array($ssl)) {
-            throw new \InvalidArgumentException('Set options["ssl"] on the database connection to true, false or PHP SSL stream options.');
+            throw new \InvalidArgumentException(
+                'Set options["ssl"] on the database connection to true, false or PHP SSL stream options.',
+            );
         }
         $this->encrypted = $ssl !== false;
         $this->ssl = is_array($ssl) ? $ssl : [];

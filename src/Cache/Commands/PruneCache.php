@@ -15,9 +15,10 @@ use Psr\Clock\ClockInterface;
  */
 final readonly class PruneCache implements Command
 {
-    public function __construct(private Store $store, private ClockInterface $clock)
-    {
-    }
+    public function __construct(
+        private Store $store,
+        private ClockInterface $clock,
+    ) {}
 
     public function description(): string
     {

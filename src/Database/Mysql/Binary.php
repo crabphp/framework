@@ -65,7 +65,7 @@ final class Binary
         $name = Codec::readString($packet, $offset);
         Codec::skipString($packet, $offset); // Original column name is not returned.
         $fixed = Codec::readLength($packet, $offset);
-        if ($fixed !== self::COLUMN_FIELDS_LENGTH || strlen($packet) - $offset < $fixed || $name === null) {
+        if ($fixed !== self::COLUMN_FIELDS_LENGTH || (strlen($packet) - $offset) < $fixed || $name === null) {
             throw new \UnexpectedValueException('MySQL sent truncated column metadata.');
         }
         // Decode the fixed-width run once; the leading charset and trailing
@@ -93,13 +93,36 @@ final class Binary
             default => 0,
         };
         $unsigned = (bool) ($column['flags'] & self::UNSIGNED);
-        $format = match ($width) { 1 => 'C', 2 => 'v', 4 => 'V', 8 => 'P', default => '' };
+        $format = match ($width) {
+            1 => 'C',
+            2 => 'v',
+            4 => 'V',
+            8 => 'P',
+            default => '',
+        };
         $kind = 'value';
         if ($width !== 0 && !($column['flags'] & self::ZEROFILL)) {
             $kind = 'integer';
-        } elseif (in_array($type, [self::DECIMAL, self::VARCHAR, self::VECTOR, self::JSON, self::NEWDECIMAL,
-            self::ENUM, self::SET, self::TINY_BLOB, self::MEDIUM_BLOB, self::LONG_BLOB, self::BLOB,
-            self::VAR_STRING, self::STRING, self::GEOMETRY], true)) {
+        } elseif (in_array(
+            $type,
+            [
+                self::DECIMAL,
+                self::VARCHAR,
+                self::VECTOR,
+                self::JSON,
+                self::NEWDECIMAL,
+                self::ENUM,
+                self::SET,
+                self::TINY_BLOB,
+                self::MEDIUM_BLOB,
+                self::LONG_BLOB,
+                self::BLOB,
+                self::VAR_STRING,
+                self::STRING,
+                self::GEOMETRY,
+            ],
+            true,
+        )) {
             $kind = 'string';
         }
         return [
@@ -121,10 +144,12 @@ final class Binary
         $bitmap = $binary ? Codec::bytes($packet, $offset, intdiv(count($columns) + 9, 8)) : '';
         $row = [];
         foreach ($columns as $index => $column) {
-            if ($binary && (ord($bitmap[intdiv($index + 2, 8)]) & (1 << (($index + 2) % 8)))) {
+            if ($binary && ord($bitmap[intdiv($index + 2, 8)]) & (1 << (($index + 2) % 8))) {
                 $value = null;
             } else {
-                $value = $binary ? self::value($packet, $offset, $column) : self::text(Codec::readString($packet, $offset), $column);
+                $value = $binary
+                    ? self::value($packet, $offset, $column)
+                    : self::text(Codec::readString($packet, $offset), $column);
             }
             $row[$column['name']] = $value;
         }
@@ -159,7 +184,7 @@ final class Binary
                 $value = $length === 8 && $unsigned
                     ? Codec::unsigned64At($packet, $offset)
                     : Codec::integer($packet, $offset, $length);
-                if ($length < 8 && !$unsigned && ($value & (1 << ($length * 8 - 1)))) {
+                if ($length < 8 && !$unsigned && $value & (1 << (($length * 8) - 1))) {
                     $value -= 1 << ($length * 8);
                 }
                 if ($column['flags'] & self::ZEROFILL) {
@@ -194,7 +219,9 @@ final class Binary
             case self::GEOMETRY:
                 return Codec::readString($packet, $offset);
             default:
-                throw new \UnexpectedValueException("MySQL returned unsupported binary type {$type}; use a supported column type.");
+                throw new \UnexpectedValueException(
+                    "MySQL returned unsupported binary type {$type}; use a supported column type.",
+                );
         }
     }
 
@@ -222,7 +249,9 @@ final class Binary
                     is_float($value) => (string) $value,
                     $value instanceof \DateTimeInterface => $value->format('Y-m-d H:i:s'),
                     $value instanceof \Stringable => (string) $value,
-                    default => throw new \InvalidArgumentException('A ' . get_debug_type($value) . ' cannot be bound to a statement.'),
+                    default => throw new \InvalidArgumentException(
+                        'A ' . get_debug_type($value) . ' cannot be bound to a statement.',
+                    ),
                 };
                 $types .= chr(self::VAR_STRING) . "\0";
                 $data .= Codec::string($value);
@@ -290,10 +319,14 @@ final class Binary
             $hour = $length ? Codec::integer($bytes, $p, 1) : 0;
             $minute = $length ? Codec::integer($bytes, $p, 1) : 0;
             $second = $length ? Codec::integer($bytes, $p, 1) : 0;
-            $value = ($negative ? '-' : '') . sprintf('%02d:%02d:%02d', $days * 24 + $hour, $minute, $second);
+            $value = sprintf('%s%02d:%02d:%02d', $negative ? '-' : '', ($days * 24) + $hour, $minute, $second);
             $microseconds = $length === self::TIME_FRACTIONS_LENGTH ? Codec::integer($bytes, $p, 4) : 0;
         } else {
-            if (!in_array($length, [0, self::DATE_LENGTH, self::DATETIME_LENGTH, self::DATETIME_FRACTIONS_LENGTH], true)) {
+            if (!in_array(
+                $length,
+                [0, self::DATE_LENGTH, self::DATETIME_LENGTH, self::DATETIME_FRACTIONS_LENGTH],
+                true,
+            )) {
                 throw new \UnexpectedValueException('MySQL sent an invalid date value.');
             }
             $year = $length ? Codec::integer($bytes, $p, 2) : 0;

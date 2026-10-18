@@ -11,8 +11,10 @@ final readonly class Upgrade
     /**
      * @param callable(\Crab\Engine\Network\Connection, Request, string):void $handler
      */
-    public function __construct(public Response $response, callable $handler)
-    {
+    public function __construct(
+        public Response $response,
+        callable $handler,
+    ) {
         if ($response->status !== 101 || $response->body !== '') {
             throw new \InvalidArgumentException('Upgrade requires a bodyless 101 response.');
         }

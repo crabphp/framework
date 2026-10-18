@@ -43,7 +43,9 @@ final class Http2Stream
      * @param int $window How many bytes of body the server will take on this stream for now.
      * @param bool $bodiless Whether the answer has no body whatever its headers say, as that of a HEAD request.
      */
-    public function __construct(public readonly int $id, public int $window, public readonly bool $bodiless)
-    {
-    }
+    public function __construct(
+        public readonly int $id,
+        public int $window,
+        public readonly bool $bodiless,
+    ) {}
 }

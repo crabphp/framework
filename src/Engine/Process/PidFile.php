@@ -10,9 +10,9 @@ namespace Crab\Engine\Process;
  */
 final readonly class PidFile
 {
-    public function __construct(public string $path)
-    {
-    }
+    public function __construct(
+        public string $path,
+    ) {}
 
     /**
      * @return int|null The id in the file when a process of that id is alive; null when there is no file or what it names has gone.
@@ -80,13 +80,15 @@ final readonly class PidFile
     public function verify(int $pid): void
     {
         $state = json_decode((string) @file_get_contents($this->path . '.state'), true);
-        $expected = is_array($state) && ($state['pid'] ?? null) === $pid ? ($state['identity'] ?? null) : null;
+        $expected = is_array($state) && ($state['pid'] ?? null) === $pid ? $state['identity'] ?? null : null;
         if (!is_string($expected) || $expected === '') {
             return;
         }
         $actual = self::identity($pid);
         if ($actual !== null && $actual !== $expected) {
-            throw new \RuntimeException("The server pid file {$this->path} is stale: pid {$pid} belongs to a process started at another time. Remove the stale pid file before starting the server.");
+            throw new \RuntimeException(
+                "The server pid file {$this->path} is stale: pid {$pid} belongs to a process started at another time. Remove the stale pid file before starting the server.",
+            );
         }
     }
 

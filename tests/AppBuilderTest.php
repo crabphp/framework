@@ -37,9 +37,9 @@ use Psr\Http\Server\RequestHandlerInterface;
 
 final class Greeting
 {
-    public function __construct(public string $text)
-    {
-    }
+    public function __construct(
+        public string $text,
+    ) {}
 }
 
 final class GreetingProvider implements Provider
@@ -53,9 +53,9 @@ final class GreetingProvider implements Provider
 
 final class Mark implements MiddlewareInterface
 {
-    public function __construct(private string $mark = 'class')
-    {
-    }
+    public function __construct(
+        private string $mark = 'class',
+    ) {}
 
     public function process(ServerRequestInterface $request, RequestHandlerInterface $handler): ResponseInterface
     {
@@ -80,7 +80,13 @@ final class AppBuilderTest extends TestCase
             }
         };
         foreach ([false, true] as $replace) {
-            $providers = [$additions, EventsProvider::class, new EventsProvider(), ScheduleProvider::class, new ScheduleProvider()];
+            $providers = [
+                $additions,
+                EventsProvider::class,
+                new EventsProvider(),
+                ScheduleProvider::class,
+                new ScheduleProvider(),
+            ];
             $builder = App::configure();
             if ($replace) {
                 $builder->withProviders(only: [EventsProvider::class, ScheduleProvider::class, ...$providers]);
@@ -101,12 +107,28 @@ final class AppBuilderTest extends TestCase
         file_put_contents($this->directory . '/config/cache.php', "<?php return ['store' => 'array'];");
         try {
             $app = App::configure($this->directory)->create();
-            self::assertSame([
-                DatabaseProvider::class, AuthProvider::class, CacheProvider::class,
-                EventsProvider::class, QueueProvider::class, ScheduleProvider::class,
-                HttpClientProvider::class, BroadcastProvider::class,
-            ], App::PROVIDERS);
-            foreach ([PasswordHasher::class, Queue::class, Cache::class, Schedule::class, Client::class, Dispatcher::class, Broadcaster::class] as $contract) {
+            self::assertSame(
+                [
+                    DatabaseProvider::class,
+                    AuthProvider::class,
+                    CacheProvider::class,
+                    EventsProvider::class,
+                    QueueProvider::class,
+                    ScheduleProvider::class,
+                    HttpClientProvider::class,
+                    BroadcastProvider::class,
+                ],
+                App::PROVIDERS,
+            );
+            foreach ([
+                PasswordHasher::class,
+                Queue::class,
+                Cache::class,
+                Schedule::class,
+                Client::class,
+                Dispatcher::class,
+                Broadcaster::class,
+            ] as $contract) {
                 self::assertInstanceOf($contract, $app->container->get($contract));
             }
             self::assertSame(['queue', 'schedule'], $app->servers->ids());
@@ -116,7 +138,16 @@ final class AppBuilderTest extends TestCase
             }
             self::assertFalse($app->container->has(\Crab\Contracts\Auth\TokenStore::class));
             $direct = new App();
-            foreach ([Database::class, PasswordHasher::class, Queue::class, Cache::class, Schedule::class, Client::class, Dispatcher::class, Broadcaster::class] as $contract) {
+            foreach ([
+                Database::class,
+                PasswordHasher::class,
+                Queue::class,
+                Cache::class,
+                Schedule::class,
+                Client::class,
+                Dispatcher::class,
+                Broadcaster::class,
+            ] as $contract) {
                 self::assertFalse($direct->container->has($contract), 'new App() registers no providers.');
             }
         } finally {
@@ -128,21 +159,25 @@ final class AppBuilderTest extends TestCase
     public function testAnApplicationWithNoConfigurationServesInAWorkerAndNamesTheMissingDatabaseSettings(): void
     {
         $app = App::configure()->create();
-        $app->router->get('/', static fn (): string => 'ready');
+        $app->router->get('/', static fn(): string => 'ready');
         $served = false;
-        $app->run('test', static function (Worker $worker) use ($app, &$served): void {
-            $response = $app->handle(new Request('GET', '/'));
-            self::assertSame([200, 'ready'], [$response->getStatusCode(), (string) $response->getBody()]);
-            $served = true;
-            try {
-                $app->container->get(Database::class);
-                self::fail('An unconfigured database was returned.');
-            } catch (DatabaseException $error) {
-                self::assertStringContainsString('No database is configured', $error->getMessage());
-                self::assertStringContainsString('database.connections', $error->getMessage());
-                self::assertStringContainsString('sqlite:/path/app.sqlite', $error->getMessage());
-            }
-        }, single: true);
+        $app->run(
+            'test',
+            static function (Worker $worker) use ($app, &$served): void {
+                $response = $app->handle(new Request('GET', '/'));
+                self::assertSame([200, 'ready'], [$response->getStatusCode(), (string) $response->getBody()]);
+                $served = true;
+                try {
+                    $app->container->get(Database::class);
+                    self::fail('An unconfigured database was returned.');
+                } catch (DatabaseException $error) {
+                    self::assertStringContainsString('No database is configured', $error->getMessage());
+                    self::assertStringContainsString('database.connections', $error->getMessage());
+                    self::assertStringContainsString('sqlite:/path/app.sqlite', $error->getMessage());
+                }
+            },
+            single: true,
+        );
         self::assertTrue($served, 'The worker started and served the request.');
     }
 
@@ -172,9 +207,9 @@ final class AppBuilderTest extends TestCase
         $empty = App::configure()->withProviders(only: [EventsProvider::class])->withProviders(only: [])->create();
         self::assertFalse($empty->container->has(Dispatcher::class));
         foreach ([
-            static fn () => App::configure()->withProviders(only: [], remove: ScheduleProvider::class),
-            static fn () => App::configure()->withProviders(only: [])->withProviders(remove: ScheduleProvider::class),
-            static fn () => App::configure()->withProviders(remove: ScheduleProvider::class)->withProviders(only: []),
+            static fn() => App::configure()->withProviders(only: [], remove: ScheduleProvider::class),
+            static fn() => App::configure()->withProviders(only: [])->withProviders(remove: ScheduleProvider::class),
+            static fn() => App::configure()->withProviders(remove: ScheduleProvider::class)->withProviders(only: []),
         ] as $mistake) {
             try {
                 $mistake();
@@ -202,10 +237,22 @@ final class AppBuilderTest extends TestCase
         $this->directory = sys_get_temp_dir() . '/crab-builder-' . bin2hex(random_bytes(6));
         mkdir($this->directory . '/config', recursive: true);
         file_put_contents($this->directory . '/.env', "CRAB_BUILDER_GREETING=\"Hello from env\"\n");
-        file_put_contents($this->directory . '/config/app.php', "<?php return ['name' => 'Built', 'greeting' => env('CRAB_BUILDER_GREETING', 'unset')];");
-        file_put_contents($this->directory . '/web.php', "<?php use Crab\\Route; Route::get('/', static fn (): string => config('app.name'));");
-        file_put_contents($this->directory . '/api.php', "<?php use Crab\\Route; Route::get('/api', static fn (): array => ['leaked' => isset(\$app) || isset(\$this) || isset(\$file)]);");
-        file_put_contents($this->directory . '/console.php', "<?php use Crab\\Command; Command::add('hello', static fn (): int => 0, 'Say hello');");
+        file_put_contents(
+            $this->directory . '/config/app.php',
+            "<?php return ['name' => 'Built', 'greeting' => env('CRAB_BUILDER_GREETING', 'unset')];",
+        );
+        file_put_contents(
+            $this->directory . '/web.php',
+            "<?php use Crab\\Route; Route::get('/', static fn (): string => config('app.name'));",
+        );
+        file_put_contents(
+            $this->directory . '/api.php',
+            "<?php use Crab\\Route; Route::get('/api', static fn (): array => ['leaked' => isset(\$app) || isset(\$this) || isset(\$file)]);",
+        );
+        file_put_contents(
+            $this->directory . '/console.php',
+            "<?php use Crab\\Command; Command::add('hello', static fn (): int => 0, 'Say hello');",
+        );
     }
 
     protected function tearDown(): void
@@ -221,7 +268,10 @@ final class AppBuilderTest extends TestCase
     {
         // Given backwards on purpose: routes need the application, providers the configuration, configuration the environment.
         $app = App::configure()
-            ->withRouting(commands: $this->directory . '/console.php', routes: [$this->directory . '/web.php', $this->directory . '/api.php'])
+            ->withRouting(commands: $this->directory . '/console.php', routes: [
+                $this->directory . '/web.php',
+                $this->directory . '/api.php',
+            ])
             ->withMiddleware(Mark::class)
             ->withMiddleware(new Mark('object'))
             ->withProviders(GreetingProvider::class)
@@ -232,8 +282,16 @@ final class AppBuilderTest extends TestCase
         self::assertSame($app, App::current());
         self::assertSame('Hello from env', $app->container->get(Greeting::class)->text);
         $home = $app->handle(new Request('GET', '/'));
-        self::assertSame(['Built', 'object, class'], [(string) $home->getBody(), $home->getHeaderLine('X-Mark')], 'The first middleware given is outermost.');
-        self::assertSame('{"leaked":false}', (string) $app->handle(new Request('GET', '/api'))->getBody(), 'A route file sees no variable it did not define.');
+        self::assertSame(
+            ['Built', 'object, class'],
+            [(string) $home->getBody(), $home->getHeaderLine('X-Mark')],
+            'The first middleware given is outermost.',
+        );
+        self::assertSame(
+            '{"leaked":false}',
+            (string) $app->handle(new Request('GET', '/api'))->getBody(),
+            'A route file sees no variable it did not define.',
+        );
         self::assertTrue($app->console->has('hello'));
     }
 
@@ -246,38 +304,65 @@ final class AppBuilderTest extends TestCase
             ->create();
 
         self::assertSame($this->directory, $app->basePath);
-        self::assertSame('Hello from env', $app->container->get(Greeting::class)->text, '.env and config/ in the base path are loaded without being named.');
+        self::assertSame(
+            'Hello from env',
+            $app->container->get(Greeting::class)->text,
+            '.env and config/ in the base path are loaded without being named.',
+        );
         $home = $app->handle(new Request('GET', '/'));
         self::assertSame(['Built', 'object, class'], [(string) $home->getBody(), $home->getHeaderLine('X-Mark')]);
         self::assertSame(200, $app->handle(new Request('GET', '/api'))->getStatusCode());
         self::assertTrue($app->console->has('hello'));
-        self::assertSame(404, App::configure($this->directory)->withRouting(commands: 'console.php')->create()->handle(new Request('GET', '/'))->getStatusCode(), 'Either may be left out.');
+        self::assertSame(
+            404,
+            App::configure($this->directory)
+                ->withRouting(commands: 'console.php')
+                ->create()
+                ->handle(new Request('GET', '/'))
+                ->getStatusCode(),
+            'Either may be left out.',
+        );
 
         self::assertSame($this->directory, $app->path());
         self::assertSame($this->directory . '/storage/app.log', $app->path('storage/app.log'));
-        self::assertSame(['/var/log/app.log', 'php://stderr', 'C:\\logs\\app.log'], [$app->path('/var/log/app.log'), $app->path('php://stderr'), $app->path('C:\\logs\\app.log')]);
+        self::assertSame(['/var/log/app.log', 'php://stderr', 'C:\\logs\\app.log'], [
+            $app->path('/var/log/app.log'),
+            $app->path('php://stderr'),
+            $app->path('C:\\logs\\app.log'),
+        ]);
 
         mkdir($this->directory . '/settings');
         file_put_contents($this->directory . '/settings/app.php', "<?php return ['name' => 'Other'];");
         file_put_contents($this->directory . '/other.env', "CRAB_BUILDER_OTHER=1\n");
         $other = App::configure($this->directory)->withConfig('settings')->withEnv('other.env')->create();
-        self::assertSame(['Other', true], [$other->config->get('app.name'), env('CRAB_BUILDER_OTHER') === 1 || env('CRAB_BUILDER_OTHER') === '1']);
+        self::assertSame(['Other', true], [
+            $other->config->get('app.name'),
+            env('CRAB_BUILDER_OTHER') === 1 || env('CRAB_BUILDER_OTHER') === '1',
+        ]);
         unlink($this->directory . '/settings/app.php');
         unlink($this->directory . '/other.env');
         rmdir($this->directory . '/settings');
 
         $bare = sys_get_temp_dir() . '/crab-bare-' . bin2hex(random_bytes(4));
         mkdir($bare);
-        self::assertNull(App::configure($bare)->create()->config->get('app.name'), 'A base path with no .env and no config folder is still an application.');
+        self::assertNull(
+            App::configure($bare)->create()->config->get('app.name'),
+            'A base path with no .env and no config folder is still an application.',
+        );
         rmdir($bare);
 
         $mistakes = [
-            'is not a directory' => static fn () => App::configure('/no/such/app'),
-            'This application has no base path. Give it one with App::configure(__DIR__)' => static fn () => (new App())->path('x'),
-            'withProviders() takes providers or their class names, not int' => static fn () => App::configure()->withProviders([1]),
-            'withMiddleware() takes PSR-15 middleware or their class names, not stdClass' => static fn () => App::configure()->withMiddleware([new \stdClass()]),
-            'withRouting() takes file paths, not int' => static fn () => App::configure()->withRouting(routes: [1]),
-            'withRouting() takes file paths, not null' => static fn () => App::configure()->withRouting(commands: [null]),
+            'is not a directory' => static fn() => App::configure('/no/such/app'),
+            'This application has no base path. Give it one with App::configure(__DIR__)' =>
+                static fn() => new App()->path('x'),
+            'withProviders() takes providers or their class names, not int' =>
+                static fn() => App::configure()->withProviders([1]),
+            'withMiddleware() takes PSR-15 middleware or their class names, not stdClass' =>
+                static fn() => App::configure()->withMiddleware([new \stdClass()]),
+            'withRouting() takes file paths, not int' => static fn() => App::configure()->withRouting(routes: [1]),
+            'withRouting() takes file paths, not null' => static fn() => App::configure()->withRouting(commands: [
+                null,
+            ]),
         ];
         foreach ($mistakes as $expected => $mistake) {
             try {
@@ -287,7 +372,7 @@ final class AppBuilderTest extends TestCase
                 self::assertStringContainsString($expected, $error->getMessage());
             }
         }
-        self::assertSame('/x', (new App())->path('/x'), 'An absolute path needs no base path.');
+        self::assertSame('/x', new App()->path('/x'), 'An absolute path needs no base path.');
     }
 
     public function testTheGlobalMiddlewareIsAddedToRemovedFromOrReplaced(): void
@@ -295,8 +380,12 @@ final class AppBuilderTest extends TestCase
         $marks = static function (App $app, string $path = '/'): string {
             return $app->handle(new Request('GET', $path))->getHeaderLine('X-Mark');
         };
-        $route = static fn () => \Crab\Route::get('/', static fn (): string => 'home');
-        self::assertSame([ErrorHandler::class], App::MIDDLEWARE, 'What the framework puts around every request can be read.');
+        $route = static fn() => \Crab\Route::get('/', static fn(): string => 'home');
+        self::assertSame(
+            [ErrorHandler::class],
+            App::MIDDLEWARE,
+            'What the framework puts around every request can be read.',
+        );
 
         // Outermost first: prepended, the framework's, appended. The outermost marks the response last.
         $app = App::configure()
@@ -308,17 +397,24 @@ final class AppBuilderTest extends TestCase
         $app->container->instance(\Psr\Log\LoggerInterface::class, new \Psr\Log\NullLogger());
         $route();
         self::assertSame('one alone, appended too, appended, prepended', $marks($app));
-        self::assertSame('one alone, appended too, appended, prepended', $marks($app, '/missing'), 'It runs for a request no route matches, too.');
+        self::assertSame(
+            'one alone, appended too, appended, prepended',
+            $marks($app, '/missing'),
+            'It runs for a request no route matches, too.',
+        );
 
         // A failure beneath the framework's error handler is answered by it, inside what was prepended.
-        \Crab\Route::get('/fail', static fn () => throw new \RuntimeException('broken'));
+        \Crab\Route::get('/fail', static fn() => throw new \RuntimeException('broken'));
         $failed = $app->handle(new Request('GET', '/fail'));
         self::assertSame([500, 'prepended'], [$failed->getStatusCode(), $failed->getHeaderLine('X-Mark')]);
 
         // Without the framework's: nothing turns a failure into a response here.
-        foreach ([App::configure()->withMiddleware(remove: ErrorHandler::class), App::configure()->withMiddleware(only: [])] as $builder) {
+        foreach ([
+            App::configure()->withMiddleware(remove: ErrorHandler::class),
+            App::configure()->withMiddleware(only: []),
+        ] as $builder) {
             $bare = $builder->create();
-            \Crab\Route::get('/fail', static fn () => throw new \RuntimeException('nothing catches this'));
+            \Crab\Route::get('/fail', static fn() => throw new \RuntimeException('nothing catches this'));
             try {
                 $bare->handle(new Request('GET', '/fail'));
                 self::fail('The error handler was still there.');
@@ -329,18 +425,29 @@ final class AppBuilderTest extends TestCase
 
         // The whole list in place of the framework's, with the others still around it.
         $own = App::configure()
-            ->withMiddleware(only: [new Mark('mine'), ErrorHandler::class], prepend: [new Mark('first')], append: [new Mark('last')])
+            ->withMiddleware(
+                only: [new Mark('mine'), ErrorHandler::class],
+                prepend: [new Mark('first')],
+                append: [new Mark('last')],
+            )
             ->create();
         $route();
         self::assertSame('last, mine, first', $marks($own));
 
         $mistakes = [
-            'takes PSR-15 middleware or their class names, not int' => static fn () => App::configure()->withMiddleware([1]),
-            'middleware or their class names, not stdClass' => static fn () => App::configure()->withMiddleware(prepend: [new \stdClass()]),
-            'their class names, not null' => static fn () => App::configure()->withMiddleware(only: [null]),
-            'withMiddleware(remove:) takes the class names of middleware to leave out, not ' => static fn () => App::configure()->withMiddleware(remove: [new Mark()]),
-            'and ' . Mark::class . ' is not one of them: ' . ErrorHandler::class => static fn () => App::configure()->withMiddleware(remove: [Mark::class]),
-            'was given both only: and remove:' => static fn () => App::configure()->withMiddleware(only: [])->withMiddleware(remove: [ErrorHandler::class]),
+            'takes PSR-15 middleware or their class names, not int' => static fn() => App::configure()->withMiddleware([
+                1,
+            ]),
+            'middleware or their class names, not stdClass' =>
+                static fn() => App::configure()->withMiddleware(prepend: [new \stdClass()]),
+            'their class names, not null' => static fn() => App::configure()->withMiddleware(only: [null]),
+            'withMiddleware(remove:) takes the class names of middleware to leave out, not ' =>
+                static fn() => App::configure()->withMiddleware(remove: [new Mark()]),
+            'and ' . Mark::class . ' is not one of them: ' . ErrorHandler::class =>
+                static fn() => App::configure()->withMiddleware(remove: [Mark::class]),
+            'was given both only: and remove:' => static fn() => App::configure()
+                ->withMiddleware(only: [])
+                ->withMiddleware(remove: [ErrorHandler::class]),
         ];
         foreach ($mistakes as $expected => $mistake) {
             try {
@@ -377,7 +484,7 @@ final class AppBuilderTest extends TestCase
         self::assertInstanceOf(\Crab\Contracts\Http\Middleware::class, $made);
         self::assertInstanceOf(MiddlewareInterface::class, $made);
         $router = new \Crab\Routing\Router();
-        $router->get('/', static fn (): string => 'through')->middleware($made);
+        $router->get('/', static fn(): string => 'through')->middleware($made);
         self::assertSame('through', (string) $router->handle(new Request('GET', '/'))->getBody());
 
         self::assertSame([1, "{$file} already exists.\n"], $run('RequireAdmin'));
@@ -385,7 +492,10 @@ final class AppBuilderTest extends TestCase
         self::assertSame(1, $run('not a class')[0]);
         [$status] = $run('Cors', '--path=src/Http/Middleware', '--namespace=Shop\\Http\\Middleware');
         self::assertSame(0, $status);
-        self::assertStringContainsString("namespace Shop\\Http\\Middleware;\n", (string) file_get_contents($this->directory . '/src/Http/Middleware/Cors.php'));
+        self::assertStringContainsString(
+            "namespace Shop\\Http\\Middleware;\n",
+            (string) file_get_contents($this->directory . '/src/Http/Middleware/Cors.php'),
+        );
 
         unlink($file);
         unlink($this->directory . '/src/Http/Middleware/Cors.php');
@@ -398,12 +508,32 @@ final class AppBuilderTest extends TestCase
     {
         $app = App::configure()->withRouting(health: '/up')->create();
         $up = $app->handle(new Request('GET', '/up'));
-        self::assertSame([200, '{"status":"up"}', 'application/json'], [$up->getStatusCode(), (string) $up->getBody(), $up->getHeaderLine('Content-Type')]);
+        self::assertSame([200, '{"status":"up"}', 'application/json'], [
+            $up->getStatusCode(),
+            (string) $up->getBody(),
+            $up->getHeaderLine('Content-Type'),
+        ]);
         self::assertSame(405, $app->handle(new Request('POST', '/up'))->getStatusCode());
-        self::assertSame(['GET', '/up', \Crab\Http\Health::class], [$app->router->routes()[0]->method, $app->router->routes()[0]->pattern, $app->router->routes()[0]->action]);
+        self::assertSame(['GET', '/up', \Crab\Http\Health::class], [
+            $app->router->routes()[0]->method,
+            $app->router->routes()[0]->pattern,
+            $app->router->routes()[0]->action,
+        ]);
 
-        self::assertSame(404, App::configure()->create()->handle(new Request('GET', '/up'))->getStatusCode(), 'Only where it is asked to.');
-        self::assertSame(200, App::configure()->withRouting(health: '/up')->withRouting(health: '/healthz')->create()->handle(new Request('GET', '/healthz'))->getStatusCode());
+        self::assertSame(
+            404,
+            App::configure()->create()->handle(new Request('GET', '/up'))->getStatusCode(),
+            'Only where it is asked to.',
+        );
+        self::assertSame(
+            200,
+            App::configure()
+                ->withRouting(health: '/up')
+                ->withRouting(health: '/healthz')
+                ->create()
+                ->handle(new Request('GET', '/healthz'))
+                ->getStatusCode(),
+        );
     }
 
     public function testEveryStepIsOptional(): void
@@ -412,15 +542,25 @@ final class AppBuilderTest extends TestCase
         self::assertSame(404, $app->handle(new Request('GET', '/'))->getStatusCode());
         self::assertNull($app->config->get('app.name'));
 
-        $withoutEnvFile = App::configure()->withEnv($this->directory . '/absent.env')->withConfig($this->directory . '/config')->create();
-        self::assertSame('Built', $withoutEnvFile->config->get('app.name'), 'A missing .env is not an error; the real environment may hold the settings.');
+        $withoutEnvFile = App::configure()
+            ->withEnv($this->directory . '/absent.env')
+            ->withConfig($this->directory . '/config')
+            ->create();
+        self::assertSame(
+            'Built',
+            $withoutEnvFile->config->get('app.name'),
+            'A missing .env is not an error; the real environment may hold the settings.',
+        );
     }
 
     public function testAFileThatIsNotThereIsNamedBeforeAnythingIsBuilt(): void
     {
         $before = App::current();
         try {
-            App::configure()->withConfig($this->directory . '/config')->withRouting(routes: $this->directory . '/missing.php')->create();
+            App::configure()
+                ->withConfig($this->directory . '/config')
+                ->withRouting(routes: $this->directory . '/missing.php')
+                ->create();
             self::fail('A missing route file was ignored.');
         } catch (\LogicException $error) {
             self::assertStringContainsString('/missing.php to load, and there is no such file', $error->getMessage());
@@ -428,6 +568,8 @@ final class AppBuilderTest extends TestCase
         self::assertSame($before, App::current(), 'No half-built application was left as the current one.');
 
         $this->expectException(\InvalidArgumentException::class);
-        App::configure()->withConfig($this->directory . '/nowhere')->create();
+        App::configure()
+            ->withConfig($this->directory . '/nowhere')
+            ->create();
     }
 }

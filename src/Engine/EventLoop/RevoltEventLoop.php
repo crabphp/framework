@@ -22,9 +22,9 @@ final class RevoltEventLoop extends EventLoop
     /**
      * @param Driver $driver The Revolt driver, for code that must hand it to a library built on Revolt.
      */
-    public function __construct(public readonly Driver $driver)
-    {
-    }
+    public function __construct(
+        public readonly Driver $driver,
+    ) {}
 
     /**
      * A loop on the pure-PHP stream-select backend, or on a native one

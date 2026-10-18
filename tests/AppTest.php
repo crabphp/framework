@@ -13,8 +13,8 @@ use Crab\Contracts\Http\Request as RequestContract;
 use Crab\Contracts\Provider;
 use Crab\Contracts\Routing\Router as RouterContract;
 use Crab\Contracts\WorkerProvider;
-use Crab\Engine\Process\Worker;
 use Crab\Engine\Http\Request as EngineRequest;
+use Crab\Engine\Process\Worker;
 use Crab\Engine\Runtime;
 use Crab\Http\EngineHandler;
 use Crab\Http\ErrorHandler;
@@ -34,9 +34,9 @@ use Psr\Log\LoggerInterface;
 
 final class Greeter
 {
-    public function __construct(public string $greeting)
-    {
-    }
+    public function __construct(
+        public string $greeting,
+    ) {}
 }
 
 final class GreeterProvider implements Provider
@@ -49,9 +49,10 @@ final class GreeterProvider implements Provider
 
 final class GreetHandler implements RequestHandlerInterface
 {
-    public function __construct(private Greeter $greeter, private ResponseFactoryInterface $responses)
-    {
-    }
+    public function __construct(
+        private Greeter $greeter,
+        private ResponseFactoryInterface $responses,
+    ) {}
 
     public function handle(ServerRequestInterface $request): ResponseInterface
     {
@@ -63,9 +64,9 @@ final class GreetHandler implements RequestHandlerInterface
 
 final class TagMiddleware implements MiddlewareInterface
 {
-    public function __construct(private string $tag = 'named')
-    {
-    }
+    public function __construct(
+        private string $tag = 'named',
+    ) {}
 
     public function process(ServerRequestInterface $request, RequestHandlerInterface $handler): ResponseInterface
     {
@@ -82,9 +83,10 @@ final class RecordingProvider implements WorkerProvider
      */
     public static array $events = [];
 
-    public function __construct(private string $name, private bool $failsToStop = false)
-    {
-    }
+    public function __construct(
+        private string $name,
+        private bool $failsToStop = false,
+    ) {}
 
     public function register(Container $container): void
     {
@@ -121,7 +123,7 @@ final class AppTest extends TestCase
 
     public function testProvidersAndNamedHandlers(): void
     {
-        $app = (new App())->register(GreeterProvider::class);
+        $app = new App()->register(GreeterProvider::class);
         $app->router->get('/greet/{name}', GreetHandler::class);
         self::assertSame('Hello, Crab', (string) $app->handle(new Request('GET', '/greet/Crab'))->getBody());
         self::assertSame($app->container->get(GreetHandler::class), $app->container->get(GreetHandler::class));
@@ -136,7 +138,7 @@ final class AppTest extends TestCase
         self::assertSame('Hi, Crab', (string) $app->handle(new Request('GET', '/greet/Crab'))->getBody());
 
         try {
-            (new Router())->get('/', GreetHandler::class);
+            new Router()->get('/', GreetHandler::class);
             self::fail('A named action was accepted without a container.');
         } catch (\LogicException) {
         }
@@ -184,9 +186,7 @@ final class AppTest extends TestCase
             $app = new App(new Config(['log' => ['path' => $path]]));
             $app->register(new RecordingProvider('first'), new RecordingProvider('second', failsToStop: true));
             $app->register(new class implements WorkerProvider {
-                public function register(Container $container): void
-                {
-                }
+                public function register(Container $container): void {}
 
                 public function start(Worker $worker, Container $container): void
                 {
@@ -195,14 +195,21 @@ final class AppTest extends TestCase
                     $worker->loop->delay(0.02, static fn() => $worker->stop());
                 }
 
-                public function stop(Worker $worker, Container $container): void
-                {
-                }
+                public function stop(Worker $worker, Container $container): void {}
             });
             $app->runtime('tcp://127.0.0.1:0')->run(singleProcess: true);
 
-            self::assertSame(['first register', 'second register', 'first start in worker 0', 'second start in worker 0',
-                'second stop', 'first stop'], RecordingProvider::$events);
+            self::assertSame(
+                [
+                    'first register',
+                    'second register',
+                    'first start in worker 0',
+                    'second start in worker 0',
+                    'second stop',
+                    'first stop',
+                ],
+                RecordingProvider::$events,
+            );
             $log = file_get_contents($path);
             self::assertStringContainsString('ERROR Unhandled failure: job broke', $log);
             self::assertStringContainsString('ERROR Unhandled failure: timer broke', $log);
@@ -236,7 +243,9 @@ final class AppTest extends TestCase
         $path = sys_get_temp_dir() . '/crab-app-' . bin2hex(random_bytes(6)) . '.log';
         try {
             // Outside the error handler, so that the record of a failure carries the id too.
-            $app = new App(new Config(['log' => ['path' => $path]]), middleware: [RequestId::class, ErrorHandler::class]);
+            $app = new App(new Config(['log' => [
+                'path' => $path,
+            ]]), middleware: [RequestId::class, ErrorHandler::class]);
             $app->router->get('/', static fn(ServerRequestInterface $request) => $request->getAttribute('request_id'));
             $app->router->get('/fail', static fn() => throw new \RuntimeException('broken'));
 
@@ -245,15 +254,21 @@ final class AppTest extends TestCase
             self::assertMatchesRegularExpression('/^[0-9a-f]{12}-1$/', $first->getHeaderLine('X-Request-Id'));
             self::assertSame((string) $first->getBody(), $first->getHeaderLine('X-Request-Id'));
             self::assertNotSame($first->getHeaderLine('X-Request-Id'), $second->getHeaderLine('X-Request-Id'));
-            self::assertSame('trace-42.a_b', $app->handle(new Request('GET', '/', ['X-Request-Id' => 'trace-42.a_b']))->getHeaderLine('X-Request-Id'));
+            self::assertSame('trace-42.a_b', $app->handle(new Request('GET', '/', [
+                'X-Request-Id' => 'trace-42.a_b',
+            ]))->getHeaderLine('X-Request-Id'));
             foreach (['has space', 'semi;colon', str_repeat('a', 129)] as $unsafe) {
-                self::assertNotSame($unsafe, $app->handle(new Request('GET', '/', ['X-Request-Id' => $unsafe]))->getHeaderLine('X-Request-Id'));
+                self::assertNotSame($unsafe, $app->handle(new Request('GET', '/', [
+                    'X-Request-Id' => $unsafe,
+                ]))->getHeaderLine('X-Request-Id'));
             }
 
             $failed = $app->handle(new Request('GET', '/fail', ['X-Request-Id' => 'trace-43']));
             self::assertSame([500, 'trace-43'], [$failed->getStatusCode(), $failed->getHeaderLine('X-Request-Id')]);
             self::assertStringContainsString('{"request_id":"trace-43"}', file_get_contents($path));
-            self::assertSame('trace-44', $app->handle(new Request('GET', '/missing', ['X-Request-Id' => 'trace-44']))->getHeaderLine('X-Request-Id'));
+            self::assertSame('trace-44', $app->handle(new Request('GET', '/missing', [
+                'X-Request-Id' => 'trace-44',
+            ]))->getHeaderLine('X-Request-Id'));
 
             // An object made before the workers are forked is the same object in each of them.
             $made = new RequestId();
@@ -277,13 +292,11 @@ final class AppTest extends TestCase
         try {
             $app = new App(new Config(['log' => ['path' => $path]]));
             $app->register(new class($seen) implements WorkerProvider {
-                public function __construct(private array &$seen)
-                {
-                }
+                public function __construct(
+                    private array &$seen,
+                ) {}
 
-                public function register(Container $container): void
-                {
-                }
+                public function register(Container $container): void {}
 
                 public function start(Worker $worker, Container $container): void
                 {
@@ -303,9 +316,7 @@ final class AppTest extends TestCase
                     });
                 }
 
-                public function stop(Worker $worker, Container $container): void
-                {
-                }
+                public function stop(Worker $worker, Container $container): void {}
             });
             $before = set_error_handler(null);
             restore_error_handler();
@@ -344,33 +355,41 @@ final class AppTest extends TestCase
         self::assertSame(404, $bare->handle(new Request('GET', '/missing'))->getStatusCode());
 
         $this->expectException(\LogicException::class);
-        (new App())->container->get(MiddlewareStack::class)->add(Factory::class)->handle(new Request('GET', '/'));
+        new App()->container->get(MiddlewareStack::class)->add(Factory::class)->handle(new Request('GET', '/'));
     }
 
     public function testEngineHandlerConvertsBothWays(): void
     {
         $app = new App();
-        $app->router->get('/hello/{name}', static fn(RequestContract $request) => Response::json(
-            ['hello' => $request->getAttribute('name'), 'page' => $request->query('page')],
-            headers: ['X-Trace' => ['a', 'b']],
-        ));
+        $app->router->get('/hello/{name}', static fn(RequestContract $request) => Response::json([
+            'hello' => $request->getAttribute('name'),
+            'page' => $request->query('page'),
+        ], headers: ['X-Trace' => ['a', 'b']]));
         $handler = new EngineHandler($app);
         $response = $handler(new EngineRequest('GET', '/hello/crab?page=2', '1.1', ['host' => ['example.com']]));
 
         self::assertSame(200, $response->status);
         self::assertSame(['content-type' => ['application/json'], 'X-Trace' => ['a', 'b']], $response->headers);
         self::assertSame('{"hello":"crab","page":"2"}', $response->body);
-        self::assertSame(404, $handler(new EngineRequest('GET', '/missing', '1.1', ['host' => ['example.com']]))->status);
+        self::assertSame(404, $handler(new EngineRequest('GET', '/missing', '1.1', ['host' => [
+            'example.com',
+        ]]))->status);
 
-        $text = (new EngineHandler(static fn() => Response::text('hi')))(new EngineRequest('GET', '/', '1.1', []));
+        $text = new EngineHandler(static fn() => Response::text('hi'))(new EngineRequest('GET', '/', '1.1', []));
         self::assertSame(['Content-Type' => 'text/plain; charset=utf-8'], $text->headers);
-        self::assertSame('plain', (new EngineHandler(static fn() => 'plain'))(new EngineRequest('GET', '/', '1.1', []))->body);
+        self::assertSame(
+            'plain',
+            new EngineHandler(static fn() => 'plain')(new EngineRequest('GET', '/', '1.1', []))->body,
+        );
     }
 
     public function testEngineHandlerStreamsResourceBodies(): void
     {
         $factory = new Factory();
-        $handler = new EngineHandler(static fn(RequestContract $request) => (new Response())->withBody($factory->createStreamFromFile(__FILE__)));
+        $handler =
+            new EngineHandler(static fn(RequestContract $request) => new Response()->withBody($factory->createStreamFromFile(
+                __FILE__,
+            )));
         $response = $handler(new EngineRequest('GET', '/', '1.1', []));
         self::assertSame(['Content-Length' => [(string) filesize(__FILE__)]], $response->headers);
         self::assertSame(file_get_contents(__FILE__), implode('', iterator_to_array($response->body, false)));
@@ -383,7 +402,10 @@ final class AppTest extends TestCase
         $response = $written(new EngineRequest('GET', '/', '1.1', []));
         self::assertSame([202, 'written'], [$response->status, implode('', iterator_to_array($response->body, false))]);
 
-        $empty = new EngineHandler(static fn() => (new Response(204))->withBody($factory->createStreamFromResource(fopen('php://memory', 'r+b'))));
+        $empty = new EngineHandler(static fn() => new Response(204)->withBody($factory->createStreamFromResource(fopen(
+            'php://memory',
+            'r+b',
+        ))));
         self::assertSame('', $empty(new EngineRequest('GET', '/', '1.1', []))->body);
     }
 
@@ -393,45 +415,78 @@ final class AppTest extends TestCase
         $same = [
             [\Crab\Contracts\Log\Logger::class, \Psr\Log\LoggerInterface::class, \Crab\Log\Logger::class],
             [\Crab\Contracts\Clock\Clock::class, \Psr\Clock\ClockInterface::class, \Crab\Clock\SystemClock::class],
-            [\Crab\Contracts\Http\Factory::class, \Psr\Http\Message\ResponseFactoryInterface::class, \Crab\Http\Factory::class],
-            [\Crab\Contracts\Http\Factory::class, \Psr\Http\Message\StreamFactoryInterface::class, \Psr\Http\Message\UriFactoryInterface::class],
-            [\Crab\Contracts\Container\Container::class, \Psr\Container\ContainerInterface::class, \Crab\Container\Container::class],
+            [
+                \Crab\Contracts\Http\Factory::class,
+                \Psr\Http\Message\ResponseFactoryInterface::class,
+                \Crab\Http\Factory::class,
+            ],
+            [
+                \Crab\Contracts\Http\Factory::class,
+                \Psr\Http\Message\StreamFactoryInterface::class,
+                \Psr\Http\Message\UriFactoryInterface::class,
+            ],
+            [
+                \Crab\Contracts\Container\Container::class,
+                \Psr\Container\ContainerInterface::class,
+                \Crab\Container\Container::class,
+            ],
         ];
         foreach ($same as [$contract, $standard, $class]) {
             $service = $app->container->get($contract);
             self::assertInstanceOf($contract, $service);
-            self::assertSame($service, $app->container->get($standard), "{$standard} is another object than {$contract}.");
+            self::assertSame(
+                $service,
+                $app->container->get($standard),
+                "{$standard} is another object than {$contract}.",
+            );
             self::assertSame($service, $app->container->get($class), "{$class} is another object than {$contract}.");
         }
     }
 
     public function testServeRunsTheServersNamedForItBesideHttp(): void
     {
-        $app = new App(new Config(['queue' => ['store' => 'memory', 'supervisors' => [
-            'mail' => ['queues' => ['mail'], 'workers' => 2],
-            'rest' => ['queues' => ['default']],
-        ]]]));
+        $app = new App(new Config([
+            'queue' => [
+                'store' => 'memory',
+                'supervisors' => [
+                    'mail' => ['queues' => ['mail'], 'workers' => 2],
+                    'rest' => ['queues' => ['default']],
+                ],
+            ],
+        ]));
         $app->register(\Crab\Queue\QueueProvider::class, \Crab\Schedule\ScheduleProvider::class);
-        $app->console->add('users:sync', static fn (): int => 0);
+        $app->console->add('users:sync', static fn(): int => 0);
         $servers = $app->container->get(\Crab\Contracts\Servers::class);
         // A server of the application's own that joins: no loop of work, only somewhere to listen.
-        $servers->add('chat', static fn (): array => [
-            new \Crab\Contracts\Workers('chat', workers: 3, setup: static function (\Crab\Engine\Crab $group): void {
-                $group->listen('tcp://127.0.0.1:0', static fn () => null);
-            }),
-        ], 12.0, 'chat:serve');
+        $servers->add(
+            'chat',
+            static fn(): array => [
+                new \Crab\Contracts\Workers(
+                    'chat',
+                    workers: 3,
+                    setup: static function (\Crab\Engine\Crab $group): void {
+                        $group->listen('tcp://127.0.0.1:0', static fn() => null);
+                    },
+                ),
+            ],
+            12.0,
+            'chat:serve',
+        );
         // One of the application's commands, and any program at all.
         $servers->command('sync', 'users:sync --all');
         $servers->process('vite', 'npm run dev');
 
         self::assertSame(['queue', 'schedule', 'chat', 'sync', 'vite'], $servers->ids());
-        $named = static fn (array $ids): array => array_map(
-            static fn (\Crab\Contracts\Workers $workers): string => "{$workers->group} x{$workers->workers}",
+        $named = static fn(array $ids): array => array_map(
+            static fn(\Crab\Contracts\Workers $workers): string => "{$workers->group} x{$workers->workers}",
             $app->alongside($ids),
         );
         // One with workers of its own joins the server as its groups; a command or a program is one worker that looks after a process.
         self::assertSame(['queue:mail x2', 'queue:rest x1'], $named(['queue']));
-        self::assertSame(['chat x3', 'schedule x1', 'sync x1', 'vite x1'], $named(['chat', 'schedule', 'sync', 'vite']));
+        self::assertSame(
+            ['chat x3', 'schedule x1', 'sync x1', 'vite x1'],
+            $named(['chat', 'schedule', 'sync', 'vite']),
+        );
         self::assertSame([30.0, 12.0], [$app->servers->grace(['queue', 'chat']), $app->servers->grace(['chat'])]);
 
         // Nothing is named, so the server is HTTP alone.
@@ -439,7 +494,17 @@ final class AppTest extends TestCase
         self::assertInstanceOf(\Crab\Engine\Crab::class, $app->runtime('tcp://127.0.0.1:0')->group('queue:mail'));
 
         // Each id with whether it is on, as a configuration file reads it from the environment.
-        $switched = new App(new Config(['server' => ['with' => ['queue' => true, 'schedule' => false, 'vite' => ['enabled' => true], 'chat' => ['enabled' => false], 'sync' => 'yes']]]));
+        $switched = new App(new Config([
+            'server' => [
+                'with' => [
+                    'queue' => true,
+                    'schedule' => false,
+                    'vite' => ['enabled' => true],
+                    'chat' => ['enabled' => false],
+                    'sync' => 'yes',
+                ],
+            ],
+        ]));
         foreach (['queue', 'schedule', 'vite', 'chat', 'sync'] as $id) {
             $switched->servers->process($id, 'true');
         }
@@ -457,14 +522,17 @@ final class AppTest extends TestCase
             self::assertStringContainsString('unique', $error->getMessage());
         }
         // In one process there is room for HTTP alone.
-        self::assertInstanceOf(\Crab\Engine\Crab::class, $app->runtime('tcp://127.0.0.1:0', servers: false)->group('queue:mail'));
+        self::assertInstanceOf(
+            \Crab\Engine\Crab::class,
+            $app->runtime('tcp://127.0.0.1:0', servers: false)->group('queue:mail'),
+        );
 
         // A server in the background hands only the HTTP socket to the one that replaces it, so one that
         // listens on an address of its own is refused there, in words, and not left to fail at its first reload.
         $listening = new App(new Config(['server' => ['with' => ['chat' => true]]]));
-        $listening->servers->add('chat', static fn (): array => [
+        $listening->servers->add('chat', static fn(): array => [
             new \Crab\Contracts\Workers('chat', setup: static function (\Crab\Engine\Crab $group): void {
-                $group->listen('tcp://127.0.0.1:0', static fn () => null);
+                $group->listen('tcp://127.0.0.1:0', static fn() => null);
             }),
         ]);
         self::assertInstanceOf(\Crab\Engine\Runtime::class, $listening->runtime('tcp://127.0.0.1:0'));
@@ -480,7 +548,12 @@ final class AppTest extends TestCase
 
         // What `serve` says as it comes up: every server by its id, the ones not named shown as off.
         $stream = fopen('php://memory', 'w+');
-        \Crab\Commands\Serve::announceBackground(new \Crab\Console\Output($stream, $stream), $app, 'tcp://127.0.0.1:8080', 4);
+        \Crab\Commands\Serve::announceBackground(
+            new \Crab\Console\Output($stream, $stream),
+            $app,
+            'tcp://127.0.0.1:8080',
+            4,
+        );
         rewind($stream);
         self::assertSame(<<<'TEXT'
             Crab server running on http://127.0.0.1:8080
@@ -505,14 +578,15 @@ final class AppTest extends TestCase
         self::assertSame(['queue', 'schedule', 'chat', 'sync', 'vite'], $servers->ids());
 
         foreach ([
-            'switches on "mail", and the servers registered are queue, schedule, chat, sync, vite' => static function () use ($app): void {
-                $fresh = new Config(['server' => ['with' => 'mail']]);
-                $other = new App($fresh);
-                foreach (['queue', 'schedule', 'chat', 'sync', 'vite'] as $id) {
-                    $other->servers->process($id, 'true');
-                }
-                $other->with();
-            },
+            'switches on "mail", and the servers registered are queue, schedule, chat, sync, vite' =>
+                static function () use ($app): void {
+                    $fresh = new Config(['server' => ['with' => 'mail']]);
+                    $other = new App($fresh);
+                    foreach (['queue', 'schedule', 'chat', 'sync', 'vite'] as $id) {
+                        $other->servers->process($id, 'true');
+                    }
+                    $other->with();
+                },
             'there is no command "mail:work"' => static function () use ($app): void {
                 $app->servers->command('mailer', 'mail:work');
                 $app->alongside(['mailer']);
@@ -521,11 +595,11 @@ final class AppTest extends TestCase
                 $app->servers->command('again', 'serve --daemon');
                 $app->alongside(['again']);
             },
-            '"http" is the server\'s own' => static fn () => $servers->process('http', 'true'),
-            'cannot be a server\'s id' => static fn () => $servers->process('queue:work', 'true'),
-            'no command to run' => static fn () => $servers->process('empty', '  '),
+            '"http" is the server\'s own' => static fn() => $servers->process('http', 'true'),
+            'cannot be a server\'s id' => static fn() => $servers->process('queue:work', 'true'),
+            'no command to run' => static fn() => $servers->process('empty', '  '),
             'must give a list of' => static function () use ($app): void {
-                $app->servers->add('wrong', static fn (): array => ['not workers']);
+                $app->servers->add('wrong', static fn(): array => ['not workers']);
                 $app->alongside(['wrong']);
             },
         ] as $says => $mistake) {

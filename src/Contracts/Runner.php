@@ -30,7 +30,13 @@ interface Runner
      * @param float $shutdownTimeout Seconds a worker is given to finish before it is ended.
      * @param bool $single Run it in this process, without pcntl and posix; for one worker.
      */
-    public function run(string $group, \Closure $work, int $workers = 1, float $shutdownTimeout = 30.0, bool $single = false): void;
+    public function run(
+        string $group,
+        \Closure $work,
+        int $workers = 1,
+        float $shutdownTimeout = 30.0,
+        bool $single = false,
+    ): void;
 
     /**
      * Runs several groups of workers side by side, under one parent

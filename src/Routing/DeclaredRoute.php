@@ -17,9 +17,10 @@ final readonly class DeclaredRoute implements DeclaredRouteContract
      * @param \Closure(string): void $name
      * @param \Closure(list<MiddlewareInterface|string>): void $middleware
      */
-    public function __construct(private \Closure $name, private \Closure $middleware)
-    {
-    }
+    public function __construct(
+        private \Closure $name,
+        private \Closure $middleware,
+    ) {}
 
     public function name(string $name): static
     {

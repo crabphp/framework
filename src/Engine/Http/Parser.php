@@ -15,6 +15,7 @@ final class Parser
     private const VALID_FIELDS = '/\G(?:' . self::TOKEN . ':[\x09\x20-\x7E\x80-\xFF]*+\r\n)*+\r\n\z/';
     private const FRAMING_FIELDS = '/\r\n(host|connection|expect|content-length|transfer-encoding):[ \t]*+([^\r]*)/i';
     private const HOST = '/^(?:\[[0-9a-fA-F:.]+\]|[A-Za-z0-9._~%!$&\x27()*+;=-]+)(?::[0-9]{1,5})?$/D';
+
     /**
      * Validated field lines, bounded and reset when full. A line always
      * validates to the same name and value, so entries never go stale.
@@ -46,8 +47,8 @@ final class Parser
     private bool $continue = false;
 
     public function __construct(
-        private readonly int $maxHeaderBytes = 16384,
-        private readonly int $maxBodyBytes = 1048576,
+        private readonly int $maxHeaderBytes = 16_384,
+        private readonly int $maxBodyBytes = 1_048_576,
         private readonly int $maxHeaderCount = 100,
     ) {
         if ($maxHeaderBytes < 1 || $maxBodyBytes < 0 || $maxHeaderCount < 1) {
@@ -67,17 +68,27 @@ final class Parser
     private static function headPattern(int $maxHeaderCount): string
     {
         $value = '[ \t]*+([\x09\x20-\x7E\x80-\xFF]*+)\r\n';
-        return '/^(' . self::TOKEN . ') (\/[^\x00-\x20\x7F#]*+) HTTP\/1\.([01])\r\n(?:'
-            . '(?i:host):(?(4)(*COMMIT)(*FAIL))' . $value
-            . '|(?i:connection):(?(5)(*COMMIT)(*FAIL))' . $value
+        return (
+            '/^('
+            . self::TOKEN
+            . ') (\/[^\x00-\x20\x7F#]*+) HTTP\/1\.([01])\r\n(?:'
+            . '(?i:host):(?(4)(*COMMIT)(*FAIL))'
+            . $value
+            . '|(?i:connection):(?(5)(*COMMIT)(*FAIL))'
+            . $value
             . '|(?i:expect|content-length|transfer-encoding):(*COMMIT)(*FAIL)'
-            . '|' . self::TOKEN . ':[\x09\x20-\x7E\x80-\xFF]*+\r\n'
-            . '){0,' . $maxHeaderCount . '}+\r\K\n\z/';
+            . '|'
+            . self::TOKEN
+            . ':[\x09\x20-\x7E\x80-\xFF]*+\r\n'
+            . '){0,'
+            . $maxHeaderCount
+            . '}+\r\K\n\z/'
+        );
     }
 
     public function append(string $bytes): void
     {
-        if (strlen($this->buffer) + strlen($bytes) > $this->maxBodyBytes + $this->maxHeaderBytes + 65536) {
+        if ((strlen($this->buffer) + strlen($bytes)) > ($this->maxBodyBytes + $this->maxHeaderBytes + 65_536)) {
             throw new HttpException(413, 'Too much pending request data.');
         }
         $this->buffer .= $bytes;
@@ -85,7 +96,10 @@ final class Parser
 
     public function phase(): string
     {
-        return $this->state === 'headers' ? ($this->buffer === '' ? 'idle' : 'headers') : 'body';
+        if ($this->state !== 'headers') {
+            return 'body';
+        }
+        return $this->buffer === '' ? 'idle' : 'headers';
     }
 
     public function takeContinue(): bool
@@ -119,8 +133,11 @@ final class Parser
         // Tried once per head, so a trickled head is not rescanned.
         if ($this->headerScan === 0 && $this->state === 'headers' && ($bytes === '' || $this->buffer === '')) {
             $head = $bytes === '' ? $this->buffer : $bytes;
-            if ($head !== '' && strlen($head) <= $this->maxHeaderBytes
-                && preg_match($this->headPattern, $head, $match, PREG_UNMATCHED_AS_NULL) === 1) {
+            if (
+                $head !== ''
+                && strlen($head) <= $this->maxHeaderBytes
+                && preg_match($this->headPattern, $head, $match, PREG_UNMATCHED_AS_NULL) === 1
+            ) {
                 $method = $match[1];
                 $host = $match[4];
                 // Values rarely end in whitespace; the scan consumed any leading.
@@ -129,18 +146,32 @@ final class Parser
                 }
                 // A missing or unusable Host and CONNECT are left to the
                 // general path, which reports them.
-                if (($host === null ? $match[3] === '0' : $host === $this->validHost || $this->acceptHost($host))
-                    && $method !== 'CONNECT') {
+                if (
+                    ($host === null ? $match[3] === '0' : $host === $this->validHost || $this->acceptHost($host))
+                    && $method !== 'CONNECT'
+                ) {
                     $connection = $match[5];
-                    if ($connection !== null && $connection !== ''
-                        && ($connection[-1] === ' ' || $connection[-1] === "\t")) {
+                    if (
+                        $connection !== null
+                        && $connection !== ''
+                        && ($connection[-1] === ' ' || $connection[-1] === "\t")
+                    ) {
                         $connection = rtrim($connection, " \t");
                     }
                     if ($bytes === '') {
                         $this->buffer = '';
                     }
-                    return new Request($method, $match[2], $match[3] === '1' ? '1.1' : '1.0', [], null, [], null,
-                        $head, $connection);
+                    return new Request(
+                        $method,
+                        $match[2],
+                        $match[3] === '1' ? '1.1' : '1.0',
+                        [],
+                        null,
+                        [],
+                        null,
+                        $head,
+                        $connection,
+                    );
                 }
             }
         }
@@ -230,7 +261,7 @@ final class Parser
                     return null;
                 }
                 $this->remaining = $this->chunkLength($line);
-                if ($this->remaining > $this->maxBodyBytes - $this->body->size()) {
+                if ($this->remaining > ($this->maxBodyBytes - $this->body->size())) {
                     throw new HttpException(413, 'Request body is too large.');
                 }
                 $this->state = $this->remaining === 0 ? 'trailers' : 'chunk-data';
@@ -247,10 +278,25 @@ final class Parser
                     return $this->complete();
                 }
                 [$name, $value] = self::field($line);
-                $forbidden = ['content-length', 'transfer-encoding', 'host', 'connection', 'trailer', 'te',
-                    'upgrade', 'authorization', 'proxy-authorization', 'content-encoding', 'content-type',
-                    'content-range', 'expect'];
-                $connectionFields = array_map(trim(...), explode(',', strtolower(implode(',', $this->headers['connection'] ?? []))));
+                $forbidden = [
+                    'content-length',
+                    'transfer-encoding',
+                    'host',
+                    'connection',
+                    'trailer',
+                    'te',
+                    'upgrade',
+                    'authorization',
+                    'proxy-authorization',
+                    'content-encoding',
+                    'content-type',
+                    'content-range',
+                    'expect',
+                ];
+                $connectionFields = array_map(
+                    trim(...),
+                    explode(',', strtolower(implode(',', $this->headers['connection'] ?? []))),
+                );
                 if (in_array($name, $forbidden, true) || in_array($name, $connectionFields, true)) {
                     throw new HttpException(400, 'Forbidden trailer field.');
                 }
@@ -311,14 +357,27 @@ final class Parser
         $fields = $target[0] !== '/' && $target !== '*' ? self::split($head, $headers['host'][0]) : null;
 
         if (!isset($headers['content-length']) && !isset($headers['transfer-encoding'])) {
-            if (isset($headers['expect'])
-                && ($version !== '1.1' || strtolower(implode(',', $headers['expect'])) !== '100-continue')) {
+            if (
+                isset($headers['expect'])
+                && ($version !== '1.1' || strtolower(implode(',', $headers['expect'])) !== '100-continue')
+            ) {
                 throw new HttpException(417, 'Unsupported expectation.');
             }
-            return $fields !== null
-                ? new Request($method, $target, $version, $fields)
-                : new Request($method, $target, $version, [], null, [], null, $head,
-                    isset($headers['connection']) ? implode(', ', $headers['connection']) : null);
+            return (
+                $fields !== null
+                    ? new Request($method, $target, $version, $fields)
+                    : new Request(
+                        $method,
+                        $target,
+                        $version,
+                        [],
+                        null,
+                        [],
+                        null,
+                        $head,
+                        isset($headers['connection']) ? implode(', ', $headers['connection']) : null,
+                    )
+            );
         }
 
         $this->method = $method;
@@ -343,7 +402,7 @@ final class Parser
             }
             $digits = ltrim($lengths[0], '0') ?: '0';
             $limit = (string) $this->maxBodyBytes;
-            if (strlen($digits) > strlen($limit) || (strlen($digits) === strlen($limit) && strcmp($digits, $limit) > 0)) {
+            if (strlen($digits) > strlen($limit) || strlen($digits) === strlen($limit) && strcmp($digits, $limit) > 0) {
                 throw new HttpException(413, 'Request body is too large.');
             }
             $this->remaining = (int) $digits;
@@ -351,7 +410,11 @@ final class Parser
         }
         if ($encodings !== []) {
             $codings = array_map(trim(...), explode(',', strtolower(implode(',', $encodings))));
-            if ($this->version !== '1.1' || end($codings) !== 'chunked' || count(array_keys($codings, 'chunked', true)) !== 1) {
+            if (
+                $this->version !== '1.1'
+                || end($codings) !== 'chunked'
+                || count(array_keys($codings, 'chunked', true)) !== 1
+            ) {
                 throw new HttpException(400, 'Invalid request transfer encoding.');
             }
             if ($codings !== ['chunked']) {
@@ -378,7 +441,7 @@ final class Parser
     private function scanFields(string $head, int $offset): array
     {
         // Every CRLF in a head ends the request line, a field or the block.
-        if (substr_count($head, "\r\n") - 2 > $this->maxHeaderCount) {
+        if ((substr_count($head, "\r\n") - 2) > $this->maxHeaderCount) {
             throw new HttpException(431, 'Too many header fields.');
         }
         // One anchored scan without captures validates every field up to the
@@ -437,8 +500,16 @@ final class Parser
         $offset = strpos($head, "\r\n") + 2;
         // A colon can never be part of a field name; without this guard the
         // pattern could read a name and the start of its value as one name.
-        if (str_contains($name, ':')
-            || !preg_match_all('/\r\n' . preg_quote($name, '/') . ':[ \t]*+([^\r]*)/i', $head, $fields, PREG_PATTERN_ORDER, $offset - 2)) {
+        if (
+            str_contains($name, ':')
+            || !preg_match_all(
+                '/\r\n' . preg_quote($name, '/') . ':[ \t]*+([^\r]*)/i',
+                $head,
+                $fields,
+                PREG_PATTERN_ORDER,
+                $offset - 2,
+            )
+        ) {
             return null;
         }
         $values = [];
@@ -467,9 +538,13 @@ final class Parser
             throw new HttpException(400, 'Fragments are not allowed in request targets.');
         }
         $parts = parse_url($target);
-        if ($parts === false || !isset($parts['host'], $parts['scheme'])
+        if (
+            $parts === false
+            || !isset($parts['host'], $parts['scheme'])
             || !in_array(strtolower($parts['scheme']), ['http', 'https'], true)
-            || isset($parts['user']) || isset($parts['pass'])) {
+            || isset($parts['user'])
+            || isset($parts['pass'])
+        ) {
             throw new HttpException(400, 'Invalid request target.');
         }
         $headers['host'] = [$parts['host'] . (isset($parts['port']) ? ':' . $parts['port'] : '')];
@@ -511,12 +586,22 @@ final class Parser
     {
         $token = self::TOKEN;
         $quoted = '"(?:[\x09\x20\x21\x23-\x5B\x5D-\x7E\x80-\xFF]|\\\\[\x09\x20-\x7E\x80-\xFF])*"';
-        if (!preg_match('/^([0-9A-Fa-f]+)(?:[ \t]*;[ \t]*' . $token . '(?:[ \t]*=[ \t]*(?:' . $token . '|' . $quoted . '))?)*[ \t]*$/D', $line, $match)) {
+        if (!preg_match(
+            '/^([0-9A-Fa-f]+)(?:[ \t]*;[ \t]*'
+            . $token
+            . '(?:[ \t]*=[ \t]*(?:'
+            . $token
+            . '|'
+            . $quoted
+            . '))?)*[ \t]*$/D',
+            $line,
+            $match,
+        )) {
             throw new HttpException(400, 'Invalid chunk size or extension.');
         }
         $digits = strtolower(ltrim($match[1], '0') ?: '0');
         $limit = dechex($this->maxBodyBytes);
-        if (strlen($digits) > strlen($limit) || (strlen($digits) === strlen($limit) && strcmp($digits, $limit) > 0)) {
+        if (strlen($digits) > strlen($limit) || strlen($digits) === strlen($limit) && strcmp($digits, $limit) > 0) {
             throw new HttpException(413, 'Chunk is too large.');
         }
         return (int) hexdec($digits);
@@ -525,7 +610,7 @@ final class Parser
     private function takeLine(int $limit): ?string
     {
         $end = strpos($this->buffer, "\r\n");
-        if (($end === false && strlen($this->buffer) > $limit) || ($end !== false && $end + 2 > $limit)) {
+        if ($end === false && strlen($this->buffer) > $limit || $end !== false && ($end + 2) > $limit) {
             throw new HttpException(431, 'HTTP framing line is too large.');
         }
         if ($end === false) {
@@ -541,8 +626,17 @@ final class Parser
         $this->body->rewind();
         $request = $this->fieldMap !== null
             ? new Request($this->method, $this->target, $this->version, $this->fieldMap, $this->body, $this->trailers)
-            : new Request($this->method, $this->target, $this->version, [], $this->body, $this->trailers, null,
-                $this->head, isset($this->headers['connection']) ? implode(', ', $this->headers['connection']) : null);
+            : new Request(
+                $this->method,
+                $this->target,
+                $this->version,
+                [],
+                $this->body,
+                $this->trailers,
+                null,
+                $this->head,
+                isset($this->headers['connection']) ? implode(', ', $this->headers['connection']) : null,
+            );
         $this->fieldMap = null;
         $this->body = null;
         $this->head = '';

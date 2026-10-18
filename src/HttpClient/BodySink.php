@@ -16,7 +16,7 @@ final class BodySink
     /**
      * How much is held in memory before it goes to disk.
      */
-    private const IN_MEMORY = 1048576;
+    private const IN_MEMORY = 1_048_576;
 
     /**
      * Whether the body is being decompressed, in which case what described its compressed form no longer holds.
@@ -49,7 +49,10 @@ final class BodySink
             // "deflate" is sent both with and without its two-byte header; the first bytes tell which.
             $this->inflate ??= inflate_init(match (true) {
                 $this->coding === 'gzip' => ZLIB_ENCODING_GZIP,
-                strlen($bytes) > 1 && (ord($bytes[0]) & 0x0F) === 8 && ((ord($bytes[0]) << 8) | ord($bytes[1])) % 31 === 0 => ZLIB_ENCODING_DEFLATE,
+                strlen($bytes) > 1
+                    && (ord($bytes[0]) & 0x0F) === 8
+                    && (((ord($bytes[0]) << 8) | ord($bytes[1])) % 31) === 0
+                    => ZLIB_ENCODING_DEFLATE,
                 default => ZLIB_ENCODING_RAW,
             });
             $bytes = @inflate_add($this->inflate, $bytes);

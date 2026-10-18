@@ -14,9 +14,9 @@ final class UpgradeLifetime
 {
     private bool $converted = false;
 
-    public function __construct(private readonly \Closure $discard)
-    {
-    }
+    public function __construct(
+        private readonly \Closure $discard,
+    ) {}
 
     public function converted(): void
     {

@@ -12,7 +12,8 @@ final readonly class Statement
     /**
      * @param list<mixed> $bindings
      */
-    public function __construct(public string $sql, public array $bindings = [])
-    {
-    }
+    public function __construct(
+        public string $sql,
+        public array $bindings = [],
+    ) {}
 }

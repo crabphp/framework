@@ -10,9 +10,9 @@ namespace Crab\Contracts\WebSocket;
  */
 final readonly class Binary implements \Stringable
 {
-    public function __construct(public string $bytes)
-    {
-    }
+    public function __construct(
+        public string $bytes,
+    ) {}
 
     public function __toString(): string
     {

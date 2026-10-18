@@ -59,14 +59,14 @@ final class TestSocket
                 $socket->wake();
             }
         });
-        $client->onData(static fn (Connection $connection, string $data) => $owner->get()?->read($data));
+        $client->onData(static fn(Connection $connection, string $data) => $owner->get()?->read($data));
         $client->onClose(static function () use ($owner): void {
             if (($socket = $owner->get()) !== null) {
                 $socket->closed = true;
                 $socket->wake();
             }
         });
-        $client->onEof(static fn () => $client->close());
+        $client->onEof(static fn() => $client->close());
     }
 
     /**
@@ -84,7 +84,7 @@ final class TestSocket
         $socket = new self($loop, $server, $client, 'WS ' . $request->getUri()->getPath());
         $socket->startHttp($app, $request);
         try {
-            if (!$socket->waitUntil(fn (): bool => $socket->handshake || $socket->closed, 1.0)) {
+            if (!$socket->waitUntil(static fn(): bool => $socket->handshake || $socket->closed, 1.0)) {
                 throw new \RuntimeException('The WebSocket test handshake did not finish within one second.');
             }
             if (!$socket->upgraded) {
@@ -102,7 +102,11 @@ final class TestSocket
     {
         $user = $request->getAttribute(Identity::ATTRIBUTE);
         $owner = $this->owner;
-        $handler = new EngineHandler(static function (ServerRequestInterface $received) use ($app, $user, $owner): ResponseInterface {
+        $handler = new EngineHandler(static function (ServerRequestInterface $received) use (
+            $app,
+            $user,
+            $owner,
+        ): ResponseInterface {
             if ($user !== null) {
                 $received = $received->withAttribute(Identity::ATTRIBUTE, $user);
             }
@@ -148,7 +152,7 @@ final class TestSocket
 
     public function receive(float $timeout = 1.0): array|string|Binary|null
     {
-        $this->waitUntil(fn (): bool => !$this->messages->isEmpty() || $this->closed, $timeout);
+        $this->waitUntil(fn(): bool => !$this->messages->isEmpty() || $this->closed, $timeout);
         return $this->messages->isEmpty() ? null : $this->messages->dequeue();
     }
 
@@ -156,7 +160,11 @@ final class TestSocket
     {
         $received = $this->receive();
         if ($message instanceof Binary && $received instanceof Binary) {
-            self::assertSame($message->bytes, $received->bytes, 'The WebSocket did not receive the expected binary message.');
+            self::assertSame(
+                $message->bytes,
+                $received->bytes,
+                'The WebSocket did not receive the expected binary message.',
+            );
         } else {
             self::assertSame($message, $received, 'The WebSocket did not receive the expected message.');
         }
@@ -171,7 +179,7 @@ final class TestSocket
 
     public function assertClosed(?int $code = null): static
     {
-        $this->waitUntil(fn (): bool => $this->closed, 1.0);
+        $this->waitUntil(fn(): bool => $this->closed, 1.0);
         self::assertSame(true, $this->closed, 'The WebSocket is still open.');
         if ($code !== null) {
             self::assertSame($code, $this->closeCode, 'The WebSocket closed with another code.');
@@ -187,13 +195,17 @@ final class TestSocket
         try {
             if (!$this->closed && $this->upgraded) {
                 $this->frame(8, pack('n', 1000));
-                $this->waitUntil(fn (): bool => $this->closed, 1.0);
+                $this->waitUntil(fn(): bool => $this->closed, 1.0);
             }
             // A noncooperating peer must not retain transport ownership.
             $this->client->close();
             $this->server->close();
-            if (!$this->waitUntil(fn (): bool => $this->settled, 1.0)) {
-                self::assertSame(true, false, "The action of {$this->route} did not settle within one second after close. End socket work on cancellation and finish cleanup promptly.");
+            if (!$this->waitUntil(fn(): bool => $this->settled, 1.0)) {
+                self::assertSame(
+                    true,
+                    false,
+                    "The action of {$this->route} did not settle within one second after close. End socket work on cancellation and finish cleanup promptly.",
+                );
             }
         } finally {
             $this->dispose();
@@ -212,11 +224,13 @@ final class TestSocket
     private function waitUntil(\Closure $ready, float $timeout): bool
     {
         if (!is_finite($timeout) || $timeout < 0) {
-            throw new \InvalidArgumentException('Set the WebSocket test timeout to finite seconds greater than or equal to zero.');
+            throw new \InvalidArgumentException(
+                'Set the WebSocket test timeout to finite seconds greater than or equal to zero.',
+            );
         }
-        $deadline = hrtime(true) / 1e9 + $timeout;
+        $deadline = (hrtime(true) / 1e9) + $timeout;
         while (!$ready()) {
-            $remaining = $deadline - hrtime(true) / 1e9;
+            $remaining = $deadline - (hrtime(true) / 1e9);
             if ($remaining <= 0) {
                 return false;
             }
@@ -251,20 +265,29 @@ final class TestSocket
             throw new \LogicException('The test WebSocket is closed; open another socket before sending.');
         }
         if ($opcode === 8) {
-            if ($this->closeSent) { return; }
+            if ($this->closeSent) {
+                return;
+            }
             $this->closeSent = true;
         }
         $length = strlen($payload);
         $mask = random_bytes(4);
         $header = chr(128 | $opcode);
-        $header .= $length < 126 ? chr(128 | $length)
-            : ($length <= 65535 ? chr(254) . pack('n', $length) : chr(255) . pack('NN', 0, $length));
+        if ($length < 126) {
+            $header .= chr(128 | $length);
+        } elseif ($length <= 65_535) {
+            $header .= chr(254) . pack('n', $length);
+        } else {
+            $header .= chr(255) . pack('NN', 0, $length);
+        }
         $result = $this->client->tryWrite($header . $mask . ($payload ^ str_repeat($mask, intdiv($length + 3, 4))));
         if ($opcode === 8 && $result === WriteResult::Closed) {
             return;
         }
         if ($result !== WriteResult::Accepted) {
-            throw new \RuntimeException('The test client could not queue its frame. Let the action receive before sending more data.');
+            throw new \RuntimeException(
+                'The test client could not queue its frame. Let the action receive before sending more data.',
+            );
         }
     }
 
@@ -314,15 +337,19 @@ final class TestSocket
         $length = ord($this->input[1]) & 127;
         $offset = 2;
         if ($length === 126) {
-            if (strlen($this->input) < 4) { return false; }
+            if (strlen($this->input) < 4) {
+                return false;
+            }
             $length = unpack('n', $this->input, 2)[1];
             $offset = 4;
         } elseif ($length === 127) {
-            if (strlen($this->input) < 10) { return false; }
+            if (strlen($this->input) < 10) {
+                return false;
+            }
             $length = unpack('N', $this->input, 6)[1];
             $offset = 10;
         }
-        if (strlen($this->input) < $offset + $length) {
+        if (strlen($this->input) < ($offset + $length)) {
             return false;
         }
         $payload = substr($this->input, $offset, $length);

@@ -16,11 +16,14 @@ final class ClockTest extends TestCase
     public function testTheSystemClockTellsTheTimeInItsZone(): void
     {
         $before = time();
-        $now = (new SystemClock())->now();
+        $now = new SystemClock()->now();
         self::assertGreaterThanOrEqual($before, $now->getTimestamp());
         self::assertLessThanOrEqual(time(), $now->getTimestamp());
         self::assertSame(date_default_timezone_get(), $now->getTimezone()->getName());
-        self::assertSame('Asia/Ho_Chi_Minh', (new SystemClock(new \DateTimeZone('Asia/Ho_Chi_Minh')))->now()->getTimezone()->getName());
+        self::assertSame(
+            'Asia/Ho_Chi_Minh',
+            new SystemClock(new \DateTimeZone('Asia/Ho_Chi_Minh'))->now()->getTimezone()->getName(),
+        );
     }
 
     public function testAFrozenClockStandsStillUntilItIsMoved(): void
@@ -35,7 +38,7 @@ final class ClockTest extends TestCase
         $moment = new \DateTimeImmutable('2030-05-05 05:05:05');
         $clock->set($moment);
         self::assertSame($moment, $clock->now());
-        self::assertEqualsWithDelta(time(), (new FrozenClock())->now()->getTimestamp(), 2);
+        self::assertEqualsWithDelta(time(), new FrozenClock()->now()->getTimestamp(), 2);
     }
 
     public function testTheApplicationBindsTheClock(): void
@@ -50,7 +53,11 @@ final class ClockTest extends TestCase
         self::assertInstanceOf(Clock::class, $frozen);
         $replaced = new App();
         $replaced->container->instance(Clock::class, $frozen);
-        self::assertSame($frozen, $replaced->container->get(Clock::class), 'A test replaces it with one that stands still.');
+        self::assertSame(
+            $frozen,
+            $replaced->container->get(Clock::class),
+            'A test replaces it with one that stands still.',
+        );
         self::assertSame($frozen, $replaced->container->get(ClockInterface::class), 'And the PSR-20 name follows.');
     }
 }

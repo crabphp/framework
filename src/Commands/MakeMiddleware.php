@@ -11,9 +11,9 @@ use Crab\Contracts\Console\Output;
 
 final readonly class MakeMiddleware implements Command
 {
-    public function __construct(private App $app)
-    {
-    }
+    public function __construct(
+        private App $app,
+    ) {}
 
     public function description(): string
     {
@@ -49,7 +49,9 @@ final readonly class MakeMiddleware implements Command
         }
         file_put_contents($file, self::source($namespace, $name));
         $output->line("Created {$file}");
-        $output->line("Use it around every request with ->withMiddleware([{$name}::class]) in app.php, or around some routes with middleware: [{$name}::class].");
+        $output->line(
+            "Use it around every request with ->withMiddleware([{$name}::class]) in app.php, or around some routes with middleware: [{$name}::class].",
+        );
         return 0;
     }
 

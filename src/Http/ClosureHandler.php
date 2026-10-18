@@ -14,9 +14,9 @@ use Psr\Http\Server\RequestHandlerInterface;
  */
 final readonly class ClosureHandler implements RequestHandlerInterface
 {
-    public function __construct(private \Closure $closure)
-    {
-    }
+    public function __construct(
+        private \Closure $closure,
+    ) {}
 
     public function handle(ServerRequestInterface $request): ResponseInterface
     {
@@ -27,6 +27,8 @@ final readonly class ClosureHandler implements RequestHandlerInterface
         if (is_string($result)) {
             return Response::text($result);
         }
-        throw new \LogicException('A handler closure must return a response or a string; it returned ' . get_debug_type($result) . '.');
+        throw new \LogicException(
+            'A handler closure must return a response or a string; it returned ' . get_debug_type($result) . '.',
+        );
     }
 }

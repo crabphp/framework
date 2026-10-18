@@ -12,9 +12,9 @@ final class Admission
 {
     private bool $released = false;
 
-    public function __construct(private readonly \Closure $release)
-    {
-    }
+    public function __construct(
+        private readonly \Closure $release,
+    ) {}
 
     public function release(): void
     {

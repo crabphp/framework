@@ -9,9 +9,9 @@ use Revolt\EventLoop\Suspension as RevoltDriverSuspension;
 
 final readonly class RevoltSuspension implements Suspension
 {
-    public function __construct(private RevoltDriverSuspension $suspension)
-    {
-    }
+    public function __construct(
+        private RevoltDriverSuspension $suspension,
+    ) {}
 
     public function suspend(): mixed
     {

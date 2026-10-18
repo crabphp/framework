@@ -19,10 +19,10 @@ final readonly class Lock implements LockContract
     public function __construct(
         private Store $store,
         private string $key,
+        #[\SensitiveParameter]
         private string $token,
         private \Closure $now,
-    ) {
-    }
+    ) {}
 
     public function release(): bool
     {

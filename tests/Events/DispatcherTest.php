@@ -12,9 +12,7 @@ use PHPUnit\Framework\TestCase;
 use Psr\EventDispatcher\EventDispatcherInterface;
 use Psr\EventDispatcher\StoppableEventInterface;
 
-interface Audited
-{
-}
+interface Audited {}
 
 class UserRegistered implements Audited
 {
@@ -23,14 +21,12 @@ class UserRegistered implements Audited
      */
     public array $heard = [];
 
-    public function __construct(public readonly int $id)
-    {
-    }
+    public function __construct(
+        public readonly int $id,
+    ) {}
 }
 
-final class AdminRegistered extends UserRegistered
-{
-}
+final class AdminRegistered extends UserRegistered {}
 
 final class Cancellable implements StoppableEventInterface
 {
@@ -47,8 +43,9 @@ final class Recorder
 {
     public static int $made = 0;
 
-    public function __construct(public readonly Container $container)
-    {
+    public function __construct(
+        public readonly Container $container,
+    ) {
         ++self::$made;
     }
 
@@ -97,7 +94,7 @@ final class DispatcherTest extends TestCase
     {
         $event = new UserRegistered(1);
 
-        self::assertSame($event, (new Dispatcher())->dispatch($event));
+        self::assertSame($event, new Dispatcher()->dispatch($event));
         self::assertSame([], $event->heard);
     }
 
@@ -132,7 +129,7 @@ final class DispatcherTest extends TestCase
     public function testWhatAListenerThrowsReachesTheDispatcherAndStopsTheRest(): void
     {
         $dispatcher = new Dispatcher();
-        $dispatcher->listen(UserRegistered::class, static fn () => throw new \RuntimeException('mail is down'));
+        $dispatcher->listen(UserRegistered::class, static fn() => throw new \RuntimeException('mail is down'));
         $dispatcher->listen(UserRegistered::class, static function (UserRegistered $event): void {
             $event->heard[] = 'late';
         });
@@ -152,7 +149,7 @@ final class DispatcherTest extends TestCase
         $dispatcher = new Dispatcher();
 
         try {
-            $dispatcher->listen('App\\Events\\Missing', static fn () => null);
+            $dispatcher->listen('App\\Events\\Missing', static fn() => null);
             self::fail('An event that is no class was accepted.');
         } catch (\LogicException $error) {
             self::assertStringContainsString('App\\Events\\Missing', $error->getMessage());
@@ -166,7 +163,7 @@ final class DispatcherTest extends TestCase
     public function testTheProviderBindsOneDispatcherUnderEveryName(): void
     {
         $container = new Container();
-        (new EventsProvider())->register($container);
+        new EventsProvider()->register($container);
 
         $dispatcher = $container->get(DispatcherContract::class);
 

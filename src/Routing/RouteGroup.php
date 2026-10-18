@@ -17,14 +17,18 @@ final readonly class RouteGroup implements RouteGroupContract
      * @param \Closure(string, list<MiddlewareInterface|string>, \Closure): void $declare
      * @param list<MiddlewareInterface|string> $middleware
      */
-    public function __construct(private \Closure $declare, private string $prefix = '', private array $middleware = [])
-    {
-    }
+    public function __construct(
+        private \Closure $declare,
+        private string $prefix = '',
+        private array $middleware = [],
+    ) {}
 
     public function prefix(string $prefix): static
     {
         if ($prefix === '' || $prefix[0] !== '/' || str_ends_with($prefix, '/')) {
-            throw new \InvalidArgumentException("A group's prefix starts with \"/\" and does not end with one: \"/admin\", not \"{$prefix}\".");
+            throw new \InvalidArgumentException(
+                "A group's prefix starts with \"/\" and does not end with one: \"/admin\", not \"{$prefix}\".",
+            );
         }
         return new static($this->declare, $this->prefix . $prefix, $this->middleware);
     }

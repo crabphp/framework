@@ -11,9 +11,9 @@ use Crab\Contracts\Routing\Router;
 
 final readonly class Routes implements Command
 {
-    public function __construct(private Router $router)
-    {
-    }
+    public function __construct(
+        private Router $router,
+    ) {}
 
     public function description(): string
     {
@@ -28,7 +28,7 @@ final readonly class Routes implements Command
             return 0;
         }
         // A name column only when some route has a name.
-        $named = array_filter($routes, static fn ($route): bool => $route->name !== null) !== [];
+        $named = array_filter($routes, static fn($route): bool => $route->name !== null) !== [];
         $rows = [];
         foreach ($routes as $route) {
             $name = $named ? [$route->name ?? ''] : [];

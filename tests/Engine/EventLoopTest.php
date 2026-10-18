@@ -17,12 +17,20 @@ final class EventLoopTest extends TestCase
         $loop = RevoltEventLoop::create();
         self::assertInstanceOf(EventLoop::class, $loop);
         $events = [];
-        $loop->delay(0.05, static function () use (&$events): void { $events[] = 'delay'; });
-        $loop->defer(static function (string $id) use (&$events): void { $events[] = 'defer ' . (strlen($id) > 0 ? 'with id' : 'without id'); });
-        $cancelled = $loop->delay(0.001, static function () use (&$events): void { $events[] = 'cancelled'; });
+        $loop->delay(0.05, static function () use (&$events): void {
+            $events[] = 'delay';
+        });
+        $loop->defer(static function (string $id) use (&$events): void {
+            $events[] = 'defer ' . (strlen($id) > 0 ? 'with id' : 'without id');
+        });
+        $cancelled = $loop->delay(0.001, static function () use (&$events): void {
+            $events[] = 'cancelled';
+        });
         $loop->cancel($cancelled);
         $loop->cancel($cancelled);
-        $paused = $loop->delay(0.001, static function () use (&$events): void { $events[] = 'paused'; });
+        $paused = $loop->delay(0.001, static function () use (&$events): void {
+            $events[] = 'paused';
+        });
         $loop->disable($paused);
         self::assertFalse($loop->isEnabled($paused));
         $ticks = 0;
@@ -52,7 +60,9 @@ final class EventLoopTest extends TestCase
         $loop = RevoltEventLoop::create();
         $pair = stream_socket_pair(STREAM_PF_UNIX, STREAM_SOCK_STREAM, STREAM_IPPROTO_IP);
         self::assertNotFalse($pair);
-        $this->deferCleanup(static function () use ($pair): void { array_map(static fn ($stream) => is_resource($stream) && fclose($stream), $pair); });
+        $this->deferCleanup(static function () use ($pair): void {
+            array_map(static fn($stream) => is_resource($stream) && fclose($stream), $pair);
+        });
         $read = '';
         $loop->onWritable($pair[0], static function (string $id, mixed $stream) use ($loop): void {
             fwrite($stream, 'ping');
@@ -69,17 +79,19 @@ final class EventLoopTest extends TestCase
         $loop->cancel($keepsGoing);
 
         $caught = [];
-        $loop->setErrorHandler(static function (\Throwable $error) use (&$caught): void { $caught[] = $error->getMessage(); });
-        $loop->defer(static fn () => throw new RuntimeException('contained'));
+        $loop->setErrorHandler(static function (\Throwable $error) use (&$caught): void {
+            $caught[] = $error->getMessage();
+        });
+        $loop->defer(static fn() => throw new RuntimeException('contained'));
         $loop->run();
         self::assertSame(['contained'], $caught);
         $loop->setErrorHandler(null);
 
         $suspension = $loop->getSuspension();
         self::assertInstanceOf(Suspension::class, $suspension);
-        $loop->delay(0.001, static fn () => $suspension->resume('value'));
+        $loop->delay(0.001, static fn() => $suspension->resume('value'));
         self::assertSame('value', $suspension->suspend());
-        $loop->delay(0.001, static fn () => $suspension->throw(new RuntimeException('thrown into the waiter')));
+        $loop->delay(0.001, static fn() => $suspension->throw(new RuntimeException('thrown into the waiter')));
         $this->expectExceptionMessage('thrown into the waiter');
         $suspension->suspend();
     }
@@ -89,7 +101,11 @@ final class EventLoopTest extends TestCase
         $loop = RevoltEventLoop::create('select');
         self::assertSame($loop, EventLoop::install($loop));
         self::assertSame($loop, EventLoop::current());
-        self::assertSame($loop->driver, \Revolt\EventLoop::getDriver(), 'Libraries built on Revolt must find the installed loop.');
+        self::assertSame(
+            $loop->driver,
+            \Revolt\EventLoop::getDriver(),
+            'Libraries built on Revolt must find the installed loop.',
+        );
 
         $rejected = 0;
         try {

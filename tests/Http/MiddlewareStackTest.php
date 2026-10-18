@@ -19,14 +19,18 @@ final class Mark implements MiddlewareInterface
 {
     public static int $made = 0;
 
-    public function __construct(private string $mark = 'named')
-    {
+    public function __construct(
+        private string $mark = 'named',
+    ) {
         ++self::$made;
     }
 
     public function process(ServerRequestInterface $request, RequestHandlerInterface $handler): ResponseInterface
     {
-        return $handler->handle($request->withAttribute('marks', $request->getAttribute('marks', '') . $this->mark . ' '));
+        return $handler->handle($request->withAttribute(
+            'marks',
+            $request->getAttribute('marks', '') . $this->mark . ' ',
+        ));
     }
 }
 
@@ -35,7 +39,10 @@ final class MiddlewareStackTest extends TestCase
     public function testAddsInOrderAndLinksOnce(): void
     {
         Mark::$made = 0;
-        $handler = new ClosureHandler(static fn(ServerRequestInterface $request) => (string) $request->getAttribute('marks', 'none'));
+        $handler = new ClosureHandler(static fn(ServerRequestInterface $request) => (string) $request->getAttribute(
+            'marks',
+            'none',
+        ));
         $stack = new MiddlewareStack($handler, new Container());
         self::assertSame('none', (string) $stack->handle(new Request('GET', '/'))->getBody());
 
@@ -55,17 +62,17 @@ final class MiddlewareStackTest extends TestCase
     {
         $handler = new ClosureHandler(static fn() => 'ok');
         try {
-            (new MiddlewareStack($handler))->add(Mark::class);
+            new MiddlewareStack($handler)->add(Mark::class);
             self::fail('A name was accepted without a container.');
         } catch (\LogicException) {
         }
         $this->expectException(\LogicException::class);
-        (new MiddlewareStack($handler, new Container()))->add(Factory::class)->assemble();
+        new MiddlewareStack($handler, new Container())->add(Factory::class)->assemble();
     }
 
     public function testDeclaredMiddlewareCanBeFoundWithoutConstructingIt(): void
     {
-        $handler = new ClosureHandler(static fn () => 'ok');
+        $handler = new ClosureHandler(static fn() => 'ok');
         $named = new MiddlewareStack($handler, new Container());
         self::assertFalse($named->has(Mark::class));
         $made = Mark::$made;

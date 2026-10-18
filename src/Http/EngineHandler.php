@@ -67,7 +67,7 @@ final readonly class EngineHandler
             $body->rewind();
         }
         while (!$body->eof()) {
-            $chunk = $body->read(32768);
+            $chunk = $body->read(32_768);
             if ($chunk !== '') {
                 yield $chunk;
             }

@@ -52,9 +52,16 @@ final readonly class Supervisor
         if ($queues === []) {
             throw new \LogicException("The queue supervisor \"{$name}\" names no queue to take jobs from.");
         }
-        foreach (['workers' => $workers, 'concurrency' => $concurrency, 'tries' => $tries, 'retry_after' => $retryAfter] as $setting => $value) {
+        foreach ([
+            'workers' => $workers,
+            'concurrency' => $concurrency,
+            'tries' => $tries,
+            'retry_after' => $retryAfter,
+        ] as $setting => $value) {
             if ($value < 1) {
-                throw new \LogicException("The queue supervisor \"{$name}\" has \"{$setting}\" set to {$value}; it must be 1 or more.");
+                throw new \LogicException(
+                    "The queue supervisor \"{$name}\" has \"{$setting}\" set to {$value}; it must be 1 or more.",
+                );
             }
         }
     }
@@ -120,16 +127,26 @@ final readonly class Supervisor
             return [];
         }
         if (!is_array($declared)) {
-            throw new \LogicException('"queue.supervisors" must be a list of supervisors by name, each with its "queues".');
+            throw new \LogicException(
+                '"queue.supervisors" must be a list of supervisors by name, each with its "queues".',
+            );
         }
         $supervisors = [];
         foreach ($declared as $name => $settings) {
             if (!is_string($name) || $name === '' || !is_array($settings)) {
-                throw new \LogicException('"queue.supervisors" must be a list of supervisors by name, each with its "queues": [\'mail\' => [\'queues\' => [\'mail\']]].');
+                throw new \LogicException(
+                    '"queue.supervisors" must be a list of supervisors by name, each with its "queues": [\'mail\' => [\'queues\' => [\'mail\']]].',
+                );
             }
             $unknown = array_diff(array_keys($settings), self::KEYS);
             if ($unknown !== []) {
-                throw new \LogicException("The queue supervisor \"{$name}\" has the setting \"" . implode('", "', $unknown) . '", which is not one of ' . implode(', ', self::KEYS) . '.');
+                throw new \LogicException(
+                    "The queue supervisor \"{$name}\" has the setting \""
+                    . implode('", "', $unknown)
+                    . '", which is not one of '
+                    . implode(', ', self::KEYS)
+                    . '.',
+                );
             }
             $supervisors[$name] = self::from($config, $name, $settings);
         }

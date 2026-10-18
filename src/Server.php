@@ -36,9 +36,9 @@ final class Server
      */
     private const WATCH_REPORT = 3;
 
-    public function __construct(private readonly App $app)
-    {
-    }
+    public function __construct(
+        private readonly App $app,
+    ) {}
 
     public function pidFile(): PidFile
     {
@@ -92,12 +92,16 @@ final class Server
         if (in_array('--watch-report', $_SERVER['argv'] ?? [], true)) {
             $report = @fopen('php://fd/' . self::WATCH_REPORT, 'wb');
             if ($report === false) {
-                throw new \RuntimeException('The watched server has no pipe to report its stop allowance. Start it with `serve`.');
+                throw new \RuntimeException(
+                    'The watched server has no pipe to report its stop allowance. Start it with `serve`.',
+                );
             }
             try {
                 $allowance = $this->grace() . "\n";
                 if (@fwrite($report, $allowance) !== strlen($allowance)) {
-                    throw new \RuntimeException('The watched server could not report its stop allowance. Start it again with `serve`.');
+                    throw new \RuntimeException(
+                        'The watched server could not report its stop allowance. Start it again with `serve`.',
+                    );
                 }
             } finally {
                 fclose($report);
@@ -130,7 +134,11 @@ final class Server
             [$started, $message] = $daemon->await($timeout + 5.0);
             fclose($lock);
             if (!$started) {
-                throw new \RuntimeException("The server did not start in the background: {$message}" . self::firstLines($log, $logged) . "\nIts output is in {$log}.");
+                throw new \RuntimeException(
+                    "The server did not start in the background: {$message}"
+                    . self::firstLines($log, $logged)
+                    . "\nIts output is in {$log}.",
+                );
             }
             return (int) $message;
         }
@@ -141,14 +149,16 @@ final class Server
             // The daemon's second fork is detached but no longer leads its
             // group. Give only this background keeper its own session/group.
             if (posix_setsid() === -1) {
-                throw new \RuntimeException('Could not give the background keeper its own process group. Start the server again.');
+                throw new \RuntimeException(
+                    'Could not give the background keeper its own process group. Start the server again.',
+                );
             }
             $keeper = new Keeper($pidFile, $log, $timeout, $grace);
             $status = $keeper->run(
                 $address,
                 self::generationCommand($invocation, $address, $workers),
                 $directory,
-                static fn () => $daemon->ready((string) getmypid()),
+                static fn() => $daemon->ready((string) getmypid()),
             );
         } catch (\Throwable $error) {
             // Before it was ready this reaches the launcher; afterwards the log is all there is.
@@ -213,7 +223,9 @@ final class Server
             $ownsGroup = $pid > 1 && posix_getsid($pid) === $pid;
             posix_kill($pid, SIGTERM);
             if (!self::waitForExit($pid, $timeout)) {
-                throw new \RuntimeException("The server, pid {$pid}, has not stopped after {$timeout} seconds. It may still be finishing requests; `stop --force` ends it outright.");
+                throw new \RuntimeException(
+                    "The server, pid {$pid}, has not stopped after {$timeout} seconds. It may still be finishing requests; `stop --force` ends it outright.",
+                );
             }
             if ($ownsGroup) {
                 $keeper->waitForGroup($pid, max(0.0, $deadline - microtime(true)));
@@ -244,7 +256,9 @@ final class Server
     {
         $server = $this->running();
         if ($server === null) {
-            throw new \RuntimeException('No server is running in the background to reload. Start one with `serve --daemon`.');
+            throw new \RuntimeException(
+                'No server is running in the background to reload. Start one with `serve --daemon`.',
+            );
         }
         self::requireSignals();
         $pidFile = $this->pidFile();
@@ -252,16 +266,24 @@ final class Server
         $log = $this->logFile();
         $logged = (int) @filesize($log);
         try {
-            $answer = Keeper::request($pidFile, $server, $address, self::generationCommand($invocation, $address, $workers), (string) getcwd(), $timeout + 5.0, $this->grace());
+            $answer = Keeper::request(
+                $pidFile,
+                $server,
+                $address,
+                self::generationCommand($invocation, $address, $workers),
+                (string) getcwd(),
+                $timeout + 5.0,
+                $this->grace(),
+            );
         } finally {
             fclose($lock);
         }
         if ($answer['ok'] !== true) {
             $why = (string) ($answer['message'] ?? 'It did not say why.');
-            $context = PidFile::running($server)
-                ? 'The server was not reloaded, and goes on serving as it was: '
-                : '';
-            throw new \RuntimeException($context . $why . self::firstLines($log, $logged) . "\nIts output is in {$log}.");
+            $context = PidFile::running($server) ? 'The server was not reloaded, and goes on serving as it was: ' : '';
+            throw new \RuntimeException(
+                $context . $why . self::firstLines($log, $logged) . "\nIts output is in {$log}.",
+            );
         }
         return [$server, (int) $answer['pid'], (int) $answer['previous']];
     }
@@ -314,7 +336,12 @@ final class Server
             } while ($more !== []);
             $changed = array_values(array_unique($changed));
             $others = count($changed) - 1;
-            $say('Restarted: ' . $this->shortened($changed[0]) . ($others > 0 ? " and {$others} more" : '') . ' changed.');
+            $say(
+                'Restarted: '
+                . $this->shortened($changed[0])
+                . ($others > 0 ? " and {$others} more" : '')
+                . ' changed.',
+            );
             $grace = self::reportedGrace($report, $grace);
             self::terminate($process, $grace);
             if (is_resource($report)) {
@@ -425,7 +452,11 @@ final class Server
     {
         // The child inherits the terminal. Handing it STDERR instead would make PHP set the
         // descriptor to that stream's own position, rewinding a log that `2>&1` shares with stdout.
-        $process = proc_open([PHP_BINARY, ...$command, '--watch-report'], [self::WATCH_REPORT => ['pipe', 'w']], $pipes);
+        $process = proc_open(
+            [PHP_BINARY, ...$command, '--watch-report'],
+            [self::WATCH_REPORT => ['pipe', 'w']],
+            $pipes,
+        );
         if ($process === false) {
             throw new \RuntimeException('Could not start the server process.');
         }

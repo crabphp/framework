@@ -47,7 +47,7 @@ final class MessageTest extends TestCase
     public function testInvalidHeadersAreRejected(string $name, mixed $value): void
     {
         $this->expectException(\InvalidArgumentException::class);
-        (new Response())->withHeader($name, $value);
+        new Response()->withHeader($name, $value);
     }
 
     public static function invalidHeaderProvider(): array
@@ -71,7 +71,10 @@ final class MessageTest extends TestCase
         self::assertSame('a', $response->getHeaderLine('X-Trace'));
         self::assertSame('{"ok":true}', (string) $response->getBody());
         self::assertSame('text/html; charset=utf-8', Response::html('<p>')->getHeaderLine('content-type'));
-        self::assertSame('text/plain', Response::text('a', headers: ['Content-Type' => 'text/plain'])->getHeaderLine('content-type'));
+        self::assertSame(
+            'text/plain',
+            Response::text('a', headers: ['Content-Type' => 'text/plain'])->getHeaderLine('content-type'),
+        );
 
         $changed = $response->withStatus(404, 'Gone Fishing');
         self::assertSame([404, 'Gone Fishing'], [$changed->getStatusCode(), $changed->getReasonPhrase()]);
@@ -159,8 +162,8 @@ final class MessageTest extends TestCase
         self::assertSame('frag%20ment', $uri->getFragment());
         self::assertSame('https://User:Pass@example.com:8443/a%20b/%7Ec?q=1%202&r=%20#frag%20ment', (string) $uri);
 
-        self::assertNull((new Uri('https://example.com:443/'))->getPort());
-        self::assertSame(443, (new Uri('http://example.com:443/'))->getPort());
+        self::assertNull(new Uri('https://example.com:443/')->getPort());
+        self::assertSame(443, new Uri('http://example.com:443/')->getPort());
         self::assertSame('', (string) new Uri());
         self::assertSame('/only?x=1', (string) new Uri('/only?x=1'));
     }
@@ -168,12 +171,18 @@ final class MessageTest extends TestCase
     public function testUriChangesReturnNewUris(): void
     {
         $uri = new Uri('http://example.com/a');
-        $changed = $uri->withScheme('HTTPS')->withHost('Other.test')->withPort(8080)->withPath('b c')
-            ->withQuery('x=é')->withFragment('top')->withUserInfo('me', 'secret');
+        $changed = $uri
+            ->withScheme('HTTPS')
+            ->withHost('Other.test')
+            ->withPort(8080)
+            ->withPath('b c')
+            ->withQuery('x=é')
+            ->withFragment('top')
+            ->withUserInfo('me', 'secret');
         self::assertSame('http://example.com/a', (string) $uri);
         self::assertSame('https://me:secret@other.test:8080/b%20c?x=%C3%A9#top', (string) $changed);
         self::assertSame($uri, $uri->withHost('example.com'));
-        self::assertSame('/a', (string) (new Uri())->withPath('//a'));
+        self::assertSame('/a', (string) new Uri()->withPath('//a'));
 
         try {
             new Uri('http:///broken');
@@ -181,15 +190,21 @@ final class MessageTest extends TestCase
         } catch (\InvalidArgumentException) {
         }
         $this->expectException(\InvalidArgumentException::class);
-        $uri->withPort(70000);
+        $uri->withPort(70_000);
     }
 
     public function testConstructedRequest(): void
     {
-        $request = new Request('POST', 'http://example.com:8080/form?page=2&tags[]=a', [
-            'Content-Type' => 'application/x-www-form-urlencoded; charset=utf-8',
-            'Cookie' => 'session=abc%20def; theme=dark; session=later',
-        ], 'name=Crab&n=1', serverParams: ['REMOTE_ADDR' => '127.0.0.1']);
+        $request = new Request(
+            'POST',
+            'http://example.com:8080/form?page=2&tags[]=a',
+            [
+                'Content-Type' => 'application/x-www-form-urlencoded; charset=utf-8',
+                'Cookie' => 'session=abc%20def; theme=dark; session=later',
+            ],
+            'name=Crab&n=1',
+            serverParams: ['REMOTE_ADDR' => '127.0.0.1'],
+        );
 
         self::assertSame('POST', $request->getMethod());
         self::assertSame('/form?page=2&tags%5B%5D=a', $request->getRequestTarget());
@@ -206,13 +221,13 @@ final class MessageTest extends TestCase
         self::assertFalse($request->cancellation()->isCancelled());
         self::assertSame($request->cancellation(), $request->cancellation());
         self::assertSame([], $request->getUploadedFiles());
-        self::assertNull((new Request('GET', '/'))->getParsedBody());
-        self::assertSame('/', (new Request('GET', 'http://example.com'))->getRequestTarget());
+        self::assertNull(new Request('GET', '/')->getParsedBody());
+        self::assertSame('/', new Request('GET', 'http://example.com')->getRequestTarget());
     }
 
     public function testARequestCookieIsReadByNameWithADefault(): void
     {
-        $request = (new Request('GET', '/'))->withCookieParams(['theme' => 'dark', 'empty' => '', 'odd' => ['nested']]);
+        $request = new Request('GET', '/')->withCookieParams(['theme' => 'dark', 'empty' => '', 'odd' => ['nested']]);
 
         self::assertSame(['dark', '', 'light', null, 'light'], [
             $request->cookie('theme'),
@@ -227,11 +242,23 @@ final class MessageTest extends TestCase
     {
         $request = new Request('GET', 'http://example.com/a');
         $file = new UploadedFile(new Stream('x'));
-        $changed = $request->withMethod('PUT')->withAttribute('id', '7')->withAttribute('none', null)
-            ->withQueryParams(['q' => '1'])->withCookieParams(['c' => '2'])->withParsedBody(['p' => '3'])
-            ->withUploadedFiles(['f' => $file])->withRequestTarget('*');
-        self::assertSame(['GET', [], [], [], null, '/a'], [$request->getMethod(), $request->getAttributes(),
-            $request->getQueryParams(), $request->getCookieParams(), $request->getParsedBody(), $request->getRequestTarget()]);
+        $changed = $request
+            ->withMethod('PUT')
+            ->withAttribute('id', '7')
+            ->withAttribute('none', null)
+            ->withQueryParams(['q' => '1'])
+            ->withCookieParams(['c' => '2'])
+            ->withParsedBody(['p' => '3'])
+            ->withUploadedFiles(['f' => $file])
+            ->withRequestTarget('*');
+        self::assertSame(['GET', [], [], [], null, '/a'], [
+            $request->getMethod(),
+            $request->getAttributes(),
+            $request->getQueryParams(),
+            $request->getCookieParams(),
+            $request->getParsedBody(),
+            $request->getRequestTarget(),
+        ]);
         self::assertSame('PUT', $changed->getMethod());
         self::assertSame(['id' => '7', 'none' => null], $changed->getAttributes());
         self::assertSame('7', $changed->getAttribute('id'));
@@ -239,16 +266,24 @@ final class MessageTest extends TestCase
         self::assertSame('default', $changed->getAttribute('missing', 'default'));
         self::assertSame(['none' => null], $changed->withoutAttribute('id')->getAttributes());
         self::assertSame($changed, $changed->withoutAttribute('missing'));
-        self::assertSame([['q' => '1'], ['c' => '2'], ['p' => '3'], ['f' => $file], '*'], [$changed->getQueryParams(),
-            $changed->getCookieParams(), $changed->getParsedBody(), $changed->getUploadedFiles(), $changed->getRequestTarget()]);
+        self::assertSame([['q' => '1'], ['c' => '2'], ['p' => '3'], ['f' => $file], '*'], [
+            $changed->getQueryParams(),
+            $changed->getCookieParams(),
+            $changed->getParsedBody(),
+            $changed->getUploadedFiles(),
+            $changed->getRequestTarget(),
+        ]);
 
         $moved = $request->withUri(new Uri('http://other.test:81/b?x=1'));
         self::assertSame(['other.test:81', '/b?x=1'], [$moved->getHeaderLine('Host'), $moved->getRequestTarget()]);
         self::assertSame('example.com', $request->withUri(new Uri('http://other.test/'), true)->getHeaderLine('Host'));
         self::assertSame('example.com', $request->withUri(new Uri('/relative'))->getHeaderLine('Host'));
 
-        foreach ([static fn() => $request->withMethod('BAD METHOD'), static fn() => $request->withRequestTarget('/a b'),
-            static fn() => $request->withParsedBody('text')] as $invalid) {
+        foreach ([
+            static fn() => $request->withMethod('BAD METHOD'),
+            static fn() => $request->withRequestTarget('/a b'),
+            static fn() => $request->withParsedBody('text'),
+        ] as $invalid) {
             try {
                 $invalid();
                 self::fail('An invalid change was accepted.');
@@ -261,15 +296,25 @@ final class MessageTest extends TestCase
     {
         $body = new Body();
         $body->append('a=1&b=2');
-        $source = new EngineRequest('POST', '/users/7?page=2', '1.1', [
-            'host' => ['example.com:8080'],
-            'content-type' => ['application/x-www-form-urlencoded'],
-            'cookie' => ['theme=dark'],
-            'accept' => ['text/html', 'text/plain'],
-        ], $body);
+        $source = new EngineRequest(
+            'POST',
+            '/users/7?page=2',
+            '1.1',
+            [
+                'host' => ['example.com:8080'],
+                'content-type' => ['application/x-www-form-urlencoded'],
+                'cookie' => ['theme=dark'],
+                'accept' => ['text/html', 'text/plain'],
+            ],
+            $body,
+        );
         $request = Request::fromEngine($source);
 
-        self::assertSame(['POST', '1.1', '/users/7?page=2'], [$request->getMethod(), $request->getProtocolVersion(), $request->getRequestTarget()]);
+        self::assertSame(['POST', '1.1', '/users/7?page=2'], [
+            $request->getMethod(),
+            $request->getProtocolVersion(),
+            $request->getRequestTarget(),
+        ]);
         self::assertTrue($request->hasHeader('Accept'));
         self::assertFalse($request->hasHeader('X-Missing'));
         self::assertSame('text/html, text/plain', $request->getHeaderLine('ACCEPT'));
@@ -289,22 +334,34 @@ final class MessageTest extends TestCase
         self::assertSame('text/html, text/plain', $changed->getHeaderLine('accept'));
         self::assertFalse($request->hasHeader('x-added'));
         self::assertSame('text/html', Request::fromEngine($source)->withoutHeader('cookie')->getHeader('accept')[0]);
-        self::assertSame('other.test', Request::fromEngine($source)->withUri(new Uri('http://other.test/'))->getHeaderLine('host'));
+        self::assertSame(
+            'other.test',
+            Request::fromEngine($source)->withUri(new Uri('http://other.test/'))->getHeaderLine('host'),
+        );
     }
 
     public function testEngineRequestTargetsWithoutAHost(): void
     {
         $request = Request::fromEngine(new EngineRequest('GET', '/a b?x=1', '1.0', []));
-        self::assertSame(['', '/a%20b', 'x=1'], [$request->getUri()->getHost(), $request->getUri()->getPath(), $request->getUri()->getQuery()]);
+        self::assertSame(['', '/a%20b', 'x=1'], [
+            $request->getUri()->getHost(),
+            $request->getUri()->getPath(),
+            $request->getUri()->getQuery(),
+        ]);
         self::assertSame('', (string) $request->getBody());
-        $absolute = Request::fromEngine(new EngineRequest('GET', 'http://proxy.test/path', '1.1', ['host' => ['ignored.test']]));
+        $absolute = Request::fromEngine(new EngineRequest('GET', 'http://proxy.test/path', '1.1', ['host' => [
+            'ignored.test',
+        ]]));
         self::assertSame(['proxy.test', '/path'], [$absolute->getUri()->getHost(), $absolute->getUri()->getPath()]);
     }
 
     public function testFactoryCreatesCrabMessages(): void
     {
         $factory = new Factory();
-        self::assertSame([418, 'Teapot'], [$factory->createResponse(418, 'Teapot')->getStatusCode(), $factory->createResponse(418, 'Teapot')->getReasonPhrase()]);
+        self::assertSame([418, 'Teapot'], [
+            $factory->createResponse(418, 'Teapot')->getStatusCode(),
+            $factory->createResponse(418, 'Teapot')->getReasonPhrase(),
+        ]);
         $request = $factory->createServerRequest('GET', $factory->createUri('http://example.com/a'), ['K' => 'v']);
         self::assertInstanceOf(Request::class, $request);
         self::assertSame(['/a', ['K' => 'v']], [$request->getUri()->getPath(), $request->getServerParams()]);

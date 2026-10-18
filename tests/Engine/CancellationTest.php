@@ -71,7 +71,9 @@ final class CancellationTest extends TestCase
     {
         $token = new Cancellation();
         $calls = 0;
-        $unsubscribe = $token->subscribe(static function () use (&$calls): void { ++$calls; });
+        $unsubscribe = $token->subscribe(static function () use (&$calls): void {
+            ++$calls;
+        });
         $unsubscribe();
         $unsubscribe();
         $token->cancel();
@@ -157,10 +159,13 @@ final class CancellationTest extends TestCase
         self::assertCount(2, $seen);
         self::assertSame($seen[0], $seen[1]);
         self::assertSame($seen[0], self::cancellationReason($token));
-        self::assertSame(['Cancellation callback failed: Intentional cancellation subscriber failure.'], $this->reports);
+        self::assertSame(
+            ['Cancellation callback failed: Intentional cancellation subscriber failure.'],
+            $this->reports,
+        );
     }
 
-    private static function cancellationReason(Cancellation $token): CancelledException
+    private static function cancellationReason(#[\SensitiveParameter] Cancellation $token): CancelledException
     {
         try {
             $token->throwIfCancelled();

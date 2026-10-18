@@ -24,7 +24,10 @@ if ($argv[1] === 'keep') {
     [, , , $pid, $log, $address, $text] = $argv;
     $keeper = new Keeper(new PidFile($pid), $log, startTimeout: 5.0, stopTimeout: 3.0);
     try {
-        exit($keeper->run($address, [__FILE__, 'serve', $argv[2], $text], getcwd(), static fn () => fwrite(STDOUT, "ready\n")));
+        exit($keeper->run($address, [__FILE__, 'serve', $argv[2], $text], getcwd(), static fn() => fwrite(
+            STDOUT,
+            "ready\n",
+        )));
     } catch (Throwable $error) {
         fwrite(STDOUT, 'failed: ' . $error->getMessage() . "\n");
         exit(1);
@@ -46,9 +49,11 @@ try {
         throw new RuntimeException('this generation was told to fail');
     }
     $runtime = new Runtime(shutdownTimeout: 2.0);
-    $runtime->group('web', workers: 2)->listen('tcp://inherited', new HttpServer(
-        static fn (Request $request) => Response::text($text . ' from ' . posix_getppid()),
-    ), socket: $generation->socket);
+    $runtime->group('web', workers: 2)->listen(
+        'tcp://inherited',
+        new HttpServer(static fn(Request $request) => Response::text($text . ' from ' . posix_getppid())),
+        socket: $generation->socket,
+    );
     $generation->attach($runtime);
     $runtime->run();
 } catch (Throwable $error) {

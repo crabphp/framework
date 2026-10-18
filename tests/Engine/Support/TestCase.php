@@ -67,7 +67,8 @@ abstract class TestCase extends PHPUnitTestCase
     protected function tearDown(): void
     {
         $cleanupFailure = null;
-        while ($cleanup = array_pop($this->cleanups)) {
+        while ($this->cleanups !== []) {
+            $cleanup = array_pop($this->cleanups);
             try {
                 $cleanup();
             } catch (Throwable $error) {
@@ -78,7 +79,9 @@ abstract class TestCase extends PHPUnitTestCase
         // fiber suspended. Cancelling watchers alone cannot permit a new driver.
         $driver = Revolt::getDriver();
         if ($driver->isRunning()) {
-            foreach ($driver->getIdentifiers() as $id) { $driver->cancel($id); }
+            foreach ($driver->getIdentifiers() as $id) {
+                $driver->cancel($id);
+            }
             while ($driver->isRunning()) {
                 $driver->stop();
                 try {

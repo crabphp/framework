@@ -12,9 +12,9 @@ use Crab\Database\DatabaseManager;
 
 final readonly class Migrate implements Command
 {
-    public function __construct(private DatabaseManager $databases)
-    {
-    }
+    public function __construct(
+        private DatabaseManager $databases,
+    ) {}
 
     public function description(): string
     {

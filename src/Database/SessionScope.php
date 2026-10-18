@@ -97,10 +97,16 @@ final class SessionScope
             throw $this->transactionFailure;
         }
         if ($this->transactionLost) {
-            throw new DatabaseException('The transaction lost its session; let this callback unwind before using the connection again.', $sql);
+            throw new DatabaseException(
+                'The transaction lost its session; let this callback unwind before using the connection again.',
+                $sql,
+            );
         }
         if ($this->sessionLost) {
-            throw new DatabaseException('The fixed database session was lost; abort this scope before using the connection again.', $sql);
+            throw new DatabaseException(
+                'The fixed database session was lost; abort this scope before using the connection again.',
+                $sql,
+            );
         }
     }
 }

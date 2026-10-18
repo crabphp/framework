@@ -47,14 +47,27 @@ final class TestServer
      * @param string|null $certificate A PEM file holding a certificate and its key, to serve over TLS.
      * @param float $handshakeDelay Seconds to wait before starting TLS, to test deadlines while a connection is being opened.
      */
-    public function __construct(private readonly \Closure $reply, ?string $certificate = null, float $handshakeDelay = 0.0)
-    {
+    public function __construct(
+        private readonly \Closure $reply,
+        ?string $certificate = null,
+        float $handshakeDelay = 0.0,
+    ) {
         $context = stream_context_create($certificate === null ? [] : ['ssl' => ['local_cert' => $certificate]]);
-        $this->socket = stream_socket_server('tcp://127.0.0.1:0', $code, $reason, STREAM_SERVER_BIND | STREAM_SERVER_LISTEN, $context);
+        $this->socket = stream_socket_server(
+            'tcp://127.0.0.1:0',
+            $code,
+            $reason,
+            STREAM_SERVER_BIND | STREAM_SERVER_LISTEN,
+            $context,
+        );
         stream_set_blocking($this->socket, false);
         $this->port = (int) substr(strrchr(stream_socket_get_name($this->socket, false), ':'), 1);
         $loop = EventLoop::current();
-        $this->accepting = $loop->onReadable($this->socket, function () use ($loop, $certificate, $handshakeDelay): void {
+        $this->accepting = $loop->onReadable($this->socket, function () use (
+            $loop,
+            $certificate,
+            $handshakeDelay,
+        ): void {
             $connection = @stream_socket_accept($this->socket, 0);
             if ($connection === false) {
                 return;
@@ -64,7 +77,13 @@ final class TestServer
             $this->open[$number] = $connection;
             $buffer = '';
             $encrypted = $certificate === null;
-            $reader = $loop->onReadable($connection, function (string $watcher) use ($loop, $connection, $number, &$buffer, &$encrypted): void {
+            $reader = $loop->onReadable($connection, function (string $watcher) use (
+                $loop,
+                $connection,
+                $number,
+                &$buffer,
+                &$encrypted,
+            ): void {
                 if (!$encrypted) {
                     $done = @stream_socket_enable_crypto($connection, true, STREAM_CRYPTO_METHOD_TLS_SERVER);
                     if ($done === false) {
@@ -76,7 +95,7 @@ final class TestServer
                         return;
                     }
                 }
-                $bytes = @fread($connection, 65536);
+                $bytes = @fread($connection, 65_536);
                 if ($bytes === '' || $bytes === false) {
                     if ($bytes === false || feof($connection)) {
                         $this->drop($number);
@@ -100,7 +119,13 @@ final class TestServer
                         }
                         $close = stripos($bytes, 'Connection: close') !== false;
                         // Written as the client takes it: both ends are on one event loop.
-                        $this->watching[$number][] = $loop->onWritable($connection, function (string $writer) use ($loop, $connection, $number, $close, &$bytes): void {
+                        $this->watching[$number][] = $loop->onWritable($connection, function (string $writer) use (
+                            $loop,
+                            $connection,
+                            $number,
+                            $close,
+                            &$bytes,
+                        ): void {
                             $written = (int) @fwrite($connection, $bytes);
                             $bytes = substr($bytes, $written);
                             if ($bytes !== '') {
@@ -118,7 +143,11 @@ final class TestServer
             $this->watching[$number][] = $reader;
             if ($certificate !== null && $handshakeDelay > 0) {
                 $loop->disable($reader);
-                $this->watching[$number][] = $loop->delay($handshakeDelay, function () use ($loop, $number, $reader): void {
+                $this->watching[$number][] = $loop->delay($handshakeDelay, function () use (
+                    $loop,
+                    $number,
+                    $reader,
+                ): void {
                     if (isset($this->open[$number])) {
                         $loop->enable($reader);
                     }
@@ -217,7 +246,7 @@ final class TestServer
                     return null;
                 }
                 $size = (int) hexdec(substr($buffer, $position, $line - $position));
-                if (strlen($buffer) < $line + 2 + $size + 2) {
+                if (strlen($buffer) < ($line + 2 + $size + 2)) {
                     return null;
                 }
                 $body .= substr($buffer, $line + 2, $size);
@@ -229,7 +258,7 @@ final class TestServer
             $buffer = substr($buffer, $position);
         } else {
             $length = (int) ($headers['content-length'] ?? 0);
-            if (strlen($buffer) < $start + $length) {
+            if (strlen($buffer) < ($start + $length)) {
                 return null;
             }
             $body = substr($buffer, $start, $length);

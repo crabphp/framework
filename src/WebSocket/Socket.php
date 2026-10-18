@@ -31,7 +31,7 @@ final class Socket implements SocketContract, Recipient
      * 64 KiB messages would make that 1 MiB, hence the additional byte cap.
      */
     private const INBOX_MESSAGES = 16;
-    private const INBOX_BYTES = 262144;
+    private const INBOX_BYTES = 262_144;
 
     /**
      * Raw messages are decoded only when the action asks for one.
@@ -74,7 +74,9 @@ final class Socket implements SocketContract, Recipient
             return;
         }
         if ($this->accepting !== null) {
-            throw new \LogicException('This socket is already waiting for acceptance. Use it from the action until acceptance finishes.');
+            throw new \LogicException(
+                'This socket is already waiting for acceptance. Use it from the action until acceptance finishes.',
+            );
         }
         $this->accepting = $this->loop->getSuspension();
         ($this->offer)();
@@ -143,8 +145,10 @@ final class Socket implements SocketContract, Recipient
         }
         $this->inbox->enqueue([$message, $type]);
         $this->bytes += strlen($message);
-        if ($this->inbox->count() >= self::INBOX_MESSAGES
-            || $this->bytes > self::INBOX_BYTES - $this->settings->maxMessage) {
+        if (
+            $this->inbox->count() >= self::INBOX_MESSAGES
+            || $this->bytes > (self::INBOX_BYTES - $this->settings->maxMessage)
+        ) {
             $this->pauseRead();
         }
         $reader = $this->reader;
@@ -161,7 +165,7 @@ final class Socket implements SocketContract, Recipient
         $this->session->pauseRead();
         if ($this->settings->ping > 0) {
             $allowance = 2 * $this->settings->ping;
-            $this->pauseTimer = $this->loop->delay($allowance, fn () => $this->pauseExpired($allowance));
+            $this->pauseTimer = $this->loop->delay($allowance, fn() => $this->pauseExpired($allowance));
         }
     }
 
@@ -184,7 +188,9 @@ final class Socket implements SocketContract, Recipient
         }
         $this->accept();
         if ($this->receiving) {
-            throw new \LogicException('This socket already has a fiber waiting for a message. Receive from one consumer only.');
+            throw new \LogicException(
+                'This socket already has a fiber waiting for a message. Receive from one consumer only.',
+            );
         }
         $this->receiving = true;
         try {
@@ -197,8 +203,11 @@ final class Socket implements SocketContract, Recipient
             }
             [$message, $type] = $this->inbox->dequeue();
             $this->bytes -= strlen($message);
-            if ($this->paused && $this->inbox->count() <= intdiv(self::INBOX_MESSAGES, 2)
-                && $this->bytes <= intdiv(self::INBOX_BYTES, 2)) {
+            if (
+                $this->paused
+                && $this->inbox->count() <= intdiv(self::INBOX_MESSAGES, 2)
+                && $this->bytes <= intdiv(self::INBOX_BYTES, 2)
+            ) {
                 $this->paused = false;
                 $this->cancelPauseTimer();
                 $this->session->resumeRead();
@@ -245,7 +254,9 @@ final class Socket implements SocketContract, Recipient
     {
         if ($this->channels === null) {
             if ($this->memberships === null) {
-                throw new \LogicException('To join WebSocket channels, register BroadcastProvider or give Connections a channel membership resolver.');
+                throw new \LogicException(
+                    'To join WebSocket channels, register BroadcastProvider or give Connections a channel membership resolver.',
+                );
             }
             $this->channels = ($this->memberships)();
         }
@@ -267,7 +278,10 @@ final class Socket implements SocketContract, Recipient
             throw new \LengthException('The broadcast exceeds websocket.max_message; send a smaller update.');
         }
         $frameBytes = 10 * max(1, (int) ceil(strlen($message) / $this->settings->engine->outgoingFrameBytes));
-        if ($this->session->bufferedBytes() + strlen($message) + $frameBytes > $this->settings->engine->maxQueuedOutputBytes) {
+        if (
+            ($this->session->bufferedBytes() + strlen($message) + $frameBytes)
+            > $this->settings->engine->maxQueuedOutputBytes
+        ) {
             return WriteResult::Backpressured;
         }
         return $this->session->sendText($message);
@@ -302,7 +316,7 @@ final class Socket implements SocketContract, Recipient
                 }
                 if ($cancellation === null) {
                     $cancellation = new Cancellation();
-                    $timer = $this->loop->delay($this->settings->sendTimeout, static fn () => $cancellation->cancel());
+                    $timer = $this->loop->delay($this->settings->sendTimeout, static fn() => $cancellation->cancel());
                 }
                 // Empty output always has room for a maximum-sized message.
                 if (!$this->session->awaitWritable($cancellation, belowBytes: 1)) {
@@ -311,7 +325,10 @@ final class Socket implements SocketContract, Recipient
             }
         } catch (CancelledException $error) {
             $this->close(1008, 'Read messages faster');
-            throw new SocketClosed('The client did not read within websocket.send_timeout; the socket was closed.', previous: $error);
+            throw new SocketClosed(
+                'The client did not read within websocket.send_timeout; the socket was closed.',
+                previous: $error,
+            );
         } finally {
             if ($timer !== null) {
                 $this->loop->cancel($timer);

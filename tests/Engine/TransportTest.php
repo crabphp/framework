@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace Crab\Engine\Tests;
 
 use Closure;
+use Crab\Engine\EventLoop;
+use Crab\Engine\EventLoop\RevoltEventLoop;
 use Crab\Engine\Network\Connection;
 use Crab\Engine\Network\Connector;
 use Crab\Engine\Network\Listener;
@@ -14,8 +16,6 @@ use InvalidArgumentException;
 use LengthException;
 use LogicException;
 use PHPUnit\Framework\Attributes\DataProvider;
-use Crab\Engine\EventLoop;
-use Crab\Engine\EventLoop\RevoltEventLoop;
 use RuntimeException;
 use Throwable;
 
@@ -26,7 +26,9 @@ final class TransportTest extends TestCase
         [$loop, $connection, $peer] = $this->connectedPair();
         $received = '';
         $oldReaderCalls = 0;
-        $connection->onData(static function () use (&$oldReaderCalls): void { $oldReaderCalls++; });
+        $connection->onData(static function () use (&$oldReaderCalls): void {
+            $oldReaderCalls++;
+        });
         $connection->onData(static function (Connection $connection, string $bytes) use (&$received): void {
             $received .= $bytes;
         });
@@ -36,7 +38,9 @@ final class TransportTest extends TestCase
             self::assertSame('', $received, 'Paused reader received bytes.');
             $connection->resumeRead();
         }));
-        $this->until($loop, static function () use (&$received): bool { return strlen($received) === 8; });
+        $this->until($loop, static function () use (&$received): bool {
+            return strlen($received) === 8;
+        });
         self::assertSame("\0binary\xff", $received);
         self::assertSame(0, $oldReaderCalls, 'Reader ownership was not replaced.');
     }
@@ -59,7 +63,7 @@ final class TransportTest extends TestCase
             $connection->close();
         });
         fwrite($peer, 'first');
-        $this->until($loop, static fn () => $connection->isClosed());
+        $this->until($loop, static fn() => $connection->isClosed());
         self::assertSame(['first', 'second', 'EOF'], $events);
     }
 
@@ -87,9 +91,13 @@ final class TransportTest extends TestCase
             $received .= fread($peer, 262_144);
         });
         $this->until($loop, static function () use (&$retried, &$received, $accepted, $connection): bool {
-            return $retried && strlen($received) === $accepted + 65_536 && $connection->bufferedBytes() === 0;
+            return $retried && strlen($received) === ($accepted + 65_536) && $connection->bufferedBytes() === 0;
         });
-        self::assertSame(str_repeat('A', $accepted).str_repeat('B', 65_536), $received, 'Output was duplicated, dropped, or reordered.');
+        self::assertSame(
+            str_repeat('A', $accepted) . str_repeat('B', 65_536),
+            $received,
+            'Output was duplicated, dropped, or reordered.',
+        );
         self::assertGreaterThan(0, $notifications, 'Rejected writer never received capacity notification.');
         $loop->cancel($watcher);
     }
@@ -114,8 +122,11 @@ final class TransportTest extends TestCase
                 }
             });
             try {
-                $this->until($loop, static fn () => $connection->bufferedBytes() < $before,
-                    message: 'Peer reading did not trigger a transport write turn before the deadline.');
+                $this->until(
+                    $loop,
+                    static fn() => $connection->bufferedBytes() < $before,
+                    message: 'Peer reading did not trigger a transport write turn before the deadline.',
+                );
             } finally {
                 $loop->cancel($reader);
             }
@@ -123,12 +134,20 @@ final class TransportTest extends TestCase
         $fill();
         $ordinaryWatcher = $loop->getIdentifiers();
         $connection->onWriteProgress(null);
-        self::assertSame($ordinaryWatcher, $loop->getIdentifiers(), 'No observer must leave the ordinary watcher untouched.');
+        self::assertSame(
+            $ordinaryWatcher,
+            $loop->getIdentifiers(),
+            'No observer must leave the ordinary watcher untouched.',
+        );
         $oldCalls = $calls = 0;
-        $connection->onWriteProgress(static function () use (&$oldCalls): void { ++$oldCalls; });
+        $connection->onWriteProgress(static function () use (&$oldCalls): void {
+            ++$oldCalls;
+        });
         $observedWatcher = $loop->getIdentifiers();
         self::assertCount(1, $observedWatcher, 'Observation must replace the writer, not add another watcher.');
-        $connection->onWriteProgress(static function () use (&$calls): void { ++$calls; });
+        $connection->onWriteProgress(static function () use (&$calls): void {
+            ++$calls;
+        });
         self::assertSame($observedWatcher, $loop->getIdentifiers(), 'Replacing the callback must retain its watcher.');
         $before = $connection->bufferedBytes();
         $turn();
@@ -141,13 +160,22 @@ final class TransportTest extends TestCase
         $before = $connection->bufferedBytes();
         $turn();
         self::assertSame($callsAfterRemoval, $calls);
-        self::assertLessThan($before, $connection->bufferedBytes(), 'Removing observation must not stop ordinary writes.');
-        $reader = $loop->onReadable($peer, static function () use ($peer): void { fread($peer, 262_144); });
-        $this->until($loop, static fn () => $connection->bufferedBytes() === 0);
+        self::assertLessThan(
+            $before,
+            $connection->bufferedBytes(),
+            'Removing observation must not stop ordinary writes.',
+        );
+        $reader = $loop->onReadable($peer, static function () use ($peer): void {
+            fread($peer, 262_144);
+        });
+        $this->until($loop, static fn() => $connection->bufferedBytes() === 0);
         $loop->cancel($reader);
-        while (fread($peer, 262_144) !== '') {}
+        while (fread($peer, 262_144) !== '') {
+        }
         self::assertSame([], $loop->getIdentifiers());
-        $observe = static function () use (&$calls): void { ++$calls; };
+        $observe = static function () use (&$calls): void {
+            ++$calls;
+        };
         $connection->onWriteProgress($observe);
         self::assertSame([], $loop->getIdentifiers(), 'An empty output queue needs no watcher.');
         $fill();
@@ -165,9 +193,15 @@ final class TransportTest extends TestCase
             self::assertSame(WriteResult::Accepted, $connection->tryWrite(str_repeat('x', 8192)));
         } while ($connection->bufferedBytes() === 0);
         $reported = [];
-        $connection->onError(static function (Throwable $error) use (&$reported): void { $reported[] = $error->getMessage(); });
-        $connection->onWriteProgress(static function (): void { throw new RuntimeException('observer failed'); });
-        $reader = $loop->onReadable($peer, static function () use ($peer): void { fread($peer, 262_144); });
+        $connection->onError(static function (Throwable $error) use (&$reported): void {
+            $reported[] = $error->getMessage();
+        });
+        $connection->onWriteProgress(static function (): void {
+            throw new RuntimeException('observer failed');
+        });
+        $reader = $loop->onReadable($peer, static function () use ($peer): void {
+            fread($peer, 262_144);
+        });
         $this->until($loop, $connection->isClosed(...));
         $loop->cancel($reader);
         self::assertSame(['observer failed'], $reported);
@@ -201,15 +235,20 @@ final class TransportTest extends TestCase
     {
         [$loop, $connection, $peer] = $this->connectedPair(4);
         $oversize = false;
-        try { $connection->tryWrite('12345'); }
-        catch (LengthException) { $oversize = true; }
+        try {
+            $connection->tryWrite('12345');
+        } catch (LengthException) {
+            $oversize = true;
+        }
         self::assertTrue($oversize, 'Oversized write must be rejected.');
         self::assertSame('', fread($peer, 10), 'Oversized write sent a prefix.');
         $closed = [];
         $connection->onClose(static function (Connection $connection) use (&$closed, $loop): void {
             $closed[] = $connection->isClosed() && $connection->bufferedBytes() === 0 && $loop->getIdentifiers() === [];
         });
-        $connection->onClose(static function () use (&$closed): void { $closed[] = true; });
+        $connection->onClose(static function () use (&$closed): void {
+            $closed[] = true;
+        });
         $connection->close();
         $connection->close();
         self::assertSame([true, true], $closed, 'Close callbacks ran before cleanup, were lost, or repeated.');
@@ -228,8 +267,12 @@ final class TransportTest extends TestCase
             $events[] = 'close';
             $releaseOne();
         });
-        $connection->onClose(static function () use (&$events): void { $events[] = 'close-after-release'; });
-        $connection->onSettled(static function () use (&$events): void { $events[] = 'settled'; });
+        $connection->onClose(static function () use (&$events): void {
+            $events[] = 'close-after-release';
+        });
+        $connection->onSettled(static function () use (&$events): void {
+            $events[] = 'settled';
+        });
         $connection->close();
         self::assertTrue($connection->isClosed(), 'Activity must not keep the socket open.');
         self::assertSame(['close', 'close-after-release'], $events, 'Settlement ran before activity cleanup.');
@@ -237,7 +280,9 @@ final class TransportTest extends TestCase
         $releaseTwo();
         $releaseTwo();
         self::assertSame(['close', 'close-after-release', 'settled'], $events, 'Release must be idempotent.');
-        $connection->onSettled(static function () use (&$events): void { $events[] = 'late'; });
+        $connection->onSettled(static function () use (&$events): void {
+            $events[] = 'late';
+        });
         self::assertSame('late', $events[3]);
         $this->expectException(LogicException::class);
         $connection->beginActivity();
@@ -247,7 +292,9 @@ final class TransportTest extends TestCase
     {
         [$loop, $connection, $peer] = $this->connectedPair();
         $request = '';
-        $connection->onData(static function (Connection $connection, string $bytes) use (&$request): void { $request .= $bytes; });
+        $connection->onData(static function (Connection $connection, string $bytes) use (&$request): void {
+            $request .= $bytes;
+        });
         $connection->onEof(static function (Connection $connection): void {
             $connection->tryWrite('after EOF');
             $connection->shutdownWrite();
@@ -255,8 +302,12 @@ final class TransportTest extends TestCase
         fwrite($peer, 'request');
         stream_socket_shutdown($peer, STREAM_SHUT_WR);
         $reply = '';
-        $watcher = $loop->onReadable($peer, static function () use ($peer, &$reply): void { $reply .= fread($peer, 1024); });
-        $this->until($loop, static function () use ($connection, &$reply): bool { return $connection->isClosed() && $reply === 'after EOF'; });
+        $watcher = $loop->onReadable($peer, static function () use ($peer, &$reply): void {
+            $reply .= fread($peer, 1024);
+        });
+        $this->until($loop, static function () use ($connection, &$reply): bool {
+            return $connection->isClosed() && $reply === 'after EOF';
+        });
         self::assertSame('request', $request, 'Request preceding EOF was lost.');
         $loop->cancel($watcher);
     }
@@ -265,14 +316,16 @@ final class TransportTest extends TestCase
     {
         [$loop, $connection, $peer] = $this->connectedPair();
         $received = '';
-        $connection->onData(static function (Connection $connection, string $bytes) use (&$received): void { $received .= $bytes; });
+        $connection->onData(static function (Connection $connection, string $bytes) use (&$received): void {
+            $received .= $bytes;
+        });
         $connection->tryWrite('out');
         $connection->shutdownWrite();
         self::assertFalse($connection->isClosed(), 'shutdownWrite closed the read direction.');
         self::assertSame('out', fread($peer, 1024));
         fwrite($peer, 'in');
         stream_socket_shutdown($peer, STREAM_SHUT_WR);
-        $this->until($loop, static fn () => $connection->isClosed());
+        $this->until($loop, static fn() => $connection->isClosed());
         self::assertSame('in', $received);
     }
 
@@ -281,13 +334,17 @@ final class TransportTest extends TestCase
         [$loop, $connection, $peer] = $this->connectedPair();
         $reported = [];
         $closed = 0;
-        $connection->onClose(static function () use (&$closed): void { $closed++; });
+        $connection->onClose(static function () use (&$closed): void {
+            $closed++;
+        });
         $connection->onError(static function (Throwable $error, Connection $connection) use (&$reported): void {
             $reported[] = [$connection->isClosed(), $error->getMessage()];
         });
-        $connection->onData(static function (): void { throw new RuntimeException('expected failure'); });
+        $connection->onData(static function (): void {
+            throw new RuntimeException('expected failure');
+        });
         fwrite($peer, 'x');
-        $this->until($loop, static fn () => $connection->isClosed());
+        $this->until($loop, static fn() => $connection->isClosed());
         self::assertSame([[true, 'expected failure']], $reported, 'Reporting must follow cleanup and occur once.');
         self::assertSame(1, $closed);
     }
@@ -300,7 +357,7 @@ final class TransportTest extends TestCase
         }
         self::assertGreaterThan(0, $connection->bufferedBytes(), 'Could not fill socket.');
         $connection->end();
-        $this->until($loop, static fn () => $connection->isClosed());
+        $this->until($loop, static fn() => $connection->isClosed());
         self::assertSame(0, $connection->bufferedBytes());
         self::assertSame([], $loop->getIdentifiers(), 'Close deadline leaked resources.');
     }
@@ -316,7 +373,7 @@ final class TransportTest extends TestCase
             self::assertFalse($connection->isClosed(), 'The transport retained its earlier deadline.');
             $checked = true;
         }));
-        $this->until($loop, static fn (): bool => $connection->isClosed());
+        $this->until($loop, static fn(): bool => $connection->isClosed());
         self::assertTrue($checked);
         self::assertSame([], $loop->getIdentifiers());
     }
@@ -326,7 +383,7 @@ final class TransportTest extends TestCase
         [$loop, $connection] = $this->connectedPair(closeTimeout: 0.02);
         $connection->onDrainRequest(static function (): void {});
         $connection->drain();
-        $this->until($loop, static fn (): bool => $connection->isClosed());
+        $this->until($loop, static fn(): bool => $connection->isClosed());
         self::assertSame([], $loop->getIdentifiers());
     }
 
@@ -365,27 +422,36 @@ final class TransportTest extends TestCase
     {
         $loop = $this->newLoop();
         $stream = $this->ownStream(Listener::bind('tcp://127.0.0.1:0'));
-        $address = 'tcp://'.stream_socket_get_name($stream, false);
+        $address = 'tcp://' . stream_socket_get_name($stream, false);
         $serverConnection = null;
         $listener = new Listener($loop, $stream, function (Connection $connection) use (&$serverConnection): void {
             $serverConnection = $this->ownConnection($connection);
-            $connection->onData(static function (Connection $connection, string $bytes): void { $connection->tryWrite($bytes); });
+            $connection->onData(static function (Connection $connection, string $bytes): void {
+                $connection->tryWrite($bytes);
+            });
         });
         $this->deferCleanup($listener->close(...));
         $listener->attach();
         $completions = 0;
         $response = '';
         $client = null;
-        $cancel = Connector::connect($loop, $address, $this->guardCallback(function (?Connection $connection, ?Throwable $error) use (&$completions, &$response, &$client): void {
+        $cancel = Connector::connect($loop, $address, $this->guardCallback(function (
+            ?Connection $connection,
+            ?Throwable $error,
+        ) use (&$completions, &$response, &$client): void {
             $completions++;
             self::assertNull($error);
             self::assertInstanceOf(Connection::class, $connection);
             $client = $this->ownConnection($connection);
-            $connection->onData(static function (Connection $connection, string $bytes) use (&$response): void { $response .= $bytes; });
+            $connection->onData(static function (Connection $connection, string $bytes) use (&$response): void {
+                $response .= $bytes;
+            });
             $connection->tryWrite('ping');
         }));
         $this->deferCleanup($cancel);
-        $this->until($loop, static function () use (&$response): bool { return $response === 'ping'; });
+        $this->until($loop, static function () use (&$response): bool {
+            return $response === 'ping';
+        });
         $cancel();
         self::assertSame(1, $completions);
         self::assertFalse($client->isClosed(), 'Cancellation changed an established connection.');
@@ -399,22 +465,28 @@ final class TransportTest extends TestCase
     {
         $loop = $this->newLoop();
         $stream = $this->ownStream(Listener::bind('tcp://127.0.0.1:0'));
-        $address = 'tcp://'.stream_socket_get_name($stream, false);
+        $address = 'tcp://' . stream_socket_get_name($stream, false);
         fclose($stream);
         $failures = [];
-        $cancel = Connector::connect($loop, $address, static function (?Connection $connection, ?Throwable $error) use (&$failures): void {
+        $cancel = Connector::connect($loop, $address, static function (?Connection $connection, ?Throwable $error) use (
+            &$failures,
+        ): void {
             $failures[] = [$connection, $error];
         });
         $this->deferCleanup($cancel);
-        $this->until($loop, static function () use (&$failures): bool { return count($failures) === 1; });
+        $this->until($loop, static function () use (&$failures): bool {
+            return count($failures) === 1;
+        });
         $cancel();
         self::assertCount(1, $failures);
         self::assertNull($failures[0][0], 'Refused connection was published as established.');
         self::assertInstanceOf(Throwable::class, $failures[0][1]);
         self::assertSame([], $loop->getIdentifiers(), 'Refusal did not clean up.');
         $stream = $this->ownStream(Listener::bind('tcp://127.0.0.1:0'));
-        $address = 'tcp://'.stream_socket_get_name($stream, false);
-        $cancel = Connector::connect($loop, $address, static function (?Connection $connection, ?Throwable $error) use (&$failures): void {
+        $address = 'tcp://' . stream_socket_get_name($stream, false);
+        $cancel = Connector::connect($loop, $address, static function (?Connection $connection, ?Throwable $error) use (
+            &$failures,
+        ): void {
             $failures[] = [$connection, $error];
         });
         $this->deferCleanup($cancel);
@@ -450,7 +522,9 @@ final class TransportTest extends TestCase
     {
         $loop = RevoltEventLoop::create();
         $this->deferCleanup(static function () use ($loop): void {
-            foreach ($loop->getIdentifiers() as $id) { $loop->cancel($id); }
+            foreach ($loop->getIdentifiers() as $id) {
+                $loop->cancel($id);
+            }
         });
         return $loop;
     }
@@ -459,7 +533,9 @@ final class TransportTest extends TestCase
     {
         self::assertIsResource($stream);
         $this->deferCleanup(static function () use ($stream): void {
-            if (is_resource($stream)) { fclose($stream); }
+            if (is_resource($stream)) {
+                fclose($stream);
+            }
         });
         return $stream;
     }
@@ -484,18 +560,25 @@ final class TransportTest extends TestCase
         return [$loop, $this->ownConnection(new Connection($loop, $server, '', $capacity, $closeTimeout)), $peer];
     }
 
-    private function until(EventLoop $loop, Closure $complete, float $timeout = 2.0, string $message = 'Transport test exceeded its deadline.'): void
-    {
+    private function until(
+        EventLoop $loop,
+        Closure $complete,
+        float $timeout = 2.0,
+        string $message = 'Transport test exceeded its deadline.',
+    ): void {
         $timedOut = false;
         $poll = $loop->repeat(0.001, static function () use ($complete, $loop): void {
-            if ($complete()) { $loop->stop(); }
+            if ($complete()) {
+                $loop->stop();
+            }
         });
         $deadline = $loop->delay($timeout, static function () use (&$timedOut, $loop): void {
             $timedOut = true;
             $loop->stop();
         });
-        try { $loop->run(); }
-        finally {
+        try {
+            $loop->run();
+        } finally {
             $loop->cancel($poll);
             $loop->cancel($deadline);
         }

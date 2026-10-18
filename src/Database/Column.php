@@ -38,8 +38,7 @@ final class Column implements ColumnContract
         public readonly string $type,
         public readonly int $length = 0,
         public readonly int $places = 0,
-    ) {
-    }
+    ) {}
 
     public function nullable(): static
     {
@@ -83,7 +82,11 @@ final class Column implements ColumnContract
         if ($onDelete !== null) {
             $onDelete = strtolower($onDelete);
             if (!in_array($onDelete, self::ON_DELETE, true)) {
-                throw new \InvalidArgumentException("\"{$onDelete}\" is not something a delete can do to \"{$this->name}\"; use one of: " . implode(', ', self::ON_DELETE) . '.');
+                throw new \InvalidArgumentException(
+                    "\"{$onDelete}\" is not something a delete can do to \"{$this->name}\"; use one of: "
+                    . implode(', ', self::ON_DELETE)
+                    . '.',
+                );
             }
         }
         $this->references = ['table' => $table, 'column' => $column, 'onDelete' => $onDelete];

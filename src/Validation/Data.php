@@ -26,9 +26,10 @@ final readonly class Data implements \JsonSerializable, \IteratorAggregate
      * @param array<string, mixed> $values The fields the request sent, checked.
      * @param list<string> $described Every field that was described, sent or not; those of $values when left out.
      */
-    public function __construct(private array $values, private array $described = [])
-    {
-    }
+    public function __construct(
+        private array $values,
+        private array $described = [],
+    ) {}
 
     public function __get(string $name): mixed
     {
@@ -37,7 +38,11 @@ final readonly class Data implements \JsonSerializable, \IteratorAggregate
         }
         if (!in_array($name, $this->described, true)) {
             $fields = array_values(array_unique([...array_keys($this->values), ...$this->described]));
-            throw new \LogicException("This data has no field \"{$name}\"; it has " . ($fields === [] ? 'none' : implode(', ', $fields)) . '. Describe the field in #[Fields] to take it.');
+            throw new \LogicException(
+                "This data has no field \"{$name}\"; it has "
+                . ($fields === [] ? 'none' : implode(', ', $fields))
+                . '. Describe the field in #[Fields] to take it.',
+            );
         }
         return null;
     }
@@ -90,7 +95,11 @@ final readonly class Data implements \JsonSerializable, \IteratorAggregate
     private static function plain(array $values): array
     {
         foreach ($values as $key => $value) {
-            $values[$key] = $value instanceof self ? $value->toArray() : (is_array($value) ? self::plain($value) : $value);
+            if ($value instanceof self) {
+                $values[$key] = $value->toArray();
+            } elseif (is_array($value)) {
+                $values[$key] = self::plain($value);
+            }
         }
         return $values;
     }

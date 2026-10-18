@@ -19,8 +19,10 @@ final class UpgradeResponse extends Message implements ResponseInterface
 
     private readonly ?UpgradeLifetime $lifetime;
 
-    public function __construct(private readonly Upgrade $upgrade, ?\Closure $discard = null)
-    {
+    public function __construct(
+        private readonly Upgrade $upgrade,
+        ?\Closure $discard = null,
+    ) {
         $this->lifetime = $discard === null ? null : new UpgradeLifetime($discard);
         foreach ($upgrade->response->headers as $name => $value) {
             $this->put($name, $value, false);
@@ -65,7 +67,9 @@ final class UpgradeResponse extends Message implements ResponseInterface
     public function toUpgrade(): Upgrade
     {
         if ($this->status !== 101 || $this->getBody()->getSize() !== 0) {
-            throw new \LogicException('A WebSocket upgrade must keep its bodyless 101 response. Return an HTTP error response to refuse it.');
+            throw new \LogicException(
+                'A WebSocket upgrade must keep its bodyless 101 response. Return an HTTP error response to refuse it.',
+            );
         }
         $this->lifetime?->converted();
         return new Upgrade(new EngineResponse(101, $this->getHeaders()), $this->upgrade->handler);

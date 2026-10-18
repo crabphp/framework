@@ -129,7 +129,7 @@ final class Uri implements UriInterface
         return $this->with('scheme', strtolower($scheme));
     }
 
-    public function withUserInfo(string $user, ?string $password = null): static
+    public function withUserInfo(string $user, #[\SensitiveParameter] ?string $password = null): static
     {
         return $this->with('userInfo', $password === null || $password === '' ? $user : $user . ':' . $password);
     }
@@ -141,7 +141,7 @@ final class Uri implements UriInterface
 
     public function withPort(?int $port): static
     {
-        if ($port !== null && ($port < 0 || $port > 65535)) {
+        if ($port !== null && ($port < 0 || $port > 65_535)) {
             throw new \InvalidArgumentException('A port must be between 0 and 65535.');
         }
         return $this->with('port', $port);

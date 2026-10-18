@@ -63,9 +63,7 @@ final class HttpClientProvider implements WorkerProvider
         $container->singleton(Client::class, ClientContract::class);
     }
 
-    public function start(Worker $worker, Container $container): void
-    {
-    }
+    public function start(Worker $worker, Container $container): void {}
 
     public function stop(Worker $worker, Container $container): void
     {

@@ -23,7 +23,7 @@ final class Parameters
      *
      * @return array{string, list<int|string>}
      */
-    public static function parse(string $sql, bool $noBackslashEscapes = false, int $serverVersion = 999999): array
+    public static function parse(string $sql, bool $noBackslashEscapes = false, int $serverVersion = 999_999): array
     {
         $result = '';
         $keys = [];
@@ -35,7 +35,7 @@ final class Parameters
                 $result .= $char;
                 while (++$i < $length) {
                     $result .= $sql[$i];
-                    if ($quote !== '`' && !$noBackslashEscapes && $sql[$i] === '\\' && $i + 1 < $length) {
+                    if ($quote !== '`' && !$noBackslashEscapes && $sql[$i] === '\\' && ($i + 1) < $length) {
                         $result .= $sql[++$i];
                     } elseif ($sql[$i] === $quote) {
                         if (($sql[$i + 1] ?? '') === $quote) {
@@ -47,7 +47,7 @@ final class Parameters
                 }
                 continue;
             }
-            if ($char === '#' || ($char === '-' && ($sql[$i + 1] ?? '') === '-' && ctype_space($sql[$i + 2] ?? ' '))) {
+            if ($char === '#' || $char === '-' && ($sql[$i + 1] ?? '') === '-' && ctype_space($sql[$i + 2] ?? ' ')) {
                 $end = strpos($sql, "\n", $i);
                 $end = $end === false ? $length : $end;
                 $result .= substr($sql, $i, $end - $i);
@@ -95,11 +95,16 @@ final class Parameters
     public static function values(array $keys, array $bindings, string $sql): array
     {
         if (count($keys) !== count($bindings)) {
-            throw new DatabaseException('The statement takes ' . count($keys) . ' values and was given ' . count($bindings), $sql);
+            throw new DatabaseException(
+                'The statement takes ' . count($keys) . ' values and was given ' . count($bindings),
+                $sql,
+            );
         }
         $values = [];
         foreach ($keys as $key) {
-            $key = array_key_exists($key, $bindings) ? $key : (is_string($key) ? ':' . $key : $key);
+            if (!array_key_exists($key, $bindings) && is_string($key)) {
+                $key = ':' . $key;
+            }
             if (!array_key_exists($key, $bindings)) {
                 throw new DatabaseException('The statement was not given all its named or positional values.', $sql);
             }

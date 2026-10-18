@@ -24,20 +24,38 @@ final readonly class Config
         public ?float $idleTimeout = null,
         public int $maxWritableWaiters = 64,
     ) {
-        foreach ([$maxFrameBytes, $maxMessageBytes, $maxBufferedInputBytes, $maxQueuedOutputBytes,
-            $maxQueuedFrames, $outgoingFrameBytes, $framesPerTurn, $maxWritableWaiters] as $limit) {
+        foreach ([
+            $maxFrameBytes,
+            $maxMessageBytes,
+            $maxBufferedInputBytes,
+            $maxQueuedOutputBytes,
+            $maxQueuedFrames,
+            $outgoingFrameBytes,
+            $framesPerTurn,
+            $maxWritableWaiters,
+        ] as $limit) {
             if ($limit < 1) {
                 throw new \InvalidArgumentException('WebSocket limits must be positive.');
             }
         }
 
-        if ($maxFrameBytes > 2_147_483_647 || $maxBufferedInputBytes < $maxFrameBytes + 14
-            || !is_finite($closeTimeout) || $closeTimeout <= 0) {
+        if (
+            $maxFrameBytes > 2_147_483_647
+            || $maxBufferedInputBytes < ($maxFrameBytes + 14)
+            || !is_finite($closeTimeout)
+            || $closeTimeout <= 0
+        ) {
             throw new \InvalidArgumentException('Invalid WebSocket frame buffer or close timeout.');
         }
-        foreach ([$pingInterval, $idleTimeout, $pingInterval === null || $idleTimeout !== null ? null : $pingInterval * 2] as $seconds) {
+        foreach ([
+            $pingInterval,
+            $idleTimeout,
+            $pingInterval === null || $idleTimeout !== null ? null : $pingInterval * 2,
+        ] as $seconds) {
             if ($seconds !== null && (!is_finite($seconds) || $seconds <= 0)) {
-                throw new \InvalidArgumentException('Set WebSocket ping and idle intervals to positive finite seconds, or null to disable them.');
+                throw new \InvalidArgumentException(
+                    'Set WebSocket ping and idle intervals to positive finite seconds, or null to disable them.',
+                );
             }
         }
     }

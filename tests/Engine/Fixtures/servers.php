@@ -21,17 +21,24 @@ if (function_exists('posix_setsid') && posix_setsid() === -1) {
 
 [$http, $ws, $tcp, $udp] = array_map(intval(...), array_slice($argv, 1));
 $runtime = new Runtime(shutdownTimeout: 0.2);
-$runtime->group()
-    ->listen("tcp://127.0.0.1:$http", new HttpServer(
-        static fn (Request $request) => new Response(body: $request->body->contents() ?: $request->target),
+$runtime
+    ->group()
+    ->listen(
+        "tcp://127.0.0.1:{$http}",
+        new HttpServer(
+            static fn(Request $request) => new Response(body: $request->body->contents() ?: $request->target),
+        ),
+    )
+    ->listen("tcp://127.0.0.1:{$ws}", new WebSocketServer(
+        static fn(WebSocketSession $session, string $message, MessageType $type) => $session->sendBinary($message),
     ))
-    ->listen("tcp://127.0.0.1:$ws", new WebSocketServer(
-        static fn (WebSocketSession $session, string $message, MessageType $type) => $session->sendBinary($message),
+    ->listen("tcp://127.0.0.1:{$tcp}", new TcpServer(
+        static fn(Connection $connection, string $bytes) => $connection->tryWrite($bytes),
     ))
-    ->listen("tcp://127.0.0.1:$tcp", new TcpServer(
-        static fn (Connection $connection, string $bytes) => $connection->tryWrite($bytes),
+    ->udp("udp://127.0.0.1:{$udp}", static fn(UdpEndpoint $endpoint, string $data, string $peer) => $endpoint->send(
+        $data,
+        $peer,
     ))
-    ->udp("udp://127.0.0.1:$udp", static fn (UdpEndpoint $endpoint, string $data, string $peer) => $endpoint->send($data, $peer))
     ->onStart(static function (): void {
         fwrite(STDOUT, "ready\n");
         fflush(STDOUT);

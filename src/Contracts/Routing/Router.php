@@ -36,7 +36,11 @@ use Psr\Http\Server\RequestHandlerInterface;
  */
 interface Router extends RequestHandlerInterface
 {
-    public function add(string $method, string $pattern, RequestHandlerInterface|\Closure|string|array $action): DeclaredRoute;
+    public function add(
+        string $method,
+        string $pattern,
+        RequestHandlerInterface|\Closure|string|array $action,
+    ): DeclaredRoute;
 
     /**
      * Starts a group of routes under a path prefix; see RouteGroup.

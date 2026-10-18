@@ -100,8 +100,11 @@ final class Route
      *
      * @param RequestHandlerInterface|\Closure|string|array{class-string, string} $action
      */
-    public static function add(string $method, string $pattern, RequestHandlerInterface|\Closure|string|array $action): DeclaredRoute
-    {
+    public static function add(
+        string $method,
+        string $pattern,
+        RequestHandlerInterface|\Closure|string|array $action,
+    ): DeclaredRoute {
         return App::current()->router->add($method, $pattern, $action);
     }
 }

@@ -74,7 +74,7 @@ final class RowDecoder
         $nullable = $bitmap !== $this->emptyBitmap;
         $row = [];
         foreach ($this->columns as $index => $column) {
-            if ($nullable && (ord($bitmap[intdiv($index + 2, 8)]) & (1 << (($index + 2) % 8)))) {
+            if ($nullable && ord($bitmap[intdiv($index + 2, 8)]) & (1 << (($index + 2) % 8))) {
                 $row[$column['name']] = null;
                 continue;
             }
@@ -89,7 +89,7 @@ final class RowDecoder
                     $value = Codec::unsigned64At($packet, $offset);
                 } else {
                     $offset = $end;
-                    if ($field['adjustment'] !== 0 && ($value & ($field['adjustment'] >> 1))) {
+                    if ($field['adjustment'] !== 0 && $value & ($field['adjustment'] >> 1)) {
                         $value -= $field['adjustment'];
                     }
                 }

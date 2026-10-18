@@ -19,9 +19,8 @@ use Crab\Commands\Stop;
 use Crab\Config\Config;
 use Crab\Console\Console;
 use Crab\Container\Container;
-use Crab\Contracts\Clock\Clock as ClockContract;
 use Crab\Contracts\Broadcast\Broadcaster;
-use Crab\Contracts\WebSocket\Channels as SocketChannels;
+use Crab\Contracts\Clock\Clock as ClockContract;
 use Crab\Contracts\Config\Config as ConfigContract;
 use Crab\Contracts\Console\Console as ConsoleContract;
 use Crab\Contracts\Container\Container as ContainerContract;
@@ -34,16 +33,17 @@ use Crab\Contracts\Routing\Urls as UrlsContract;
 use Crab\Contracts\Runner;
 use Crab\Contracts\Servers as ServersContract;
 use Crab\Contracts\Validation\Validator as ValidatorContract;
+use Crab\Contracts\WebSocket\Channels as SocketChannels;
 use Crab\Contracts\WorkerProvider;
 use Crab\Contracts\Workers;
 use Crab\Database\DatabaseProvider;
 use Crab\Engine\Async\Async;
 use Crab\Engine\Async\Cancellation;
 use Crab\Engine\Async\CancelledException;
+use Crab\Engine\EventLoop\RevoltEventLoop;
 use Crab\Engine\FailureReporter;
 use Crab\Engine\Process\Worker;
 use Crab\Engine\Runtime;
-use Crab\Engine\EventLoop\RevoltEventLoop;
 use Crab\Engine\Server\HttpServer;
 use Crab\Events\EventsProvider;
 use Crab\Http\EngineHandler;
@@ -163,36 +163,54 @@ final class App implements RequestHandlerInterface, Runner
         $container->instance(ConfigContract::class, $config);
         // Asking by class must not autowire a second, empty one.
         $container->instance($config::class, $config);
-        $container->singleton(LoggerContract::class, fn(): Logger => new Logger(
-            // A relative path is inside the application's directory, not wherever the process was started.
-            $basePath === null ? $config->get('log.path', 'php://stderr') : $this->path((string) $config->get('log.path', 'php://stderr')),
-            $config->get('log.level', 'debug'),
-        ));
+        $container->singleton(
+            LoggerContract::class,
+            fn(): Logger => new Logger(
+                // A relative path is inside the application's directory, not wherever the process was started.
+                $basePath === null
+                    ? $config->get('log.path', 'php://stderr')
+                    : $this->path((string) $config->get('log.path', 'php://stderr')),
+                $config->get('log.level', 'debug'),
+            ),
+        );
         // Each service is also reachable by its PSR name and by class, as the same object.
         $container->singleton(LoggerInterface::class, LoggerContract::class);
         $container->singleton(Logger::class, LoggerContract::class);
         $container->singleton(ClockContract::class, static fn(): SystemClock => new SystemClock());
         $container->singleton(ClockInterface::class, ClockContract::class);
         $container->singleton(SystemClock::class, ClockContract::class);
-        $container->singleton(ErrorHandler::class, static fn(ContainerContract $container): ErrorHandler => new ErrorHandler(
-            $container->get(LoggerInterface::class),
-            (bool) $config->get('app.debug', false),
-        ));
+        $container->singleton(
+            ErrorHandler::class,
+            static fn(ContainerContract $container): ErrorHandler => new ErrorHandler(
+                $container->get(LoggerInterface::class),
+                (bool) $config->get('app.debug', false),
+            ),
+        );
         $container->singleton(FactoryContract::class, static fn(): Factory => new Factory());
         $container->singleton(Factory::class, FactoryContract::class);
-        foreach ([ResponseFactoryInterface::class, ServerRequestFactoryInterface::class,
-            StreamFactoryInterface::class, UploadedFileFactoryInterface::class, UriFactoryInterface::class] as $factory) {
+        foreach ([
+            ResponseFactoryInterface::class,
+            ServerRequestFactoryInterface::class,
+            StreamFactoryInterface::class,
+            UploadedFileFactoryInterface::class,
+            UriFactoryInterface::class,
+        ] as $factory) {
             $container->singleton($factory, FactoryContract::class);
         }
         // Made here because routes are declared, and their inputs read, before any worker starts.
         $validator = new Validator();
         $container->instance(ValidatorContract::class, $validator);
         $container->instance(Validator::class, $validator);
-        $router = new Router($container, $validator, fn (): Connections => new Connections(
-            $this->socketSettings(),
-            static function () use ($container): SocketChannels {
+        $router = new Router(
+            $container,
+            $validator,
+            fn(): Connections => new Connections($this->socketSettings(), static function () use (
+                $container,
+            ): SocketChannels {
                 if (!$container->has(SocketChannels::class)) {
-                    throw new \LogicException('To join WebSocket channels, register BroadcastProvider with the application.');
+                    throw new \LogicException(
+                        'To join WebSocket channels, register BroadcastProvider with the application.',
+                    );
                 }
                 // A socket-pair application is serving in this process too.
                 // Keep this work on first channel use, off the HTTP path.
@@ -200,13 +218,13 @@ final class App implements RequestHandlerInterface, Runner
                     $container->get(BroadcastLifecycle::class)->serving = true;
                 }
                 return $container->get(SocketChannels::class);
-            },
-        ));
+            }),
+        );
         $this->router = $router;
         $this->routes = $router;
         $container->instance(RouterContract::class, $this->router);
         $container->instance(Router::class, $this->router);
-        $container->singleton(UrlsContract::class, fn (): Urls => new Urls($this->router, $config->get('app.url')));
+        $container->singleton(UrlsContract::class, fn(): Urls => new Urls($this->router, $config->get('app.url')));
         $container->singleton(Urls::class, UrlsContract::class);
         // The error handler is the entry bound as ErrorHandler; rebinding it to
         // another PSR-15 middleware replaces how failures are answered.
@@ -240,9 +258,7 @@ final class App implements RequestHandlerInterface, Runner
             // With no directory to look in, there is nothing to load by default.
             return $builder;
         }
-        return $builder
-            ->withEnv('.env')
-            ->withConfig('config', required: false);
+        return $builder->withEnv('.env')->withConfig('config', required: false);
     }
 
     /**
@@ -251,7 +267,10 @@ final class App implements RequestHandlerInterface, Runner
      */
     public function path(string $path = ''): string
     {
-        if ($path !== '' && ($path[0] === '/' || preg_match('~^[A-Za-z]:[\\\\/]|^[a-z][a-z0-9+.-]*://~i', $path) === 1)) {
+        if (
+            $path !== ''
+            && ($path[0] === '/' || preg_match('~^[A-Za-z]:[\\\\/]|^[a-z][a-z0-9+.-]*://~i', $path) === 1)
+        ) {
             return $path;
         }
         if ($this->basePath === null) {
@@ -266,7 +285,11 @@ final class App implements RequestHandlerInterface, Runner
      */
     public static function current(): self
     {
-        return self::$current ?? throw new \LogicException('No application has been created. Create the App before declaring routes or commands, or reading config().');
+        return (
+            self::$current ?? throw new \LogicException(
+                'No application has been created. Create the App before declaring routes or commands, or reading config().',
+            )
+        );
     }
 
     /**
@@ -307,8 +330,12 @@ final class App implements RequestHandlerInterface, Runner
      * @param resource|null $socket A socket that already listens on the address, inherited from the server this one takes over from.
      * @param bool $servers Whether the servers "server.with" names are run beside HTTP; false to serve in one process.
      */
-    public function runtime(string $address = 'tcp://127.0.0.1:8080', int $workers = 1, mixed $socket = null, bool $servers = true): Runtime
-    {
+    public function runtime(
+        string $address = 'tcp://127.0.0.1:8080',
+        int $workers = 1,
+        mixed $socket = null,
+        bool $servers = true,
+    ): Runtime {
         $drain = $this->drain();
         $maxConnections = $this->positiveInteger('server.max_connections');
         $backend = $this->config->get('server.loop');
@@ -316,13 +343,19 @@ final class App implements RequestHandlerInterface, Runner
             throw new \InvalidArgumentException('Set "server.loop" to "select", "ev", "uv" or "event".');
         }
         if ($backend !== 'select' && !extension_loaded($backend)) {
-            throw new \InvalidArgumentException("The server.loop backend {$backend} needs the {$backend} PHP extension. Install and enable it, or set server.loop to select.");
+            throw new \InvalidArgumentException(
+                "The server.loop backend {$backend} needs the {$backend} PHP extension. Install and enable it, or set server.loop to select.",
+            );
         }
         if ($this->routes->hasWebSockets() && $this->socketSettings()->maxConnections > $maxConnections) {
-            throw new \InvalidArgumentException('websocket.max_connections exceeds server.max_connections. Reduce the socket limit or increase the server limit.');
+            throw new \InvalidArgumentException(
+                'websocket.max_connections exceeds server.max_connections. Reduce the socket limit or increase the server limit.',
+            );
         }
         if ($backend === 'select' && $maxConnections > 900) {
-            throw new \InvalidArgumentException('The select loop supports server.max_connections up to 900, leaving descriptors for files, database and Redis. Reduce the limit or install a native extension and select it with server.loop.');
+            throw new \InvalidArgumentException(
+                'The select loop supports server.max_connections up to 900, leaving descriptors for files, database and Redis. Reduce the limit or install a native extension and select it with server.loop.',
+            );
         }
         // Beside HTTP, the servers "server.with" switches on: none unless it says so. In one
         // process there is room for HTTP alone.
@@ -330,34 +363,61 @@ final class App implements RequestHandlerInterface, Runner
         if (max($workers, (int) $this->config->get('server.workers', 1)) > 1) {
             $tickets = $this->stack->has(\Crab\Auth\Ticket::class);
             foreach ($this->routes->routes() as $route) {
-                if ($route->action === \Crab\Auth\IssueTicket::class || in_array(\Crab\Auth\Ticket::class, $route->middleware, true)) {
-                    $tickets = true;
-                    break;
+                if (
+                    !(
+                        $route->action === \Crab\Auth\IssueTicket::class
+                        || in_array(\Crab\Auth\Ticket::class, $route->middleware, true)
+                    )
+                ) {
+                    continue;
                 }
+
+                $tickets = true;
+                break;
             }
-            if ($tickets && $this->container->get(\Crab\Contracts\Cache\Store::class) instanceof \Crab\Cache\ArrayStore) {
-                throw new \LogicException('An array cache keeps tickets in one worker only. Set cache.store to file on one machine, or to database or redis with a shared store, before serving multiple workers.');
+            if (
+                $tickets
+                && $this->container->get(\Crab\Contracts\Cache\Store::class) instanceof \Crab\Cache\ArrayStore
+            ) {
+                throw new \LogicException(
+                    'An array cache keeps tickets in one worker only. Set cache.store to file on one machine, or to database or redis with a shared store, before serving multiple workers.',
+                );
             }
         }
-        if ($this->routes->hasWebSockets() && $this->container->has(Broadcaster::class)
+        if (
+            $this->routes->hasWebSockets()
+            && $this->container->has(Broadcaster::class)
             && $this->config->get('broadcast.carrier') === 'local'
-            && (max($workers, (int) $this->config->get('server.workers', 1)) > 1
-                || array_intersect($with, ['queue', 'schedule']) !== [])) {
-            throw new \LogicException('The local broadcast carrier reaches one HTTP process only. Set broadcast.carrier to redis and register RedisProvider before serving multiple workers or queue/schedule servers.');
+            && (
+                max($workers, (int) $this->config->get('server.workers', 1)) > 1
+                || array_intersect($with, ['queue', 'schedule']) !== []
+            )
+        ) {
+            throw new \LogicException(
+                'The local broadcast carrier reaches one HTTP process only. Set broadcast.carrier to redis and register RedisProvider before serving multiple workers or queue/schedule servers.',
+            );
         }
         $groups = $this->alongside($with);
         // Long enough for the slowest of them to finish what it has in hand.
-        $runtime = new Runtime(loopFactory: static fn () => RevoltEventLoop::create($backend), shutdownTimeout: max($drain, $this->servers->grace($with)));
+        $runtime = new Runtime(
+            loopFactory: static fn() => RevoltEventLoop::create($backend),
+            shutdownTimeout: max($drain, $this->servers->grace($with)),
+        );
         foreach ($groups as $group) {
             $this->group($runtime, $group, background: $socket !== null);
         }
-        $runtime->group('http', $workers, maxConnections: $maxConnections, shutdownTimeout: $drain)
-            ->listen($address, new HttpServer(
-                new EngineHandler($this->stack),
-                maxBodyBytes: (int) $this->config->get('server.max_body', 1048576),
-                bodyTimeout: (float) $this->config->get('server.body_timeout', 30),
-            ), socket: $socket)
-            ->onStart(fn (Worker $worker) => $this->start($worker, serving: true))
+        $runtime
+            ->group('http', $workers, maxConnections: $maxConnections, shutdownTimeout: $drain)
+            ->listen(
+                $address,
+                new HttpServer(
+                    new EngineHandler($this->stack),
+                    maxBodyBytes: (int) $this->config->get('server.max_body', 1_048_576),
+                    bodyTimeout: (float) $this->config->get('server.body_timeout', 30),
+                ),
+                socket: $socket,
+            )
+            ->onStart(fn(Worker $worker) => $this->start($worker, serving: true))
             ->onStop(function (Worker $worker): void {
                 try {
                     $cut = $worker->stats()['cutConnections'];
@@ -452,16 +512,20 @@ final class App implements RequestHandlerInterface, Runner
             if (is_int($key)) {
                 // In a list, a server named is a server on.
                 $ids[] = trim((string) $value);
-            } elseif ((is_array($value) ? ($value['enabled'] ?? false) : $value) === true) {
+            } elseif ((is_array($value) ? $value['enabled'] ?? false : $value) === true) {
                 $ids[] = $key;
             }
         }
-        $ids = array_values(array_unique(array_filter($ids, static fn (string $id): bool => $id !== '')));
+        $ids = array_values(array_unique(array_filter($ids, static fn(string $id): bool => $id !== '')));
         foreach ($ids as $id) {
-            if (!$this->servers->has($id)) {
-                $known = $this->servers->ids() === [] ? 'none is registered' : 'the servers registered are ' . implode(', ', $this->servers->ids());
-                throw new \LogicException("\"server.with\" switches on \"{$id}\", and {$known}.");
+            if ($this->servers->has($id)) {
+                continue;
             }
+
+            $known = $this->servers->ids() === []
+                ? 'none is registered'
+                : 'the servers registered are ' . implode(', ', $this->servers->ids());
+            throw new \LogicException("\"server.with\" switches on \"{$id}\", and {$known}.");
         }
         return $ids;
     }
@@ -490,7 +554,14 @@ final class App implements RequestHandlerInterface, Runner
             }
             $words = self::words($line);
             if ($words === [] || $words[0] === 'serve' || !$this->console->has($words[0])) {
-                throw new \LogicException("The server \"{$id}\" runs `{$line}`, and " . (($words[0] ?? '') === 'serve' ? 'the server cannot run itself.' : 'there is no command "' . ($words[0] ?? '') . '". Run `list` to see the commands.'));
+                throw new \LogicException(
+                    "The server \"{$id}\" runs `{$line}`, and "
+                    . (
+                        ($words[0] ?? '') === 'serve'
+                            ? 'the server cannot run itself.'
+                            : 'there is no command "' . ($words[0] ?? '') . '". Run `list` to see the commands.'
+                    ),
+                );
             }
             $groups[] = new Workers($id, self::process($id, [PHP_BINARY, ...$this->invocation(), ...$words]));
         }
@@ -537,7 +608,7 @@ final class App implements RequestHandlerInterface, Runner
             if ($quote !== null) {
                 if ($character === $quote) {
                     $quote = null;
-                } elseif ($character === '\\' && $quote === '"' && $i + 1 < $length) {
+                } elseif ($character === '\\' && $quote === '"' && ($i + 1) < $length) {
                     $word .= $line[++$i];
                 } else {
                     $word .= $character;
@@ -545,7 +616,7 @@ final class App implements RequestHandlerInterface, Runner
             } elseif ($character === '"' || $character === "'") {
                 $quote = $character;
                 $word ??= '';
-            } elseif ($character === '\\' && $i + 1 < $length) {
+            } elseif ($character === '\\' && ($i + 1) < $length) {
                 $word = ($word ?? '') . $line[++$i];
             } elseif (ctype_space($character)) {
                 if ($word !== null) {
@@ -580,11 +651,21 @@ final class App implements RequestHandlerInterface, Runner
     private static function process(string $id, array $command): \Closure
     {
         $keeper = function_exists('posix_getppid') ? posix_getppid() : 0;
-        $sharedGroup = in_array('--generation', $_SERVER['argv'] ?? [], true)
-            && $keeper > 1 && posix_getsid($keeper) === $keeper && posix_getpgid(0) === $keeper;
+        $sharedGroup =
+            in_array('--generation', $_SERVER['argv'] ?? [], true)
+            && $keeper > 1
+            && posix_getsid($keeper) === $keeper
+            && posix_getpgid(0) === $keeper;
         return static function (Worker $worker, Cancellation $cancellation) use ($id, $command, $sharedGroup): void {
             $detach = $sharedGroup ? '' : 'posix_setsid(); ';
-            $launcher = [PHP_BINARY, '-r', $detach . 'pcntl_exec($argv[1], array_slice($argv, 2)); fwrite(STDERR, "could not run {$argv[1]}\n"); exit(127);', '--', ...$command];
+            $launcher = [
+                PHP_BINARY,
+                '-r',
+                $detach
+                    . 'pcntl_exec($argv[1], array_slice($argv, 2)); fwrite(STDERR, "could not run {$argv[1]}\n"); exit(127);',
+                '--',
+                ...$command,
+            ];
             $process = proc_open($launcher, [['file', '/dev/null', 'r'], ['pipe', 'w'], ['pipe', 'w']], $pipes);
             if ($process === false) {
                 throw new \RuntimeException("Could not start the server \"{$id}\".");
@@ -593,9 +674,15 @@ final class App implements RequestHandlerInterface, Runner
             // Each line it prints, as it comes, under its id.
             $watchers = [];
             $pending = ['', ''];
-            $pass = static function (int $which, bool $all = false) use ($id, $pipes, $worker, &$pending, &$watchers): void {
+            $pass = static function (int $which, bool $all = false) use (
+                $id,
+                $pipes,
+                $worker,
+                &$pending,
+                &$watchers,
+            ): void {
                 $pending[$which] .= (string) stream_get_contents($pipes[$which + 1]);
-                while (($break = strpos($pending[$which], "\n")) !== false || ($all && $pending[$which] !== '')) {
+                while (($break = strpos($pending[$which], "\n")) !== false || $all && $pending[$which] !== '') {
                     $line = $break === false ? $pending[$which] : substr($pending[$which], 0, $break);
                     $pending[$which] = $break === false ? '' : substr($pending[$which], $break + 1);
                     fwrite($which === 0 ? STDOUT : STDERR, "[{$id}] " . rtrim($line, "\r") . "\n");
@@ -608,7 +695,10 @@ final class App implements RequestHandlerInterface, Runner
             };
             foreach ([0, 1] as $which) {
                 stream_set_blocking($pipes[$which + 1], false);
-                $watchers[$which] = $worker->loop->onReadable($pipes[$which + 1], static function () use ($pass, $which): void {
+                $watchers[$which] = $worker->loop->onReadable($pipes[$which + 1], static function () use (
+                    $pass,
+                    $which,
+                ): void {
                     $pass($which);
                 });
             }
@@ -625,7 +715,7 @@ final class App implements RequestHandlerInterface, Runner
                     Async::sleep($worker->loop, 0.2, $cancellation);
                 }
                 // It ended by itself. Not at once again, if it cannot stay up.
-                if (microtime(true) - $started < 2.0) {
+                if ((microtime(true) - $started) < 2.0) {
                     Async::sleep($worker->loop, 2.0, $cancellation);
                 }
             } catch (CancelledException) {
@@ -640,7 +730,10 @@ final class App implements RequestHandlerInterface, Runner
                 $until = microtime(true) + self::PROCESS_GRACE;
                 // A compound shell can finish before its children's TERM cleanup.
                 // Their inherited output stays open until that cleanup finishes.
-                while ((proc_get_status($process)['running'] || !feof($pipes[1]) || !feof($pipes[2])) && microtime(true) < $until) {
+                while (
+                    (proc_get_status($process)['running'] || !feof($pipes[1]) || !feof($pipes[2]))
+                    && microtime(true) < $until
+                ) {
                     $pass(0);
                     $pass(1);
                     usleep(20_000);
@@ -696,7 +789,7 @@ final class App implements RequestHandlerInterface, Runner
         $descendants = $children[$pid] ?? [];
         // Walking breadth first and reversing puts every child before its parent.
         for ($index = 0; $index < count($descendants); ++$index) {
-            array_push($descendants, ...($children[$descendants[$index]] ?? []));
+            array_push($descendants, ...$children[$descendants[$index]] ?? []);
         }
         return array_reverse($descendants);
     }
@@ -706,8 +799,13 @@ final class App implements RequestHandlerInterface, Runner
      * Contracts\Runner. Each worker starts and stops as an HTTP worker
      * does, and what fails in it is logged.
      */
-    public function run(string $group, \Closure $work, int $workers = 1, float $shutdownTimeout = 30.0, bool $single = false): void
-    {
+    public function run(
+        string $group,
+        \Closure $work,
+        int $workers = 1,
+        float $shutdownTimeout = 30.0,
+        bool $single = false,
+    ): void {
         if ($single && $workers !== 1) {
             throw new \InvalidArgumentException('Work that runs in this one process has one worker.');
         }
@@ -740,7 +838,9 @@ final class App implements RequestHandlerInterface, Runner
             if ($background && ($group->listeners() !== [] || $group->datagrams() !== [])) {
                 // The keeper hands the HTTP socket alone from one server process to the next. Another
                 // listener would be bound afresh by each, and the new one refused while the old holds it.
-                throw new \LogicException("The server \"{$workers->group}\" listens on an address of its own, which a server in the background cannot yet hand over when it reloads. Run `serve` in the foreground, under systemd or a container, or run this server on its own.");
+                throw new \LogicException(
+                    "The server \"{$workers->group}\" listens on an address of its own, which a server in the background cannot yet hand over when it reloads. Run `serve` in the foreground, under systemd or a container, or run this server on its own.",
+                );
             }
         }
         $group
@@ -755,7 +855,7 @@ final class App implements RequestHandlerInterface, Runner
                         $work($worker, $cancellation);
                     } finally {
                         // Work that has returned leaves nothing to wait for; under a supervisor the worker is started again.
-                        $worker->loop->defer(static fn () => $worker->stop());
+                        $worker->loop->defer(static fn() => $worker->stop());
                     }
                 });
             })
@@ -810,7 +910,9 @@ final class App implements RequestHandlerInterface, Runner
             if (!isset($this->deprecations[$file . ':' . $line])) {
                 $this->deprecations[$file . ':' . $line] = true;
                 $this->container->get(LoggerInterface::class)->warning('Deprecated: {message} in {file}:{line}', [
-                    'message' => $message, 'file' => $file, 'line' => $line,
+                    'message' => $message,
+                    'file' => $file,
+                    'line' => $line,
                 ]);
             }
             return true;

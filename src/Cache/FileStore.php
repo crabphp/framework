@@ -15,8 +15,9 @@ use Crab\Contracts\Cache\Store;
  */
 final readonly class FileStore implements Store
 {
-    public function __construct(private string $directory)
-    {
+    public function __construct(
+        private string $directory,
+    ) {
         if ($directory === '') {
             throw new \InvalidArgumentException('A file cache needs a directory to keep its entries in.');
         }
@@ -135,7 +136,7 @@ final readonly class FileStore implements Store
                 return false;
             }
             [$expiresAt, $existing] = self::parse($contents);
-            if (($expiresAt !== null && $expiresAt <= $now) || $existing !== $value) {
+            if ($expiresAt !== null && $expiresAt <= $now || $existing !== $value) {
                 return false;
             }
             self::remove($handle, $file);
@@ -155,8 +156,12 @@ final readonly class FileStore implements Store
             }
             foreach (glob($folder . '/*') ?: [] as $file) {
                 $name = basename($file);
-                if (preg_match('/^[0-9a-f]{40}$/D', $name) !== 1 || substr($name, 0, 2) !== basename($folder)
-                    || !is_file($file) || is_link($file)) {
+                if (
+                    preg_match('/^[0-9a-f]{40}$/D', $name) !== 1
+                    || substr($name, 0, 2) !== basename($folder)
+                    || !is_file($file)
+                    || is_link($file)
+                ) {
                     continue;
                 }
                 $handle = $this->lock($file, create: false);
@@ -188,13 +193,17 @@ final readonly class FileStore implements Store
                 continue;
             }
             foreach (glob($folder . '/*') ?: [] as $file) {
-                if (is_link($file) || is_file($file)) {
-                    $this->deleteFile($file);
+                if (!(is_link($file) || is_file($file))) {
+                    continue;
                 }
+
+                $this->deleteFile($file);
             }
             // A writer may have populated the folder again; leave it when it is not empty.
             if (!@rmdir($folder) && is_dir($folder) && !is_writable($this->directory)) {
-                throw new \RuntimeException("The cache directory {$this->directory} cannot be written to. Check its permissions.");
+                throw new \RuntimeException(
+                    "The cache directory {$this->directory} cannot be written to. Check its permissions.",
+                );
             }
         }
     }
@@ -250,7 +259,9 @@ final readonly class FileStore implements Store
             flock($handle, LOCK_UN);
             fclose($handle);
         }
-        throw new \RuntimeException("The cache could not write to {$this->directory}. Check that the directory can be written to.");
+        throw new \RuntimeException(
+            "The cache could not write to {$this->directory}. Check that the directory can be written to.",
+        );
     }
 
     /**
@@ -289,7 +300,9 @@ final readonly class FileStore implements Store
     {
         self::unlink($file);
         if (!@ftruncate($handle, 0)) {
-            throw new \RuntimeException("The cache file {$file} could not be emptied. Check that cache files can be written to.");
+            throw new \RuntimeException(
+                "The cache file {$file} could not be emptied. Check that cache files can be written to.",
+            );
         }
     }
 
@@ -319,7 +332,9 @@ final readonly class FileStore implements Store
     {
         $folder = dirname($file);
         if (!is_dir($folder) && !@mkdir($folder, 0o775, true) && !is_dir($folder)) {
-            throw new \RuntimeException("The cache directory {$folder} cannot be created. Check that {$this->directory} can be written to.");
+            throw new \RuntimeException(
+                "The cache directory {$folder} cannot be created. Check that {$this->directory} can be written to.",
+            );
         }
     }
 

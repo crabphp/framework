@@ -32,9 +32,10 @@ final class Console implements ConsoleContract
     /**
      * The title, when given, heads the command list.
      */
-    public function __construct(private readonly ?ContainerInterface $container = null, private readonly string $title = '')
-    {
-    }
+    public function __construct(
+        private readonly ?ContainerInterface $container = null,
+        private readonly string $title = '',
+    ) {}
 
     /**
      * A later command replaces an earlier one of the same name.
@@ -85,8 +86,9 @@ final class Console implements ConsoleContract
             }
             return $this->resolve($name)->handle(new Input($arguments), $output);
         } catch (\Throwable $error) {
-            $output->error($error::class . ': ' . $error->getMessage()
-                . ' (' . $error->getFile() . ':' . $error->getLine() . ')');
+            $output->error(
+                $error::class . ': ' . $error->getMessage() . ' (' . $error->getFile() . ':' . $error->getLine() . ')',
+            );
             return 1;
         }
     }
@@ -129,7 +131,11 @@ final class Console implements ConsoleContract
             $output->line();
         }
         $output->line('Commands:');
-        $output->table([...$rows, ['help <command>', 'Describe a command; so does <command> --help'], ['list', 'List the commands']], '  ');
+        $output->table([
+            ...$rows,
+            ['help <command>', 'Describe a command; so does <command> --help'],
+            ['list', 'List the commands'],
+        ], '  ');
         return 0;
     }
 
@@ -146,9 +152,10 @@ final class Console implements ConsoleContract
         if ($command instanceof \Closure) {
             $description = $this->descriptions[$name];
             return new class($command, $description) implements Command {
-                public function __construct(private readonly \Closure $closure, private readonly string $description)
-                {
-                }
+                public function __construct(
+                    private readonly \Closure $closure,
+                    private readonly string $description,
+                ) {}
 
                 public function description(): string
                 {
@@ -163,9 +170,15 @@ final class Console implements ConsoleContract
         }
         if (is_string($command)) {
             $class = $command;
-            $command = $this->container?->has($class) ? $this->container->get($class) : (class_exists($class) ? new $class() : null);
+            if ($this->container?->has($class)) {
+                $command = $this->container->get($class);
+            } else {
+                $command = class_exists($class) ? new $class() : null;
+            }
             if (!$command instanceof Command) {
-                throw new \LogicException("Command \"{$name}\" is {$class}, which must implement " . Command::class . '.');
+                throw new \LogicException(
+                    "Command \"{$name}\" is {$class}, which must implement " . Command::class . '.',
+                );
             }
             $this->commands[$name] = $command;
         }

@@ -10,6 +10,4 @@ namespace Crab\HttpClient;
  *
  * @internal
  */
-final class Unprocessed extends \RuntimeException
-{
-}
+final class Unprocessed extends \RuntimeException {}

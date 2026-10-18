@@ -46,6 +46,5 @@ final readonly class Property
         public array $rules = [],
         public ?Property $items = null,
         public ?array $fields = null,
-    ) {
-    }
+    ) {}
 }

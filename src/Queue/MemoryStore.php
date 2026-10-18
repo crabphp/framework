@@ -23,8 +23,14 @@ final class MemoryStore implements Store
     public function push(string $queue, string $job, array $data, int $availableAt, int $now): int|string
     {
         $this->jobs[++$this->lastId] = [
-            'queue' => $queue, 'job' => $job, 'data' => $data, 'attempts' => 0,
-            'available' => $availableAt, 'reserved' => null, 'error' => null, 'failed' => null,
+            'queue' => $queue,
+            'job' => $job,
+            'data' => $data,
+            'attempts' => 0,
+            'available' => $availableAt,
+            'reserved' => null,
+            'error' => null,
+            'failed' => null,
         ];
         return $this->lastId;
     }
@@ -33,7 +39,7 @@ final class MemoryStore implements Store
     {
         foreach ($queues as $queue) {
             foreach ($this->jobs as $id => $job) {
-                $held = $job['reserved'] !== null && $job['reserved'] > $now - $retryAfter;
+                $held = $job['reserved'] !== null && $job['reserved'] > ($now - $retryAfter);
                 if ($job['queue'] !== $queue || $job['failed'] !== null || $job['available'] > $now || $held) {
                     continue;
                 }
@@ -74,16 +80,23 @@ final class MemoryStore implements Store
     private function held(Message $message): bool
     {
         $job = $this->jobs[$message->id] ?? null;
-        return $job !== null && $job['reserved'] !== null && $job['failed'] === null && $job['attempts'] === $message->attempts;
+        return (
+            $job !== null
+            && $job['reserved'] !== null
+            && $job['failed'] === null
+            && $job['attempts'] === $message->attempts
+        );
     }
 
     public function failed(?int $latest = null): array
     {
         $failed = [];
         foreach ($this->jobs as $id => $job) {
-            if ($job['failed'] !== null) {
-                $failed[] = $this->message($id);
+            if ($job['failed'] === null) {
+                continue;
             }
+
+            $failed[] = $this->message($id);
         }
         return $latest === null ? $failed : array_slice($failed, -max(0, $latest), max(0, $latest));
     }
@@ -92,10 +105,13 @@ final class MemoryStore implements Store
     {
         $count = 0;
         foreach ($this->jobs as $key => $job) {
-            if ($job['failed'] !== null && ($id === null || (string) $id === (string) $key)) {
-                $this->jobs[$key] = ['attempts' => 0, 'available' => $now, 'reserved' => null, 'error' => null, 'failed' => null] + $job;
-                ++$count;
+            if (!($job['failed'] !== null && ($id === null || (string) $id === (string) $key))) {
+                continue;
             }
+
+            $this->jobs[$key] =
+                ['attempts' => 0, 'available' => $now, 'reserved' => null, 'error' => null, 'failed' => null] + $job;
+            ++$count;
         }
         return $count;
     }
@@ -104,10 +120,12 @@ final class MemoryStore implements Store
     {
         $count = 0;
         foreach ($this->jobs as $key => $job) {
-            if ($job['failed'] !== null && ($id === null || (string) $id === (string) $key)) {
-                unset($this->jobs[$key]);
-                ++$count;
+            if (!($job['failed'] !== null && ($id === null || (string) $id === (string) $key))) {
+                continue;
             }
+
+            unset($this->jobs[$key]);
+            ++$count;
         }
         return $count;
     }
@@ -124,7 +142,11 @@ final class MemoryStore implements Store
             if ($job['queue'] !== $queue || $job['failed'] !== null) {
                 continue;
             }
-            $state = $job['reserved'] !== null ? 'processing' : ($job['available'] > $now ? 'delayed' : 'pending');
+            if ($job['reserved'] !== null) {
+                $state = 'processing';
+            } else {
+                $state = $job['available'] > $now ? 'delayed' : 'pending';
+            }
             ++$counts[$state];
             if ($state === 'pending') {
                 $counts['oldest'] = min($counts['oldest'] ?? $job['available'], $job['available']);
@@ -145,12 +167,19 @@ final class MemoryStore implements Store
             if ($job['queue'] !== $queue || $job['failed'] !== null) {
                 continue;
             }
-            if (($job['reserved'] !== null ? 'processing' : ($job['available'] > $now ? 'delayed' : 'pending')) === $state) {
+            if ($job['reserved'] !== null) {
+                $jobState = 'processing';
+            } else {
+                $jobState = $job['available'] > $now ? 'delayed' : 'pending';
+            }
+            if ($jobState === $state) {
                 $found[] = $this->message($id);
             }
         }
         // By the time that matters in each state: since when it waits, when it comes due, when it was taken.
-        usort($found, static fn (Message $a, Message $b): int => $state === 'processing' ? $a->reservedAt <=> $b->reservedAt : $a->availableAt <=> $b->availableAt);
+        usort($found, static fn(Message $a, Message $b): int => $state === 'processing'
+            ? $a->reservedAt <=> $b->reservedAt
+            : $a->availableAt <=> $b->availableAt);
         return array_slice($found, 0, max(0, $limit));
     }
 
@@ -164,9 +193,11 @@ final class MemoryStore implements Store
     {
         $waiting = [];
         foreach ($this->jobs as $id => $job) {
-            if ($job['failed'] === null && ($queue === null || $job['queue'] === $queue)) {
-                $waiting[] = $this->message($id);
+            if (!($job['failed'] === null && ($queue === null || $job['queue'] === $queue))) {
+                continue;
             }
+
+            $waiting[] = $this->message($id);
         }
         return $waiting;
     }
@@ -174,6 +205,16 @@ final class MemoryStore implements Store
     private function message(int $id): Message
     {
         $job = $this->jobs[$id];
-        return new Message($id, $job['queue'], $job['job'], $job['data'], $job['attempts'], $job['error'], $job['failed'], $job['available'], $job['reserved']);
+        return new Message(
+            $id,
+            $job['queue'],
+            $job['job'],
+            $job['data'],
+            $job['attempts'],
+            $job['error'],
+            $job['failed'],
+            $job['available'],
+            $job['reserved'],
+        );
     }
 }

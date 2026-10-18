@@ -42,7 +42,9 @@ final class Migrator implements MigratorContract
         private readonly int $lockTimeout = 60,
     ) {
         if ($lockTimeout < 0) {
-            throw new \InvalidArgumentException('The migration lock timeout must be at least zero whole seconds. Set "database.migration_lock_timeout" to the time you can wait.');
+            throw new \InvalidArgumentException(
+                'The migration lock timeout must be at least zero whole seconds. Set "database.migration_lock_timeout" to the time you can wait.',
+            );
         }
         foreach ((array) $directories as $directory) {
             $this->path($directory);
@@ -56,7 +58,7 @@ final class Migrator implements MigratorContract
 
     public function run(): array
     {
-        return $this->locked(fn (Connection $connection): array => $this->runMigrations($connection));
+        return $this->locked(fn(Connection $connection): array => $this->runMigrations($connection));
     }
 
     /**
@@ -77,12 +79,18 @@ final class Migrator implements MigratorContract
             }
             $migration = self::load($name, $file);
             $this->assertLockHeld($connection);
-            $applied = $this->apply($connection, $name, 'run', function (Connection $connection) use ($migration, $name, $batch): bool {
+            $applied = $this->apply($connection, $name, 'run', function (Connection $connection) use (
+                $migration,
+                $name,
+                $batch,
+            ): bool {
                 if ($connection->table($this->table)->where('name', $name)->exists()) {
                     return false;
                 }
                 $migration->up(new Schema($connection));
-                $connection->table($this->table)->insert(['name' => $name, 'batch' => $batch, 'ran_at' => $this->now()]);
+                $connection
+                    ->table($this->table)
+                    ->insert(['name' => $name, 'batch' => $batch, 'ran_at' => $this->now()]);
                 return true;
             });
             if ($applied) {
@@ -94,7 +102,7 @@ final class Migrator implements MigratorContract
 
     public function rollback(): array
     {
-        return $this->locked(fn (Connection $connection): array => $this->rollbackMigrations($connection));
+        return $this->locked(fn(Connection $connection): array => $this->rollbackMigrations($connection));
     }
 
     /**
@@ -116,11 +124,16 @@ final class Migrator implements MigratorContract
         $done = [];
         foreach ($names as $name) {
             if (!isset($files[$name])) {
-                throw new DatabaseException("The migration \"{$name}\" has run, but its file is gone, so it cannot be taken back.");
+                throw new DatabaseException(
+                    "The migration \"{$name}\" has run, but its file is gone, so it cannot be taken back.",
+                );
             }
             $migration = self::load($name, $files[$name]);
             $this->assertLockHeld($connection);
-            $applied = $this->apply($connection, $name, 'rolled back', function (Connection $connection) use ($migration, $name): bool {
+            $applied = $this->apply($connection, $name, 'rolled back', function (Connection $connection) use (
+                $migration,
+                $name,
+            ): bool {
                 if (!$connection->table($this->table)->where('name', $name)->exists()) {
                     return false;
                 }
@@ -149,7 +162,9 @@ final class Migrator implements MigratorContract
     {
         $slug = trim((string) preg_replace('/[^a-z0-9]+/', '_', strtolower($name)), '_');
         if ($slug === '') {
-            throw new \InvalidArgumentException('A migration needs a name that says what it does, such as "create users table".');
+            throw new \InvalidArgumentException(
+                'A migration needs a name that says what it does, such as "create users table".',
+            );
         }
         $directory = $this->directories[0] ?? throw $this->unconfigured();
         if (!is_dir($directory) && !@mkdir($directory, 0o775, true) && !is_dir($directory)) {
@@ -183,7 +198,10 @@ final class Migrator implements MigratorContract
             if ($error instanceof DatabaseException && $error->sql === 'BEGIN IMMEDIATE' && $error->code() === 5) {
                 throw $error;
             }
-            throw new DatabaseException("The migration \"{$name}\" could not be {$verb}: {$error->getMessage()}", previous: $error);
+            throw new DatabaseException(
+                "The migration \"{$name}\" could not be {$verb}: {$error->getMessage()}",
+                previous: $error,
+            );
         }
     }
 
@@ -205,7 +223,9 @@ final class Migrator implements MigratorContract
             $name = 'crab_migrations_' . $this->table;
             $row = $connection->first('SELECT GET_LOCK(?, ?) AS acquired', [$name, $this->lockTimeout]);
             if (($row['acquired'] ?? null) === null) {
-                throw new DatabaseException('The database could not acquire the migration lock. Check the database connection and retry "migrate".');
+                throw new DatabaseException(
+                    'The database could not acquire the migration lock. Check the database connection and retry "migrate".',
+                );
             }
             if ((int) $row['acquired'] !== 1) {
                 throw $this->lockTimedOut();
@@ -285,14 +305,19 @@ final class Migrator implements MigratorContract
         }
         $previous = null;
         try {
-            $row = $connection->first('SELECT IS_USED_LOCK(?) = CONNECTION_ID() AS owned', ['crab_migrations_' . $this->table]);
+            $row = $connection->first('SELECT IS_USED_LOCK(?) = CONNECTION_ID() AS owned', [
+                'crab_migrations_' . $this->table,
+            ]);
             if ((int) ($row['owned'] ?? 0) === 1) {
                 return;
             }
         } catch (DatabaseException $error) {
             $previous = $error;
         }
-        throw new DatabaseException('The database connection was lost during migration. The migration in progress may be half applied. Run "migrate:status" to inspect the migrations before retrying.', previous: $previous);
+        throw new DatabaseException(
+            'The database connection was lost during migration. The migration in progress may be half applied. Run "migrate:status" to inspect the migrations before retrying.',
+            previous: $previous,
+        );
     }
 
     /**
@@ -300,7 +325,10 @@ final class Migrator implements MigratorContract
      */
     private function lockTimedOut(?\Throwable $previous = null): DatabaseException
     {
-        return new DatabaseException("Another process has been migrating for {$this->lockTimeout} seconds. Run \"migrate:status\" to inspect the migrations, then retry when it finishes.", previous: $previous);
+        return new DatabaseException(
+            "Another process has been migrating for {$this->lockTimeout} seconds. Run \"migrate:status\" to inspect the migrations, then retry when it finishes.",
+            previous: $previous,
+        );
     }
 
     /**
@@ -344,7 +372,12 @@ final class Migrator implements MigratorContract
                 });
             } catch (DatabaseException $error) {
                 // Another SQLite writer can create it between hasTable() and create().
-                if ($connection->driver() !== 'sqlite' || $error->code() !== 1 || !str_contains($error->getMessage(), 'already exists') || !$schema->hasTable($this->table)) {
+                if (
+                    $connection->driver() !== 'sqlite'
+                    || $error->code() !== 1
+                    || !str_contains($error->getMessage(), 'already exists')
+                    || !$schema->hasTable($this->table)
+                ) {
                     throw $error;
                 }
             }
@@ -360,7 +393,13 @@ final class Migrator implements MigratorContract
     {
         $migration = require $file;
         if (!$migration instanceof Migration) {
-            throw new DatabaseException("The migration \"{$name}\" must return an object that implements " . Migration::class . "; {$file} returned " . get_debug_type($migration) . '.');
+            throw new DatabaseException(
+                "The migration \"{$name}\" must return an object that implements "
+                . Migration::class
+                . "; {$file} returned "
+                . get_debug_type($migration)
+                . '.',
+            );
         }
         return $migration;
     }
@@ -377,7 +416,9 @@ final class Migrator implements MigratorContract
 
     private function unconfigured(): DatabaseException
     {
-        return new DatabaseException('No migration directory is configured. Set "migrations" on its connection, under "database.connections", to the folder that holds the migration files.');
+        return new DatabaseException(
+            'No migration directory is configured. Set "migrations" on its connection, under "database.connections", to the folder that holds the migration files.',
+        );
     }
 
     private static function stub(?string $creates): string

@@ -102,7 +102,11 @@ final class Response extends Message implements ResponseInterface
         if ($file === false) {
             throw new \RuntimeException("The file to download cannot be read: {$path}");
         }
-        return new self(200, ['Content-Type' => $type, 'Content-Disposition' => self::disposition($name ?? basename($path))], new Stream($file));
+        return new self(
+            200,
+            ['Content-Type' => $type, 'Content-Disposition' => self::disposition($name ?? basename($path))],
+            new Stream($file),
+        );
     }
 
     /**

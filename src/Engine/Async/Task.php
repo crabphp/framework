@@ -5,9 +5,9 @@ declare(strict_types=1);
 namespace Crab\Engine\Async;
 
 use Closure;
-use LogicException;
 use Crab\Engine\EventLoop;
 use Crab\Engine\FailureReporter;
+use LogicException;
 use Throwable;
 
 /**
@@ -27,8 +27,9 @@ final class Task
     private array $observers = [];
     private int $nextObserver = 0;
 
-    private function __construct(private readonly EventLoop $loop)
-    {
+    private function __construct(
+        private readonly EventLoop $loop,
+    ) {
         $this->cancellation = new Cancellation();
     }
 
@@ -135,8 +136,8 @@ final class Task
             }
             $suspension->resume($value);
         };
-        $this->observers[$observerId] = static fn () => $finish();
-        $unsubscribe = $cancellation?->subscribe(static fn (CancelledException $error) => $finish($error));
+        $this->observers[$observerId] = static fn() => $finish();
+        $unsubscribe = $cancellation?->subscribe(static fn(CancelledException $error) => $finish($error));
         try {
             return $suspension->suspend();
         } finally {

@@ -16,9 +16,10 @@ use Crab\Contracts\Database\Migrators;
  */
 final readonly class InstallCache implements Command
 {
-    public function __construct(private Migrators $migrators, private Config $config)
-    {
-    }
+    public function __construct(
+        private Migrators $migrators,
+        private Config $config,
+    ) {}
 
     public function description(): string
     {
@@ -33,10 +34,12 @@ final readonly class InstallCache implements Command
         $table = (string) $this->config->get('cache.table');
         $name = "create_{$table}_table";
         foreach (array_keys($migrator->status()) as $existing) {
-            if (str_ends_with($existing, $name)) {
-                $output->line("Your migrations already have {$existing}; nothing was written.");
-                return 0;
+            if (!str_ends_with($existing, $name)) {
+                continue;
             }
+
+            $output->line("Your migrations already have {$existing}; nothing was written.");
+            return 0;
         }
         $file = $migrator->make($name);
         file_put_contents($file, self::migration($table));

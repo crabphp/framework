@@ -31,8 +31,10 @@ final class FileWatcher
      * @param list<string> $paths Directories and files.
      * @param list<string> $extensions The files to watch inside a directory, by extension, without the dot.
      */
-    public function __construct(private readonly array $paths, private readonly array $extensions = ['php'])
-    {
+    public function __construct(
+        private readonly array $paths,
+        private readonly array $extensions = ['php'],
+    ) {
         $this->seen = $this->look();
     }
 
@@ -45,14 +47,21 @@ final class FileWatcher
         $changed = [];
         foreach ($now as $path => [$time, $size, $hash]) {
             $before = $this->seen[$path] ?? null;
-            if ($before === null || $before[0] !== $time || $before[1] !== $size || ($hash !== null && $before[2] !== null && $before[2] !== $hash)) {
+            if (
+                $before === null
+                || $before[0] !== $time
+                || $before[1] !== $size
+                || $hash !== null && $before[2] !== null && $before[2] !== $hash
+            ) {
                 $changed[] = $path;
             }
         }
         foreach ($this->seen as $path => $state) {
-            if (!isset($now[$path])) {
-                $changed[] = $path;
+            if (isset($now[$path])) {
+                continue;
             }
+
+            $changed[] = $path;
         }
         $this->seen = $now;
         return $changed;
@@ -112,7 +121,7 @@ final class FileWatcher
         // A file's time is kept to the second. One saved twice within a second, to
         // the same size, looks unchanged by time and size, so while its time is
         // that recent its content is compared too.
-        $hash = $time >= time() - 2 ? (string) @md5_file($path) : null;
+        $hash = $time >= (time() - 2) ? (string) @md5_file($path) : null;
         return [$time, (int) @filesize($path), $hash];
     }
 }

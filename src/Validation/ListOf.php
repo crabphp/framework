@@ -16,7 +16,7 @@ final readonly class ListOf
     /**
      * @param string|array<string, mixed> $type A class name, or int, float, string or bool, or the fields of an object.
      */
-    public function __construct(public string|array $type)
-    {
-    }
+    public function __construct(
+        public string|array $type,
+    ) {}
 }

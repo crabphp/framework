@@ -22,12 +22,12 @@ interface TokenStore
     /**
      * @return int|string|null The id of the user the token belongs to, or null when it is unknown, revoked or expired.
      */
-    public function owner(string $token): int|string|null;
+    public function owner(#[\SensitiveParameter] string $token): int|string|null;
 
     /**
      * Makes one token stop working.
      */
-    public function revoke(string $token): void;
+    public function revoke(#[\SensitiveParameter] string $token): void;
 
     /**
      * Makes every token of a user stop working, as when a password changes.

@@ -28,7 +28,7 @@ final class ParityRegressionTest extends TestCase
     {
         $this->using(static function (Connection $async, PdoConnection $pdo, string $table): void {
             $pdo->execute("CREATE TABLE {$table} (id INT PRIMARY KEY, z INT(5) ZEROFILL)");
-            foreach ([1, 0, 12345] as $id => $value) {
+            foreach ([1, 0, 12_345] as $id => $value) {
                 $pdo->insert("INSERT INTO {$table} VALUES (?, ?)", [$id, $value]);
             }
             $sql = "SELECT * FROM {$table} ORDER BY id";
@@ -60,10 +60,19 @@ final class ParityRegressionTest extends TestCase
     public function testExecutableCommentsAcceptPositionalAndNamedParameters(): void
     {
         $this->using(static function (Connection $async, PdoConnection $pdo): void {
-            self::assertSame($pdo->first('SELECT /*!80000 ? */ AS value', [42]), $async->first('SELECT /*!80000 ? */ AS value', [42]));
+            self::assertSame(
+                $pdo->first('SELECT /*!80000 ? */ AS value', [42]),
+                $async->first('SELECT /*!80000 ? */ AS value', [42]),
+            );
             self::assertSame(['value' => 42], $async->first('SELECT /*!80000 :number */ AS value', ['number' => 42]));
-            self::assertSame(['value' => 42], $async->first('SELECT /*+ ? :ignored */ :number AS value', ['number' => 42]));
-            self::assertSame(['value' => 42], $async->first('SELECT /*!999999 :ignored */ :number AS value', ['number' => 42]));
+            self::assertSame(
+                ['value' => 42],
+                $async->first('SELECT /*+ ? :ignored */ :number AS value', ['number' => 42]),
+            );
+            self::assertSame(
+                ['value' => 42],
+                $async->first('SELECT /*!999999 :ignored */ :number AS value', ['number' => 42]),
+            );
         });
     }
 
@@ -72,10 +81,12 @@ final class ParityRegressionTest extends TestCase
         $this->using(static function (Connection $async, PdoConnection $pdo): void {
             $version = $pdo->first('SELECT VERSION() AS version')['version'];
             self::assertSame(1, preg_match('/^(\d+)\.(\d+)\.(\d+)/', $version, $parts));
-            $active = (int) $parts[1] * 10000 + (int) $parts[2] * 100 + (int) $parts[3];
+            $active = ((int) $parts[1] * 10_000) + ((int) $parts[2] * 100) + (int) $parts[3];
             $inactive = $active + 1;
             self::assertSame(['value' => 43], $pdo->first("SELECT 1 /*!{$active} + ? */ AS value", [42]));
-            self::assertSame(['value' => 43], $async->first("SELECT 1 /*!{$active} + :number */ AS value", ['number' => 42]));
+            self::assertSame(['value' => 43], $async->first("SELECT 1 /*!{$active} + :number */ AS value", [
+                'number' => 42,
+            ]));
             self::assertSame(['value' => 1], $pdo->first("SELECT 1 /*!{$inactive} + ? */ AS value"));
             self::assertSame(['value' => 1], $async->first("SELECT 1 /*!{$inactive} + :ignored */ AS value"));
         });
@@ -91,7 +102,10 @@ final class ParityRegressionTest extends TestCase
                 try {
                     $connection->execute("SET SESSION sql_mode='NO_BACKSLASH_ESCAPES'");
                     self::assertSame(['literal' => 'slash\\', 'value' => 42], $connection->first($sql, [42]));
-                    self::assertSame(['literal' => 'slash\\', 'value' => 42], $connection->first($named, ['number' => 42]));
+                    self::assertSame(
+                        ['literal' => 'slash\\', 'value' => 42],
+                        $connection->first($named, ['number' => 42]),
+                    );
                 } finally {
                     $connection->execute('SET SESSION sql_mode=?', [$mode]);
                 }
@@ -119,12 +133,14 @@ final class ParityRegressionTest extends TestCase
 
     public function testConsoleSslOptionsOpenAnEncryptedPdoSession(): void
     {
-        $manager = new DatabaseManager(['main' => [
-            'dsn' => (string) getenv('CRAB_TEST_MYSQL_DSN'),
-            'username' => 'root',
-            'async' => true,
-            'options' => ['ssl' => ['verify_peer' => false, 'verify_peer_name' => false]],
-        ]], 'main');
+        $manager = new DatabaseManager([
+            'main' => [
+                'dsn' => (string) getenv('CRAB_TEST_MYSQL_DSN'),
+                'username' => 'root',
+                'async' => true,
+                'options' => ['ssl' => ['verify_peer' => false, 'verify_peer_name' => false]],
+            ],
+        ], 'main');
         try {
             self::assertNotSame('', $manager->connection()->first("SHOW SESSION STATUS LIKE 'Ssl_cipher'")['Value']);
         } finally {
@@ -150,7 +166,7 @@ final class ParityRegressionTest extends TestCase
     {
         WorkerHarness::run([], static function (Worker $worker) use ($body): void {
             $dsn = (string) getenv('CRAB_TEST_MYSQL_DSN');
-            $owner = static fn (): \PDO => new \PDO($dsn, 'root', '');
+            $owner = static fn(): \PDO => new \PDO($dsn, 'root', '');
             $pdo = new PdoConnection($owner);
             $async = new Connection($owner, $dsn, 'root', worker: $worker);
             $table = 'mysql_fix_parity_' . bin2hex(random_bytes(6));

@@ -136,13 +136,20 @@ final class AppBuilder
      * @param class-string<Provider>|list<class-string<Provider>> $remove Classes of the framework's providers to leave out.
      * @param list<Provider|class-string<Provider>>|null $only The whole list in place of the framework's.
      */
-    public function withProviders(Provider|string|array $providers = [], string|array $remove = [], ?array $only = null): static
-    {
+    public function withProviders(
+        Provider|string|array $providers = [],
+        string|array $remove = [],
+        ?array $only = null,
+    ): static {
         $this->providers = [...$this->providers, ...self::providers(is_array($providers) ? $providers : [$providers])];
         foreach ((array) $remove as $class) {
             if (!is_string($class) || !in_array($class, App::PROVIDERS, true)) {
                 $given = is_string($class) ? $class : get_debug_type($class);
-                throw new \LogicException("withProviders(remove:) leaves out one of the framework's providers, and {$given} is not one of them: " . implode(', ', App::PROVIDERS) . '. A provider of your own is left out where you added it.');
+                throw new \LogicException(
+                    "withProviders(remove:) leaves out one of the framework's providers, and {$given} is not one of them: "
+                    . implode(', ', App::PROVIDERS)
+                    . '. A provider of your own is left out where you added it.',
+                );
             }
             $this->withoutProviders[] = $class;
         }
@@ -150,7 +157,9 @@ final class AppBuilder
             $this->onlyProviders = self::providers($only);
         }
         if ($this->onlyProviders !== null && $this->withoutProviders !== []) {
-            throw new \LogicException("withProviders() was given both only: and remove:. only: already replaces the framework's providers, so leave out of it what you do not want.");
+            throw new \LogicException(
+                "withProviders() was given both only: and remove:. only: already replaces the framework's providers, so leave out of it what you do not want.",
+            );
         }
         return $this;
     }
@@ -185,10 +194,18 @@ final class AppBuilder
         $this->prepend = [...$this->prepend, ...self::middleware(is_array($prepend) ? $prepend : [$prepend])];
         foreach ((array) $remove as $class) {
             if (!is_string($class)) {
-                throw new \LogicException('withMiddleware(remove:) takes the class names of middleware to leave out, not ' . get_debug_type($class) . '.');
+                throw new \LogicException(
+                    'withMiddleware(remove:) takes the class names of middleware to leave out, not '
+                    . get_debug_type($class)
+                    . '.',
+                );
             }
             if (!in_array($class, App::MIDDLEWARE, true)) {
-                throw new \LogicException("withMiddleware(remove:) leaves out one of the framework's middleware, and {$class} is not one of them: " . implode(', ', App::MIDDLEWARE) . '. Middleware of your own is left out where you added it.');
+                throw new \LogicException(
+                    "withMiddleware(remove:) leaves out one of the framework's middleware, and {$class} is not one of them: "
+                    . implode(', ', App::MIDDLEWARE)
+                    . '. Middleware of your own is left out where you added it.',
+                );
             }
             $this->remove[] = $class;
         }
@@ -196,7 +213,9 @@ final class AppBuilder
             $this->only = self::middleware($only);
         }
         if ($this->only !== null && $this->remove !== []) {
-            throw new \LogicException("withMiddleware() was given both only: and remove:. only: already replaces the framework's middleware, so leave out of it what you do not want.");
+            throw new \LogicException(
+                "withMiddleware() was given both only: and remove:. only: already replaces the framework's middleware, so leave out of it what you do not want.",
+            );
         }
         return $this;
     }
@@ -218,7 +237,7 @@ final class AppBuilder
     public function withRouting(string|array $routes = [], string|array $commands = [], ?string $health = null): static
     {
         $this->health = $health ?? $this->health;
-        foreach ([...(array) $routes, ...(array) $commands] as $file) {
+        foreach ([...((array) $routes), ...((array) $commands)] as $file) {
             if (!is_string($file)) {
                 throw new \LogicException('withRouting() takes file paths, not ' . get_debug_type($file) . '.');
             }
@@ -263,9 +282,11 @@ final class AppBuilder
         if ($middle === null) {
             $middle = [];
             foreach (App::MIDDLEWARE as $class) {
-                if (!in_array($class, $this->remove, true)) {
-                    $middle[] = $class;
+                if (in_array($class, $this->remove, true)) {
+                    continue;
                 }
+
+                $middle[] = $class;
             }
         }
         return [...$this->prepend, ...$middle, ...$this->append];
@@ -304,7 +325,9 @@ final class AppBuilder
     {
         foreach ($list as $provider) {
             if (!is_string($provider) && !$provider instanceof Provider) {
-                throw new \LogicException('withProviders() takes providers or their class names, not ' . get_debug_type($provider) . '.');
+                throw new \LogicException(
+                    'withProviders() takes providers or their class names, not ' . get_debug_type($provider) . '.',
+                );
             }
         }
         return array_values($list);
@@ -318,7 +341,11 @@ final class AppBuilder
     {
         foreach ($list as $layer) {
             if (!is_string($layer) && !$layer instanceof MiddlewareInterface) {
-                throw new \LogicException('withMiddleware() takes PSR-15 middleware or their class names, not ' . get_debug_type($layer) . '.');
+                throw new \LogicException(
+                    'withMiddleware() takes PSR-15 middleware or their class names, not '
+                    . get_debug_type($layer)
+                    . '.',
+                );
             }
         }
         return array_values($list);
@@ -342,10 +369,10 @@ final class AppBuilder
      */
     private function path(string $path): string
     {
-        $absolute = $path !== '' && ($path[0] === '/' || preg_match('~^[A-Za-z]:[\\\\/]|^[a-z][a-z0-9+.-]*://~i', $path) === 1);
+        $absolute =
+            $path !== '' && ($path[0] === '/' || preg_match('~^[A-Za-z]:[\\\\/]|^[a-z][a-z0-9+.-]*://~i', $path) === 1);
         return $absolute || $this->basePath === null ? $path : $this->basePath . '/' . $path;
     }
-
 
     /**
      * Includes a file on its own, so that it sees no variable it did not

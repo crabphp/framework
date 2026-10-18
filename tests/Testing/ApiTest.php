@@ -17,17 +17,18 @@ use Crab\Testing\Api;
 use Crab\Testing\ApiResponse;
 use Crab\Testing\FrozenClock;
 use Crab\Validation\Email;
-use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\AssertionFailedError;
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 use Psr\Clock\ClockInterface;
 use Psr\Http\Message\ServerRequestInterface;
 
 final readonly class Member implements Identity
 {
-    public function __construct(public int|string $id, public string $name)
-    {
-    }
+    public function __construct(
+        public int|string $id,
+        public string $name,
+    ) {}
 }
 
 final class ApiTest extends TestCase
@@ -55,12 +56,21 @@ final class ApiTest extends TestCase
     {
         $api = self::echoApi();
         $token = $api->withToken('abc');
-        self::assertSame(['authorization' => 'Bearer abc', 'tenant' => 'acme', 'user' => null], $token->withHeaders(['X-Tenant' => 'acme'])->get('/echo')->json());
+        self::assertSame(
+            ['authorization' => 'Bearer abc', 'tenant' => 'acme', 'user' => null],
+            $token->withHeaders(['X-Tenant' => 'acme'])->get('/echo')->json(),
+        );
         self::assertSame('', $token->get('/echo')->json('tenant'));
-        self::assertSame('acme', $api->withHeaders(['X-Tenant' => 'acme'])->withToken('abc')->get('/echo')->json('tenant'));
+        self::assertSame(
+            'acme',
+            $api->withHeaders(['X-Tenant' => 'acme'])->withToken('abc')->get('/echo')->json('tenant'),
+        );
 
         $acting = $api->actingAs(new Member(7, 'Ada'));
-        self::assertSame(['authorization' => 'Bearer abc', 'tenant' => '', 'user' => 7], $acting->withToken('abc')->get('/echo')->json());
+        self::assertSame(
+            ['authorization' => 'Bearer abc', 'tenant' => '', 'user' => 7],
+            $acting->withToken('abc')->get('/echo')->json(),
+        );
         self::assertSame('', $acting->get('/echo')->json('authorization'));
         self::assertSame(7, $token->actingAs(new Member(7, 'Ada'))->get('/echo')->json('user'));
     }
@@ -82,7 +92,13 @@ final class ApiTest extends TestCase
             $response->assertJson('data.0.name', 'kettle');
             self::fail('A different JSON value passed.');
         } catch (AssertionFailedError $error) {
-            foreach (['GET /items?page=2', 'answered 200', 'data.0.name', 'kettle', '{"data":[{"name":"mug"}]}'] as $detail) {
+            foreach ([
+                'GET /items?page=2',
+                'answered 200',
+                'data.0.name',
+                'kettle',
+                '{"data":[{"name":"mug"}]}',
+            ] as $detail) {
                 self::assertStringContainsString($detail, $error->getMessage());
             }
         }
@@ -96,7 +112,14 @@ final class ApiTest extends TestCase
             $response->assertJson('data.1.name', null);
             self::fail('An absent JSON value passed.');
         } catch (AssertionFailedError $error) {
-            foreach (['POST /items', 'answered 200', 'data.1.name', 'NULL', 'answered without "data.1.name"', '{"data":[{"name":"mug"}]}'] as $detail) {
+            foreach ([
+                'POST /items',
+                'answered 200',
+                'data.1.name',
+                'NULL',
+                'answered without "data.1.name"',
+                '{"data":[{"name":"mug"}]}',
+            ] as $detail) {
                 self::assertStringContainsString($detail, $error->getMessage());
             }
         }
@@ -190,7 +213,14 @@ final class ApiTest extends TestCase
             $response->assertHeader('Location', $expected);
             self::fail('An absent header passed.');
         } catch (AssertionFailedError $error) {
-            foreach (['POST /users', 'answered 200', 'Location', "but was ''", 'The header is not there.', '{"id":1}'] as $detail) {
+            foreach ([
+                'POST /users',
+                'answered 200',
+                'Location',
+                "but was ''",
+                'The header is not there.',
+                '{"id":1}',
+            ] as $detail) {
                 self::assertStringContainsString($detail, $error->getMessage());
             }
         }
@@ -199,16 +229,25 @@ final class ApiTest extends TestCase
     public function testRequestsAreSentAsAClientWouldAndAnswersAreEasyToCheck(): void
     {
         $app = new App();
-        $app->router->get('/items', static fn (int $page = 1, string $q = ''): array => ['page' => $page, 'q' => $q, 'data' => [['name' => 'mug']]]);
-        $app->router->post('/users', static fn (#[Email] string $email): array => ['email' => $email]);
-        $app->router->patch('/users/{id}', static fn (int $id, string $name): array => [$id, $name]);
-        $app->router->delete('/users/{id}', static function (int $id): void {
-        });
-        $app->router->get('/echo', static fn (\Psr\Http\Message\ServerRequestInterface $request): array => [$request->getHeaderLine('X-Tenant'), $request->getHeaderLine('Accept')]);
-        $app->router->get('/broken', static fn () => throw new HttpException(409, 'Already taken.'));
+        $app->router->get('/items', static fn(int $page = 1, string $q = ''): array => [
+            'page' => $page,
+            'q' => $q,
+            'data' => [['name' => 'mug']],
+        ]);
+        $app->router->post('/users', static fn(#[Email] string $email): array => ['email' => $email]);
+        $app->router->patch('/users/{id}', static fn(int $id, string $name): array => [$id, $name]);
+        $app->router->delete('/users/{id}', static function (int $id): void {});
+        $app->router->get('/echo', static fn(\Psr\Http\Message\ServerRequestInterface $request): array => [
+            $request->getHeaderLine('X-Tenant'),
+            $request->getHeaderLine('Accept'),
+        ]);
+        $app->router->get('/broken', static fn() => throw new HttpException(409, 'Already taken.'));
         $api = new Api($app);
 
-        self::assertSame(['page' => 2, 'q' => 'a b'], array_slice($api->get('/items', ['page' => 2, 'q' => 'a b'])->assertStatus(200)->json(), 0, 2));
+        self::assertSame(
+            ['page' => 2, 'q' => 'a b'],
+            array_slice($api->get('/items', ['page' => 2, 'q' => 'a b'])->assertStatus(200)->json(), 0, 2),
+        );
         self::assertSame('mug', $api->get('/items')->json('data.0.name'));
         self::assertSame(['email' => 'ada@example.com'], $api->post('/users', ['email' => 'ada@example.com'])->json());
         self::assertSame([7, 'Ada'], $api->patch('/users/7', ['name' => 'Ada'])->json());
@@ -241,23 +280,22 @@ final class ApiTest extends TestCase
         $app = new App();
         // Authentication that would let no token through: there is none to find.
         $tokens = new class implements TokenStore {
-            public function issue(Identity|int|string $for, string $name = '', ?\DateTimeInterface $expiresAt = null): string
-            {
+            public function issue(
+                Identity|int|string $for,
+                string $name = '',
+                ?\DateTimeInterface $expiresAt = null,
+            ): string {
                 return '';
             }
 
-            public function owner(string $token): int|string|null
+            public function owner(#[\SensitiveParameter] string $token): int|string|null
             {
                 return null;
             }
 
-            public function revoke(string $token): void
-            {
-            }
+            public function revoke(#[\SensitiveParameter] string $token): void {}
 
-            public function revokeAll(Identity|int|string $of): void
-            {
-            }
+            public function revokeAll(Identity|int|string $of): void {}
         };
         $users = new class implements IdentityResolver {
             public function resolve(int|string $id): ?Identity
@@ -265,12 +303,18 @@ final class ApiTest extends TestCase
                 return null;
             }
         };
-        $app->router->get('/me', static fn (Member $user): array => ['id' => $user->id, 'name' => $user->name])->middleware(new TokenAuth($tokens, $users));
+        $app->router->get('/me', static fn(Member $user): array => [
+            'id' => $user->id,
+            'name' => $user->name,
+        ])->middleware(new TokenAuth($tokens, $users));
         $api = new Api($app);
 
         self::assertSame(401, $api->get('/me')->status);
         self::assertSame(401, $api->get('/me', headers: ['Authorization' => 'Bearer nothing'])->status);
-        self::assertSame(['id' => 7, 'name' => 'Ada'], $api->actingAs(new Member(7, 'Ada'))->get('/me')->assertStatus(200)->json());
+        self::assertSame(
+            ['id' => 7, 'name' => 'Ada'],
+            $api->actingAs(new Member(7, 'Ada'))->get('/me')->assertStatus(200)->json(),
+        );
         // The one made before is as it was.
         self::assertSame(401, $api->get('/me')->status);
     }
@@ -290,18 +334,27 @@ final class ApiTest extends TestCase
 
     public function testARequestIsKnownByItsClientsAddressAndAProxysWordIsTakenOnlyFromAProxy(): void
     {
-        $from = static fn (string $peer, string $forwarded = ''): \Crab\Http\Request => new \Crab\Http\Request('GET', '/', $forwarded === '' ? [] : ['X-Forwarded-For' => $forwarded], serverParams: ['REMOTE_ADDR' => $peer]);
+        $from = static fn(string $peer, string $forwarded = ''): \Crab\Http\Request => new \Crab\Http\Request(
+            'GET',
+            '/',
+            $forwarded === '' ? [] : ['X-Forwarded-For' => $forwarded],
+            serverParams: ['REMOTE_ADDR' => $peer],
+        );
         $seen = new class implements \Psr\Http\Server\RequestHandlerInterface {
             public function handle(\Psr\Http\Message\ServerRequestInterface $request): \Psr\Http\Message\ResponseInterface
             {
                 return \Crab\Http\Response::text($request->ip());
             }
         };
-        $ip = static fn (\Crab\Http\Request $request, array $proxies): string => (string) (new \Crab\Http\TrustedProxies($proxies))->process($request, $seen)->getBody();
+        $ip = static fn(\Crab\Http\Request $request, array $proxies): string => (string) new \Crab\Http\TrustedProxies(
+            $proxies,
+        )
+            ->process($request, $seen)
+            ->getBody();
 
         // With no proxy to trust, the address is the connection's, whatever the header claims.
         self::assertSame('203.0.113.7', $from('203.0.113.7', '1.2.3.4')->ip());
-        self::assertSame('', (new \Crab\Http\Request('GET', '/'))->ip());
+        self::assertSame('', new \Crab\Http\Request('GET', '/')->ip());
         // From a proxy that is trusted: the first address from the right that is not a proxy's.
         self::assertSame('198.51.100.9', $ip($from('10.0.0.5', '1.2.3.4, 198.51.100.9, 10.0.0.8'), ['10.0.0.0/8']));
         self::assertSame('198.51.100.9', $ip($from('127.0.0.1', '198.51.100.9'), ['127.0.0.1']));

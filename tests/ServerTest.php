@@ -4,8 +4,8 @@ declare(strict_types=1);
 
 namespace Crab\Tests;
 
-use PHPUnit\Framework\TestCase;
 use PHPUnit\Framework\Attributes\Group;
+use PHPUnit\Framework\TestCase;
 
 /**
  * Drives a real application through its command line: served in the
@@ -40,8 +40,14 @@ final class ServerTest extends TestCase
         $this->directory = realpath(sys_get_temp_dir()) . '/crab-server-' . bin2hex(random_bytes(6));
         mkdir($this->directory . '/app', recursive: true);
         $autoload = dirname(__DIR__) . '/vendor/autoload.php';
-        file_put_contents($this->directory . '/cua', "<?php\nrequire '{$autoload}';\nexit((require __DIR__ . '/app.php')->console->run(array_slice(\$argv, 1)));\n");
-        file_put_contents($this->directory . '/app.php', "<?php\nreturn Crab\\App::configure(__DIR__)->withRouting(routes: 'app/routes.php')->create();\n");
+        file_put_contents(
+            $this->directory . '/cua',
+            "<?php\nrequire '{$autoload}';\nexit((require __DIR__ . '/app.php')->console->run(array_slice(\$argv, 1)));\n",
+        );
+        file_put_contents(
+            $this->directory . '/app.php',
+            "<?php\nreturn Crab\\App::configure(__DIR__)->withRouting(routes: 'app/routes.php')->create();\n",
+        );
         $this->version('one');
 
         $probe = stream_socket_server('tcp://127.0.0.1:0');
@@ -67,7 +73,11 @@ final class ServerTest extends TestCase
             proc_terminate($fixture['process'], SIGKILL);
             proc_close($fixture['process']);
             foreach ($fixture['pipes'] as $pipe) {
-                if (is_resource($pipe)) { fclose($pipe); }
+                if (!is_resource($pipe)) {
+                    continue;
+                }
+
+                fclose($pipe);
             }
         }
         $this->cua('stop', '--force', '--timeout=3');
@@ -92,12 +102,28 @@ final class ServerTest extends TestCase
         $pid = $this->pid();
         self::assertSame("Crab server running on {$this->url}\n", $output);
         self::assertSame('one', $this->get(), 'It accepts connections by the time the command returns.');
-        self::assertSame(1, posix_getpgid($pid) === posix_getpgid(getmypid()) ? 0 : 1, 'It is not in the group of the terminal that started it.');
-        self::assertSame([0, "The server is running in the background, pid {$pid}.\nIts output goes to {$this->directory}/storage/logs/server.log.\n"], $this->cua('status'));
-        self::assertMatchesRegularExpression("~\\[keeper {$pid}\\] Serving on {$this->address}, generation pid \\d+\\.~", (string) file_get_contents($this->directory . '/storage/logs/server.log'));
+        self::assertSame(
+            1,
+            posix_getpgid($pid) === posix_getpgid(getmypid()) ? 0 : 1,
+            'It is not in the group of the terminal that started it.',
+        );
+        self::assertSame(
+            [
+                0,
+                "The server is running in the background, pid {$pid}.\nIts output goes to {$this->directory}/storage/logs/server.log.\n",
+            ],
+            $this->cua('status'),
+        );
+        self::assertMatchesRegularExpression(
+            "~\\[keeper {$pid}\\] Serving on {$this->address}, generation pid \\d+\\.~",
+            (string) file_get_contents($this->directory . '/storage/logs/server.log'),
+        );
 
         [$status, $output] = $this->cua('serve', '-d', "--address={$this->address}");
-        self::assertSame([1, "A server is already running in the background, pid {$pid}. Use `reload` to give it new code, or `stop` to end it.\n"], [$status, $output]);
+        self::assertSame([
+            1,
+            "A server is already running in the background, pid {$pid}. Use `reload` to give it new code, or `stop` to end it.\n",
+        ], [$status, $output]);
         [$status, $output] = $this->cua('serve', "--address={$this->address}", '--single', '--no-watch');
         self::assertSame(1, $status, 'A second server in the foreground cannot take the address by accident.');
         self::assertStringContainsString('Address already in use', $output);
@@ -107,14 +133,25 @@ final class ServerTest extends TestCase
         self::assertNull($this->get());
         self::assertFileDoesNotExist($this->directory . '/storage/crab.pid');
         self::assertSame(1, $this->cua('status')[0]);
-        self::assertStringContainsString("[keeper {$pid}] Stopped.", (string) file_get_contents($this->directory . '/storage/logs/server.log'));
+        self::assertStringContainsString(
+            "[keeper {$pid}] Stopped.",
+            (string) file_get_contents($this->directory . '/storage/logs/server.log'),
+        );
 
         // A file left behind by a crash, whose number now belongs to something else: this test's own process.
         file_put_contents($this->directory . '/storage/crab.pid', getmypid() . "\n");
-        self::assertSame([1, "No server is running in the background.\n"], $this->cua('status'), 'A live process that is not the server is not taken for it.');
+        self::assertSame(
+            [1, "No server is running in the background.\n"],
+            $this->cua('status'),
+            'A live process that is not the server is not taken for it.',
+        );
         self::assertSame([0, "No server is running in the background.\n"], $this->cua('stop'), 'And is not stopped.');
         self::assertTrue(posix_kill(getmypid(), 0));
-        self::assertSame(0, $this->cua('serve', '--daemon', "--address={$this->address}")[0], 'Nor does it stand in the way of starting.');
+        self::assertSame(
+            0,
+            $this->cua('serve', '--daemon', "--address={$this->address}")[0],
+            'Nor does it stand in the way of starting.',
+        );
         self::assertNotSame(getmypid(), $this->pid());
         self::assertSame(0, $this->cua('stop')[0]);
 
@@ -146,19 +183,28 @@ final class ServerTest extends TestCase
             $app = new \Crab\App(new \Crab\Config\Config(['server' => ['drain' => $drain]]));
             $runtime = $app->runtime($this->address);
             $groups = new \ReflectionProperty($runtime, 'groups')->getValue($runtime);
-            $supervisor = new \Crab\Engine\Process\Supervisor($groups, [], static fn () => \Crab\Engine\EventLoop::current(), $runtime->shutdownTimeout);
+            $supervisor = new \Crab\Engine\Process\Supervisor(
+                $groups,
+                [],
+                static fn() => \Crab\Engine\EventLoop::current(),
+                $runtime->shutdownTimeout,
+            );
             $workerWait = new \ReflectionMethod($supervisor, 'grace')->invoke($supervisor, 'http:0');
             $server = new \Crab\Server($app);
             $outerWait = new \ReflectionMethod($server, 'grace')->invoke($server);
             self::assertGreaterThan($drain, $workerWait);
-            self::assertGreaterThan($workerWait, $outerWait, 'The keeper, watcher and default stop wait use this allowance.');
+            self::assertGreaterThan(
+                $workerWait,
+                $outerWait,
+                'The keeper, watcher and default stop wait use this allowance.',
+            );
         }
     }
 
     public function testHttpDrainIsKeptSeparateFromTheOtherServersAllowance(): void
     {
         $app = new \Crab\App(new \Crab\Config\Config(['server' => ['drain' => 0.3, 'with' => ['slow']]]));
-        $app->servers->add('slow', static fn () => [], grace: 30.0);
+        $app->servers->add('slow', static fn() => [], grace: 30.0);
         $runtime = $app->runtime($this->address);
         $groups = new \ReflectionProperty($runtime, 'groups')->getValue($runtime);
         self::assertSame(30.0, $runtime->shutdownTimeout);
@@ -180,18 +226,29 @@ final class ServerTest extends TestCase
         $script = $this->directory . '/spawn.php';
         $autoload = dirname(__DIR__) . '/vendor/autoload.php';
         file_put_contents($this->directory . '/child.php', "<?php\necho \"child\\n\";\n");
-        file_put_contents($script, "<?php\nrequire '{$autoload}';\n"
+        file_put_contents(
+            $script,
+            "<?php\nrequire '{$autoload}';\n"
             . "fwrite(STDOUT, \"before\\n\");\n"
             . "\$spawn = new ReflectionMethod(Crab\\Server::class, 'spawn');\n"
             . "[\$process, \$report] = \$spawn->invoke(null, [__DIR__ . '/child.php']);\n"
             . "while (proc_get_status(\$process)['running']) { usleep(10_000); }\n"
             . "proc_close(\$process);\n"
-            . "fwrite(STDOUT, \"after\\n\");\n");
+            . "fwrite(STDOUT, \"after\\n\");\n",
+        );
         $log = $this->directory . '/dev.log';
-        exec(escapeshellarg(PHP_BINARY) . ' ' . escapeshellarg($script) . ' > ' . escapeshellarg($log) . ' 2>&1', $ignored, $status);
+        exec(
+            escapeshellarg(PHP_BINARY) . ' ' . escapeshellarg($script) . ' > ' . escapeshellarg($log) . ' 2>&1',
+            $ignored,
+            $status,
+        );
 
         self::assertSame(0, $status);
-        self::assertSame("before\nchild\nafter\n", file_get_contents($log), 'Starting the child must not rewind the log.');
+        self::assertSame(
+            "before\nchild\nafter\n",
+            file_get_contents($log),
+            'Starting the child must not rewind the log.',
+        );
     }
 
     public function testAWatchedChildReportsItsCurrentAllowanceAfterTheSettingChanges(): void
@@ -201,7 +258,14 @@ final class ServerTest extends TestCase
         $terminate = new \ReflectionMethod(\Crab\Server::class, 'terminate');
         foreach ([1.0 => 15.0, 30.0 => 36.0, 120.0 => 126.0] as $drain => $expected) {
             $this->drainSetting($drain);
-            [$process, $report] = $spawn->invoke(null, [$this->directory . '/cua', 'serve', '--no-watch', '--single', '--quiet', "--address={$this->address}"]);
+            [$process, $report] = $spawn->invoke(null, [
+                $this->directory . '/cua',
+                'serve',
+                '--no-watch',
+                '--single',
+                '--quiet',
+                "--address={$this->address}",
+            ]);
             try {
                 $deadline = microtime(true) + 3.0;
                 $allowance = -1.0;
@@ -256,7 +320,10 @@ final class ServerTest extends TestCase
     {
         $this->drainSetting(0.3);
         // Another server's allowance must not lengthen HTTP draining.
-        file_put_contents($this->directory . '/config/server.php', "<?php return ['drain' => 0.3, 'with' => ['slow']];");
+        file_put_contents(
+            $this->directory . '/config/server.php',
+            "<?php return ['drain' => 0.3, 'with' => ['slow']];",
+        );
         file_put_contents($this->directory . '/app.php', <<<'PHP'
             <?php
             $app = Crab\App::configure(__DIR__)->withRouting(routes: 'app/routes.php')->create();
@@ -405,7 +472,10 @@ final class ServerTest extends TestCase
     public function testABlockedHttpWorkerIsEndedAtItsOwnAllowanceAndReportedOnce(): void
     {
         $this->drainSetting(0.1);
-        file_put_contents($this->directory . '/config/server.php', "<?php return ['drain' => 0.1, 'with' => ['slow']];");
+        file_put_contents(
+            $this->directory . '/config/server.php',
+            "<?php return ['drain' => 0.1, 'with' => ['slow']];",
+        );
         file_put_contents($this->directory . '/app.php', <<<'PHP'
             <?php
             $app = Crab\App::configure(__DIR__)->withRouting(routes: 'app/routes.php')->create();
@@ -434,7 +504,11 @@ final class ServerTest extends TestCase
             $log = (string) file_get_contents($this->directory . '/storage/logs/server.log');
             $notice = "Worker {$worker} in group \"http\" did not stop within 1.1 seconds; ending it.";
             self::assertSame(1, substr_count($log, $notice), $log);
-            self::assertStringNotContainsString('WARNING', $this->drainLog(), 'A blocked worker cannot count its requests.');
+            self::assertStringNotContainsString(
+                'WARNING',
+                $this->drainLog(),
+                'A blocked worker cannot count its requests.',
+            );
         } finally {
             fclose($request);
         }
@@ -490,7 +564,11 @@ final class ServerTest extends TestCase
             $worker = json_decode($line, true);
             self::assertSame($pid, $worker['group']);
             self::assertSame($pid, $worker['session']);
-            self::assertNotContains('php://fd/5', $worker['streams'], 'No worker inherits the removed record descriptor.');
+            self::assertNotContains(
+                'php://fd/5',
+                $worker['streams'],
+                'No worker inherits the removed record descriptor.',
+            );
             foreach ($worker['streams'] as $uri) {
                 self::assertStringNotContainsString('crab.pid.generation.', $uri);
             }
@@ -513,8 +591,11 @@ final class ServerTest extends TestCase
         $streams = [];
         try {
             foreach (['storage', 'unrelated'] as $name) {
-                $process = proc_open([PHP_BINARY, $fixture, 'unresponsive', $autoload, $this->directory . '/' . $name, 'serve'],
-                    [1 => ['pipe', 'w'], 2 => ['pipe', 'w']], $pipes);
+                $process = proc_open(
+                    [PHP_BINARY, $fixture, 'unresponsive', $autoload, $this->directory . '/' . $name, 'serve'],
+                    [1 => ['pipe', 'w'], 2 => ['pipe', 'w']],
+                    $pipes,
+                );
                 self::assertIsResource($process);
                 $processes[] = $process;
                 array_push($streams, ...array_values($pipes));
@@ -542,7 +623,10 @@ final class ServerTest extends TestCase
             [$exit, $output] = $this->finishCommand($command, $pipes);
             self::assertSame(1, $exit, $output);
             self::assertStringContainsString("Ended only the keeper, pid {$keeper}", $output);
-            self::assertStringContainsString('Its workers may still be running and are not this command\'s to signal', $output);
+            self::assertStringContainsString(
+                'Its workers may still be running and are not this command\'s to signal',
+                $output,
+            );
             self::assertStringContainsString('Whatever started the server must end them', $output);
             self::assertStringNotContainsString('within their drain time', $output);
             self::assertFalse(posix_kill($keeper, 0));
@@ -550,15 +634,19 @@ final class ServerTest extends TestCase
             self::assertFileDoesNotExist($this->directory . '/storage/service.pid');
         } finally {
             foreach ($processes as $process) {
-                if (is_resource($process)) {
-                    proc_terminate($process, SIGKILL);
-                    proc_close($process);
+                if (!is_resource($process)) {
+                    continue;
                 }
+
+                proc_terminate($process, SIGKILL);
+                proc_close($process);
             }
             foreach ($streams as $stream) {
-                if (is_resource($stream)) {
-                    fclose($stream);
+                if (!is_resource($stream)) {
+                    continue;
                 }
+
+                fclose($stream);
             }
         }
     }
@@ -567,14 +655,24 @@ final class ServerTest extends TestCase
     {
         mkdir($this->directory . '/config');
         file_put_contents($this->directory . '/config/server.php', "<?php return ['pid' => 'storage/service.pid'];");
-        [$keeper, $pipes, $pid] = $this->launchDrainFixture('keep-pipeline', $this->directory . '/storage', $this->address, 'serve');
+        [$keeper, $pipes, $pid] = $this->launchDrainFixture(
+            'keep-pipeline',
+            $this->directory . '/storage',
+            $this->address,
+            'serve',
+        );
         $owned = [];
         try {
             self::assertSame($pid, posix_getpgid($pid));
             self::assertNotSame($pid, posix_getsid($pid));
             $observation = json_decode(trim(file_get_contents($this->directory . '/storage/observed-workers')), true);
             $owned = [$observation['pid'], $observation['generation']];
-            [$sibling, $siblingPipes, $siblingPid] = $this->launchDrainFixture('unresponsive', $this->directory . '/unrelated', 'serve', (string) $pid);
+            [$sibling, $siblingPipes, $siblingPid] = $this->launchDrainFixture(
+                'unresponsive',
+                $this->directory . '/unrelated',
+                'serve',
+                (string) $pid,
+            );
             self::assertSame($pid, posix_getpgid($siblingPid));
             posix_kill($pid, SIGSTOP);
             [$status, $output] = $this->cua('stop', '--force');
@@ -613,7 +711,7 @@ final class ServerTest extends TestCase
             self::assertTrue(posix_kill($pid, 0), 'No signal may reach the unrelated process.');
         }
         try {
-            (new \Crab\Engine\Process\Keeper($pidFile, $this->directory . '/service.log'))->force($pid);
+            new \Crab\Engine\Process\Keeper($pidFile, $this->directory . '/service.log')->force($pid);
             self::fail('The direct force path must also check the recorded identity.');
         } catch (\RuntimeException $error) {
             self::assertStringContainsString('is stale', $error->getMessage());
@@ -660,7 +758,11 @@ final class ServerTest extends TestCase
     {
         mkdir($this->directory . '/config');
         file_put_contents($this->directory . '/config/server.php', "<?php return ['pid' => 'storage/service.pid'];");
-        [$keeper, $pipes, $pid] = $this->launchDrainFixture('unresponsive-session', $this->directory . '/storage', 'serve');
+        [$keeper, $pipes, $pid] = $this->launchDrainFixture(
+            'unresponsive-session',
+            $this->directory . '/storage',
+            'serve',
+        );
         self::assertSame($pid, posix_getsid($pid));
         // Do not poll/reap our child while the independent command observes it.
         [$status, $output] = $this->cua('stop', '--force');
@@ -690,7 +792,10 @@ final class ServerTest extends TestCase
             posix_kill(-$pid, SIGKILL);
             [$status, $output] = $this->finishCommand($command, $pipes);
             self::assertSame(1, $status, $output);
-            self::assertStringContainsString("The server, pid {$pid}, ended before it answered; it is no longer running.", $output);
+            self::assertStringContainsString(
+                "The server, pid {$pid}, ended before it answered; it is no longer running.",
+                $output,
+            );
             self::assertStringNotContainsString('goes on serving as it was', $output);
             $this->assertProcessesGone($pid, $processes);
         } finally {
@@ -705,8 +810,12 @@ final class ServerTest extends TestCase
      * Keeps a registered program observable through both force and normal
      * cancellation; its SIGTERM marker verifies ordinary cleanup survives.
      */
-    private function checkRegisteredProgramStop(bool $force, bool $suspended = false, bool $compound = false, bool $reload = false): void
-    {
+    private function checkRegisteredProgramStop(
+        bool $force,
+        bool $suspended = false,
+        bool $compound = false,
+        bool $reload = false,
+    ): void {
         mkdir($this->directory . '/config');
         file_put_contents($this->directory . '/config/server.php', "<?php return ['with' => ['aux']];");
         $source = file_get_contents($this->directory . '/app.php');
@@ -751,7 +860,7 @@ final class ServerTest extends TestCase
             }
             [$status, $output] = $reload
                 ? $this->cua('reload', "--address={$this->address}")
-                : $this->cua('stop', ...($force ? ['--force'] : []));
+                : $this->cua('stop', ...$force ? ['--force'] : []);
             self::assertSame(0, $status, $output);
             if ($reload) {
                 // Reload accepts new work while the old generation finishes.
@@ -806,7 +915,7 @@ final class ServerTest extends TestCase
                 posix_kill($worker, SIGSTOP);
             }
             $before = microtime(true);
-            [$command, $pipes] = $this->startCommand('stop', ...($outlives ? ['--timeout=0.6'] : []));
+            [$command, $pipes] = $this->startCommand('stop', ...$outlives ? ['--timeout=0.6'] : []);
             if (!$outlives) {
                 $deadline = microtime(true) + 3.0;
                 while (\Crab\Engine\Process\PidFile::running($pid) && microtime(true) < $deadline) {
@@ -822,7 +931,11 @@ final class ServerTest extends TestCase
             if ($outlives) {
                 self::assertStringContainsString('still has running processes', $output);
                 self::assertStringContainsString("their pids are {$worker}", $output);
-                self::assertLessThan(2.0, microtime(true) - $before, 'The group gets the remaining allowance, not another full wait.');
+                self::assertLessThan(
+                    2.0,
+                    microtime(true) - $before,
+                    'The group gets the remaining allowance, not another full wait.',
+                );
             } else {
                 self::assertStringContainsString('one finished', stream_get_contents($request));
                 self::assertFalse(\Crab\Engine\Process\PidFile::running($worker));
@@ -849,9 +962,18 @@ final class ServerTest extends TestCase
         if (!is_dir($directory)) {
             mkdir($directory, recursive: true);
         }
-        $process = proc_open([PHP_BINARY, __DIR__ . '/Engine/Fixtures/drain.php', $role,
-            dirname(__DIR__) . '/vendor/autoload.php', $directory, ...$arguments],
-            [1 => ['pipe', 'w'], 2 => ['pipe', 'w']], $pipes);
+        $process = proc_open(
+            [
+                PHP_BINARY,
+                __DIR__ . '/Engine/Fixtures/drain.php',
+                $role,
+                dirname(__DIR__) . '/vendor/autoload.php',
+                $directory,
+                ...$arguments,
+            ],
+            [1 => ['pipe', 'w'], 2 => ['pipe', 'w']],
+            $pipes,
+        );
         self::assertIsResource($process);
         $pid = proc_get_status($process)['pid'];
         $this->fixtures[] = ['process' => $process, 'pipes' => $pipes, 'pid' => $pid, 'role' => $role];
@@ -902,7 +1024,10 @@ final class ServerTest extends TestCase
             posix_kill($processes[0]['pid'], SIGKILL);
             $deadline = microtime(true) + 5.0;
             $log = $this->directory . '/storage/logs/server.log';
-            while (!str_contains((string) file_get_contents($log), 'Serving again, generation pid ') && microtime(true) < $deadline) {
+            while (
+                !str_contains((string) file_get_contents($log), 'Serving again, generation pid ')
+                && microtime(true) < $deadline
+            ) {
                 usleep(5_000);
             }
             self::assertStringContainsString('Serving again, generation pid ', (string) file_get_contents($log));
@@ -962,7 +1087,10 @@ final class ServerTest extends TestCase
         $request = $this->slowRequest();
         $this->drainSetting($drain);
         try {
-            $keeper = new \Crab\Engine\Process\Keeper(new \Crab\Engine\Process\PidFile($this->directory . '/storage/crab.pid'), '');
+            $keeper = new \Crab\Engine\Process\Keeper(
+                new \Crab\Engine\Process\PidFile($this->directory . '/storage/crab.pid'),
+                '',
+            );
             self::assertGreaterThanOrEqual(36.0, $keeper->allowance($pid));
             [$status, $output] = $this->stopDuringRequest();
             self::assertSame(0, $status, $output);
@@ -1027,8 +1155,11 @@ final class ServerTest extends TestCase
         $this->slowVersion('one', 2.0);
         $path = $this->directory . '/app.php';
         $source = (string) file_get_contents($path);
-        $source = str_replace('public function register(Crab\\Contracts\\Container\\Container $container): void {}',
-            'public function register(Crab\\Contracts\\Container\\Container $container): void { $container->instance(Crab\\Contracts\\Log\\Logger::class, new ThrowingLogger()); }', $source);
+        $source = str_replace(
+            'public function register(Crab\\Contracts\\Container\\Container $container): void {}',
+            'public function register(Crab\\Contracts\\Container\\Container $container): void { $container->instance(Crab\\Contracts\\Log\\Logger::class, new ThrowingLogger()); }',
+            $source,
+        );
         $logger = <<<'PHP'
 
             /**
@@ -1057,7 +1188,10 @@ final class ServerTest extends TestCase
             self::assertSame('', stream_get_contents($request));
             $stderr = (string) file_get_contents($this->directory . '/storage/logs/server.log');
             self::assertSame(1, substr_count($stderr, 'WARNING HTTP worker '), $stderr);
-            self::assertMatchesRegularExpression('/WARNING HTTP worker \d+ reached server\.drain; cut 1 connections\./', $stderr);
+            self::assertMatchesRegularExpression(
+                '/WARNING HTTP worker \d+ reached server\.drain; cut 1 connections\./',
+                $stderr,
+            );
             $calls = (string) file_get_contents($this->directory . '/logger-calls');
             self::assertSame(1, substr_count($calls, 'warning: HTTP worker '));
             self::assertSame(1, substr_count($calls, 'error: Unhandled failure: warning sink failed'), $calls);
@@ -1081,7 +1215,10 @@ final class ServerTest extends TestCase
         if (!is_dir($this->directory . '/config')) {
             mkdir($this->directory . '/config');
         }
-        file_put_contents($this->directory . '/config/server.php', '<?php return ' . var_export(['drain' => $drain], true) . ';');
+        file_put_contents(
+            $this->directory . '/config/server.php',
+            '<?php return ' . var_export(['drain' => $drain], true) . ';',
+        );
         file_put_contents($this->directory . '/config/log.php', "<?php return ['path' => 'storage/drain.log'];");
     }
 
@@ -1093,15 +1230,23 @@ final class ServerTest extends TestCase
     {
         $this->observeDrain();
         $this->version($version);
-        file_put_contents($this->directory . '/app/routes.php', "\nCrab\\Route::get('/slow', static function (): Psr\\Http\\Message\\ResponseInterface {"
+        file_put_contents(
+            $this->directory . '/app/routes.php',
+            "\nCrab\\Route::get('/slow', static function (): Psr\\Http\\Message\\ResponseInterface {"
             . 'file_put_contents(dirname(__DIR__) . \'/in-flight\', (string) getmypid());'
             . '$worker = Crab\\App::current()->container->get(Crab\\Engine\\Process\\Worker::class);'
             . 'while (!is_file(dirname(__DIR__) . \'/release\')) {'
             . 'if ($worker->isDraining()) { file_put_contents(dirname(__DIR__) . \'/draining\', \'yes\'); }'
             . 'Crab\\Engine\\Async\\Async::sleep($worker->loop, 0.005); }'
-            . 'Crab\\Engine\\Async\\Async::sleep(Crab\\Engine\\EventLoop::current(), ' . var_export($seconds, true) . ');'
-            . 'return Crab\\Http\\Response::text(' . var_export($version . ' finished', true) . ');'
-            . '});', FILE_APPEND);
+            . 'Crab\\Engine\\Async\\Async::sleep(Crab\\Engine\\EventLoop::current(), '
+            . var_export($seconds, true)
+            . ');'
+            . 'return Crab\\Http\\Response::text('
+            . var_export($version . ' finished', true)
+            . ');'
+            . '});',
+            FILE_APPEND,
+        );
     }
 
     /**
@@ -1177,13 +1322,20 @@ final class ServerTest extends TestCase
         }
         self::assertFalse(posix_kill($old, 0), 'The old process has gone.');
         self::assertTrue(posix_kill($new, 0));
-        self::assertStringContainsString("generation pid {$new}, taking over from {$old}.", (string) file_get_contents($this->directory . '/storage/logs/server.log'));
+        self::assertStringContainsString(
+            "generation pid {$new}, taking over from {$old}.",
+            (string) file_get_contents($this->directory . '/storage/logs/server.log'),
+        );
         self::assertSame([], glob($this->directory . '/storage/crab.pid.reload*'), 'Nothing is left of the request.');
 
         // A server process that dies is started again, on the socket that never closed.
         posix_kill($new, SIGKILL);
         $log = $this->directory . '/storage/logs/server.log';
-        for ($waited = 0; $waited < 200 && !str_contains((string) file_get_contents($log), 'Serving again, generation pid '); ++$waited) {
+        for (
+            $waited = 0;
+            $waited < 200 && !str_contains((string) file_get_contents($log), 'Serving again, generation pid ');
+            ++$waited
+        ) {
             usleep(50_000);
         }
         self::assertStringContainsString("Generation pid {$new} ended by itself", (string) file_get_contents($log));
@@ -1204,12 +1356,19 @@ final class ServerTest extends TestCase
         self::assertSame([$pid, 'one'], [$this->pid(), $this->get()]);
 
         // Wrong only once a worker starts: the new server is made, fails, and reports why.
-        file_put_contents($this->directory . '/app.php', "<?php\nreturn Crab\\App::configure(__DIR__)->withMiddleware('App\\\\Missing\\\\Middleware')->withRouting(routes: 'app/routes.php')->create();\n");
+        file_put_contents(
+            $this->directory . '/app.php',
+            "<?php\nreturn Crab\\App::configure(__DIR__)->withMiddleware('App\\\\Missing\\\\Middleware')->withRouting(routes: 'app/routes.php')->create();\n",
+        );
         $this->version('two');
         [$status, $output] = $this->cua('reload', "--address={$this->address}");
         self::assertSame(1, $status);
         self::assertStringStartsWith('The server was not reloaded, and goes on serving as it was: ', $output);
-        self::assertStringContainsString('App\Missing\Middleware has no binding', $output, 'The first thing that went wrong is shown, not only where the log is.');
+        self::assertStringContainsString(
+            'App\Missing\Middleware has no binding',
+            $output,
+            'The first thing that went wrong is shown, not only where the log is.',
+        );
         self::assertStringContainsString("Its output is in {$this->directory}/storage/logs/server.log.", $output);
         self::assertSame([$pid, 'one'], [$this->pid(), $this->get()], 'The server that was running was not touched.');
         self::assertSame(0, $this->cua('status')[0]);
@@ -1260,10 +1419,14 @@ final class ServerTest extends TestCase
         stream_set_blocking($pipes[1], false);
         $output = '';
         $everything = '';
-        $until = function (string $text) use (&$output, &$everything, $pipes): void {
+        $until = static function (string $text) use (&$output, &$everything, $pipes): void {
             $deadline = microtime(true) + 10;
             while (!str_contains($output, $text)) {
-                self::assertLessThan($deadline, microtime(true), "The watcher never said \"{$text}\". It said:\n{$output}");
+                self::assertLessThan(
+                    $deadline,
+                    microtime(true),
+                    "The watcher never said \"{$text}\". It said:\n{$output}",
+                );
                 $read = (string) fread($pipes[1], 8192);
                 $output .= $read;
                 $everything .= $read;
@@ -1290,7 +1453,11 @@ final class ServerTest extends TestCase
         file_put_contents($this->directory . '/app/Added.php', '<?php // a new file is a change too');
         $until(' changed.');
         self::assertSame('three', $this->get(retry: true));
-        self::assertStringStartsWith($said, $everything, 'It says where it serves once, and after that only what happened.');
+        self::assertStringStartsWith(
+            $said,
+            $everything,
+            'It says where it serves once, and after that only what happened.',
+        );
         self::assertSame(1, substr_count($everything, $this->url), 'Not again at every restart.');
         self::assertStringNotContainsString('tcp://', $everything);
 
@@ -1311,7 +1478,10 @@ final class ServerTest extends TestCase
     {
         mkdir($this->directory . '/config');
         file_put_contents($this->directory . '/config/server.php', "<?php\nreturn ['max_body' => 24 * 1024 * 1024];\n");
-        file_put_contents($this->directory . '/app.php', "<?php\nreturn Crab\\App::configure(__DIR__)->withRouting(routes: 'app/routes.php', health: '/up')->create();\n");
+        file_put_contents(
+            $this->directory . '/app.php',
+            "<?php\nreturn Crab\\App::configure(__DIR__)->withRouting(routes: 'app/routes.php', health: '/up')->create();\n",
+        );
         file_put_contents($this->directory . '/app/routes.php', <<<'PHP'
             <?php
             Crab\Route::post('/upload', static function (Psr\Http\Message\ServerRequestInterface $request): array {
@@ -1345,20 +1515,40 @@ final class ServerTest extends TestCase
         try {
             $up = $http->get('/up');
             self::assertSame([200, ['status' => 'up']], [$up->getStatusCode(), $up->json()]);
-            self::assertSame(['called' => ['status' => 'up']], $http->get('/call')->json(), 'A handler called its own worker and was answered.');
+            self::assertSame(
+                ['called' => ['status' => 'up']],
+                $http->get('/call')->json(),
+                'A handler called its own worker and was answered.',
+            );
 
             $content = random_bytes(1024 * 1024);
             $content = str_repeat($content, 16);
-            $upload = static fn (string $content): \Crab\Contracts\HttpClient\Response => $http->request('POST', '/upload', headers: ['Content-Type' => 'multipart/form-data; boundary=B'], body:
-                "--B\r\nContent-Disposition: form-data; name=\"title\"\r\n\r\nBackup\r\n"
+            $upload = static fn(string $content): \Crab\Contracts\HttpClient\Response => $http->request(
+                'POST',
+                '/upload',
+                headers: ['Content-Type' => 'multipart/form-data; boundary=B'],
+                body: "--B\r\nContent-Disposition: form-data; name=\"title\"\r\n\r\nBackup\r\n"
                 . "--B\r\nContent-Disposition: form-data; name=\"file\"; filename=\"backup.bin\"\r\nContent-Type: application/octet-stream\r\n\r\n"
-                . $content . "\r\n--B--\r\n");
+                . $content
+                . "\r\n--B--\r\n",
+            );
             $stored = $upload($content);
             self::assertSame(200, $stored->getStatusCode(), (string) $stored->getBody());
-            self::assertSame(['Backup', 'backup.bin', strlen($content), md5($content)], array_slice(array_values($stored->json()), 0, 4));
-            self::assertLessThan(2 * 1024 * 1024, $stored->json()['memory'], 'A 16 MiB file was stored without being held in memory.');
+            self::assertSame(
+                ['Backup', 'backup.bin', strlen($content), md5($content)],
+                array_slice(array_values($stored->json()), 0, 4),
+            );
+            self::assertLessThan(
+                2 * 1024 * 1024,
+                $stored->json()['memory'],
+                'A 16 MiB file was stored without being held in memory.',
+            );
 
-            self::assertSame(413, $upload(str_repeat($content, 2))->getStatusCode(), 'A body over the size allowed is refused.');
+            self::assertSame(
+                413,
+                $upload(str_repeat($content, 2))->getStatusCode(),
+                'A body over the size allowed is refused.',
+            );
         } finally {
             $http->close();
             \Crab\Engine\EventLoop::current()->run();
@@ -1367,7 +1557,10 @@ final class ServerTest extends TestCase
 
     private function version(string $text): void
     {
-        file_put_contents($this->directory . '/app/routes.php', "<?php\nCrab\\Route::get('/', static fn (): string => '{$text}');\n");
+        file_put_contents(
+            $this->directory . '/app/routes.php',
+            "<?php\nCrab\\Route::get('/', static fn (): string => '{$text}');\n",
+        );
     }
 
     /**
@@ -1388,7 +1581,12 @@ final class ServerTest extends TestCase
      */
     private function startCommand(string ...$arguments): array
     {
-        $process = proc_open([PHP_BINARY, $this->directory . '/cua', ...$arguments], [1 => ['pipe', 'w'], 2 => ['pipe', 'w']], $pipes, $this->directory);
+        $process = proc_open(
+            [PHP_BINARY, $this->directory . '/cua', ...$arguments],
+            [1 => ['pipe', 'w'], 2 => ['pipe', 'w']],
+            $pipes,
+            $this->directory,
+        );
         self::assertIsResource($process);
         return [$process, $pipes];
     }
@@ -1497,7 +1695,7 @@ final class ServerTest extends TestCase
      */
     private function stopDuringRequest(string ...$arguments): array
     {
-        [$process, $pipes] = $this->startCommand(...($arguments === [] ? ['stop'] : $arguments));
+        [$process, $pipes] = $this->startCommand(...$arguments === [] ? ['stop'] : $arguments);
         try {
             $this->releaseRequest();
         } finally {
@@ -1537,7 +1735,11 @@ final class ServerTest extends TestCase
         self::assertSame('http://127.0.0.1:8080', \Crab\Server::describe('tcp://127.0.0.1:8080'));
         self::assertSame('http://127.0.0.1:8080', \Crab\Server::describe('tcp://127.0.0.1:8080', 1));
         self::assertSame('http://127.0.0.1:8080 with 4 workers', \Crab\Server::describe('tcp://127.0.0.1:8080', 4));
-        self::assertSame('http://localhost:9000', \Crab\Server::describe('tcp://0.0.0.0:9000'), 'Every interface is not an address to open.');
+        self::assertSame(
+            'http://localhost:9000',
+            \Crab\Server::describe('tcp://0.0.0.0:9000'),
+            'Every interface is not an address to open.',
+        );
         self::assertSame('http://localhost:9000 with 2 workers', \Crab\Server::describe('tcp://[::]:9000', 2));
         self::assertSame('http://api.test:80', \Crab\Server::describe('tcp://api.test:80'));
     }

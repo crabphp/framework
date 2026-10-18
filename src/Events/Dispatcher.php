@@ -34,17 +34,21 @@ final class Dispatcher implements DispatcherContract, ListenerProviderInterface
     /**
      * @param ContainerInterface|null $container Makes a listener given by class name; without one it is made with `new`.
      */
-    public function __construct(private readonly ?ContainerInterface $container = null)
-    {
-    }
+    public function __construct(
+        private readonly ?ContainerInterface $container = null,
+    ) {}
 
     public function listen(string $event, \Closure|string $listener): void
     {
         if (!class_exists($event) && !interface_exists($event)) {
-            throw new \LogicException("A listener was added for {$event}, which is not a class or an interface. An event is an object; listen for its class.");
+            throw new \LogicException(
+                "A listener was added for {$event}, which is not a class or an interface. An event is an object; listen for its class.",
+            );
         }
         if (is_string($listener) && !method_exists($listener, 'handle')) {
-            throw new \LogicException("The listener {$listener} for {$event} is not a class with a handle() method. Give a closure, or a class whose handle() takes the event.");
+            throw new \LogicException(
+                "The listener {$listener} for {$event} is not a class with a handle() method. Give a closure, or a class whose handle() takes the event.",
+            );
         }
         $this->listeners[] = [$event, $listener];
     }
@@ -67,9 +71,11 @@ final class Dispatcher implements DispatcherContract, ListenerProviderInterface
     public function getListenersForEvent(object $event): iterable
     {
         foreach ($this->listeners as [$class, $listener]) {
-            if ($event instanceof $class) {
-                yield $listener instanceof \Closure ? $listener : ($this->made[$listener] ??= $this->make($listener));
+            if (!$event instanceof $class) {
+                continue;
             }
+
+            yield $listener instanceof \Closure ? $listener : ($this->made[$listener] ??= $this->make($listener));
         }
     }
 

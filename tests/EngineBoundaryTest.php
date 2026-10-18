@@ -25,9 +25,16 @@ final class EngineBoundaryTest extends TestCase
             ++$checked;
             foreach (file($file->getPathname()) as $number => $line) {
                 // Any Crab\ name outside Crab\Engine\, imported or fully qualified.
-                if (preg_match_all('/\\\\?\bCrab\\\\(?!Engine\b)[A-Za-z_]+/', $line, $matches)) {
-                    $violations[] = substr($file->getPathname(), strlen($root) + 1) . ':' . ($number + 1) . ' ' . implode(', ', $matches[0]);
+                if (!preg_match_all('/\\\\?\bCrab\\\\(?!Engine\b)[A-Za-z_]+/', $line, $matches)) {
+                    continue;
                 }
+
+                $violations[] =
+                    substr($file->getPathname(), strlen($root) + 1)
+                    . ':'
+                    . ($number + 1)
+                    . ' '
+                    . implode(', ', $matches[0]);
             }
         }
         self::assertGreaterThan(20, $checked, 'The engine source was not found.');
@@ -57,12 +64,20 @@ final class EngineBoundaryTest extends TestCase
             }
         }
         self::assertGreaterThan(0, $adapters, 'The loop adapter was not found.');
-        self::assertSame([], $violations, 'Only src/Engine/EventLoop/ may name Revolt; everything else uses Crab\\Engine\\Loop.');
+        self::assertSame(
+            [],
+            $violations,
+            'Only src/Engine/EventLoop/ may name Revolt; everything else uses Crab\\Engine\\Loop.',
+        );
     }
 
     public function testEnginePackageDeclaresOnlyItsOwnDependencies(): void
     {
-        $package = json_decode(file_get_contents(dirname(__DIR__) . '/src/Engine/composer.json'), true, flags: JSON_THROW_ON_ERROR);
+        $package = json_decode(
+            file_get_contents(dirname(__DIR__) . '/src/Engine/composer.json'),
+            true,
+            flags: JSON_THROW_ON_ERROR,
+        );
         self::assertSame('crabphp/engine', $package['name']);
         self::assertSame(['php', 'revolt/event-loop'], array_keys($package['require']));
         self::assertSame(['Crab\\Engine\\' => ''], $package['autoload']['psr-4']);

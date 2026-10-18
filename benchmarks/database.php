@@ -25,12 +25,15 @@ use Crab\Database\Database;
 
 $options = getopt('', ['dsn:', 'user:', 'password:', 'iterations:', 'writes:', 'trials:', 'rows:']);
 $dsn = $options['dsn'] ?? null;
-$iterations = filter_var($options['iterations'] ?? 20000, FILTER_VALIDATE_INT);
+$iterations = filter_var($options['iterations'] ?? 20_000, FILTER_VALIDATE_INT);
 $writes = filter_var($options['writes'] ?? 2000, FILTER_VALIDATE_INT);
 $trials = filter_var($options['trials'] ?? 5, FILTER_VALIDATE_INT);
-$rows = filter_var($options['rows'] ?? 10000, FILTER_VALIDATE_INT);
+$rows = filter_var($options['rows'] ?? 10_000, FILTER_VALIDATE_INT);
 if (!is_string($dsn) || $iterations < 1 || $writes < 1 || $trials < 1 || $rows < 100) {
-    fwrite(STDERR, "Usage: php database.php --dsn=sqlite:/path/file.sqlite|mysql:host=127.0.0.1;dbname=name [--user=root] [--password=] [--iterations=20000] [--writes=2000] [--trials=5] [--rows=10000]\n");
+    fwrite(
+        STDERR,
+        "Usage: php database.php --dsn=sqlite:/path/file.sqlite|mysql:host=127.0.0.1;dbname=name [--user=root] [--password=] [--iterations=20000] [--writes=2000] [--trials=5] [--rows=10000]\n",
+    );
     exit(2);
 }
 $user = $options['user'] ?? null;
@@ -57,9 +60,11 @@ $update = 'update bench_items set value = ? where id = ?';
  */
 $reset = static function (PDO $pdo) use ($mysql, $rows, $insert): void {
     $pdo->exec('drop table if exists bench_items');
-    $pdo->exec($mysql
-        ? 'create table bench_items (id int auto_increment primary key, name varchar(64) not null, value int not null) engine=InnoDB'
-        : 'create table bench_items (id integer primary key autoincrement, name text not null, value integer not null)');
+    $pdo->exec(
+        $mysql
+            ? 'create table bench_items (id int auto_increment primary key, name varchar(64) not null, value int not null) engine=InnoDB'
+            : 'create table bench_items (id integer primary key autoincrement, name text not null, value integer not null)',
+    );
     $pdo->beginTransaction();
     $fill = $pdo->prepare($insert);
     for ($index = 1; $index <= $rows; ++$index) {
@@ -85,24 +90,32 @@ $tick = 1000;
  *
  * @return array<string, Closure(int): mixed>
  */
-$throughPdo = static function (PDO $pdo, bool $reuse) use ($bind, $rows, &$tick, $selectOne, $selectTen, $insert, $update): array {
+$throughPdo = static function (PDO $pdo, bool $reuse) use (
+    $bind,
+    $rows,
+    &$tick,
+    $selectOne,
+    $selectTen,
+    $insert,
+    $update,
+): array {
     $kept = [];
     $statement = static function (string $sql) use ($pdo, $reuse, &$kept): PDOStatement {
-        return $reuse ? $kept[$sql] ??= $pdo->prepare($sql) : $pdo->prepare($sql);
+        return $reuse ? ($kept[$sql] ??= $pdo->prepare($sql)) : $pdo->prepare($sql);
     };
     return [
         'select one row by primary key' => static function (int $i) use ($statement, $bind, $selectOne, $rows) {
-            $found = $bind($statement($selectOne), [$i % $rows + 1]);
+            $found = $bind($statement($selectOne), [($i % $rows) + 1]);
             $row = $found->fetch();
             $found->closeCursor();
             return $row;
         },
         'select ten rows by range' => static function (int $i) use ($statement, $bind, $selectTen, $rows) {
-            $first = $i % ($rows - 10) + 1;
+            $first = ($i % ($rows - 10)) + 1;
             return $bind($statement($selectTen), [$first, $first + 9])->fetchAll();
         },
         'update one row' => static function (int $i) use ($statement, $bind, $update, $rows, &$tick) {
-            return $bind($statement($update), [++$tick, $i % $rows + 1])->rowCount();
+            return $bind($statement($update), [++$tick, ($i % $rows) + 1])->rowCount();
         },
         'insert one row' => static function (int $i) use ($statement, $bind, $insert, $pdo, &$tick) {
             $bind($statement($insert), ['new ' . ++$tick, $tick]);
@@ -110,8 +123,8 @@ $throughPdo = static function (PDO $pdo, bool $reuse) use ($bind, $rows, &$tick,
         },
         'transaction of two updates' => static function (int $i) use ($statement, $bind, $update, $pdo, $rows, &$tick) {
             $pdo->beginTransaction();
-            $bind($statement($update), [++$tick, $i % $rows + 1]);
-            $bind($statement($update), [++$tick, ($i + 1) % $rows + 1]);
+            $bind($statement($update), [++$tick, ($i % $rows) + 1]);
+            $bind($statement($update), [++$tick, (($i + 1) % $rows) + 1]);
             $pdo->commit();
         },
     ];
@@ -124,18 +137,21 @@ $throughPdo = static function (PDO $pdo, bool $reuse) use ($bind, $rows, &$tick,
  */
 $throughCrab = static function (Connection $db) use ($rows, &$tick, $selectOne, $selectTen, $insert, $update): array {
     return [
-        'select one row by primary key' => static fn (int $i) => $db->first($selectOne, [$i % $rows + 1]),
-        'select ten rows by range' => static fn (int $i) => $db->select($selectTen, [$i % ($rows - 10) + 1, $i % ($rows - 10) + 10]),
+        'select one row by primary key' => static fn(int $i) => $db->first($selectOne, [($i % $rows) + 1]),
+        'select ten rows by range' => static fn(int $i) => $db->select($selectTen, [
+            ($i % ($rows - 10)) + 1,
+            ($i % ($rows - 10)) + 10,
+        ]),
         'update one row' => static function (int $i) use ($db, $update, $rows, &$tick) {
-            return $db->execute($update, [++$tick, $i % $rows + 1]);
+            return $db->execute($update, [++$tick, ($i % $rows) + 1]);
         },
         'insert one row' => static function (int $i) use ($db, $insert, &$tick) {
             return $db->insert($insert, ['new ' . ++$tick, $tick]);
         },
         'transaction of two updates' => static function (int $i) use ($db, $update, $rows, &$tick) {
             return $db->transaction(static function (Connection $tx) use ($update, $i, $rows, &$tick): void {
-                $tx->execute($update, [++$tick, $i % $rows + 1]);
-                $tx->execute($update, [++$tick, ($i + 1) % $rows + 1]);
+                $tx->execute($update, [++$tick, ($i % $rows) + 1]);
+                $tx->execute($update, [++$tick, (($i + 1) % $rows) + 1]);
             });
         },
     ];
@@ -158,7 +174,7 @@ $measure = static function (array $workloads) use ($iterations, $writes, $trials
             for ($index = 0; $index < $count; ++$index) {
                 $operation($index);
             }
-            $best = min($best, (hrtime(true) - $started) / $count / 1000);
+            $best = min($best, ((hrtime(true) - $started) / $count) / 1000);
         }
         $results[$workload] = ['microseconds' => round($best, 2), 'per_second' => (int) round(1_000_000 / $best)];
     }
@@ -177,7 +193,7 @@ foreach (['pdo, prepare each time' => false, 'pdo, prepared once' => true] as $v
 
 // One pooled connection, as a blocking worker has, so that only one is ever open.
 $db = new Database($connect, max: 1);
-$db->run(static fn (Connection $held) => null);
+$db->run(static fn(Connection $held) => null);
 $setup = $connect();
 $reset($setup);
 $setup = null;
@@ -187,7 +203,7 @@ $db->close();
 $setup = $connect();
 $reset($setup);
 $setup = null;
-$byVariant['crab, held connection'] = $db->run(static fn (Connection $held): array => $measure($throughCrab($held)));
+$byVariant['crab, held connection'] = $db->run(static fn(Connection $held): array => $measure($throughCrab($held)));
 $db->close();
 
 $cleanup = $connect();
@@ -201,15 +217,16 @@ foreach ($byVariant as $variant => $workloads) {
     }
 }
 
-echo json_encode([
-    'database' => ($mysql ? 'mysql ' : 'sqlite ') . $version,
-    'dsn' => preg_replace('/password=[^;]*/', 'password=***', $dsn),
-    'rows' => $rows,
-    'read_iterations' => $iterations,
-    'write_iterations' => $writes,
-    'trials' => $trials,
-    'php' => PHP_VERSION,
-    'jit' => function_exists('opcache_get_status') ? (opcache_get_status(false)['jit']['on'] ?? false) : false,
-    'results' => $results,
-    'note' => 'Wall-clock microseconds per operation, best trial. The database server runs on the same machine.',
-], JSON_PRETTY_PRINT | JSON_THROW_ON_ERROR) . "\n";
+echo
+    json_encode([
+        'database' => ($mysql ? 'mysql ' : 'sqlite ') . $version,
+        'dsn' => preg_replace('/password=[^;]*/', 'password=***', $dsn),
+        'rows' => $rows,
+        'read_iterations' => $iterations,
+        'write_iterations' => $writes,
+        'trials' => $trials,
+        'php' => PHP_VERSION,
+        'jit' => function_exists('opcache_get_status') ? opcache_get_status(false)['jit']['on'] ?? false : false,
+        'results' => $results,
+        'note' => 'Wall-clock microseconds per operation, best trial. The database server runs on the same machine.',
+    ], JSON_PRETTY_PRINT | JSON_THROW_ON_ERROR) . "\n";

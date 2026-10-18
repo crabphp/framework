@@ -40,7 +40,7 @@ final class ArrayStore implements Store
     {
         $entry = $this->entries[$key] ?? null;
         unset($this->entries[$key]);
-        return $entry === null || ($entry[1] !== null && $entry[1] <= $now) ? null : $entry[0];
+        return $entry === null || $entry[1] !== null && $entry[1] <= $now ? null : $entry[0];
     }
 
     public function add(string $key, string $value, ?int $expiresAt, int $now): bool
@@ -68,7 +68,7 @@ final class ArrayStore implements Store
     public function deleteIf(string $key, string $value, int $now): bool
     {
         $entry = $this->entries[$key] ?? null;
-        if ($entry === null || ($entry[1] !== null && $entry[1] <= $now) || $entry[0] !== $value) {
+        if ($entry === null || $entry[1] !== null && $entry[1] <= $now || $entry[0] !== $value) {
             return false;
         }
         unset($this->entries[$key]);
@@ -79,10 +79,12 @@ final class ArrayStore implements Store
     {
         $removed = 0;
         foreach ($this->entries as $key => $entry) {
-            if ($entry[1] !== null && $entry[1] <= $now) {
-                unset($this->entries[$key]);
-                ++$removed;
+            if (!($entry[1] !== null && $entry[1] <= $now)) {
+                continue;
             }
+
+            unset($this->entries[$key]);
+            ++$removed;
         }
         return $removed;
     }

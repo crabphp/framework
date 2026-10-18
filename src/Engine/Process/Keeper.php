@@ -83,8 +83,7 @@ final class Keeper
         private readonly string $log,
         private readonly float $startTimeout = 20.0,
         private readonly float $stopTimeout = 15.0,
-    ) {
-    }
+    ) {}
 
     /**
      * Binds the address, starts the first generation and keeps the service
@@ -107,12 +106,18 @@ final class Keeper
         $this->directory = $directory;
         $this->identity = PidFile::identity(getmypid());
         pcntl_async_signals(true);
-        pcntl_signal(SIGTERM, function (): void { $this->stopping = true; });
-        pcntl_signal(SIGINT, function (): void { $this->stopping = true; });
+        pcntl_signal(SIGTERM, function (): void {
+            $this->stopping = true;
+        });
+        pcntl_signal(SIGINT, function (): void {
+            $this->stopping = true;
+        });
         pcntl_signal(SIGQUIT, function (): void {
             $this->forcing = $this->stopping = true;
         });
-        pcntl_signal(SIGUSR2, function (): void { $this->replacing = true; });
+        pcntl_signal(SIGUSR2, function (): void {
+            $this->replacing = true;
+        });
         // The reload signal of a server process: passed on to the one that serves.
         pcntl_signal(SIGUSR1, function (): void {
             if ($this->current !== null) {
@@ -170,16 +175,31 @@ final class Keeper
      * @param float|null $stopTimeout Seconds the new generation needs to stop; null keeps the current allowance.
      * @return array{ok: bool, message?: string, pid?: int, previous?: int}
      */
-    public static function request(PidFile $pidFile, int $keeper, string $address, array $command, string $directory, float $timeout, ?float $stopTimeout = null): array
-    {
+    public static function request(
+        PidFile $pidFile,
+        int $keeper,
+        string $address,
+        array $command,
+        string $directory,
+        float $timeout,
+        ?float $stopTimeout = null,
+    ): array {
         if ($stopTimeout !== null && (!is_finite($stopTimeout) || $stopTimeout <= 0)) {
-            throw new \InvalidArgumentException('Set the generation stop timeout to a finite number of seconds greater than zero.');
+            throw new \InvalidArgumentException(
+                'Set the generation stop timeout to a finite number of seconds greater than zero.',
+            );
         }
         $id = bin2hex(random_bytes(8));
         $request = $pidFile->path . '.reload';
         $answerFile = $pidFile->path . '.reloaded';
         @unlink($answerFile);
-        self::write($request, ['id' => $id, 'address' => $address, 'command' => $command, 'directory' => $directory, 'stopTimeout' => $stopTimeout]);
+        self::write($request, [
+            'id' => $id,
+            'address' => $address,
+            'command' => $command,
+            'directory' => $directory,
+            'stopTimeout' => $stopTimeout,
+        ]);
         try {
             posix_kill($keeper, SIGUSR2);
             $deadline = microtime(true) + $timeout;
@@ -189,10 +209,16 @@ final class Keeper
                     return $answer;
                 }
                 if (!PidFile::running($keeper)) {
-                    return ['ok' => false, 'message' => "The server, pid {$keeper}, ended before it answered; it is no longer running."];
+                    return [
+                        'ok' => false,
+                        'message' => "The server, pid {$keeper}, ended before it answered; it is no longer running.",
+                    ];
                 }
                 if (microtime(true) > $deadline) {
-                    return ['ok' => false, 'message' => "The server, pid {$keeper}, did not answer within {$timeout} seconds."];
+                    return [
+                        'ok' => false,
+                        'message' => "The server, pid {$keeper}, did not answer within {$timeout} seconds.",
+                    ];
                 }
                 usleep(20_000);
             }
@@ -231,7 +257,9 @@ final class Keeper
     public function force(int $pid): void
     {
         if ($pid <= 1) {
-            throw new \RuntimeException("Refusing to force pid {$pid}: a keeper pid must be greater than one. Check the server pid file.");
+            throw new \RuntimeException(
+                "Refusing to force pid {$pid}: a keeper pid must be greater than one. Check the server pid file.",
+            );
         }
         $this->pidFile->verify($pid);
         $ownsGroup = posix_getsid($pid) === $pid;
@@ -259,7 +287,9 @@ final class Keeper
         }
         if (!$ownsGroup) {
             $collected = PidFile::zombie($pid) ? ' It has ended and is waiting to be collected by its parent.' : '';
-            throw new \RuntimeException("Ended only the keeper, pid {$pid}, because it did not lead its own session.{$collected} Its workers may still be running and are not this command's to signal. Whatever started the server must end them.");
+            throw new \RuntimeException(
+                "Ended only the keeper, pid {$pid}, because it did not lead its own session.{$collected} Its workers may still be running and are not this command's to signal. Whatever started the server must end them.",
+            );
         }
     }
 
@@ -273,13 +303,17 @@ final class Keeper
         $deadline = microtime(true) + $seconds;
         do {
             $members = PidFile::groupMembers($pid);
-            if ($members === [] || ($members === null && !PidFile::alive(-$pid))) {
+            if ($members === [] || $members === null && !PidFile::alive(-$pid)) {
                 return;
             }
             if (microtime(true) >= $deadline) {
                 $remaining = $members === null ? 'could not be listed' : 'are ' . implode(', ', $members);
-                $collected = PidFile::zombie($pid) ? " The keeper, pid {$pid}, has ended and is waiting to be collected by its parent." : '';
-                throw new \RuntimeException("The server's process group {$pid} still has running processes; their pids {$remaining}.{$collected} Whatever started the server must end them before another server is started.");
+                $collected = PidFile::zombie($pid)
+                    ? " The keeper, pid {$pid}, has ended and is waiting to be collected by its parent."
+                    : '';
+                throw new \RuntimeException(
+                    "The server's process group {$pid} still has running processes; their pids {$remaining}.{$collected} Whatever started the server must end them before another server is started.",
+                );
             }
             usleep(50_000);
         } while (true);
@@ -320,8 +354,12 @@ final class Keeper
             $deadline = $generation['deadline'] ?? null;
             $validTimeout = is_numeric($timeout) && is_finite((float) $timeout) && $timeout > 0;
             $validDeadline = is_numeric($deadline) && is_finite((float) $deadline);
-            if (!is_int($generation['pid'] ?? null) || $generation['pid'] <= 0
-                || !array_key_exists('deadline', $generation) || ($deadline === null ? !$validTimeout : !$validDeadline)) {
+            if (
+                !is_int($generation['pid'] ?? null)
+                || $generation['pid'] <= 0
+                || !array_key_exists('deadline', $generation)
+                || ($deadline === null ? !$validTimeout : !$validDeadline)
+            ) {
                 return null;
             }
         }
@@ -337,19 +375,27 @@ final class Keeper
         $generations = [];
         foreach ($this->retiring as $generation) {
             $generations[$generation['pid']] = [
-                'pid' => $generation['pid'], 'stopTimeout' => null,
+                'pid' => $generation['pid'],
+                'stopTimeout' => null,
                 'deadline' => is_finite($generation['deadline']) ? $generation['deadline'] : 0.0,
             ];
         }
         foreach ([$this->current, $this->starting] as $generation) {
-            if ($generation !== null) {
-                $generations[$generation['pid']] = [
-                    'pid' => $generation['pid'], 'stopTimeout' => $generation['stopTimeout'],
-                    'deadline' => null,
-                ];
+            if ($generation === null) {
+                continue;
             }
+
+            $generations[$generation['pid']] = [
+                'pid' => $generation['pid'],
+                'stopTimeout' => $generation['stopTimeout'],
+                'deadline' => null,
+            ];
         }
-        self::write($this->pidFile->path . '.state', ['pid' => getmypid(), 'identity' => $this->identity, 'generations' => array_values($generations)]);
+        self::write($this->pidFile->path . '.state', [
+            'pid' => getmypid(),
+            'identity' => $this->identity,
+            'generations' => array_values($generations),
+        ]);
     }
 
     /**
@@ -360,7 +406,8 @@ final class Keeper
     private function retire(array $generation, float $seconds): void
     {
         $this->retiring[$generation['pid']] = [
-            'process' => $generation['process'], 'pid' => $generation['pid'],
+            'process' => $generation['process'],
+            'pid' => $generation['pid'],
             'deadline' => microtime(true) + ($this->forcing ? 1.0 : $seconds),
             'forced' => $this->forcing,
         ];
@@ -424,15 +471,17 @@ final class Keeper
         $exit = proc_close($ended['process']);
         $this->publish();
         $now = microtime(true);
-        $this->failures = array_values(array_filter($this->failures, static fn (float $at): bool => $now - $at < 60));
+        $this->failures = array_values(array_filter($this->failures, static fn(float $at): bool => ($now - $at) < 60));
         $this->failures[] = $now;
         if (count($this->failures) > 5) {
-            $this->log("Generation pid {$ended['pid']} ended with status {$exit}, the sixth to do so within a minute. Giving up.");
+            $this->log(
+                "Generation pid {$ended['pid']} ended with status {$exit}, the sixth to do so within a minute. Giving up.",
+            );
             return;
         }
         $this->log("Generation pid {$ended['pid']} ended by itself with status {$exit}. Starting another.");
         // Connections wait in the socket's queue meanwhile; none is refused.
-        $restartAt = microtime(true) + min(2.0, 0.1 * 2 ** (count($this->failures) - 1));
+        $restartAt = microtime(true) + min(2.0, 0.1 * (2 ** (count($this->failures) - 1)));
         while (!$this->stopping && microtime(true) < $restartAt) {
             $this->collectRetiring();
             usleep(10_000);
@@ -470,11 +519,16 @@ final class Keeper
         }
         $id = $request['id'];
         $command = array_map(strval(...), array_values($request['command']));
-        $directory = is_string($request['directory'] ?? null) && is_dir($request['directory']) ? $request['directory'] : $this->directory;
+        $directory = is_string($request['directory'] ?? null) && is_dir($request['directory'])
+            ? $request['directory']
+            : $this->directory;
         $address = is_string($request['address'] ?? null) ? $request['address'] : $this->address;
         $stopTimeout = $request['stopTimeout'] ?? $this->current['stopTimeout'];
         if (!is_numeric($stopTimeout) || !is_finite((float) $stopTimeout) || (float) $stopTimeout <= 0) {
-            $this->answer($id, ['ok' => false, 'message' => 'Set the generation stop timeout to a finite number of seconds greater than zero.']);
+            $this->answer($id, [
+                'ok' => false,
+                'message' => 'Set the generation stop timeout to a finite number of seconds greater than zero.',
+            ]);
             return;
         }
         $stopTimeout = (float) $stopTimeout;
@@ -543,7 +597,12 @@ final class Keeper
             throw new \RuntimeException('Could not start a PHP process for the server.');
         }
         stream_set_blocking($pipes[self::REPORT], false);
-        return ['process' => $process, 'report' => $pipes[self::REPORT], 'pid' => proc_get_status($process)['pid'], 'stopTimeout' => $stopTimeout];
+        return [
+            'process' => $process,
+            'report' => $pipes[self::REPORT],
+            'pid' => proc_get_status($process)['pid'],
+            'stopTimeout' => $stopTimeout,
+        ];
     }
 
     /**
@@ -567,7 +626,9 @@ final class Keeper
             $end = strpos($buffer, "\n");
             if ($end !== false) {
                 $report = json_decode(substr($buffer, 0, $end), true);
-                $result = is_array($report) ? [(bool) $report[0], (string) $report[1]] : [false, 'It sent a report that could not be read.'];
+                $result = is_array($report)
+                    ? [(bool) $report[0], (string) $report[1]]
+                    : [false, 'It sent a report that could not be read.'];
             } elseif (!proc_get_status($generation['process'])['running']) {
                 $result = [false, 'The server process ended before it accepted connections.'];
             } elseif (microtime(true) > $deadline) {
@@ -606,12 +667,14 @@ final class Keeper
     private function shutDown(): void
     {
         foreach ([$this->current, $this->starting] as $generation) {
-            if ($generation !== null) {
-                if (is_resource($generation['report'])) {
-                    fclose($generation['report']);
-                }
-                $this->retire($generation, $generation['stopTimeout']);
+            if ($generation === null) {
+                continue;
             }
+
+            if (is_resource($generation['report'])) {
+                fclose($generation['report']);
+            }
+            $this->retire($generation, $generation['stopTimeout']);
         }
         $this->current = null;
         $this->starting = null;
@@ -645,7 +708,10 @@ final class Keeper
     private static function write(string $file, array $content): void
     {
         $temporary = $file . '.' . getmypid();
-        if (@file_put_contents($temporary, json_encode($content, JSON_INVALID_UTF8_SUBSTITUTE)) === false || !@rename($temporary, $file)) {
+        if (
+            @file_put_contents($temporary, json_encode($content, JSON_INVALID_UTF8_SUBSTITUTE)) === false
+            || !@rename($temporary, $file)
+        ) {
             @unlink($temporary);
             throw new \RuntimeException("Could not write {$file}.");
         }

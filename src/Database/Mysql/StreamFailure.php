@@ -10,6 +10,4 @@ namespace Crab\Database\Mysql;
  *
  * @internal
  */
-final class StreamFailure extends \RuntimeException
-{
-}
+final class StreamFailure extends \RuntimeException {}

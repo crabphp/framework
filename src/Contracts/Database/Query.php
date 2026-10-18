@@ -48,14 +48,24 @@ interface Query
      *
      * @param string|\Closure(Query): mixed $first
      */
-    public function join(string $table, string|\Closure $first, ?string $operator = null, ?string $second = null): static;
+    public function join(
+        string $table,
+        string|\Closure $first,
+        ?string $operator = null,
+        ?string $second = null,
+    ): static;
 
     /**
      * The same, keeping the rows that have no match in the joined table.
      *
      * @param string|\Closure(Query): mixed $first
      */
-    public function leftJoin(string $table, string|\Closure $first, ?string $operator = null, ?string $second = null): static;
+    public function leftJoin(
+        string $table,
+        string|\Closure $first,
+        ?string $operator = null,
+        ?string $second = null,
+    ): static;
 
     /**
      * Keeps the rows that match, in one of four forms:

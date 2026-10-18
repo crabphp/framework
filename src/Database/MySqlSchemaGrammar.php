@@ -60,7 +60,13 @@ final class MySqlSchemaGrammar extends SchemaGrammar
         $statements = parent::addColumn($table, $column);
         if ($column->references !== null) {
             // MySQL reads a reference written on the column itself and then ignores it.
-            $statements[] = 'alter table ' . $this->quote($table) . ' add foreign key (' . $this->quote($column->name) . ') ' . $this->references($column);
+            $statements[] =
+                'alter table '
+                . $this->quote($table)
+                . ' add foreign key ('
+                . $this->quote($column->name)
+                . ') '
+                . $this->references($column);
         }
         return $statements;
     }
@@ -68,6 +74,8 @@ final class MySqlSchemaGrammar extends SchemaGrammar
     protected function literal(string|int|float|bool|null $value): string
     {
         // A backslash escapes the next character inside a MySQL string.
-        return is_string($value) ? "'" . str_replace(['\\', "'"], ['\\\\', "''"], $value) . "'" : parent::literal($value);
+        return is_string($value)
+            ? "'" . str_replace(['\\', "'"], ['\\\\', "''"], $value) . "'"
+            : parent::literal($value);
     }
 }

@@ -17,19 +17,23 @@ final class LocalCarrier implements Carrier
      */
     private array $receivers = [];
 
-    public function __construct(private readonly ?\Closure $canSend = null)
-    {
-    }
+    public function __construct(
+        private readonly ?\Closure $canSend = null,
+    ) {}
 
     public function publish(array $channels, string $message): void
     {
         if ($this->canSend !== null && !($this->canSend)()) {
-            throw new \LogicException('The local broadcast carrier cannot reach the server from a console, queue:work or schedule:work process. Set broadcast.carrier to redis and register RedisProvider.');
+            throw new \LogicException(
+                'The local broadcast carrier cannot reach the server from a console, queue:work or schedule:work process. Set broadcast.carrier to redis and register RedisProvider.',
+            );
         }
         foreach ($channels as $channel) {
-            if (isset($this->receivers[':' . $channel])) {
-                ($this->receivers[':' . $channel])($channel, $message);
+            if (!isset($this->receivers[':' . $channel])) {
+                continue;
             }
+
+            $this->receivers[':' . $channel]($channel, $message);
         }
     }
 

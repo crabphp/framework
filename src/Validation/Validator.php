@@ -57,8 +57,12 @@ final class Validator implements ValidatorContract
         $this->inspectAll($this->properties($class), $seen);
     }
 
-    public function validateParameters(\ReflectionFunctionAbstract $function, array $names, array $data, bool $coerce = false): array
-    {
+    public function validateParameters(
+        \ReflectionFunctionAbstract $function,
+        array $names,
+        array $data,
+        bool $coerce = false,
+    ): array {
         $errors = [];
         $values = $this->values($this->parameters($function, $names), $data, $coerce, '', $errors);
         if ($errors !== []) {
@@ -158,17 +162,19 @@ final class Validator implements ValidatorContract
             case Property::MIXED:
                 return $value;
             case Property::FIELDS:
-                if (!is_array($value) || ($value !== [] && array_is_list($value))) {
+                if (!is_array($value) || $value !== [] && array_is_list($value)) {
                     $errors[$field][] = 'must be an object';
                     return null;
                 }
                 $found = count($errors);
                 $values = $this->values($property->fields ?? [], $value, $coerce, $field . '.', $errors);
                 // Only what was sent is kept, so that a field left out can be told from one sent as null.
-                return count($errors) > $found ? null : new Data(
-                    array_intersect_key($values, $value),
-                    array_map(static fn (Property $described): string => $described->name, $property->fields ?? []),
-                );
+                return count($errors) > $found
+                    ? null
+                    : new Data(
+                        array_intersect_key($values, $value),
+                        array_map(static fn(Property $described): string => $described->name, $property->fields ?? []),
+                    );
             case Property::STRING:
                 if (is_string($value)) {
                     return $value;
@@ -180,7 +186,12 @@ final class Validator implements ValidatorContract
                     return $value;
                 }
                 // Only when the number read is the number written: one past what an integer holds would be another.
-                if ($coerce && is_string($value) && preg_match('/^-?\d+$/D', $value) === 1 && (string) (int) $value === preg_replace('/^(-?)0+(?=\d)/', '$1', $value)) {
+                if (
+                    $coerce
+                    && is_string($value)
+                    && preg_match('/^-?\d+$/D', $value) === 1
+                    && (string) (int) $value === preg_replace('/^(-?)0+(?=\d)/', '$1', $value)
+                ) {
                     return (int) $value;
                 }
                 $errors[$field][] = 'must be a whole number';
@@ -208,7 +219,7 @@ final class Validator implements ValidatorContract
             case Property::DATE:
                 return $this->date($property, $value, $field, $errors);
             case Property::OBJECT:
-                if (!is_array($value) || ($value !== [] && array_is_list($value))) {
+                if (!is_array($value) || $value !== [] && array_is_list($value)) {
                     $errors[$field][] = 'must be an object';
                     return null;
                 }
@@ -229,7 +240,8 @@ final class Validator implements ValidatorContract
         if ($integers && $coerce && is_string($value) && preg_match('/^-?\d+$/D', $value) === 1) {
             $value = (int) $value;
         }
-        $case = ($integers ? is_int($value) : is_string($value)) ? $class::tryFrom($value) : null;
+        $validType = $integers ? is_int($value) : is_string($value);
+        $case = $validType ? $class::tryFrom($value) : null;
         if ($case === null) {
             $errors[$field][] = 'must be one of: ' . implode(', ', array_column($class::cases(), 'value'));
         }
@@ -243,10 +255,10 @@ final class Validator implements ValidatorContract
     {
         if (is_string($value) && $value !== '') {
             try {
-                $date = new ($property->class)($value);
+                $date = new $property->class($value);
                 // PHP reads February 31st as March 3rd and only notes that it did; such a date is refused.
                 $doubts = \DateTimeImmutable::getLastErrors();
-                if ($doubts === false || ($doubts['warning_count'] === 0 && $doubts['error_count'] === 0)) {
+                if ($doubts === false || $doubts['warning_count'] === 0 && $doubts['error_count'] === 0) {
                     return $date;
                 }
             } catch (\Exception) {
@@ -323,9 +335,14 @@ final class Validator implements ValidatorContract
             $where = $function instanceof \ReflectionMethod ? "{$function->class}::{$function->name}()" : 'A closure';
             $properties = [];
             foreach ($function->getParameters() as $parameter) {
-                if (in_array($parameter->getName(), $names, true)) {
-                    $properties[$parameter->getName()] = self::property("{$where} takes \${$parameter->getName()}, which", $parameter);
+                if (!in_array($parameter->getName(), $names, true)) {
+                    continue;
                 }
+
+                $properties[$parameter->getName()] = self::property(
+                    "{$where} takes \${$parameter->getName()}, which",
+                    $parameter,
+                );
             }
             $this->functions[$function] = $properties;
         }
@@ -362,7 +379,9 @@ final class Validator implements ValidatorContract
             throw new \LogicException("{$where} has no type; declare it with one type, such as string \${$name}.");
         }
         if (!$declared instanceof \ReflectionNamedType) {
-            throw new \LogicException("{$where} has a union or intersection type; give it one type so that it can be validated.");
+            throw new \LogicException(
+                "{$where} has a union or intersection type; give it one type so that it can be validated.",
+            );
         }
         if ($parameter->isVariadic()) {
             throw new \LogicException("{$where} is variadic; declare an array with #[ListOf(...)] instead.");
@@ -381,14 +400,22 @@ final class Validator implements ValidatorContract
                 $of = $attribute->newInstance()->type;
                 if (is_array($of)) {
                     // The fields of each item, described in place of a class.
-                    $items = new Property($name, Property::FIELDS, fields: self::described($of, "{$where}, by its #[ListOf]"));
+                    $items = new Property(
+                        $name,
+                        Property::FIELDS,
+                        fields: self::described($of, "{$where}, by its #[ListOf]"),
+                    );
                 } else {
                     [$itemType, $itemClass] = self::type($of, "{$where}, by its #[ListOf]");
                     $items = new Property($name, $itemType, $itemClass);
                 }
             } elseif ($attributeClass === Fields::class) {
                 if (!$described) {
-                    throw new \LogicException("{$where} has #[Fields] but is not declared as " . Data::class . ', which is what the described data arrives as.');
+                    throw new \LogicException(
+                        "{$where} has #[Fields] but is not declared as "
+                        . Data::class
+                        . ', which is what the described data arrives as.',
+                    );
                 }
                 $fields = self::described($attribute->newInstance()->fields, "{$where}, by its #[Fields]");
             } elseif (is_a($attributeClass, Rule::class, true)) {
@@ -396,7 +423,9 @@ final class Validator implements ValidatorContract
             }
         }
         if ($described && $fields === null) {
-            throw new \LogicException("{$where} is declared as " . Data::class . ' and has no #[Fields] to say what its fields are.');
+            throw new \LogicException(
+                "{$where} is declared as " . Data::class . ' and has no #[Fields] to say what its fields are.',
+            );
         }
         $hasDefault = $parameter->isDefaultValueAvailable();
         $nullable = $declared->allowsNull();
@@ -445,22 +474,41 @@ final class Validator implements ValidatorContract
             $spec = [$spec];
         }
         if (!is_array($spec) || $spec === []) {
-            throw new \LogicException("{$where} must be a type such as 'int', a type with rules, or the fields of an object.");
+            throw new \LogicException(
+                "{$where} must be a type such as 'int', a type with rules, or the fields of an object.",
+            );
         }
         if (!array_is_list($spec)) {
             // Names with descriptions: an object.
-            return new Property($name, Property::FIELDS, nullable: $optional, required: !$optional, fields: self::described($spec, $where));
+            return new Property(
+                $name,
+                Property::FIELDS,
+                nullable: $optional,
+                required: !$optional,
+                fields: self::described($spec, $where),
+            );
         }
         $rules = array_slice($spec, 1);
         foreach ($rules as $rule) {
             if (!$rule instanceof Rule) {
-                throw new \LogicException("{$where} is followed by " . get_debug_type($rule) . ', where only rules such as new Range(min: 1) may follow.');
+                throw new \LogicException(
+                    "{$where} is followed by "
+                    . get_debug_type($rule)
+                    . ', where only rules such as new Range(min: 1) may follow.',
+                );
             }
         }
         if (is_array($spec[0])) {
             // A description inside a list: a list of that, and the rules are the list's.
             $items = self::field($name, $spec[0], false, "{$where}, in each item,");
-            return new Property($name, Property::ARRAY, nullable: $optional, required: !$optional, rules: $rules, items: $items);
+            return new Property(
+                $name,
+                Property::ARRAY,
+                nullable: $optional,
+                required: !$optional,
+                rules: $rules,
+                items: $items,
+            );
         }
         if (!is_string($spec[0])) {
             throw new \LogicException("{$where} must start with a type such as 'int'.");
@@ -475,7 +523,11 @@ final class Validator implements ValidatorContract
      */
     private static function type(string $name, string $where): array
     {
-        if (in_array($name, [Property::INT, Property::FLOAT, Property::STRING, Property::BOOL, Property::ARRAY, Property::MIXED], true)) {
+        if (in_array(
+            $name,
+            [Property::INT, Property::FLOAT, Property::STRING, Property::BOOL, Property::ARRAY, Property::MIXED],
+            true,
+        )) {
             return [$name, null];
         }
         if ($name === \DateTimeInterface::class || $name === \DateTimeImmutable::class) {
@@ -483,14 +535,18 @@ final class Validator implements ValidatorContract
         }
         if (enum_exists($name)) {
             if (!is_subclass_of($name, \BackedEnum::class)) {
-                throw new \LogicException("{$where} is the enum {$name}, which has no values; give its cases values so that data can name one.");
+                throw new \LogicException(
+                    "{$where} is the enum {$name}, which has no values; give its cases values so that data can name one.",
+                );
             }
             return [Property::ENUM, $name];
         }
         // A class of PHP's own, such as Closure or PDO, is not data.
-        if (class_exists($name) && !(new \ReflectionClass($name))->isInternal()) {
+        if (class_exists($name) && !new \ReflectionClass($name)->isInternal()) {
             return [Property::OBJECT, $name];
         }
-        throw new \LogicException("{$where} is declared as {$name}, which cannot be validated; use int, float, string, bool, array, an enum, DateTimeImmutable or a class.");
+        throw new \LogicException(
+            "{$where} is declared as {$name}, which cannot be validated; use int, float, string, bool, array, an enum, DateTimeImmutable or a class.",
+        );
     }
 }

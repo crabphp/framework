@@ -11,8 +11,9 @@ namespace Crab\HttpClient;
  */
 final class TimedOut extends \RuntimeException
 {
-    public function __construct(public readonly string $doing)
-    {
+    public function __construct(
+        public readonly string $doing,
+    ) {
         parent::__construct("it timed out while {$doing}");
     }
 }

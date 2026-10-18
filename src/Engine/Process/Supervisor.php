@@ -43,7 +43,7 @@ final class Supervisor
     ) {
         foreach ($groups as $name => $group) {
             for ($index = 0; $index < $group->workers; ++$index) {
-                $this->slots["$name:$index"] = ['group' => $name, 'index' => $index, 'pid' => null];
+                $this->slots["{$name}:{$index}"] = ['group' => $name, 'index' => $index, 'pid' => null];
             }
         }
     }
@@ -55,19 +55,28 @@ final class Supervisor
         foreach ([SIGINT, SIGTERM, SIGUSR1] as $signal) {
             $this->signalHandlers[$signal] = pcntl_signal_get_handler($signal);
             pcntl_signal($signal, function (int $signal): void {
-                if ($signal === SIGUSR1) { $this->reloadRequested = true; }
-                else { $this->stopRequested = true; }
+                if ($signal === SIGUSR1) {
+                    $this->reloadRequested = true;
+                } else {
+                    $this->stopRequested = true;
+                }
             });
         }
         foreach (array_keys($this->onSignal) as $signal) {
             $this->signalHandlers[$signal] = pcntl_signal_get_handler($signal);
             // Only noted here; acted on in the loop, where real work is safe.
-            pcntl_signal($signal, function (int $signal): void { $this->pendingSignals[$signal] = true; });
+            pcntl_signal($signal, function (int $signal): void {
+                $this->pendingSignals[$signal] = true;
+            });
         }
         try {
             foreach (array_keys($this->slots) as $slot) {
-                if ($this->stopRequested) { $this->stop(); }
-                if ($this->stopping) { break; }
+                if ($this->stopRequested) {
+                    $this->stop();
+                }
+                if ($this->stopping) {
+                    break;
+                }
                 $this->spawn($slot);
             }
             // The parent never runs an application event loop. Forks, including
@@ -79,32 +88,49 @@ final class Supervisor
             $this->failure ??= $error;
         } finally {
             $this->stop();
-            while ($this->children !== []) { $this->tick(); }
-            foreach ($this->signalHandlers as $signal => $handler) { pcntl_signal($signal, $handler); }
+            while ($this->children !== []) {
+                $this->tick();
+            }
+            foreach ($this->signalHandlers as $signal => $handler) {
+                pcntl_signal($signal, $handler);
+            }
             pcntl_async_signals($asyncSignals);
         }
-        if ($this->failure !== null) { throw $this->failure; }
+        if ($this->failure !== null) {
+            throw $this->failure;
+        }
     }
 
     public function stop(): void
     {
-        if ($this->stopping) { return; }
+        if ($this->stopping) {
+            return;
+        }
         $this->stopping = true;
         $this->restartAt = $this->reloadQueue = [];
-        foreach (array_keys($this->children) as $pid) { $this->retire($pid); }
+        foreach (array_keys($this->children) as $pid) {
+            $this->retire($pid);
+        }
         // No worker will be started again, so the parent lets go of the listening
         // sockets: once the workers have closed theirs, the address is free, and a
         // server taking over on the same address stops sharing new connections with this one.
         foreach ($this->bindings as $bindings) {
             foreach ($bindings as $streams) {
                 foreach ($streams as $stream) {
-                    if (is_resource($stream)) { fclose($stream); }
+                    if (!is_resource($stream)) {
+                        continue;
+                    }
+
+                    fclose($stream);
                 }
             }
         }
     }
 
-    public function reload(): void { $this->reloadRequested = true; }
+    public function reload(): void
+    {
+        $this->reloadRequested = true;
+    }
 
     /**
      * Ends every owned worker now. The run loop reaps each one before
@@ -123,7 +149,12 @@ final class Supervisor
     {
         $workers = [];
         foreach ($this->children as $pid => $child) {
-            $workers[] = ['pid' => $pid, 'slot' => $child['slot'], 'ready' => $child['ready'], 'retiring' => $child['retiring']];
+            $workers[] = [
+                'pid' => $pid,
+                'slot' => $child['slot'],
+                'ready' => $child['ready'],
+                'retiring' => $child['retiring'],
+            ];
         }
         return ['pid' => getmypid(), 'stopping' => $this->stopping, 'workers' => $workers];
     }
@@ -131,16 +162,23 @@ final class Supervisor
     private function spawn(string $slot, ?int $replaces = null): int
     {
         $pair = stream_socket_pair(STREAM_PF_UNIX, STREAM_SOCK_STREAM, STREAM_IPPROTO_IP);
-        if ($pair === false) { throw new \RuntimeException('Could not create supervisor control stream.'); }
+        if ($pair === false) {
+            throw new \RuntimeException('Could not create supervisor control stream.');
+        }
         $pid = pcntl_fork();
         if ($pid === -1) {
-            fclose($pair[0]); fclose($pair[1]);
+            fclose($pair[0]);
+            fclose($pair[1]);
             throw new \RuntimeException('Could not fork a worker.');
         }
         if ($pid === 0) {
             fclose($pair[0]);
             foreach ($this->children as $child) {
-                if (is_resource($child['stream'])) { fclose($child['stream']); }
+                if (!is_resource($child['stream'])) {
+                    continue;
+                }
+
+                fclose($child['stream']);
             }
             // The reload signal and the application's own are the parent's; their default action would end this worker.
             foreach (array_keys($this->signalHandlers) as $signal) {
@@ -148,14 +186,24 @@ final class Supervisor
             }
             $definition = $this->slots[$slot];
             foreach ($this->bindings as $name => $bindings) {
-                if ($name === $definition['group']) { continue; }
-                foreach ($bindings as $streams) { foreach ($streams as $stream) { fclose($stream); } }
+                if ($name === $definition['group']) {
+                    continue;
+                }
+                foreach ($bindings as $streams) {
+                    foreach ($streams as $stream) {
+                        fclose($stream);
+                    }
+                }
             }
             try {
                 $driver = EventLoop::install(($this->loopFactory)());
                 $worker = new Worker(
-                    $driver, $this->groups[$definition['group']], $definition['index'],
-                    $this->bindings[$definition['group']], $this->groups[$definition['group']]->shutdownTimeout ?? $this->shutdownTimeout, $pair[1],
+                    $driver,
+                    $this->groups[$definition['group']],
+                    $definition['index'],
+                    $this->bindings[$definition['group']],
+                    $this->groups[$definition['group']]->shutdownTimeout ?? $this->shutdownTimeout,
+                    $pair[1],
                 );
                 $worker->run();
                 exit(0);
@@ -167,8 +215,14 @@ final class Supervisor
         fclose($pair[1]);
         stream_set_blocking($pair[0], false);
         $this->children[$pid] = [
-            'slot' => $slot, 'stream' => $pair[0], 'buffer' => '', 'ready' => false,
-            'started' => self::now(), 'deadline' => null, 'retiring' => false, 'replaces' => $replaces,
+            'slot' => $slot,
+            'stream' => $pair[0],
+            'buffer' => '',
+            'ready' => false,
+            'started' => self::now(),
+            'deadline' => null,
+            'retiring' => false,
+            'replaces' => $replaces,
         ];
         $this->slots[$slot]['pid'] = $pid;
         return $pid;
@@ -176,12 +230,14 @@ final class Supervisor
 
     private function tick(): void
     {
-        if ($this->stopRequested) { $this->stop(); }
+        if ($this->stopRequested) {
+            $this->stop();
+        }
         $this->readMessages();
         foreach (array_keys($this->pendingSignals) as $signal) {
             unset($this->pendingSignals[$signal]);
             try {
-                ($this->onSignal[$signal])();
+                $this->onSignal[$signal]();
             } catch (\Throwable $error) {
                 FailureReporter::report('Signal callback failed', $error);
             }
@@ -193,29 +249,35 @@ final class Supervisor
         $now = self::now();
         foreach (array_keys($this->children) as $pid) {
             $waited = pcntl_waitpid($pid, $status, WNOHANG);
-            if ($waited === $pid || ($waited === -1 && pcntl_get_last_error() === PCNTL_ECHILD)) {
+            if ($waited === $pid || $waited === -1 && pcntl_get_last_error() === PCNTL_ECHILD) {
                 $this->reaped($pid);
                 continue;
             }
             $child = $this->children[$pid];
-            if (!$child['ready'] && !$child['retiring'] && $now - $child['started'] >= $this->startupTimeout) {
-                FailureReporter::report("Worker $pid exceeded its startup deadline");
+            if (!$child['ready'] && !$child['retiring'] && ($now - $child['started']) >= $this->startupTimeout) {
+                FailureReporter::report("Worker {$pid} exceeded its startup deadline");
                 $this->retire($pid, intentional: false);
             }
             if ($child['deadline'] !== null && $now >= $child['deadline']) {
                 $group = $this->slots[$child['slot']]['group'];
                 $seconds = $this->grace($child['slot']);
-                FailureReporter::report("Worker {$pid} in group \"{$group}\" did not stop within {$seconds} seconds; ending it.");
+                FailureReporter::report(
+                    "Worker {$pid} in group \"{$group}\" did not stop within {$seconds} seconds; ending it.",
+                );
                 posix_kill($pid, SIGKILL);
                 $this->children[$pid]['deadline'] = INF;
             }
         }
-        if ($this->stopping) { return; }
+        if ($this->stopping) {
+            return;
+        }
         foreach ($this->restartAt as $slot => $when) {
-            if ($when <= $now) {
-                unset($this->restartAt[$slot]);
-                $this->spawn($slot);
+            if ($when > $now) {
+                continue;
             }
+
+            unset($this->restartAt[$slot]);
+            $this->spawn($slot);
         }
         if ($this->reloadRequested && $this->reloadQueue === [] && $this->replacement === null) {
             $this->reloadRequested = false;
@@ -247,18 +309,31 @@ final class Supervisor
     {
         $read = [];
         foreach ($this->children as $child) {
-            if (is_resource($child['stream'])) { $read[] = $child['stream']; }
+            if (!is_resource($child['stream'])) {
+                continue;
+            }
+
+            $read[] = $child['stream'];
         }
-        if ($read === []) { usleep(50000); return; }
+        if ($read === []) {
+            usleep(50_000);
+            return;
+        }
         $write = $except = [];
-        if (@stream_select($read, $write, $except, 0, 50000) < 1) { return; }
+        if (@stream_select($read, $write, $except, 0, 50_000) < 1) {
+            return;
+        }
         foreach ($this->children as $pid => &$child) {
-            if (!is_resource($child['stream']) || !in_array($child['stream'], $read, true)) { continue; }
+            if (!is_resource($child['stream']) || !in_array($child['stream'], $read, true)) {
+                continue;
+            }
             $bytes = @fread($child['stream'], 1024);
             if ($bytes === false || feof($child['stream'])) {
                 fclose($child['stream']);
                 $child['stream'] = null;
-                if (!$child['retiring']) { $this->retire($pid, intentional: false); }
+                if (!$child['retiring']) {
+                    $this->retire($pid, intentional: false);
+                }
                 continue;
             }
             $child['buffer'] .= $bytes;
@@ -268,16 +343,22 @@ final class Supervisor
                 if ($child['replaces'] !== null && isset($this->children[$child['replaces']])) {
                     $this->retire($child['replaces']);
                 }
-                if ($this->replacement === $pid) { $this->replacement = null; }
+                if ($this->replacement === $pid) {
+                    $this->replacement = null;
+                }
             }
-            if (strlen($child['buffer']) > 1024) { $this->retire($pid, intentional: false); }
+            if (strlen($child['buffer']) > 1024) {
+                $this->retire($pid, intentional: false);
+            }
         }
         unset($child);
     }
 
     private function retire(int $pid, bool $intentional = true): void
     {
-        if (!isset($this->children[$pid]) || $this->children[$pid]['retiring']) { return; }
+        if (!isset($this->children[$pid]) || $this->children[$pid]['retiring']) {
+            return;
+        }
         $this->children[$pid]['retiring'] = true;
         $this->children[$pid]['intentional'] = $intentional;
         $this->children[$pid]['deadline'] = self::now() + $this->grace($this->children[$pid]['slot']);
@@ -295,37 +376,52 @@ final class Supervisor
     private function grace(string $slot): float
     {
         $group = $this->groups[$this->slots[$slot]['group']];
-        return $group->shutdownTimeout === null
-            ? $this->shutdownTimeout
-            : $group->shutdownTimeout + 1.0;
+        return $group->shutdownTimeout === null ? $this->shutdownTimeout : $group->shutdownTimeout + 1.0;
     }
 
     private function reaped(int $pid): void
     {
         $child = $this->children[$pid];
-        if (is_resource($child['stream'])) { fclose($child['stream']); }
+        if (is_resource($child['stream'])) {
+            fclose($child['stream']);
+        }
         unset($this->children[$pid]);
         $slot = $child['slot'];
-        if ($this->replacement === $pid) { $this->replacement = null; }
-        if ($this->slots[$slot]['pid'] !== $pid) { return; }
+        if ($this->replacement === $pid) {
+            $this->replacement = null;
+        }
+        if ($this->slots[$slot]['pid'] !== $pid) {
+            return;
+        }
         $this->slots[$slot]['pid'] = null;
-        if ($this->stopping) { return; }
-        if ($child['replaces'] !== null && isset($this->children[$child['replaces']])
-            && !$this->children[$child['replaces']]['retiring']) {
+        if ($this->stopping) {
+            return;
+        }
+        if (
+            $child['replaces'] !== null
+            && isset($this->children[$child['replaces']])
+            && !$this->children[$child['replaces']]['retiring']
+        ) {
             $this->slots[$slot]['pid'] = $child['replaces'];
-            FailureReporter::report("Replacement $pid failed; the previous worker remains active");
+            FailureReporter::report("Replacement {$pid} failed; the previous worker remains active");
             return;
         }
         $now = self::now();
-        $this->failures[$slot] = array_values(array_filter($this->failures[$slot] ?? [], static fn(float $at): bool => $now - $at < 60));
+        $this->failures[$slot] = array_values(array_filter(
+            $this->failures[$slot] ?? [],
+            static fn(float $at): bool => ($now - $at) < 60,
+        ));
         $this->failures[$slot][] = $now;
         if (count($this->failures[$slot]) > 5) {
-            $this->failure = new \RuntimeException("Worker $slot exceeded five restarts in sixty seconds.");
+            $this->failure = new \RuntimeException("Worker {$slot} exceeded five restarts in sixty seconds.");
             $this->stop();
             return;
         }
-        $this->restartAt[$slot] = $now + min(2.0, 0.1 * 2 ** (count($this->failures[$slot]) - 1));
+        $this->restartAt[$slot] = $now + min(2.0, 0.1 * (2 ** (count($this->failures[$slot]) - 1)));
     }
 
-    private static function now(): float { return hrtime(true) / 1e9; }
+    private static function now(): float
+    {
+        return hrtime(true) / 1e9;
+    }
 }

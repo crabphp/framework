@@ -51,7 +51,7 @@ final class Cancellation
     public function throwIfCancelled(): void
     {
         if ($this->cancelled) {
-            throw ($this->reason ??= new CancelledException('Operation cancelled.'));
+            throw $this->reason ??= new CancelledException('Operation cancelled.');
         }
     }
 
@@ -68,7 +68,9 @@ final class Cancellation
         }
         $id = $this->nextId++;
         $this->subscribers[$id] = $subscriber;
-        return function () use ($id): void { unset($this->subscribers[$id]); };
+        return function () use ($id): void {
+            unset($this->subscribers[$id]);
+        };
     }
 
     private function notify(Closure $subscriber): void

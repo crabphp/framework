@@ -25,8 +25,7 @@ final readonly class Pipeline implements RequestHandlerInterface
                 public function __construct(
                     private readonly MiddlewareInterface $middleware,
                     private readonly RequestHandlerInterface $next,
-                ) {
-                }
+                ) {}
 
                 public function handle(ServerRequestInterface $request): ResponseInterface
                 {

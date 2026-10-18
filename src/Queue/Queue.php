@@ -6,8 +6,8 @@ namespace Crab\Queue;
 
 use Crab\Contracts\Database\Connection;
 use Crab\Contracts\Queue\Queue as QueueContract;
-use Crab\Contracts\Queue\TransactionalStore;
 use Crab\Contracts\Queue\Store;
+use Crab\Contracts\Queue\TransactionalStore;
 use Psr\Clock\ClockInterface;
 
 /**
@@ -69,7 +69,13 @@ final class Queue implements QueueContract
         self::check($job, $data);
         $now = $this->clock?->now() ?? new \DateTimeImmutable();
         $available = $delay instanceof \DateInterval ? $now->add($delay) : $now->modify("+{$delay} seconds");
-        $push = fn (Store $store): int|string => $store->push($this->queue, $job, $data, max($available->getTimestamp(), $now->getTimestamp()), $now->getTimestamp());
+        $push = fn(Store $store): int|string => $store->push(
+            $this->queue,
+            $job,
+            $data,
+            max($available->getTimestamp(), $now->getTimestamp()),
+            $now->getTimestamp(),
+        );
         if ($this->transaction === null) {
             return $push($this->store);
         }
@@ -78,7 +84,7 @@ final class Queue implements QueueContract
             return $push($joined);
         }
         // Kept elsewhere than the transaction writes to: it can only follow the commit.
-        $this->transaction->afterCommit(fn () => $push($this->store));
+        $this->transaction->afterCommit(fn() => $push($this->store));
         return '';
     }
 
@@ -90,20 +96,34 @@ final class Queue implements QueueContract
         [$names, $required, $types] = self::$signatures[$job] ??= self::signature($job);
         foreach ($data as $name => $value) {
             if (is_int($name)) {
-                throw new \LogicException("The data of {$job} was given by position. Give each value by the name of the parameter it is for, as in push({$job}::class, " . ($names[0] ?? 'name') . ': ...), so that it still reaches the right one after the job changes.');
+                throw new \LogicException(
+                    "The data of {$job} was given by position. Give each value by the name of the parameter it is for, as in push({$job}::class, "
+                    . ($names[0] ?? 'name')
+                    . ': ...), so that it still reaches the right one after the job changes.',
+                );
             }
             if (!in_array($name, $names, true)) {
                 $takes = $names === [] ? 'takes no data' : 'takes ' . implode(', ', $names);
-                throw new \LogicException("{$job} was pushed with \"{$name}\", which its handle() has no parameter for; it {$takes}.");
+                throw new \LogicException(
+                    "{$job} was pushed with \"{$name}\", which its handle() has no parameter for; it {$takes}.",
+                );
             }
             self::assertPlain($job, $name, $value);
             if ($types[$name] !== null && !self::fits($value, $types[$name])) {
-                throw new \LogicException("{$job} was pushed with " . get_debug_type($value) . " as \"{$name}\", which its handle() takes as " . implode('|', $types[$name]) . '.');
+                throw new \LogicException(
+                    "{$job} was pushed with "
+                    . get_debug_type($value)
+                    . " as \"{$name}\", which its handle() takes as "
+                    . implode('|', $types[$name])
+                    . '.',
+                );
             }
         }
         $missing = array_diff($required, array_keys($data));
         if ($missing !== []) {
-            throw new \LogicException("{$job} was pushed without " . implode(', ', $missing) . ', which its handle() requires.');
+            throw new \LogicException(
+                "{$job} was pushed without " . implode(', ', $missing) . ', which its handle() requires.',
+            );
         }
     }
 
@@ -116,12 +136,16 @@ final class Queue implements QueueContract
             throw new \LogicException("{$job} was pushed as a job, and there is no such class.");
         }
         if (!method_exists($job, 'handle')) {
-            throw new \LogicException("{$job} was pushed as a job, and it has no handle() method. A job is a class whose constructor takes services and whose handle() takes the job's data.");
+            throw new \LogicException(
+                "{$job} was pushed as a job, and it has no handle() method. A job is a class whose constructor takes services and whose handle() takes the job's data.",
+            );
         }
         Retry::for($job);
         $handle = new \ReflectionMethod($job, 'handle');
         if (!$handle->isPublic() || $handle->isStatic() || $handle->isAbstract()) {
-            throw new \LogicException("{$job}::handle() must be a public method of an object, for a worker to call it.");
+            throw new \LogicException(
+                "{$job}::handle() must be a public method of an object, for a worker to call it.",
+            );
         }
         $names = [];
         $required = [];
@@ -129,10 +153,14 @@ final class Queue implements QueueContract
         foreach ($handle->getParameters() as $parameter) {
             // push() and later() take these names themselves, so a value could not be given under them.
             if (in_array($parameter->getName(), ['job', 'delay'], true)) {
-                throw new \LogicException("{$job}::handle() takes \${$parameter->getName()}, a name push() and later() use for themselves. Give the parameter another name.");
+                throw new \LogicException(
+                    "{$job}::handle() takes \${$parameter->getName()}, a name push() and later() use for themselves. Give the parameter another name.",
+                );
             }
             if ($parameter->isVariadic()) {
-                throw new \LogicException("{$job}::handle() takes a variable number of arguments (...\${$parameter->getName()}). Name each value a job takes, so that what is pushed can be checked.");
+                throw new \LogicException(
+                    "{$job}::handle() takes a variable number of arguments (...\${$parameter->getName()}). Name each value a job takes, so that what is pushed can be checked.",
+                );
             }
             $names[] = $parameter->getName();
             if (!$parameter->isOptional()) {
@@ -157,13 +185,24 @@ final class Queue implements QueueContract
             return null;
         }
         $types = [];
-        foreach ($type instanceof \ReflectionNamedType ? [$type] : ($type instanceof \ReflectionUnionType ? $type->getTypes() : []) as $one) {
+        if ($type instanceof \ReflectionNamedType) {
+            $members = [$type];
+        } else {
+            $members = $type instanceof \ReflectionUnionType ? $type->getTypes() : [];
+        }
+        foreach ($members as $one) {
             $name = $one instanceof \ReflectionNamedType ? $one->getName() : '';
             if ($name === 'mixed') {
                 return null;
             }
-            if (!in_array($name, ['int', 'float', 'string', 'bool', 'array', 'null', 'true', 'false', 'iterable'], true)) {
-                throw new \LogicException("{$job}::handle() takes \${$parameter->getName()} as {$type}. A job's data is stored as JSON, so a parameter is int, float, string, bool or array: take the id of a record and not the record.");
+            if (!in_array(
+                $name,
+                ['int', 'float', 'string', 'bool', 'array', 'null', 'true', 'false', 'iterable'],
+                true,
+            )) {
+                throw new \LogicException(
+                    "{$job}::handle() takes \${$parameter->getName()} as {$type}. A job's data is stored as JSON, so a parameter is int, float, string, bool or array: take the id of a record and not the record.",
+                );
             }
             $types[] = $name;
         }
@@ -213,7 +252,11 @@ final class Queue implements QueueContract
             return;
         }
         if ($value !== null && !is_scalar($value)) {
-            throw new \LogicException("{$job} was pushed with " . get_debug_type($value) . " as \"{$name}\". A job's data is stored as JSON: give numbers, text, booleans, null or arrays of them, such as the id of a record and not the record.");
+            throw new \LogicException(
+                "{$job} was pushed with "
+                . get_debug_type($value)
+                . " as \"{$name}\". A job's data is stored as JSON: give numbers, text, booleans, null or arrays of them, such as the id of a record and not the record.",
+            );
         }
     }
 }

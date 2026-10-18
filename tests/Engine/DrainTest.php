@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Crab\Engine\Tests;
 
 use Crab\Engine\Async\Async;
+use Crab\Engine\Crab;
 use Crab\Engine\EventLoop;
 use Crab\Engine\Http\Response;
 use Crab\Engine\Network\Listener;
@@ -15,7 +16,6 @@ use Crab\Engine\Process\Worker;
 use Crab\Engine\Runtime;
 use Crab\Engine\Server\HttpServer;
 use Crab\Engine\Tests\Support\TestCase;
-use Crab\Engine\Crab;
 
 /**
  * Drain deadlines belong to workers. Their parent allows time for those
@@ -77,8 +77,12 @@ final class DrainTest extends TestCase
         fclose($probe);
         $autoload = dirname(__DIR__, 2) . '/vendor/autoload.php';
         $fixture = __DIR__ . '/Fixtures/drain.php';
-        $process = proc_open([PHP_BINARY, $fixture, 'keep', $autoload, $directory, $address],
-            [1 => ['pipe', 'w'], 2 => ['file', $directory . '/errors.log', 'w']], $pipes, $directory);
+        $process = proc_open(
+            [PHP_BINARY, $fixture, 'keep', $autoload, $directory, $address],
+            [1 => ['pipe', 'w'], 2 => ['file', $directory . '/errors.log', 'w']],
+            $pipes,
+            $directory,
+        );
         self::assertIsResource($process);
         $this->deferCleanup(static function () use ($process, $pipes, $directory): void {
             if (is_resource($process)) {
@@ -98,7 +102,15 @@ final class DrainTest extends TestCase
         $pidFile = new PidFile($directory . '/service.pid');
         $pid = (int) $pidFile->pid();
         foreach (['second' => 0.08, 'third' => 1.0] as $name => $allowance) {
-            $answer = Keeper::request($pidFile, $pid, $address, [$fixture, 'serve', $autoload, $directory, $name], $directory, 3.0, $allowance);
+            $answer = Keeper::request(
+                $pidFile,
+                $pid,
+                $address,
+                [$fixture, 'serve', $autoload, $directory, $name],
+                $directory,
+                3.0,
+                $allowance,
+            );
             self::assertTrue($answer['ok'], json_encode($answer));
         }
         // Stop while both prior generations are still retiring. The first
@@ -140,8 +152,12 @@ final class DrainTest extends TestCase
         fclose($probe);
         $autoload = dirname(__DIR__, 2) . '/vendor/autoload.php';
         $fixture = __DIR__ . '/Fixtures/drain.php';
-        $process = proc_open([PHP_BINARY, $fixture, 'keep', $autoload, $directory, $address, '0.08'],
-            [1 => ['pipe', 'w'], 2 => ['file', $directory . '/errors.log', 'w']], $pipes, $directory);
+        $process = proc_open(
+            [PHP_BINARY, $fixture, 'keep', $autoload, $directory, $address, '0.08'],
+            [1 => ['pipe', 'w'], 2 => ['file', $directory . '/errors.log', 'w']],
+            $pipes,
+            $directory,
+        );
         self::assertIsResource($process);
         $this->deferCleanup(static function () use ($process, $pipes, $directory): void {
             if (is_resource($process)) {
@@ -160,7 +176,15 @@ final class DrainTest extends TestCase
         self::assertSame("ready\n", fgets($pipes[1]));
         $pidFile = new PidFile($directory . '/service.pid');
         $keeper = (int) $pidFile->pid();
-        $answer = Keeper::request($pidFile, $keeper, $address, [$fixture, 'serve', $autoload, $directory, 'second'], $directory, 3.0, 0.8);
+        $answer = Keeper::request(
+            $pidFile,
+            $keeper,
+            $address,
+            [$fixture, 'serve', $autoload, $directory, 'second'],
+            $directory,
+            3.0,
+            0.8,
+        );
         self::assertTrue($answer['ok'], json_encode($answer));
         $second = (int) $answer['pid'];
         self::assertTrue(posix_kill($second, SIGKILL));
@@ -173,12 +197,25 @@ final class DrainTest extends TestCase
             usleep(10_000);
         } while (microtime(true) < $deadline);
         self::assertStringContainsString('Serving again, generation pid ', $log);
-        $answer = Keeper::request($pidFile, $keeper, $address, [$fixture, 'serve', $autoload, $directory, 'third'], $directory, 3.0);
+        $answer = Keeper::request(
+            $pidFile,
+            $keeper,
+            $address,
+            [$fixture, 'serve', $autoload, $directory, 'third'],
+            $directory,
+            3.0,
+        );
         self::assertTrue($answer['ok'], json_encode($answer));
         proc_terminate($process, SIGTERM);
         self::assertSame(0, proc_close($process));
-        self::assertFileExists($directory . '/second.finished', 'Automatic restart lost the current 0.8-second allowance.');
-        self::assertFileExists($directory . '/third.finished', 'A reload without an override lost the current allowance.');
+        self::assertFileExists(
+            $directory . '/second.finished',
+            'Automatic restart lost the current 0.8-second allowance.',
+        );
+        self::assertFileExists(
+            $directory . '/third.finished',
+            'A reload without an override lost the current allowance.',
+        );
     }
 
     public function testARequestFinishingBeforeTheDeadlineIsAnsweredAndIsNotCountedAsCut(): void
@@ -226,8 +263,12 @@ final class DrainTest extends TestCase
         fclose($socket);
         $autoload = dirname(__DIR__, 2) . '/vendor/autoload.php';
         $fixture = __DIR__ . '/Fixtures/drain.php';
-        $process = proc_open([PHP_BINARY, $fixture, 'keep-fork', $autoload, $directory, $address],
-            [1 => ['pipe', 'w'], 2 => ['file', $directory . '/errors.log', 'w']], $pipes, $directory);
+        $process = proc_open(
+            [PHP_BINARY, $fixture, 'keep-fork', $autoload, $directory, $address],
+            [1 => ['pipe', 'w'], 2 => ['file', $directory . '/errors.log', 'w']],
+            $pipes,
+            $directory,
+        );
         self::assertIsResource($process);
         $pid = proc_get_status($process)['pid'];
         $forcer = null;
@@ -245,9 +286,11 @@ final class DrainTest extends TestCase
                 proc_close($process);
             }
             foreach ([$pipes[1], ...array_values($forcePipes)] as $stream) {
-                if (is_resource($stream)) {
-                    fclose($stream);
+                if (!is_resource($stream)) {
+                    continue;
                 }
+
+                fclose($stream);
             }
             foreach (glob($directory . '/*') ?: [] as $file) {
                 unlink($file);
@@ -261,8 +304,11 @@ final class DrainTest extends TestCase
         $generation = $state['generations'][0]['pid'];
         if ($kind === 'generation') {
             file_put_contents($directory . '/service.pid.reload', json_encode([
-                'id' => 'fork-barrier', 'address' => $address, 'directory' => $directory,
-                'command' => [$fixture, 'supervise-new', $autoload, $directory, $address], 'stopTimeout' => 35.0,
+                'id' => 'fork-barrier',
+                'address' => $address,
+                'directory' => $directory,
+                'command' => [$fixture, 'supervise-new', $autoload, $directory, $address],
+                'stopTimeout' => 35.0,
             ]));
             posix_kill($pid, SIGUSR2);
         } else {
@@ -272,8 +318,10 @@ final class DrainTest extends TestCase
         $barrier = $directory . '/' . $kind . '-forked';
         $deadline = microtime(true) + 3.0;
         do {
-            $workers = array_map(static fn (string $line): array => json_decode($line, true),
-                file($directory . '/observed-workers', FILE_IGNORE_NEW_LINES));
+            $workers = array_map(
+                static fn(string $line): array => json_decode($line, true),
+                file($directory . '/observed-workers', FILE_IGNORE_NEW_LINES),
+            );
             if (is_file($barrier) && count($workers) === 2) {
                 break;
             }
@@ -288,8 +336,12 @@ final class DrainTest extends TestCase
             self::assertNotContains($new, array_column($unpublished['generations'], 'pid'));
         }
         $before = microtime(true);
-        $forcer = proc_open([PHP_BINARY, $fixture, 'force', $autoload, $directory, (string) $pid],
-            [1 => ['pipe', 'w'], 2 => ['pipe', 'w']], $forcePipes, $directory);
+        $forcer = proc_open(
+            [PHP_BINARY, $fixture, 'force', $autoload, $directory, (string) $pid],
+            [1 => ['pipe', 'w'], 2 => ['pipe', 'w']],
+            $forcePipes,
+            $directory,
+        );
         self::assertIsResource($forcer);
         $deadline = microtime(true) + 4.0;
         do {
@@ -307,7 +359,13 @@ final class DrainTest extends TestCase
         self::assertSame(0, proc_close($forcer), $error);
         self::assertSame("forced\n", $output);
         self::assertLessThan(4.0, microtime(true) - $before);
-        foreach (array_unique([$pid, $generation, $new, ...array_column($workers, 'pid'), ...array_column($workers, 'generation')]) as $owned) {
+        foreach (array_unique([
+            $pid,
+            $generation,
+            $new,
+            ...array_column($workers, 'pid'),
+            ...array_column($workers, 'generation'),
+        ]) as $owned) {
             self::assertFalse(posix_kill($owned, 0), "Owned process {$owned} survived group force.");
         }
         self::assertFileDoesNotExist($directory . '/service.pid.state');
@@ -354,8 +412,12 @@ final class DrainTest extends TestCase
         fclose($probe);
         $autoload = dirname(__DIR__, 2) . '/vendor/autoload.php';
         $fixture = __DIR__ . '/Fixtures/drain.php';
-        $process = proc_open([PHP_BINARY, $fixture, 'keep', $autoload, $directory, $address, '0.2'],
-            [1 => ['pipe', 'w'], 2 => ['file', $directory . '/errors.log', 'w']], $pipes, $directory);
+        $process = proc_open(
+            [PHP_BINARY, $fixture, 'keep', $autoload, $directory, $address, '0.2'],
+            [1 => ['pipe', 'w'], 2 => ['file', $directory . '/errors.log', 'w']],
+            $pipes,
+            $directory,
+        );
         self::assertIsResource($process);
         $this->deferCleanup(static function () use ($process, $pipes, $directory): void {
             if (is_resource($process)) {
@@ -375,13 +437,24 @@ final class DrainTest extends TestCase
         $pidFile = new PidFile($directory . '/service.pid');
         $keeper = (int) $pidFile->pid();
         self::assertSame($keeper . "\n", file_get_contents($pidFile->path), 'The pid file stays readable as a number.');
-        $answer = Keeper::request($pidFile, $keeper, $address, [$fixture, 'serve', $autoload, $directory, 'second'], $directory, 3.0, 0.3);
+        $answer = Keeper::request(
+            $pidFile,
+            $keeper,
+            $address,
+            [$fixture, 'serve', $autoload, $directory, 'second'],
+            $directory,
+            3.0,
+            0.3,
+        );
         self::assertTrue($answer['ok'], json_encode($answer));
         $first = $answer['previous'];
         $second = $answer['pid'];
         file_put_contents($pidFile->path . '.reload', json_encode([
-            'id' => 'startup-barrier', 'address' => $address, 'directory' => $directory,
-            'command' => [$fixture, $mode, $autoload, $directory, 'third'], 'stopTimeout' => 0.4,
+            'id' => 'startup-barrier',
+            'address' => $address,
+            'directory' => $directory,
+            'command' => [$fixture, $mode, $autoload, $directory, 'third'],
+            'stopTimeout' => 0.4,
         ]));
         posix_kill($keeper, SIGUSR2);
         $deadline = microtime(true) + 2.0;
@@ -391,7 +464,7 @@ final class DrainTest extends TestCase
         self::assertFileExists($directory . '/third.started');
         $third = (int) file_get_contents($directory . '/third.started');
         $retiredAt = (float) file_get_contents($directory . '/first.stopping');
-        while (posix_kill($first, 0) && microtime(true) < $retiredAt + 1.2) {
+        while (posix_kill($first, 0) && microtime(true) < ($retiredAt + 1.2)) {
             usleep(5_000);
         }
         self::assertFalse(posix_kill($first, 0), 'Replacement startup or cleanup hid the retiree deadline.');
@@ -411,7 +484,11 @@ final class DrainTest extends TestCase
         self::assertSame(0, proc_close($process));
         self::assertFileExists($directory . '/second.stopping');
         $stoppedAt = (float) file_get_contents($directory . '/second.stopping');
-        self::assertLessThan(0.8, $stoppedAt - $before, 'The current generation was stopped after serial replacement cleanup.');
+        self::assertLessThan(
+            0.8,
+            $stoppedAt - $before,
+            'The current generation was stopped after serial replacement cleanup.',
+        );
         self::assertLessThan(1.5, microtime(true) - $before);
         self::assertFalse(posix_kill($second, 0));
         self::assertFalse(posix_kill($third, 0));
@@ -424,7 +501,7 @@ final class DrainTest extends TestCase
      */
     private function supervisorGrace(Crab $group, float $timeout): float
     {
-        $supervisor = new Supervisor([$group->name => $group], [], static fn () => EventLoop::current(), $timeout);
+        $supervisor = new Supervisor([$group->name => $group], [], static fn() => EventLoop::current(), $timeout);
         $method = new \ReflectionMethod($supervisor, 'grace');
         return $method->invoke($supervisor, $group->name . ':0');
     }
@@ -455,17 +532,22 @@ final class DrainTest extends TestCase
         $worker = null;
         $started = 0;
         $stats = [];
-        $runtime->group('http', shutdownTimeout: $drain)
-            ->listen($address, new HttpServer(static function () use (&$worker, &$started, $count, $requestSeconds): Response {
-                if (++$started === $count) {
-                    $worker->loop->delay(0.005, static function () use ($worker): void {
-                        $worker->stop();
-                        $worker->stop();
-                    });
-                }
-                Async::sleep($worker->loop, $requestSeconds);
-                return Response::text('complete');
-            }), socket: $socket)
+        $runtime
+            ->group('http', shutdownTimeout: $drain)
+            ->listen(
+                $address,
+                new HttpServer(static function () use (&$worker, &$started, $count, $requestSeconds): Response {
+                    if (++$started === $count) {
+                        $worker->loop->delay(0.005, static function () use ($worker): void {
+                            $worker->stop();
+                            $worker->stop();
+                        });
+                    }
+                    Async::sleep($worker->loop, $requestSeconds);
+                    return Response::text('complete');
+                }),
+                socket: $socket,
+            )
             ->onStart(static function (Worker $value) use (&$worker): void {
                 $worker = $value;
             })

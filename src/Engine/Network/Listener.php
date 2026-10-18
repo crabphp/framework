@@ -5,9 +5,9 @@ declare(strict_types=1);
 namespace Crab\Engine\Network;
 
 use Closure;
-use InvalidArgumentException;
 use Crab\Engine\EventLoop;
 use Crab\Engine\FailureReporter;
+use InvalidArgumentException;
 use RuntimeException;
 use Throwable;
 
@@ -41,7 +41,9 @@ final class Listener
     public static function bind(string $address, array $contextOptions = []): mixed
     {
         if (!str_starts_with($address, 'tcp://')) {
-            throw new InvalidArgumentException('TCP listeners require tcp:// addresses; TLS is not supported by this transport.');
+            throw new InvalidArgumentException(
+                'TCP listeners require tcp:// addresses; TLS is not supported by this transport.',
+            );
         }
         $contextOptions['socket'] ??= [];
         $contextOptions['socket'] += ['backlog' => 1024, 'tcp_nodelay' => true];
@@ -71,7 +73,10 @@ final class Listener
     public static function inherited(int $descriptor): mixed
     {
         $stream = @fopen("php://fd/{$descriptor}", 'r+');
-        if ($stream === false || !str_contains((string) (stream_get_meta_data($stream)['stream_type'] ?? ''), 'socket')) {
+        if (
+            $stream === false
+            || !str_contains((string) (stream_get_meta_data($stream)['stream_type'] ?? ''), 'socket')
+        ) {
             throw new RuntimeException("Descriptor {$descriptor} is not a listening socket passed to this process.");
         }
         if (!stream_set_blocking($stream, false)) {

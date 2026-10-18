@@ -24,7 +24,12 @@ final class ConcurrencyTest extends TestCase
         $running = 0;
         $most = 0;
         $order = [];
-        $handler = self::handler(static function (ServerRequestInterface $request) use ($loop, &$running, &$most, &$order): ResponseInterface {
+        $handler = self::handler(static function (ServerRequestInterface $request) use (
+            $loop,
+            &$running,
+            &$most,
+            &$order,
+        ): ResponseInterface {
             $order[] = $request->getUri()->getPath();
             $most = max($most, ++$running);
             Async::sleep($loop, 0.01);
@@ -34,7 +39,10 @@ final class ConcurrencyTest extends TestCase
 
         $tasks = [];
         foreach (['/1', '/2', '/3', '/4', '/5'] as $path) {
-            $tasks[] = Task::spawn($loop, static fn (): ResponseInterface => $limit->process(self::request($path), $handler));
+            $tasks[] = Task::spawn($loop, static fn(): ResponseInterface => $limit->process(
+                self::request($path),
+                $handler,
+            ));
         }
         $loop->delay(0.005, static function () use ($limit): void {
             self::assertSame(['limit' => 2, 'running' => 2, 'waiting' => 3], $limit->stats());
@@ -56,19 +64,25 @@ final class ConcurrencyTest extends TestCase
         $loop = EventLoop::current();
         $limit = new Concurrency(1, wait: 0.02);
         $reached = [];
-        $handler = self::handler(static function (ServerRequestInterface $request) use ($loop, &$reached): ResponseInterface {
+        $handler = self::handler(static function (ServerRequestInterface $request) use (
+            $loop,
+            &$reached,
+        ): ResponseInterface {
             $reached[] = $request->getUri()->getPath();
             Async::sleep($loop, 0.1);
             return Response::json(['ok' => true]);
         });
 
-        $slow = Task::spawn($loop, static fn (): ResponseInterface => $limit->process(self::request('/slow'), $handler));
-        $late = Task::spawn($loop, static fn (): ResponseInterface => $limit->process(self::request('/late'), $handler));
+        $slow = Task::spawn($loop, static fn(): ResponseInterface => $limit->process(self::request('/slow'), $handler));
+        $late = Task::spawn($loop, static fn(): ResponseInterface => $limit->process(self::request('/late'), $handler));
 
         $refused = $late->await();
         self::assertSame(503, $refused->getStatusCode());
         self::assertSame('1', $refused->getHeaderLine('Retry-After'));
-        self::assertSame('The server is busy. Try again shortly.', json_decode((string) $refused->getBody(), true)['error']['message']);
+        self::assertSame(
+            'The server is busy. Try again shortly.',
+            json_decode((string) $refused->getBody(), true)['error']['message'],
+        );
         self::assertSame(200, $slow->await()->getStatusCode());
         $loop->run();
         self::assertSame(['/slow'], $reached);
@@ -77,7 +91,7 @@ final class ConcurrencyTest extends TestCase
     public function testAPlaceIsGivenBackWhenTheApplicationThrows(): void
     {
         $limit = new Concurrency(1);
-        $handler = self::handler(static fn (): ResponseInterface => throw new \RuntimeException('broken'));
+        $handler = self::handler(static fn(): ResponseInterface => throw new \RuntimeException('broken'));
         try {
             $limit->process(self::request('/'), $handler);
             self::fail('What the application throws must pass through.');
@@ -85,7 +99,12 @@ final class ConcurrencyTest extends TestCase
             self::assertSame('broken', $error->getMessage());
         }
         self::assertSame(['limit' => 1, 'running' => 0, 'waiting' => 0], $limit->stats());
-        self::assertSame(204, $limit->process(self::request('/'), self::handler(static fn (): ResponseInterface => Response::noContent()))->getStatusCode());
+        self::assertSame(
+            204,
+            $limit
+                ->process(self::request('/'), self::handler(static fn(): ResponseInterface => Response::noContent()))
+                ->getStatusCode(),
+        );
     }
 
     public function testALimitThatCouldNeverWorkIsRefusedWhenItIsWritten(): void
@@ -102,15 +121,15 @@ final class ConcurrencyTest extends TestCase
 
     private static function request(string $path): Request
     {
-        return (new Request('GET', $path))->withHeader('Accept', 'application/json');
+        return new Request('GET', $path)->withHeader('Accept', 'application/json');
     }
 
     private static function handler(\Closure $handle): RequestHandlerInterface
     {
-        return new class ($handle) implements RequestHandlerInterface {
-            public function __construct(private readonly \Closure $handle)
-            {
-            }
+        return new class($handle) implements RequestHandlerInterface {
+            public function __construct(
+                private readonly \Closure $handle,
+            ) {}
 
             public function handle(ServerRequestInterface $request): ResponseInterface
             {

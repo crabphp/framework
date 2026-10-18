@@ -34,7 +34,9 @@ final readonly class Cache implements CacheContract
         private ?ClockInterface $clock = null,
     ) {
         if (str_contains($prefix, ':lock:')) {
-            throw new \InvalidArgumentException("A cache prefix cannot contain :lock: because that text is kept for the cache's locks. Choose another prefix.");
+            throw new \InvalidArgumentException(
+                "A cache prefix cannot contain :lock: because that text is kept for the cache's locks. Choose another prefix.",
+            );
         }
     }
 
@@ -44,7 +46,7 @@ final readonly class Cache implements CacheContract
         return $entry === null ? $default : unserialize($entry);
     }
 
-    public function set(string $key, mixed $value, null|int|\DateInterval $ttl = null): bool
+    public function set(string $key, mixed $value, int|\DateInterval|null $ttl = null): bool
     {
         $now = $this->now();
         $expiresAt = $this->expiresAt($ttl, $now);
@@ -63,7 +65,7 @@ final readonly class Cache implements CacheContract
         return $entry === null ? $default : unserialize($entry);
     }
 
-    public function add(string $key, mixed $value, null|int|\DateInterval $ttl = null): bool
+    public function add(string $key, mixed $value, int|\DateInterval|null $ttl = null): bool
     {
         $now = $this->now();
         $expiresAt = $this->expiresAt($ttl, $now);
@@ -73,7 +75,7 @@ final readonly class Cache implements CacheContract
         return $this->store->add($this->key($key), serialize($value), $expiresAt, $now);
     }
 
-    public function increment(string $key, int $by = 1, null|int|\DateInterval $ttl = null): int
+    public function increment(string $key, int $by = 1, int|\DateInterval|null $ttl = null): int
     {
         $now = $this->now();
         return $this->store->increment($this->key($key), $by, $this->expiresAt($ttl, $now), $now);
@@ -85,7 +87,9 @@ final readonly class Cache implements CacheContract
         $now = $this->now();
         $expiresAt = $this->expiresAt($ttl, $now);
         if ($expiresAt <= $now) {
-            throw new \InvalidArgumentException('A cache lock needs a positive time to live. Give seconds or a DateInterval that expires in the future.');
+            throw new \InvalidArgumentException(
+                'A cache lock needs a positive time to live. Give seconds or a DateInterval that expires in the future.',
+            );
         }
         $token = bin2hex(random_bytes(16));
         if (!$this->store->add($key, $token, $expiresAt, $now)) {
@@ -94,7 +98,7 @@ final readonly class Cache implements CacheContract
         return new Lock($this->store, $key, $token, $this->now(...));
     }
 
-    public function remember(string $key, null|int|\DateInterval $ttl, \Closure $make): mixed
+    public function remember(string $key, int|\DateInterval|null $ttl, \Closure $make): mixed
     {
         $entry = $this->store->get($this->key($key), $this->now());
         if ($entry !== null) {
@@ -134,7 +138,7 @@ final readonly class Cache implements CacheContract
     /**
      * @param iterable<string, mixed> $values
      */
-    public function setMultiple(iterable $values, null|int|\DateInterval $ttl = null): bool
+    public function setMultiple(iterable $values, int|\DateInterval|null $ttl = null): bool
     {
         foreach ($values as $key => $value) {
             // A key made of digits arrives from an array as an integer.
@@ -155,12 +159,14 @@ final readonly class Cache implements CacheContract
     {
         if (!is_string($key) || $key === '' || strpbrk($key, '{}()/\\@:') !== false) {
             $shown = is_string($key) ? "\"{$key}\"" : get_debug_type($key);
-            throw new InvalidKey("{$shown} cannot be a cache key. A key is text that is not empty and has none of {}()/\\@: in it; separate its parts with a dot or a dash.");
+            throw new InvalidKey(
+                "{$shown} cannot be a cache key. A key is text that is not empty and has none of {}()/\\@: in it; separate its parts with a dot or a dash.",
+            );
         }
         return $this->prefix . $namespace . $key;
     }
 
-    private function expiresAt(null|int|\DateInterval $ttl, int $now): ?int
+    private function expiresAt(int|\DateInterval|null $ttl, int $now): ?int
     {
         $ttl ??= $this->ttl;
         if ($ttl === null) {
@@ -168,8 +174,11 @@ final readonly class Cache implements CacheContract
         }
         if ($ttl instanceof \DateInterval) {
             // Past a hundred million of any part, PHP's date arithmetic wraps round without a word.
-            if (max(abs($ttl->y), abs($ttl->m), abs($ttl->d), abs($ttl->h), abs($ttl->i), abs($ttl->s), abs($ttl->f)) <= 100_000_000) {
-                return (new \DateTimeImmutable('@' . $now))->add($ttl)->getTimestamp();
+            if (
+                max(abs($ttl->y), abs($ttl->m), abs($ttl->d), abs($ttl->h), abs($ttl->i), abs($ttl->s), abs($ttl->f))
+                <= 100_000_000
+            ) {
+                return new \DateTimeImmutable('@' . $now)->add($ttl)->getTimestamp();
             }
         } else {
             $expiresAt = $now + $ttl;
@@ -177,7 +186,13 @@ final readonly class Cache implements CacheContract
                 return $expiresAt;
             }
         }
-        throw new \InvalidArgumentException('A cache time to live is too long. Its expiry must fit between Unix timestamps ' . PHP_INT_MIN . ' and ' . PHP_INT_MAX . '. Give fewer seconds or a shorter DateInterval.');
+        throw new \InvalidArgumentException(
+            'A cache time to live is too long. Its expiry must fit between Unix timestamps '
+            . PHP_INT_MIN
+            . ' and '
+            . PHP_INT_MAX
+            . '. Give fewer seconds or a shorter DateInterval.',
+        );
     }
 
     private function now(): int

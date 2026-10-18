@@ -45,7 +45,9 @@ final readonly class Consumer
         private ?EventDispatcherInterface $events = null,
     ) {
         if ($tries < 1 || $retryAfter < 1) {
-            throw new \InvalidArgumentException('A queue consumer needs at least one try for a job and a positive number of seconds to retry after.');
+            throw new \InvalidArgumentException(
+                'A queue consumer needs at least one try for a job and a positive number of seconds to retry after.',
+            );
         }
     }
 
@@ -55,7 +57,16 @@ final readonly class Consumer
      */
     public function within(Supervisor $supervisor): self
     {
-        return new self($this->store, $this->container, $this->logger, $this->clock, $supervisor->tries, $supervisor->backoff, $supervisor->retryAfter, $this->events);
+        return new self(
+            $this->store,
+            $this->container,
+            $this->logger,
+            $this->clock,
+            $supervisor->tries,
+            $supervisor->backoff,
+            $supervisor->retryAfter,
+            $this->events,
+        );
     }
 
     /**
@@ -79,19 +90,23 @@ final readonly class Consumer
             $this->tell(new JobRan($message, (hrtime(true) - $started) / 1e9, $error, true));
             return true;
         }
-        $tries = $retry?->tries ?? $this->tries;
-        $backoff = $retry?->backoff ?? $this->backoff;
+        $tries = $retry->tries ?? $this->tries;
+        $backoff = $retry->backoff ?? $this->backoff;
         if ($message->attempts > $tries) {
             // This reservation only detects exhaustion; the limit may have changed since earlier tries.
             $attempts = $message->attempts - 1;
             $taken = $attempts === 1 ? 'once' : "{$attempts} times";
-            $error = new \RuntimeException("The retry limit of {$tries} is exhausted; the job was taken {$taken} before this check. This can happen without a recorded failure when a worker stopped while running it or it ran longer than {$this->retryAfter} seconds (queue.retry_after). It can also happen when its limit was lowered. Review the job before retrying it with queue:retry.");
+            $error = new \RuntimeException(
+                "The retry limit of {$tries} is exhausted; the job was taken {$taken} before this check. This can happen without a recorded failure when a worker stopped while running it or it ran longer than {$this->retryAfter} seconds (queue.retry_after). It can also happen when its limit was lowered. Review the job before retrying it with queue:retry.",
+            );
             $this->giveUp($message, $error, $attempts);
             $this->tell(new JobRan($message, (hrtime(true) - $started) / 1e9, $error, true));
             return true;
         }
         try {
-            $job = $this->container?->has($message->job) ? $this->container->get($message->job) : self::make($message->job);
+            $job = $this->container?->has($message->job)
+                ? $this->container->get($message->job)
+                : self::make($message->job);
             $job->handle(...$message->data);
         } catch (\Throwable $error) {
             $seconds = (hrtime(true) - $started) / 1e9;
@@ -102,9 +117,14 @@ final readonly class Consumer
                 $wait = $backoff === [] ? 0 : $backoff[min($message->attempts, count($backoff)) - 1];
                 $this->store->release($message, $this->now() + $wait);
                 $this->logger?->warning('Job {job} failed on try {attempt} of {tries} and will be tried again in {wait} seconds: {message}', [
-                    'job' => $message->job, 'id' => $message->id, 'queue' => $message->queue,
-                    'attempt' => $message->attempts, 'tries' => $tries, 'wait' => $wait,
-                    'message' => $error->getMessage(), 'exception' => $error,
+                    'job' => $message->job,
+                    'id' => $message->id,
+                    'queue' => $message->queue,
+                    'attempt' => $message->attempts,
+                    'tries' => $tries,
+                    'wait' => $wait,
+                    'message' => $error->getMessage(),
+                    'exception' => $error,
                 ]);
             }
             // After the store knows: a listener that looks for the failed job finds it.
@@ -125,7 +145,11 @@ final readonly class Consumer
         try {
             $this->events?->dispatch($event);
         } catch (\Throwable $error) {
-            $this->logger?->error('A listener for {event} failed: {message}', ['event' => JobRan::class, 'message' => $error->getMessage(), 'exception' => $error]);
+            $this->logger?->error('A listener for {event} failed: {message}', [
+                'event' => JobRan::class,
+                'message' => $error->getMessage(),
+                'exception' => $error,
+            ]);
         }
     }
 
@@ -139,15 +163,23 @@ final readonly class Consumer
      * @param bool $stopWhenEmpty Return when no job is due, instead of waiting for one.
      * @return int How many jobs were run.
      */
-    public function work(EventLoop $loop, Cancellation $cancellation, array $queues = ['default'], float $sleep = 1.0, bool $stopWhenEmpty = false): int
-    {
+    public function work(
+        EventLoop $loop,
+        Cancellation $cancellation,
+        array $queues = ['default'],
+        float $sleep = 1.0,
+        bool $stopWhenEmpty = false,
+    ): int {
         $ran = 0;
         while (!$cancellation->isCancelled()) {
             $found = false;
             try {
                 $found = $this->runNext($queues);
             } catch (\Throwable $error) {
-                $this->logger?->error('The queue could not be read: {message}', ['message' => $error->getMessage(), 'exception' => $error]);
+                $this->logger?->error('The queue could not be read: {message}', [
+                    'message' => $error->getMessage(),
+                    'exception' => $error,
+                ]);
             }
             if ($found) {
                 ++$ran;
@@ -175,16 +207,21 @@ final readonly class Consumer
     {
         $this->store->fail($message, $error::class . ': ' . $error->getMessage(), $this->now());
         $this->logger?->error('Job {job} failed for good after {attempt} tries: {message}', [
-            'job' => $message->job, 'id' => $message->id, 'queue' => $message->queue,
+            'job' => $message->job,
+            'id' => $message->id,
+            'queue' => $message->queue,
             'attempt' => $attempts,
-            'message' => $error->getMessage(), 'exception' => $error,
+            'message' => $error->getMessage(),
+            'exception' => $error,
         ]);
     }
 
     private static function make(string $class): object
     {
         if (!class_exists($class) || !method_exists($class, 'handle')) {
-            throw new \LogicException("The job {$class} cannot be run: there is no such class with a handle() method. It may have been renamed or removed since the job was pushed.");
+            throw new \LogicException(
+                "The job {$class} cannot be run: there is no such class with a handle() method. It may have been renamed or removed since the job was pushed.",
+            );
         }
         return new $class();
     }

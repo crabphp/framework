@@ -52,8 +52,10 @@ final class Connection
     /**
      * @param resource $stream
      */
-    private function __construct(private readonly EventLoop $loop, mixed $stream)
-    {
+    private function __construct(
+        private readonly EventLoop $loop,
+        mixed $stream,
+    ) {
         $this->stream = $stream;
     }
 
@@ -67,8 +69,16 @@ final class Connection
      * @param bool $encrypt Whether to agree on encryption at once. Not when a proxy is first asked for a tunnel: encrypt() is then called once it has made one.
      * @throws \RuntimeException Saying why it could not be opened.
      */
-    public static function open(EventLoop $loop, string $address, int $port, ?string $tlsHost, array $tls, float $deadline, ?Cancellation $cancellation = null, bool $encrypt = true): self
-    {
+    public static function open(
+        EventLoop $loop,
+        string $address,
+        int $port,
+        ?string $tlsHost,
+        array $tls,
+        float $deadline,
+        ?Cancellation $cancellation = null,
+        bool $encrypt = true,
+    ): self {
         $target = str_contains($address, ':') ? "tcp://[{$address}]:{$port}" : "tcp://{$address}:{$port}";
         $options = ['socket' => ['tcp_nodelay' => true]];
         if ($tlsHost !== null) {
@@ -82,7 +92,14 @@ final class Connection
                 ...$tls,
             ];
         }
-        $stream = @stream_socket_client($target, $code, $reason, 0, STREAM_CLIENT_CONNECT | STREAM_CLIENT_ASYNC_CONNECT, stream_context_create($options));
+        $stream = @stream_socket_client(
+            $target,
+            $code,
+            $reason,
+            0,
+            STREAM_CLIENT_CONNECT | STREAM_CLIENT_ASYNC_CONNECT,
+            stream_context_create($options),
+        );
         if ($stream === false) {
             throw new \RuntimeException("cannot connect: {$reason}");
         }
@@ -111,7 +128,7 @@ final class Connection
     public function read(float $deadline, ?Cancellation $cancellation = null, bool $background = false): ?string
     {
         while (true) {
-            $bytes = @fread($this->stream(), 65536);
+            $bytes = @fread($this->stream(), 65_536);
             if ($bytes !== false && $bytes !== '') {
                 return $bytes;
             }
@@ -131,7 +148,7 @@ final class Connection
         $offset = 0;
         $length = strlen($bytes);
         while ($offset < $length) {
-            if (hrtime(true) / 1_000_000_000 >= $deadline) {
+            if ((hrtime(true) / 1_000_000_000) >= $deadline) {
                 throw new TimedOut('sending');
             }
             $written = @fwrite($this->stream(), $offset === 0 ? $bytes : substr($bytes, $offset));
@@ -200,7 +217,9 @@ final class Connection
             error_clear_last();
             $done = @stream_socket_enable_crypto($this->stream(), true, STREAM_CRYPTO_METHOD_TLS_CLIENT);
             if ($done === true) {
-                $this->protocol = (string) (stream_get_meta_data($this->stream())['crypto']['alpn_protocol'] ?? 'http/1.1');
+                $this->protocol = (string) (
+                    stream_get_meta_data($this->stream())['crypto']['alpn_protocol'] ?? 'http/1.1'
+                );
                 return;
             }
             if ($done === false) {
@@ -221,10 +240,15 @@ final class Connection
      * @param float $deadline INF to wait for as long as it takes.
      * @param bool $background Whether the wait is one nobody is waiting on, which must not keep an idle process alive: a connection listening for what the server may say unasked.
      */
-    private function wait(bool $writable, float $deadline, ?Cancellation $cancellation, string $doing, bool $background = false): void
-    {
+    private function wait(
+        bool $writable,
+        float $deadline,
+        ?Cancellation $cancellation,
+        string $doing,
+        bool $background = false,
+    ): void {
         $cancellation?->throwIfCancelled();
-        $left = is_infinite($deadline) ? null : $deadline - hrtime(true) / 1_000_000_000;
+        $left = is_infinite($deadline) ? null : $deadline - (hrtime(true) / 1_000_000_000);
         if ($left !== null && $left <= 0) {
             throw new TimedOut($doing);
         }
@@ -244,15 +268,15 @@ final class Connection
         };
         $stream = $this->stream();
         $watcher = $writable
-            ? $loop->onWritable($stream, static fn () => $finish())
-            : $loop->onReadable($stream, static fn () => $finish());
+            ? $loop->onWritable($stream, static fn() => $finish())
+            : $loop->onReadable($stream, static fn() => $finish());
         if ($background) {
             $loop->unreference($watcher);
         }
         $wait = $this->nextWait++;
         $this->waits[$wait] = [$watcher, $finish];
-        $timer = $left === null ? null : $loop->delay($left, static fn () => $finish(new TimedOut($doing)));
-        $unsubscribe = $cancellation?->subscribe(static fn (CancelledException $error) => $finish($error));
+        $timer = $left === null ? null : $loop->delay($left, static fn() => $finish(new TimedOut($doing)));
+        $unsubscribe = $cancellation?->subscribe(static fn(CancelledException $error) => $finish($error));
         try {
             $suspension->suspend();
         } finally {

@@ -38,23 +38,43 @@ final class Http2Session
     /**
      * How many bytes of one answer's body the server may send before it is told it may send more.
      */
-    private const STREAM_WINDOW = 1048576;
+    private const STREAM_WINDOW = 1_048_576;
     /**
      * The same for all the answers on the connection together.
      */
-    private const CONNECTION_WINDOW = 16777216;
+    private const CONNECTION_WINDOW = 16_777_216;
     /**
      * The largest frame this side takes, which is what a connection starts with.
      */
-    private const MAX_FRAME = 16384;
+    private const MAX_FRAME = 16_384;
     /**
      * Headers that describe an HTTP/1.1 connection and have no place on this one.
      */
-    private const DROPPED = ['host', 'connection', 'keep-alive', 'proxy-connection', 'transfer-encoding', 'upgrade', 'te', 'content-length'];
+    private const DROPPED = [
+        'host',
+        'connection',
+        'keep-alive',
+        'proxy-connection',
+        'transfer-encoding',
+        'upgrade',
+        'te',
+        'content-length',
+    ];
     private const ERRORS = [
-        'no error', 'a protocol error', 'an internal error', 'a flow control error', 'a settings timeout', 'a closed stream',
-        'a frame size error', 'a refused stream', 'a cancellation', 'a compression error', 'a connect error', 'too many requests',
-        'inadequate security', 'HTTP/1.1 being required',
+        'no error',
+        'a protocol error',
+        'an internal error',
+        'a flow control error',
+        'a settings timeout',
+        'a closed stream',
+        'a frame size error',
+        'a refused stream',
+        'a cancellation',
+        'a compression error',
+        'a connect error',
+        'too many requests',
+        'inadequate security',
+        'HTTP/1.1 being required',
     ];
 
     /**
@@ -66,12 +86,12 @@ final class Http2Session
     /**
      * How many bytes of request bodies the server will take on the whole connection for now.
      */
-    private int $window = 65535;
+    private int $window = 65_535;
     /**
      * What the server said of itself: the window a new stream starts with, its largest frame and how many requests at once.
      */
-    private int $streamWindow = 65535;
-    private int $maxFrame = 16384;
+    private int $streamWindow = 65_535;
+    private int $maxFrame = 16_384;
     private int $maxStreams = 100;
     /**
      * Bytes of bodies received that the server has not yet been told it may send again.
@@ -119,9 +139,9 @@ final class Http2Session
         $settings = pack('nN', 2, 0) . pack('nN', 4, self::STREAM_WINDOW);
         $this->write(
             "PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n"
-            // No pushed answers, and room for bodies to arrive without a pause.
-            . self::frame(self::SETTINGS, 0, 0, $settings)
-            . self::frame(self::WINDOW_UPDATE, 0, 0, pack('N', self::CONNECTION_WINDOW - 65535)),
+                // No pushed answers, and room for bodies to arrive without a pause.
+                . self::frame(self::SETTINGS, 0, 0, $settings)
+                . self::frame(self::WINDOW_UPDATE, 0, 0, pack('N', self::CONNECTION_WINDOW - 65_535)),
             $deadline,
         );
         $this->loop->defer(function (): void {
@@ -134,7 +154,7 @@ final class Http2Session
      */
     public function accepts(): bool
     {
-        return $this->dead === null && !$this->leaving && $this->nextId < 0x7FFFFFFF;
+        return $this->dead === null && !$this->leaving && $this->nextId < 0x7FFF_FFFF;
     }
 
     /**
@@ -142,8 +162,12 @@ final class Http2Session
      * @throws Unprocessed When the server did not act on the request, which may then be made on another connection.
      * @throws \RuntimeException Saying what went wrong, to be put after the name of the request.
      */
-    public function exchange(RequestInterface $request, float $deadline, ?Cancellation $cancellation, bool &$sent = false): Response
-    {
+    public function exchange(
+        RequestInterface $request,
+        float $deadline,
+        ?Cancellation $cancellation,
+        bool &$sent = false,
+    ): Response {
         while ($this->accepts() && count($this->streams) >= $this->maxStreams) {
             $this->park($deadline, $cancellation, 'waiting for the server to take another request');
         }
@@ -193,7 +217,14 @@ final class Http2Session
             unset($headers['content-encoding'], $headers['content-length']);
         }
         try {
-            return new Response((int) $stream->status, $headers, new Stream($sink->stream()), '', '2', Exchange::describe($request));
+            return new Response(
+                (int) $stream->status,
+                $headers,
+                new Stream($sink->stream()),
+                '',
+                '2',
+                Exchange::describe($request),
+            );
         } catch (\InvalidArgumentException $invalid) {
             throw new \RuntimeException('the answer is not valid HTTP: ' . $invalid->getMessage(), previous: $invalid);
         }
@@ -213,7 +244,7 @@ final class Http2Session
         foreach ($streams as $stream) {
             // A request nothing came back for was, as far as anyone can tell, not acted on only if it was never sent; that is not known here.
             $stream->error ??= new \RuntimeException($this->dead->getMessage(), previous: $this->dead);
-            ($stream->wake)?->__invoke();
+            $stream->wake?->__invoke();
         }
         $this->wakeAll();
         ($this->onClose)();
@@ -270,7 +301,12 @@ final class Http2Session
         $parts = str_split($block, $this->maxFrame);
         $frames = self::frame(self::HEADERS, $ends, $id, array_shift($parts));
         foreach ($parts as $index => $part) {
-            $frames .= self::frame(self::CONTINUATION, $index === array_key_last($parts) ? self::END_HEADERS : 0, $id, $part);
+            $frames .= self::frame(
+                self::CONTINUATION,
+                $index === array_key_last($parts) ? self::END_HEADERS : 0,
+                $id,
+                $part,
+            );
         }
         return $frames;
     }
@@ -278,15 +314,19 @@ final class Http2Session
     /**
      * Sends a request's body, no faster than the server says it will take it.
      */
-    private function sendBody(Http2Stream $stream, \Psr\Http\Message\StreamInterface $body, float $deadline, ?Cancellation $cancellation): void
-    {
+    private function sendBody(
+        Http2Stream $stream,
+        \Psr\Http\Message\StreamInterface $body,
+        float $deadline,
+        ?Cancellation $cancellation,
+    ): void {
         if ($body->isSeekable()) {
             $body->rewind();
         }
         $pending = '';
         while (true) {
             if ($pending === '' && !$body->eof()) {
-                $pending = $body->read(65536);
+                $pending = $body->read(65_536);
             }
             if ($pending === '') {
                 if ($body->eof()) {
@@ -308,7 +348,11 @@ final class Http2Session
             $length = min(strlen($pending), $this->window, $stream->window, $this->maxFrame);
             $this->window -= $length;
             $stream->window -= $length;
-            $this->write(self::frame(self::DATA, 0, $stream->id, substr($pending, 0, $length)), $deadline, $cancellation);
+            $this->write(
+                self::frame(self::DATA, 0, $stream->id, substr($pending, 0, $length)),
+                $deadline,
+                $cancellation,
+            );
             $pending = (string) substr($pending, $length);
         }
         if (!$stream->done && $stream->error === null) {
@@ -333,7 +377,7 @@ final class Http2Session
         // Sent on the side: whoever gave the request up is not made to wait for it.
         $this->loop->defer(function () use ($reset): void {
             try {
-                $this->write($reset, hrtime(true) / 1_000_000_000 + 5.0);
+                $this->write($reset, (hrtime(true) / 1_000_000_000) + 5.0);
             } catch (\Throwable) {
                 // A connection that cannot be written to is found out by its reader.
             }
@@ -350,7 +394,7 @@ final class Http2Session
         $block = null;
         try {
             while ($this->dead === null) {
-                while (strlen($buffer) < 9 || strlen($buffer) < 9 + (unpack('N', "\0" . substr($buffer, 0, 3))[1])) {
+                while (strlen($buffer) < 9 || strlen($buffer) < (9 + unpack('N', "\0" . substr($buffer, 0, 3))[1])) {
                     $bytes = $this->connection->read(INF, null, background: true);
                     if ($bytes === null) {
                         throw new \RuntimeException('the connection was lost in the middle of the answer');
@@ -360,7 +404,7 @@ final class Http2Session
                 $length = unpack('N', "\0" . substr($buffer, 0, 3))[1];
                 $type = ord($buffer[3]);
                 $flags = ord($buffer[4]);
-                $id = unpack('N', $buffer, 5)[1] & 0x7FFFFFFF;
+                $id = unpack('N', $buffer, 5)[1] & 0x7FFF_FFFF;
                 if ($length > self::MAX_FRAME) {
                     throw new \RuntimeException('the server sent a frame larger than allowed');
                 }
@@ -389,7 +433,7 @@ final class Http2Session
                         if ($type === self::CONTINUATION) {
                             $block[2] .= $payload;
                         }
-                        if (strlen($block[2]) > 262144) {
+                        if (strlen($block[2]) > 262_144) {
                             throw new \RuntimeException('the answer\'s headers are too long');
                         }
                         if (($flags & self::END_HEADERS) !== 0) {
@@ -407,14 +451,20 @@ final class Http2Session
                         break;
                     case self::PING:
                         if (($flags & self::ACK) === 0) {
-                            $this->write(self::frame(self::PING, self::ACK, 0, $payload), hrtime(true) / 1_000_000_000 + 10.0);
+                            $this->write(
+                                self::frame(self::PING, self::ACK, 0, $payload),
+                                (hrtime(true) / 1_000_000_000) + 10.0,
+                            );
                         }
                         break;
                     case self::GOAWAY:
-                        $this->leave(strlen($payload) >= 8 ? unpack('N', $payload)[1] & 0x7FFFFFFF : 0, strlen($payload) >= 8 ? unpack('N', $payload, 4)[1] : 0);
+                        $this->leave(
+                            strlen($payload) >= 8 ? unpack('N', $payload)[1] & 0x7FFF_FFFF : 0,
+                            strlen($payload) >= 8 ? unpack('N', $payload, 4)[1] : 0,
+                        );
                         break;
                     case self::WINDOW_UPDATE:
-                        $more = strlen($payload) === 4 ? unpack('N', $payload)[1] & 0x7FFFFFFF : 0;
+                        $more = strlen($payload) === 4 ? unpack('N', $payload)[1] & 0x7FFF_FFFF : 0;
                         if ($id === 0) {
                             $this->window += $more;
                         } elseif (isset($this->streams[$id])) {
@@ -443,7 +493,7 @@ final class Http2Session
         // Every byte counts against what the server may send, the padding and a body nobody waits for included.
         $this->unacknowledged += $counted;
         $update = '';
-        if ($this->unacknowledged >= self::CONNECTION_WINDOW / 4) {
+        if ($this->unacknowledged >= (self::CONNECTION_WINDOW / 4)) {
             $update .= self::frame(self::WINDOW_UPDATE, 0, 0, pack('N', $this->unacknowledged));
             $this->unacknowledged = 0;
         }
@@ -462,14 +512,14 @@ final class Http2Session
             $stream->unacknowledged += $counted;
             if (($flags & self::END_STREAM) !== 0) {
                 $this->finish($stream);
-            } elseif ($stream->unacknowledged >= self::STREAM_WINDOW / 2) {
+            } elseif ($stream->unacknowledged >= (self::STREAM_WINDOW / 2)) {
                 $update .= self::frame(self::WINDOW_UPDATE, 0, $id, pack('N', $stream->unacknowledged));
                 $stream->unacknowledged = 0;
             }
-            ($stream->wake)?->__invoke();
+            $stream->wake?->__invoke();
         }
         if ($update !== '') {
-            $this->write($update, hrtime(true) / 1_000_000_000 + 10.0);
+            $this->write($update, (hrtime(true) / 1_000_000_000) + 10.0);
         }
     }
 
@@ -499,14 +549,14 @@ final class Http2Session
                 $stream->status = $status;
                 $stream->headers = $headers;
                 $bodiless = $stream->bodiless || $status === 204 || $status === 304;
-                $stream->body = new BodySink($bodiless ? '' : ($headers['content-encoding'][0] ?? ''));
+                $stream->body = new BodySink($bodiless ? '' : $headers['content-encoding'][0] ?? '');
             }
         }
         // Headers after the body are trailers, which nothing here reads.
         if ($ends || $stream->error !== null) {
             $this->finish($stream);
         }
-        ($stream->wake)?->__invoke();
+        $stream->wake?->__invoke();
     }
 
     private function reset(int $id, int $code): void
@@ -526,7 +576,7 @@ final class Http2Session
             unset($this->streams[$id]);
             $this->wakeAll();
         }
-        ($stream->wake)?->__invoke();
+        $stream->wake?->__invoke();
     }
 
     private function settings(string $payload): void
@@ -545,11 +595,11 @@ final class Http2Session
                 }
                 $this->streamWindow = $value;
             } elseif ($id === 5) {
-                $this->maxFrame = max(self::MAX_FRAME, min($value, 1048576));
+                $this->maxFrame = max(self::MAX_FRAME, min($value, 1_048_576));
             }
         }
         $this->wakeAll();
-        $this->write(self::frame(self::SETTINGS, self::ACK, 0, ''), hrtime(true) / 1_000_000_000 + 10.0);
+        $this->write(self::frame(self::SETTINGS, self::ACK, 0, ''), (hrtime(true) / 1_000_000_000) + 10.0);
     }
 
     /**
@@ -559,16 +609,22 @@ final class Http2Session
     {
         $this->leaving = true;
         foreach ($this->streams as $id => $stream) {
-            if ($id > $lastReached) {
-                $stream->error = new Unprocessed('the server closed the connection before reaching the request');
-                unset($this->streams[$id]);
-                ($stream->wake)?->__invoke();
+            if ($id <= $lastReached) {
+                continue;
             }
+
+            $stream->error = new Unprocessed('the server closed the connection before reaching the request');
+            unset($this->streams[$id]);
+            $stream->wake?->__invoke();
         }
         $this->wakeAll();
         if ($this->streams === []) {
             $why = self::ERRORS[$code] ?? "error {$code}";
-            $this->close(new \RuntimeException($code === 0 ? 'the server closed the connection' : "the server closed the connection, with {$why}"));
+            $this->close(
+                new \RuntimeException(
+                    $code === 0 ? 'the server closed the connection' : "the server closed the connection, with {$why}",
+                ),
+            );
         }
     }
 
@@ -647,27 +703,41 @@ final class Http2Session
      */
     private function await(Http2Stream $stream, float $deadline, ?Cancellation $cancellation, string $doing): void
     {
-        $this->suspend(static function (?\Closure $wake) use ($stream): void {
-            $stream->wake = $wake;
-        }, $deadline, $cancellation, $doing);
+        $this->suspend(
+            static function (?\Closure $wake) use ($stream): void {
+                $stream->wake = $wake;
+            },
+            $deadline,
+            $cancellation,
+            $doing,
+        );
     }
 
     /**
      * Suspends until there may be room: a stream has ended, or the server takes more. A stream given is woken by its own changes too.
      */
-    private function park(float $deadline, ?Cancellation $cancellation, string $doing, ?Http2Stream $stream = null): void
-    {
+    private function park(
+        float $deadline,
+        ?Cancellation $cancellation,
+        string $doing,
+        ?Http2Stream $stream = null,
+    ): void {
         $id = $this->nextWaiter++;
-        $this->suspend(function (?\Closure $wake) use ($id, $stream): void {
-            if ($wake === null) {
-                unset($this->waiting[$id]);
-            } else {
-                $this->waiting[$id] = $wake;
-            }
-            if ($stream !== null) {
-                $stream->wake = $wake;
-            }
-        }, $deadline, $cancellation, $doing);
+        $this->suspend(
+            function (?\Closure $wake) use ($id, $stream): void {
+                if ($wake === null) {
+                    unset($this->waiting[$id]);
+                } else {
+                    $this->waiting[$id] = $wake;
+                }
+                if ($stream !== null) {
+                    $stream->wake = $wake;
+                }
+            },
+            $deadline,
+            $cancellation,
+            $doing,
+        );
     }
 
     /**
@@ -676,7 +746,7 @@ final class Http2Session
     private function suspend(\Closure $register, float $deadline, ?Cancellation $cancellation, string $doing): void
     {
         $cancellation?->throwIfCancelled();
-        $left = $deadline - hrtime(true) / 1_000_000_000;
+        $left = $deadline - (hrtime(true) / 1_000_000_000);
         if ($left <= 0) {
             throw new TimedOut($doing);
         }
@@ -693,9 +763,9 @@ final class Http2Session
                 $suspension->resume();
             }
         };
-        $register(static fn () => $finish());
-        $timer = $this->loop->delay($left, static fn () => $finish(new TimedOut($doing)));
-        $unsubscribe = $cancellation?->subscribe(static fn (CancelledException $error) => $finish($error));
+        $register(static fn() => $finish());
+        $timer = $this->loop->delay($left, static fn() => $finish(new TimedOut($doing)));
+        $unsubscribe = $cancellation?->subscribe(static fn(CancelledException $error) => $finish($error));
         try {
             $suspension->suspend();
         } finally {

@@ -17,9 +17,10 @@ final class Schema implements SchemaContract
     /**
      * @param SchemaGrammar|null $grammar The SQL dialect to write; left out, it follows the connection's driver.
      */
-    public function __construct(private readonly Connection $connection, private ?SchemaGrammar $grammar = null)
-    {
-    }
+    public function __construct(
+        private readonly Connection $connection,
+        private ?SchemaGrammar $grammar = null,
+    ) {}
 
     public function create(string $table, \Closure $callback): void
     {
@@ -28,8 +29,14 @@ final class Schema implements SchemaContract
         if ($definition->columns === []) {
             throw new \LogicException("The table \"{$table}\" was given no columns.");
         }
-        if ($definition->droppedColumns !== [] || $definition->renamedColumns !== [] || $definition->droppedIndexes !== []) {
-            throw new \LogicException("The table \"{$table}\" is being created, so it has nothing to rename or drop; that belongs in table().");
+        if (
+            $definition->droppedColumns !== []
+            || $definition->renamedColumns !== []
+            || $definition->droppedIndexes !== []
+        ) {
+            throw new \LogicException(
+                "The table \"{$table}\" is being created, so it has nothing to rename or drop; that belongs in table().",
+            );
         }
         $this->run($this->grammar()->create($definition));
     }
@@ -39,11 +46,15 @@ final class Schema implements SchemaContract
         $definition = new Table($table);
         $callback($definition);
         if ($definition->primary !== []) {
-            throw new \LogicException("The primary key of \"{$table}\" is chosen when the table is created and cannot be changed in table().");
+            throw new \LogicException(
+                "The primary key of \"{$table}\" is chosen when the table is created and cannot be changed in table().",
+            );
         }
         foreach ($definition->columns as $column) {
             if ($column->type === 'id') {
-                throw new \LogicException("An id() column cannot be added to \"{$table}\" afterwards; it is part of creating the table.");
+                throw new \LogicException(
+                    "An id() column cannot be added to \"{$table}\" afterwards; it is part of creating the table.",
+                );
             }
         }
         $this->run($this->grammar()->alter($definition));

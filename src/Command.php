@@ -22,8 +22,11 @@ final class Command
      * @param CommandContract|\Closure|string $command A command, a closure taking the input and output, or the name of a command class.
      * @param string $description Shown in the command list; used for a closure.
      */
-    public static function add(string $name, CommandContract|\Closure|string $command, string $description = ''): Console
-    {
+    public static function add(
+        string $name,
+        CommandContract|\Closure|string $command,
+        string $description = '',
+    ): Console {
         return App::current()->console->add($name, $command, $description);
     }
 }

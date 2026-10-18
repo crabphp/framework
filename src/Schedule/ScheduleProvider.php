@@ -50,19 +50,28 @@ final class ScheduleProvider implements Provider
                 $container->has(ClockInterface::class) ? $container->get(ClockInterface::class) : null,
                 $container->has(Cache::class) ? $container->get(Cache::class) : null,
                 is_string($timezone) && $timezone !== '' ? new \DateTimeZone($timezone) : null,
-                $container->has(EventDispatcherInterface::class) ? $container->get(EventDispatcherInterface::class) : null,
+                $container->has(EventDispatcherInterface::class)
+                    ? $container->get(EventDispatcherInterface::class)
+                    : null,
             );
         });
         if ($container->has(Servers::class)) {
             // Named in "server.with", the scheduler is run by `serve` itself, beside HTTP, in one worker of its own.
-            $container->get(Servers::class)->add('schedule', static function () use ($container): array {
-                $scheduler = $container->get(Scheduler::class);
-                // Before anything is started, so that a schedule that cannot run stops the server from starting.
-                $scheduler->check();
-                return [new Workers('schedule', static function (Worker $worker, Cancellation $cancellation) use ($scheduler): void {
-                    $scheduler->work($worker, $cancellation);
-                })];
-            }, 30.0, 'schedule:work');
+            $container->get(Servers::class)->add(
+                'schedule',
+                static function () use ($container): array {
+                    $scheduler = $container->get(Scheduler::class);
+                    // Before anything is started, so that a schedule that cannot run stops the server from starting.
+                    $scheduler->check();
+                    return [new Workers('schedule', static function (Worker $worker, Cancellation $cancellation) use (
+                        $scheduler,
+                    ): void {
+                        $scheduler->work($worker, $cancellation);
+                    })];
+                },
+                30.0,
+                'schedule:work',
+            );
         }
         if ($container->has(Console::class)) {
             $console = $container->get(Console::class);

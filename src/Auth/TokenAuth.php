@@ -44,8 +44,7 @@ final readonly class TokenAuth implements Middleware
         private string $header = 'Authorization',
         private string $scheme = 'Bearer',
         private bool $required = true,
-    ) {
-    }
+    ) {}
 
     public function process(ServerRequestInterface $request, RequestHandlerInterface $handler): ResponseInterface
     {

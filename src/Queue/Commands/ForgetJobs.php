@@ -11,9 +11,9 @@ use Crab\Contracts\Queue\Store;
 
 final readonly class ForgetJobs implements Command
 {
-    public function __construct(private Store $store)
-    {
-    }
+    public function __construct(
+        private Store $store,
+    ) {}
 
     public function description(): string
     {

@@ -8,7 +8,6 @@ use Crab\Database\DatabaseException;
 use Crab\Database\Mysql\Authentication;
 use Crab\Database\Mysql\Codec;
 use Crab\Database\Mysql\Connection;
-use Crab\Engine\Async\Async;
 use Crab\Engine\Async\Cancellation;
 use Crab\Engine\Async\CancelledException;
 use Crab\Engine\Process\Worker;
@@ -28,7 +27,10 @@ final class AuthenticationTest extends TestCase
                 $response = $server->receive();
                 $offset = 32;
                 self::assertSame('user', Codec::terminated($response, $offset));
-                self::assertSame(Authentication::response($plugin, 'secret', '12345678abcdefgh1234'), Codec::readString($response, $offset));
+                self::assertSame(
+                    Authentication::response($plugin, 'secret', '12345678abcdefgh1234'),
+                    Codec::readString($response, $offset),
+                );
                 if ($plugin === 'caching_sha2_password') {
                     $server->send("\x01\x03");
                 }
@@ -38,7 +40,7 @@ final class AuthenticationTest extends TestCase
                 self::assertSame("\x17", $server->receive()[0]);
                 $server->ok();
             }, static function (string $dsn, Worker $worker): void {
-                $connection = new Connection(static fn () => null, $dsn, 'user', 'secret', worker: $worker);
+                $connection = new Connection(static fn() => null, $dsn, 'user', 'secret', worker: $worker);
                 try {
                     self::assertSame(0, $connection->execute('select 1'));
                 } finally {
@@ -62,7 +64,7 @@ final class AuthenticationTest extends TestCase
             $server->receive();
             $server->ok();
         }, static function (string $dsn): void {
-            $connection = new Connection(static fn () => null, $dsn, 'user', 'secret');
+            $connection = new Connection(static fn() => null, $dsn, 'user', 'secret');
             try {
                 self::assertSame(0, $connection->execute('select 1'));
             } finally {
@@ -82,7 +84,7 @@ final class AuthenticationTest extends TestCase
             $server->receive();
             $server->ok();
         }, static function (string $dsn): void {
-            $connection = new Connection(static fn () => null, str_replace('127.0.0.1', 'localhost', $dsn));
+            $connection = new Connection(static fn() => null, str_replace('127.0.0.1', 'localhost', $dsn));
             try {
                 self::assertSame(0, $connection->execute('select 1'));
             } finally {
@@ -105,7 +107,8 @@ final class AuthenticationTest extends TestCase
             $expected = 'secret' . "\0";
             $salt = '12345678abcdefgh1234';
             for ($i = 0; $i < strlen($expected); ++$i) {
-                $expected[$i] = $expected[$i] ^ $salt[$i % 20];
+                $byte = $expected[$i] ^ $salt[$i % 20];
+                $expected[$i] = $byte;
             }
             self::assertTrue(hash_equals($expected, $plain));
             $server->ok();
@@ -114,7 +117,7 @@ final class AuthenticationTest extends TestCase
             $server->receive();
             $server->ok();
         }, static function (string $dsn): void {
-            $connection = new Connection(static fn () => null, $dsn, 'user', 'secret');
+            $connection = new Connection(static fn() => null, $dsn, 'user', 'secret');
             try {
                 self::assertSame(0, $connection->execute('select 1'));
             } finally {
@@ -125,24 +128,28 @@ final class AuthenticationTest extends TestCase
 
     public function testUnixSocketsCarryFullAuthenticationWithoutTcpOrDns(): void
     {
-        ScriptedServer::run(static function (ScriptedServer $server): void {
-            $server->greeting('caching_sha2_password');
-            $server->receive();
-            $server->send("\x01\x04");
-            self::assertTrue(hash_equals("secret\0", $server->receive()));
-            $server->ok();
-            $server->prepare();
-            $server->sequence = 0;
-            $server->receive();
-            $server->ok();
-        }, static function (string $dsn): void {
-            $connection = new Connection(static fn () => null, $dsn, 'user', 'secret');
-            try {
-                self::assertSame(0, $connection->execute('select 1'));
-            } finally {
-                $connection->close();
-            }
-        }, unix: true);
+        ScriptedServer::run(
+            static function (ScriptedServer $server): void {
+                $server->greeting('caching_sha2_password');
+                $server->receive();
+                $server->send("\x01\x04");
+                self::assertTrue(hash_equals("secret\0", $server->receive()));
+                $server->ok();
+                $server->prepare();
+                $server->sequence = 0;
+                $server->receive();
+                $server->ok();
+            },
+            static function (string $dsn): void {
+                $connection = new Connection(static fn() => null, $dsn, 'user', 'secret');
+                try {
+                    self::assertSame(0, $connection->execute('select 1'));
+                } finally {
+                    $connection->close();
+                }
+            },
+            unix: true,
+        );
     }
 
     public function testTlsStartsAfterSslRequestAndProtectsTheFullPasswordExchange(): void
@@ -172,7 +179,10 @@ final class AuthenticationTest extends TestCase
                 $server->receive();
                 $server->ok();
             }, static function (string $dsn): void {
-                $connection = new Connection(static fn () => null, $dsn, 'user', 'secret', ['ssl' => ['verify_peer' => false, 'verify_peer_name' => false]]);
+                $connection = new Connection(static fn() => null, $dsn, 'user', 'secret', ['ssl' => [
+                    'verify_peer' => false,
+                    'verify_peer_name' => false,
+                ]]);
                 try {
                     self::assertSame(0, $connection->execute('select 1'));
                 } finally {
@@ -191,7 +201,7 @@ final class AuthenticationTest extends TestCase
             $server->receive();
             $server->send("\xff" . pack('v', 1045) . '#28000Access denied');
         }, static function (string $dsn): void {
-            $connection = new Connection(static fn () => null, $dsn, 'user', 'secret');
+            $connection = new Connection(static fn() => null, $dsn, 'user', 'secret');
             try {
                 $connection->execute('select ?', ['private-value']);
                 self::fail('Authentication was accepted.');
@@ -237,49 +247,52 @@ final class AuthenticationTest extends TestCase
         file_put_contents($path, $pem . $private);
         chmod($path, 0o600);
         try {
-            ScriptedServer::run(static function (ScriptedServer $server) use ($path, $accepted): void {
-                $server->greeting('mysql_native_password', 0x800);
-                $request = $server->receive();
-                self::assertSame(32, strlen($request));
-                self::assertNotSame(0, unpack('V', $request)[1] & 0x800);
-                if (!$accepted) {
-                    $authenticated = false;
-                    try {
-                        $server->encrypt($path);
-                        $server->receive();
-                        $authenticated = true;
-                    } catch (\RuntimeException) {
-                        // The client rejects TLS and closes before credentials.
-                    }
-                    self::assertFalse($authenticated);
-                    return;
-                }
-                $server->encrypt($path);
-                $server->receive();
-                $server->ok();
-                $server->prepare();
-                $server->sequence = 0;
-                $server->receive();
-                $server->ok();
-            }, static function (string $dsn) use ($path, $trusted, $accepted): void {
-                $ssl = $trusted ? ['cafile' => $path] : true;
-                $connection = new Connection(static fn () => null, $dsn, 'user', 'secret', ['ssl' => $ssl]);
-                try {
-                    if ($accepted) {
-                        self::assertSame(0, $connection->execute('select 1'));
-                    } else {
+            ScriptedServer::run(
+                static function (ScriptedServer $server) use ($path, $accepted): void {
+                    $server->greeting('mysql_native_password', 0x800);
+                    $request = $server->receive();
+                    self::assertSame(32, strlen($request));
+                    self::assertNotSame(0, unpack('V', $request)[1] & 0x800);
+                    if (!$accepted) {
+                        $authenticated = false;
                         try {
-                            $connection->execute('select 1');
-                            self::fail('TLS verification accepted an untrusted or mismatched certificate.');
-                        } catch (DatabaseException $error) {
-                            self::assertStringContainsString('TLS negotiation failed', $error->getMessage());
-                            self::assertStringNotContainsString('secret', $error->getMessage());
+                            $server->encrypt($path);
+                            $server->receive();
+                            $authenticated = true;
+                        } catch (\RuntimeException) {
+                            // The client rejects TLS and closes before credentials.
                         }
+                        self::assertFalse($authenticated);
+                        return;
                     }
-                } finally {
-                    $connection->close();
-                }
-            });
+                    $server->encrypt($path);
+                    $server->receive();
+                    $server->ok();
+                    $server->prepare();
+                    $server->sequence = 0;
+                    $server->receive();
+                    $server->ok();
+                },
+                static function (string $dsn) use ($path, $trusted, $accepted): void {
+                    $ssl = $trusted ? ['cafile' => $path] : true;
+                    $connection = new Connection(static fn() => null, $dsn, 'user', 'secret', ['ssl' => $ssl]);
+                    try {
+                        if ($accepted) {
+                            self::assertSame(0, $connection->execute('select 1'));
+                        } else {
+                            try {
+                                $connection->execute('select 1');
+                                self::fail('TLS verification accepted an untrusted or mismatched certificate.');
+                            } catch (DatabaseException $error) {
+                                self::assertStringContainsString('TLS negotiation failed', $error->getMessage());
+                                self::assertStringNotContainsString('secret', $error->getMessage());
+                            }
+                        }
+                    } finally {
+                        $connection->close();
+                    }
+                },
+            );
         } finally {
             unlink($path);
         }
@@ -297,7 +310,7 @@ final class AuthenticationTest extends TestCase
                 $server->receive();
                 $server->close();
             }, static function (string $dsn): void {
-                $connection = new Connection(static fn () => null, $dsn, timeout: 0.05);
+                $connection = new Connection(static fn() => null, $dsn, timeout: 0.05);
                 $start = hrtime(true);
                 try {
                     $connection->execute('select 1');
@@ -314,31 +327,34 @@ final class AuthenticationTest extends TestCase
     public function testCancellingAPartialResultClosesTheSocketForItsPeer(): void
     {
         $token = new Cancellation();
-        ScriptedServer::run(static function (ScriptedServer $server) use ($token): void {
-            $server->greeting('mysql_native_password');
-            $server->receive();
-            $server->ok();
-            $server->prepare(columns: 1);
-            $server->sequence = 0;
-            $server->receive();
-            $server->send("\x01");
-            $server->send(ScriptedServer::column('n'));
-            $server->send("\xfe\0\0\x02\0");
-            $server->send("\0\0" . pack('V', 42));
-            // Start cancellation after the partial result, not during authentication
-            // or prepare, whose TCP round trips can take longer on another kernel.
-            \Crab\Engine\EventLoop::current()->delay(0.03, static fn () => $token->cancel());
-            self::assertTrue($server->eof());
-        }, static function (string $dsn, Worker $worker) use ($token): void {
-            $connection = new Connection(static fn () => null, $dsn, cancellation: $token);
-            try {
-                $connection->select('select 42 as n');
-                self::fail('A result without its terminator completed.');
-            } catch (CancelledException) {
-                self::assertFalse($connection->inTransaction());
-            } finally {
-                $connection->close();
-            }
-        });
+        ScriptedServer::run(
+            static function (ScriptedServer $server) use ($token): void {
+                $server->greeting('mysql_native_password');
+                $server->receive();
+                $server->ok();
+                $server->prepare(columns: 1);
+                $server->sequence = 0;
+                $server->receive();
+                $server->send("\x01");
+                $server->send(ScriptedServer::column('n'));
+                $server->send("\xfe\0\0\x02\0");
+                $server->send("\0\0" . pack('V', 42));
+                // Start cancellation after the partial result, not during authentication
+                // or prepare, whose TCP round trips can take longer on another kernel.
+                \Crab\Engine\EventLoop::current()->delay(0.03, static fn() => $token->cancel());
+                self::assertTrue($server->eof());
+            },
+            static function (string $dsn, Worker $worker) use ($token): void {
+                $connection = new Connection(static fn() => null, $dsn, cancellation: $token);
+                try {
+                    $connection->select('select 42 as n');
+                    self::fail('A result without its terminator completed.');
+                } catch (CancelledException) {
+                    self::assertFalse($connection->inTransaction());
+                } finally {
+                    $connection->close();
+                }
+            },
+        );
     }
 }

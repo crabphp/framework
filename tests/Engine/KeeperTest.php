@@ -54,12 +54,25 @@ final class KeeperTest extends TestCase
         $pidFile = $this->directory . '/service.pid';
         $log = $this->directory . '/service.log';
         $this->keeper = proc_open(
-            [PHP_BINARY, __DIR__ . '/Fixtures/keeper.php', 'keep', dirname(__DIR__, 2) . '/vendor/autoload.php', $pidFile, $log, $this->address, 'one'],
+            [
+                PHP_BINARY,
+                __DIR__ . '/Fixtures/keeper.php',
+                'keep',
+                dirname(__DIR__, 2) . '/vendor/autoload.php',
+                $pidFile,
+                $log,
+                $this->address,
+                'one',
+            ],
             [1 => ['pipe', 'w'], 2 => ['pipe', 'w']],
             $pipes,
             $this->directory,
         );
-        self::assertSame("ready\n", fgets($pipes[1]), 'The keeper says it is ready only once a generation accepts connections.');
+        self::assertSame(
+            "ready\n",
+            fgets($pipes[1]),
+            'The keeper says it is ready only once a generation accepts connections.',
+        );
         $keeper = (int) file_get_contents($pidFile);
         self::assertSame(proc_get_status($this->keeper)['pid'], $keeper);
 
@@ -74,8 +87,15 @@ final class KeeperTest extends TestCase
         self::assertSame($keeper, (int) file_get_contents($pidFile), 'The service keeps its process id.');
 
         $failed = $this->replace('three', 'fail');
-        self::assertSame(['ok' => false, 'message' => 'this generation was told to fail'], array_intersect_key($failed, ['ok' => 0, 'message' => 0]));
-        self::assertSame(['two', $second], $this->get(), 'A generation that cannot start leaves the one that serves alone.');
+        self::assertSame(
+            ['ok' => false, 'message' => 'this generation was told to fail'],
+            array_intersect_key($failed, ['ok' => 0, 'message' => 0]),
+        );
+        self::assertSame(
+            ['two', $second],
+            $this->get(),
+            'A generation that cannot start leaves the one that serves alone.',
+        );
 
         // A generation that dies is started again; connections made meanwhile wait and are served.
         posix_kill($second, SIGKILL);
@@ -124,7 +144,16 @@ final class KeeperTest extends TestCase
         $autoload = dirname(__DIR__, 2) . '/vendor/autoload.php';
         $run = function (string $text, string $address) use ($autoload): array {
             $process = proc_open(
-                [PHP_BINARY, __DIR__ . '/Fixtures/keeper.php', 'keep', $autoload, $this->directory . '/service.pid', $this->directory . '/service.log', $address, $text],
+                [
+                    PHP_BINARY,
+                    __DIR__ . '/Fixtures/keeper.php',
+                    'keep',
+                    $autoload,
+                    $this->directory . '/service.pid',
+                    $this->directory . '/service.log',
+                    $address,
+                    $text,
+                ],
                 [1 => ['pipe', 'w'], 2 => ['pipe', 'w']],
                 $pipes,
                 $this->directory,
@@ -145,7 +174,16 @@ final class KeeperTest extends TestCase
     private function replace(string $text, string ...$more): array
     {
         $process = proc_open(
-            [PHP_BINARY, __DIR__ . '/Fixtures/keeper.php', 'replace', dirname(__DIR__, 2) . '/vendor/autoload.php', $this->directory . '/service.pid', $this->address, $text, ...$more],
+            [
+                PHP_BINARY,
+                __DIR__ . '/Fixtures/keeper.php',
+                'replace',
+                dirname(__DIR__, 2) . '/vendor/autoload.php',
+                $this->directory . '/service.pid',
+                $this->address,
+                $text,
+                ...$more,
+            ],
             [1 => ['pipe', 'w'], 2 => ['pipe', 'w']],
             $pipes,
             $this->directory,

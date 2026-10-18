@@ -47,7 +47,9 @@ final readonly class RateLimit implements Middleware, UsesContainer
         private ?ClockInterface $clock = null,
     ) {
         if ($limit < 1 || $per < 1) {
-            throw new \InvalidArgumentException("A rate limit is at least one request per one second, not {$limit} per {$per}.");
+            throw new \InvalidArgumentException(
+                "A rate limit is at least one request per one second, not {$limit} per {$per}.",
+            );
         }
         if (preg_match('/^[A-Za-z0-9_-]*$/', $name) !== 1) {
             throw new \InvalidArgumentException("\"{$name}\" cannot name a rate limit: use letters, digits, - and _.");
@@ -60,7 +62,9 @@ final readonly class RateLimit implements Middleware, UsesContainer
             return $this;
         }
         if (!$container->has(Cache::class)) {
-            throw new \LogicException('A rate limit keeps its counts in the cache: register the cache provider, CacheProvider.');
+            throw new \LogicException(
+                'A rate limit keeps its counts in the cache: register the cache provider, CacheProvider.',
+            );
         }
         return new self(
             $this->limit,
@@ -75,17 +79,25 @@ final readonly class RateLimit implements Middleware, UsesContainer
     public function process(ServerRequestInterface $request, RequestHandlerInterface $handler): ResponseInterface
     {
         if ($this->cache === null) {
-            throw new \LogicException('This rate limit has no cache to keep its counts in. Put it on a route or in withMiddleware(), or give it one: new RateLimit(60, cache: $cache).');
+            throw new \LogicException(
+                'This rate limit has no cache to keep its counts in. Put it on a route or in withMiddleware(), or give it one: new RateLimit(60, cache: $cache).',
+            );
         }
         $now = $this->clock?->now()->getTimestamp() ?? time();
         $window = intdiv($now, $this->per);
-        $left = ($window + 1) * $this->per - $now;
+        $left = (($window + 1) * $this->per) - $now;
         // Hashed, since an address or an id may hold what a cache key may not.
         $key = "rate.{$this->name}.{$this->limit}-{$this->per}." . sha1($this->client($request)) . ".{$window}";
         $count = $this->cache->increment($key, 1, $left);
-        $headers = ['X-RateLimit-Limit' => (string) $this->limit, 'X-RateLimit-Remaining' => (string) max(0, $this->limit - $count)];
+        $headers = [
+            'X-RateLimit-Limit' => (string) $this->limit,
+            'X-RateLimit-Remaining' => (string) max(0, $this->limit - $count),
+        ];
         if ($count > $this->limit) {
-            return ErrorResponse::make($request, 429, "Too many requests. Try again in {$left} seconds.", [...$headers, 'Retry-After' => (string) $left]);
+            return ErrorResponse::make($request, 429, "Too many requests. Try again in {$left} seconds.", [
+                ...$headers,
+                'Retry-After' => (string) $left,
+            ]);
         }
         $response = $handler->handle($request);
         foreach ($headers as $header => $value) {

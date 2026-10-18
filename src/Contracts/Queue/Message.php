@@ -31,6 +31,5 @@ final readonly class Message
         public ?int $failedAt = null,
         public ?int $availableAt = null,
         public ?int $reservedAt = null,
-    ) {
-    }
+    ) {}
 }

@@ -12,9 +12,10 @@ use Psr\Clock\ClockInterface;
 
 final readonly class RetryJobs implements Command
 {
-    public function __construct(private Store $store, private ?ClockInterface $clock = null)
-    {
-    }
+    public function __construct(
+        private Store $store,
+        private ?ClockInterface $clock = null,
+    ) {}
 
     public function description(): string
     {

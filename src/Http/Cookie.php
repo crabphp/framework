@@ -52,7 +52,8 @@ final readonly class Cookie implements \Stringable
         if ($this->maxAge !== null) {
             $cookie .= '; Max-Age=' . max(0, $this->maxAge);
             // Older clients read only Expires.
-            $cookie .= '; Expires=' . gmdate('D, d M Y H:i:s \\G\\M\\T', $this->maxAge > 0 ? time() + $this->maxAge : 1);
+            $cookie .=
+                '; Expires=' . gmdate('D, d M Y H:i:s \\G\\M\\T', $this->maxAge > 0 ? time() + $this->maxAge : 1);
         }
         if ($this->path !== '') {
             $cookie .= '; Path=' . $this->path;

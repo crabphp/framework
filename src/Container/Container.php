@@ -88,7 +88,11 @@ final class Container implements ContainerContract
                 $value = $concrete($this);
             } elseif ($concrete === $id) {
                 $value = $this->build($id);
-            } elseif (isset($this->transient[$id]) && !isset($this->concretes[$concrete]) && !array_key_exists($concrete, $this->instances)) {
+            } elseif (
+                isset($this->transient[$id])
+                && !isset($this->concretes[$concrete])
+                && !array_key_exists($concrete, $this->instances)
+            ) {
                 // A new one each time, not the kept instance of the class.
                 $value = $this->build($concrete);
             } else {
@@ -108,7 +112,7 @@ final class Container implements ContainerContract
     {
         $arguments = [];
         foreach ($this->plans[$class] ??= self::plan($class) as [$type, $optional, $default]) {
-            if ($type === null || ($optional && !$this->has($type))) {
+            if ($type === null || $optional && !$this->has($type)) {
                 $arguments[] = $default;
                 continue;
             }
@@ -130,7 +134,7 @@ final class Container implements ContainerContract
             throw new NotFoundException("{$class} has no binding and is not a class that can be constructed.");
         }
         $plan = [];
-        foreach ((new \ReflectionClass($class))->getConstructor()?->getParameters() ?? [] as $parameter) {
+        foreach (new \ReflectionClass($class)->getConstructor()?->getParameters() ?? [] as $parameter) {
             if ($parameter->isVariadic()) {
                 break;
             }
@@ -142,7 +146,9 @@ final class Container implements ContainerContract
             } elseif ($optional || $type?->allowsNull()) {
                 $plan[] = [null, true, $default];
             } else {
-                throw new ContainerException("Parameter \${$parameter->getName()} of {$class} cannot be autowired; bind {$class} with a closure.");
+                throw new ContainerException(
+                    "Parameter \${$parameter->getName()} of {$class} cannot be autowired; bind {$class} with a closure.",
+                );
             }
         }
         return $plan;
@@ -150,6 +156,6 @@ final class Container implements ContainerContract
 
     private static function instantiable(string $class): bool
     {
-        return class_exists($class) && (new \ReflectionClass($class))->isInstantiable();
+        return class_exists($class) && new \ReflectionClass($class)->isInstantiable();
     }
 }

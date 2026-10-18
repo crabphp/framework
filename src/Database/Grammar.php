@@ -24,7 +24,9 @@ abstract class Grammar
         return match ($driver) {
             'mysql' => new MySqlGrammar(),
             'sqlite' => new SqliteGrammar(),
-            default => throw new DatabaseException("The query builder does not support the \"{$driver}\" driver; MySQL and SQLite are supported."),
+            default => throw new DatabaseException(
+                "The query builder does not support the \"{$driver}\" driver; MySQL and SQLite are supported.",
+            ),
         };
     }
 
@@ -85,9 +87,16 @@ abstract class Grammar
     public function aggregate(Query $query, string $function, string $column): Statement
     {
         $bindings = [];
-        $shaped = $query->distinct || $query->groups !== [] || $query->havings !== [] || $query->limit !== null || $query->offset !== null;
+        $shaped =
+            $query->distinct
+            || $query->groups !== []
+            || $query->havings !== []
+            || $query->limit !== null
+            || $query->offset !== null;
         // Over rows worked out first, a column is known by its own name: its table's is not in scope out there.
-        $named = $shaped && $column !== '*' && str_contains($column, '.') ? substr($column, strrpos($column, '.') + 1) : $column;
+        $named = $shaped && $column !== '*' && str_contains($column, '.')
+            ? substr($column, strrpos($column, '.') + 1)
+            : $column;
         $sql = "select {$function}(" . $this->wrap($named) . ') as ' . $this->quote('aggregate');
         if ($shaped) {
             // These change which rows there are, so the rows are worked out first and aggregated after.
@@ -147,7 +156,12 @@ abstract class Grammar
             $sets[] = $this->wrap($column) . ' = ?';
             $bindings[] = $value;
         }
-        $sql = 'update ' . $this->wrap($query->table) . ' set ' . implode(', ', $sets) . $this->wheres($query->wheres, $bindings);
+        $sql =
+            'update '
+            . $this->wrap($query->table)
+            . ' set '
+            . implode(', ', $sets)
+            . $this->wheres($query->wheres, $bindings);
         return new Statement($sql, $bindings);
     }
 
@@ -215,7 +229,11 @@ abstract class Grammar
     {
         $sql = ' from ' . $this->wrap($query->table);
         foreach ($query->joins as $join) {
-            $sql .= " {$join['type']} join " . $this->wrap($join['table']) . ' on ' . $this->conditions($join['wheres'], $bindings);
+            $sql .=
+                " {$join['type']} join "
+                . $this->wrap($join['table'])
+                . ' on '
+                . $this->conditions($join['wheres'], $bindings);
         }
         $sql .= $this->wheres($query->wheres, $bindings);
         if ($query->groups !== []) {
@@ -263,13 +281,18 @@ abstract class Grammar
                 $bindings[] = $condition['value'];
                 return $this->wrap($condition['column']) . " {$condition['operator']} ?";
             case 'column':
-                return $this->wrap($condition['first']) . " {$condition['operator']} " . $this->wrap($condition['second']);
+                return (
+                    $this->wrap($condition['first']) . " {$condition['operator']} " . $this->wrap($condition['second'])
+                );
             case 'null':
                 return $this->wrap($condition['column']) . ($condition['not'] ? ' is not null' : ' is null');
             case 'between':
                 $bindings[] = $condition['from'];
                 $bindings[] = $condition['to'];
-                return $this->wrap($condition['column']) . ($condition['not'] ? ' not between ? and ?' : ' between ? and ?');
+                return (
+                    $this->wrap($condition['column'])
+                    . ($condition['not'] ? ' not between ? and ?' : ' between ? and ?')
+                );
             case 'in':
                 return $this->in($condition, $bindings);
             case 'nested':

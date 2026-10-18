@@ -5,8 +5,8 @@ declare(strict_types=1);
 namespace Crab\Tests\Broadcast;
 
 use Crab\App;
-use Crab\Broadcast\BroadcastProvider;
 use Crab\Broadcast\Broadcaster;
+use Crab\Broadcast\BroadcastProvider;
 use Crab\Broadcast\Channels;
 use Crab\Broadcast\Lifecycle;
 use Crab\Broadcast\LocalCarrier;
@@ -62,8 +62,13 @@ final class BroadcastTest extends TestCase
         FailureReporter::handleWith($this->reporter);
     }
 
-    private function channels(Carrier $carrier, int $limit = 64, int $batch = 128, int $pending = 1048576, int $backlog = 524288): Channels
-    {
+    private function channels(
+        Carrier $carrier,
+        int $limit = 64,
+        int $batch = 128,
+        int $pending = 1_048_576,
+        int $backlog = 524_288,
+    ): Channels {
         return $this->channels[] = new Channels($carrier, $limit, $batch, $pending, $backlog);
     }
 
@@ -71,7 +76,9 @@ final class BroadcastTest extends TestCase
     {
         $deadline = microtime(true) + $seconds;
         while (!$ready()) {
-            if (microtime(true) >= $deadline) { self::fail("Timed out waiting for {$what}."); }
+            if (microtime(true) >= $deadline) {
+                self::fail("Timed out waiting for {$what}.");
+            }
             \Crab\Engine\Async\Async::sleep($this->loop, 0.001);
         }
     }
@@ -134,7 +141,10 @@ final class BroadcastTest extends TestCase
             $beforeLeave[] = [$sockets[0]->messages, $leaving->messages, $channels->stats()['pending_bytes']];
             $channels->leave($leaving, 'orders');
         });
-        $this->waitUntil('fan-out queued before leaving orders to finish', static fn (): bool => $channels->stats()['pending_bytes'] === 0);
+        $this->waitUntil(
+            'fan-out queued before leaving orders to finish',
+            static fn(): bool => $channels->stats()['pending_bytes'] === 0,
+        );
 
         self::assertSame(['first'], $beforeLeave[0][0]);
         self::assertSame([], $beforeLeave[0][1]);
@@ -142,9 +152,13 @@ final class BroadcastTest extends TestCase
         foreach (array_slice($sockets, 0, 3) as $socket) {
             self::assertSame(['first', 'second'], $socket->messages);
         }
-        self::assertSame([], $leaving->messages, 'Pending deliveries must check membership in their own channel before writing.');
+        self::assertSame(
+            [],
+            $leaving->messages,
+            'Pending deliveries must check membership in their own channel before writing.',
+        );
         $broadcast->to('quiet')->send('still joined');
-        $this->waitUntil('delivery to the remaining quiet membership', static fn (): bool => $leaving->messages !== []);
+        $this->waitUntil('delivery to the remaining quiet membership', static fn(): bool => $leaving->messages !== []);
         self::assertSame(['still joined'], $leaving->messages);
         self::assertNull($leaving->ended);
     }
@@ -160,9 +174,12 @@ final class BroadcastTest extends TestCase
         }
         $leaving = new TestRecipient(WriteResult::Backpressured);
         $channels->join($leaving, 'orders');
-        $broadcast = (new Broadcaster($carrier))->to('orders');
+        $broadcast = new Broadcaster($carrier)->to('orders');
         $broadcast->send('already behind');
-        $this->waitUntil('the recipient backlog before leaving its last channel', static fn (): bool => $channels->stats()['backlog_bytes'] > 0);
+        $this->waitUntil(
+            'the recipient backlog before leaving its last channel',
+            static fn(): bool => $channels->stats()['backlog_bytes'] > 0,
+        );
         $broadcast->send('first pending');
         $broadcast->send('second pending');
         $afterLeave = new \ArrayObject();
@@ -170,14 +187,24 @@ final class BroadcastTest extends TestCase
             $channels->leave($leaving, 'orders');
             $afterLeave[] = [$fast[0]->messages, $channels->stats()];
         });
-        $this->waitUntil('fan-out queued before leaving the last channel to finish', static fn (): bool => $channels->stats()['pending_bytes'] === 0);
+        $this->waitUntil(
+            'fan-out queued before leaving the last channel to finish',
+            static fn(): bool => $channels->stats()['pending_bytes'] === 0,
+        );
         // Observe past the recipient's 20 ms timeout to catch a recreated backlog.
         \Crab\Engine\Async\Async::sleep($this->loop, 0.03);
 
         self::assertSame(['already behind', 'first pending'], $afterLeave[0][0]);
         self::assertGreaterThan(0, $afterLeave[0][1]['pending_bytes']);
-        self::assertSame(0, $afterLeave[0][1]['backlog_bytes'], 'Leaving the last channel must discard the existing backlog.');
-        self::assertNull($leaving->ended, 'Pending fan-out must not recreate a backlog and close a recipient that left.');
+        self::assertSame(
+            0,
+            $afterLeave[0][1]['backlog_bytes'],
+            'Leaving the last channel must discard the existing backlog.',
+        );
+        self::assertNull(
+            $leaving->ended,
+            'Pending fan-out must not recreate a backlog and close a recipient that left.',
+        );
         self::assertSame([], $leaving->messages);
         self::assertSame(0, $channels->stats()['backlog_bytes']);
         self::assertSame(0, $channels->stats()['slow_clients']);
@@ -205,7 +232,7 @@ final class BroadcastTest extends TestCase
         $fast = new TestRecipient();
         $channels->join($slow, 'orders');
         $channels->join($fast, 'orders');
-        (new Broadcaster($carrier))->to('orders')->send('hello');
+        new Broadcaster($carrier)->to('orders')->send('hello');
         self::assertSame([], $fast->messages, 'The sender should only hand off the fan-out.');
         $this->loop->run();
         self::assertSame([1008, 'Read messages faster'], $slow->ended);
@@ -224,9 +251,12 @@ final class BroadcastTest extends TestCase
             $channels->join($socket, 'orders');
         }
         $probe = new \ArrayObject();
-        (new Broadcaster($carrier))->to('orders')->send('hello');
+        new Broadcaster($carrier)->to('orders')->send('hello');
         $this->loop->delay(0, static function () use ($sockets, $probe): void {
-            $probe[] = count(array_filter($sockets, static fn (TestRecipient $socket): bool => $socket->messages !== []));
+            $probe[] = count(array_filter(
+                $sockets,
+                static fn(TestRecipient $socket): bool => $socket->messages !== [],
+            ));
         });
         $this->loop->run();
         self::assertGreaterThan(0, $probe[0]);
@@ -239,9 +269,17 @@ final class BroadcastTest extends TestCase
         $carrier = new LocalCarrier();
         $channels = $this->channels($carrier, limit: 1);
         $socket = new TestRecipient();
-        foreach (['', str_repeat('a', 201), "bad\nname", "bad\x7fname", "bad\u{0085}name", "bad\u{202e}name", "\xff"] as $name) {
+        foreach ([
+            '',
+            str_repeat('a', 201),
+            "bad\nname",
+            "bad\x7fname",
+            "bad\u{0085}name",
+            "bad\u{202e}name",
+            "\xff",
+        ] as $name) {
             try {
-                (new Broadcaster($carrier))->to($name);
+                new Broadcaster($carrier)->to($name);
                 self::fail('An invalid name was accepted.');
             } catch (\InvalidArgumentException $error) {
                 self::assertStringContainsString('1 to 200 bytes without control characters', $error->getMessage());
@@ -256,9 +294,11 @@ final class BroadcastTest extends TestCase
     public function testInvalidTextAndAMissingSelectionAreRefusedBeforePublishing(): void
     {
         $carrier = new SpyCarrier();
-        foreach ([static fn () => (new Broadcaster($carrier))->send('hi'),
-            static fn () => (new Broadcaster($carrier))->to(),
-            static fn () => (new Broadcaster($carrier))->to('a')->send("\xff")] as $send) {
+        foreach ([
+            static fn() => new Broadcaster($carrier)->send('hi'),
+            static fn() => new Broadcaster($carrier)->to(),
+            static fn() => new Broadcaster($carrier)->to('a')->send("\xff"),
+        ] as $send) {
             try {
                 $send();
                 self::fail('An invalid send was accepted.');
@@ -290,7 +330,7 @@ final class BroadcastTest extends TestCase
         $channels = $this->channels($carrier, pending: 257);
         $socket = new TestRecipient();
         $channels->join($socket, 'orders');
-        $broadcast = (new Broadcaster($carrier))->to('orders');
+        $broadcast = new Broadcaster($carrier)->to('orders');
         $broadcast->send('a');
         try {
             $broadcast->send('b');
@@ -304,7 +344,7 @@ final class BroadcastTest extends TestCase
 
     private function database(): PdoConnection
     {
-        return new PdoConnection(static fn (): \PDO => new \PDO('sqlite::memory:'));
+        return new PdoConnection(static fn(): \PDO => new \PDO('sqlite::memory:'));
     }
 
     public function testACommitAnnouncesOnlyAfterTheOutermostTransaction(): void
@@ -314,7 +354,7 @@ final class BroadcastTest extends TestCase
         $db = $this->database();
         $db->transaction(static function (Connection $tx) use ($broadcast, $carrier): void {
             $broadcast->within($tx)->to('orders')->send('outer');
-            $tx->transaction(static fn (Connection $inner) => $broadcast->to('orders')->within($inner)->send('inner'));
+            $tx->transaction(static fn(Connection $inner) => $broadcast->to('orders')->within($inner)->send('inner'));
             self::assertSame([], $carrier->sent);
         });
         self::assertSame([[['orders'], 'outer'], [['orders'], 'inner']], $carrier->sent);
@@ -353,7 +393,10 @@ final class BroadcastTest extends TestCase
         for ($attempt = 1; $attempt <= 2; ++$attempt) {
             try {
                 $db->transaction(static function (Connection $tx) use ($broadcast, $attempt): void {
-                    $broadcast->within($tx)->to('orders')->send('attempt ' . $attempt);
+                    $broadcast
+                        ->within($tx)
+                        ->to('orders')
+                        ->send('attempt ' . $attempt);
                     if ($attempt === 1) {
                         throw new \DomainException('retry the whole transaction');
                     }
@@ -370,10 +413,14 @@ final class BroadcastTest extends TestCase
         $deadlock->errorInfo = ['40001', 1213, 'Deadlock'];
         $attempts = new \ArrayObject([0]);
         $statement = $this->createStub(\PDOStatement::class);
-        $statement->method('execute')->willReturnCallback(static function () use ($attempts, $deadlock): bool {
-            if (++$attempts[0] === 1) { throw $deadlock; }
-            return true;
-        });
+        $statement
+            ->method('execute')
+            ->willReturnCallback(static function () use ($attempts, $deadlock): bool {
+                if (++$attempts[0] === 1) {
+                    throw $deadlock;
+                }
+                return true;
+            });
         $statement->method('rowCount')->willReturn(1);
         $pdo = $this->createStub(\PDO::class);
         $pdo->method('getAttribute')->willReturn('mysql');
@@ -382,15 +429,21 @@ final class BroadcastTest extends TestCase
         $pdo->method('commit')->willReturn(true);
         $pdo->method('exec')->willReturn(0);
         $pdo->method('prepare')->willReturn($statement);
-        $db = new PdoConnection(static fn (): \PDO => $pdo);
+        $db = new PdoConnection(static fn(): \PDO => $pdo);
         $carrier = new SpyCarrier();
         $broadcast = new Broadcaster($carrier);
         for ($attempt = 1; $attempt <= 2; ++$attempt) {
             try {
                 $db->transaction(static function (Connection $tx) use ($broadcast, $attempt): void {
-                    $broadcast->within($tx)->to('orders')->send('outer ' . $attempt);
+                    $broadcast
+                        ->within($tx)
+                        ->to('orders')
+                        ->send('outer ' . $attempt);
                     $tx->transaction(static function (Connection $inner) use ($broadcast, $attempt): void {
-                        $broadcast->within($inner)->to('orders')->send('inner ' . $attempt);
+                        $broadcast
+                            ->within($inner)
+                            ->to('orders')
+                            ->send('inner ' . $attempt);
                         $inner->execute('UPDATE orders SET status = 1');
                     });
                 });
@@ -406,8 +459,17 @@ final class BroadcastTest extends TestCase
         $settings = new \Crab\WebSocket\Settings(ping: 0, maxMessage: 1024, sendTimeout: 0.03);
         $pair = stream_socket_pair(STREAM_PF_UNIX, STREAM_SOCK_STREAM, 0);
         $transport = new \Crab\Engine\Network\Connection($this->loop, $pair[0], maxWriteBufferSize: 4096);
-        $session = new \Crab\Engine\WebSocket\WebSocketSession($transport, static function (): void {}, $settings->engine);
-        $slow = new \Crab\WebSocket\Socket($this->loop, new \Crab\Http\Request('GET', '/live'), static function (): void {}, $settings);
+        $session = new \Crab\Engine\WebSocket\WebSocketSession(
+            $transport,
+            static function (): void {},
+            $settings->engine,
+        );
+        $slow = new \Crab\WebSocket\Socket(
+            $this->loop,
+            new \Crab\Http\Request('GET', '/live'),
+            static function (): void {},
+            $settings,
+        );
         $slow->attach($session, $transport);
         $carrier = new LocalCarrier();
         $channels = $this->channels($carrier);
@@ -417,17 +479,24 @@ final class BroadcastTest extends TestCase
         try {
             for ($round = 0; $round < 1000; ++$round) {
                 for ($index = 0; $index < 1000; ++$index) {
-                    if ($session->sendText(str_repeat('x', 1024)) === WriteResult::Backpressured) { break; }
+                    if ($session->sendText(str_repeat('x', 1024)) === WriteResult::Backpressured) {
+                        break;
+                    }
                 }
                 self::assertLessThan(1000, $index, 'The output queue must be bounded.');
                 $this->loop->defer($this->loop->stop(...));
                 $this->loop->run();
-                if ($session->bufferedBytes() + 1024 > $settings->engine->maxQueuedOutputBytes) { break; }
+                if (($session->bufferedBytes() + 1024) > $settings->engine->maxQueuedOutputBytes) {
+                    break;
+                }
             }
             self::assertLessThan(1000, $round, 'The peer kernel buffers should eventually fill.');
-            (new Broadcaster($carrier))->to('orders')->send(str_repeat('x', 1024));
+            new Broadcaster($carrier)->to('orders')->send(str_repeat('x', 1024));
             $probe = new \ArrayObject();
-            $this->loop->delay(0, function () use ($probe): void { $probe[] = true; $this->loop->stop(); });
+            $this->loop->delay(0, function () use ($probe): void {
+                $probe[] = true;
+                $this->loop->stop();
+            });
             $this->loop->run();
             self::assertFalse($slow->isClosed(), 'A full output queue alone is not evidence of a slow reader.');
             self::assertSame([str_repeat('x', 1024)], $fast->messages);
@@ -450,7 +519,8 @@ final class BroadcastTest extends TestCase
         $app->router->websocket('/live', static function (Socket $socket): void {
             $socket->join('orders');
             $socket->send('ready');
-            foreach ($socket as $message) {}
+            foreach ($socket as $message) {
+            }
         });
         $api = $this->apis[] = new Api($app);
         $client = $api->websocket('/live');
@@ -458,12 +528,12 @@ final class BroadcastTest extends TestCase
         $channels = $this->channels[] = $app->container->get(Channels::class);
         $broadcast = $app->container->get(BroadcasterContract::class)->to('orders');
         for ($index = 0; $index < 6; ++$index) {
-            $broadcast->send($index . str_repeat('x', 65535));
+            $broadcast->send($index . str_repeat('x', 65_535));
         }
         for ($index = 0; $index < 6; ++$index) {
-            $client->assertReceived($index . str_repeat('x', 65535));
+            $client->assertReceived($index . str_repeat('x', 65_535));
         }
-        $this->waitUntil('the burst backlog to drain', static fn () => $channels->stats()['backlog_bytes'] === 0);
+        $this->waitUntil('the burst backlog to drain', static fn() => $channels->stats()['backlog_bytes'] === 0);
         self::assertSame(0, $channels->stats()['slow_clients']);
         self::assertSame(1, $channels->stats()['connections']);
     }
@@ -474,13 +544,16 @@ final class BroadcastTest extends TestCase
         $channels = $this->channels($carrier);
         $socket = new TestRecipient(WriteResult::Backpressured);
         $channels->join($socket, 'orders');
-        $broadcast = (new Broadcaster($carrier))->to('orders');
+        $broadcast = new Broadcaster($carrier)->to('orders');
         $broadcast->send('first');
-        $this->waitUntil('the first backpressured broadcast to queue', static fn () => $channels->stats()['backlog_bytes'] > 0);
+        $this->waitUntil(
+            'the first backpressured broadcast to queue',
+            static fn() => $channels->stats()['backlog_bytes'] > 0,
+        );
         $socket->result = WriteResult::Accepted;
         $broadcast->send('second');
         $broadcast->send('third');
-        $this->waitUntil('the recipient to catch up', static fn () => count($socket->messages) === 3);
+        $this->waitUntil('the recipient to catch up', static fn() => count($socket->messages) === 3);
         self::assertSame(['first', 'second', 'third'], $socket->messages);
         self::assertSame(0, $channels->stats()['slow_clients']);
         self::assertNull($socket->ended);
@@ -495,14 +568,20 @@ final class BroadcastTest extends TestCase
             $fast = new TestRecipient();
             $channels->join($slow, 'orders');
             $channels->join($fast, 'orders');
-            $broadcast = (new Broadcaster($carrier))->to('orders');
+            $broadcast = new Broadcaster($carrier)->to('orders');
             $broadcast->send($message);
             $broadcast->send($message);
-            $this->waitUntil('two messages to queue within the backlog bound', static fn () => $channels->stats()['backlog_bytes'] === 2 * (strlen($message) + 256));
+            $this->waitUntil(
+                'two messages to queue within the backlog bound',
+                static fn() => $channels->stats()['backlog_bytes'] === (2 * (strlen($message) + 256)),
+            );
             self::assertLessThanOrEqual(600, $channels->stats()['backlog_bytes']);
             self::assertNull($slow->ended);
             $broadcast->send($message);
-            $this->waitUntil('the backlog overflow to close only the slow recipient', static fn () => $slow->ended !== null);
+            $this->waitUntil(
+                'the backlog overflow to close only the slow recipient',
+                static fn() => $slow->ended !== null,
+            );
             self::assertSame([1008, 'Read messages faster'], $slow->ended);
             self::assertSame([$message, $message, $message], $fast->messages);
             self::assertSame(1, $channels->stats()['slow_clients']);
@@ -554,8 +633,8 @@ final class BroadcastTest extends TestCase
         $healthy = new TestRecipient();
         $channels->join($broken, 'orders');
         $channels->join($healthy, 'orders');
-        (new Broadcaster($carrier))->to('orders')->send('hello');
-        $this->waitUntil('fan-out to continue after the failed recipient', static fn () => $healthy->messages !== []);
+        new Broadcaster($carrier)->to('orders')->send('hello');
+        $this->waitUntil('fan-out to continue after the failed recipient', static fn() => $healthy->messages !== []);
         self::assertSame(['hello'], $healthy->messages);
         self::assertSame(1, $channels->stats()['connections']);
         self::assertCount(1, $this->reports);
@@ -568,8 +647,11 @@ final class BroadcastTest extends TestCase
         $channels = $this->channels($carrier);
         $slow = new TestRecipient(WriteResult::Backpressured);
         $channels->join($slow, 'orders');
-        (new Broadcaster($carrier))->to('orders')->send('hello');
-        $this->waitUntil('the backpressured recipient to start waiting', static fn () => $channels->stats()['backlog_bytes'] > 0);
+        new Broadcaster($carrier)->to('orders')->send('hello');
+        $this->waitUntil(
+            'the backpressured recipient to start waiting',
+            static fn() => $channels->stats()['backlog_bytes'] > 0,
+        );
         $channels->close();
         self::assertSame(0, $channels->stats()['backlog_bytes']);
         self::assertSame([], $this->loop->getIdentifiers());
@@ -582,13 +664,20 @@ final class BroadcastTest extends TestCase
         $channels = $this->channels($carrier);
         $slow = new TestRecipient(WriteResult::Backpressured);
         $channels->join($slow, 'orders');
-        $broadcast = (new Broadcaster($carrier))->to('orders');
+        $broadcast = new Broadcaster($carrier)->to('orders');
         $broadcast->send('first');
         $broadcast->send('second');
-        $this->waitUntil('the backlog to start its single deadline', static fn () => $channels->stats()['backlog_bytes'] > 0);
+        $this->waitUntil(
+            'the backlog to start its single deadline',
+            static fn() => $channels->stats()['backlog_bytes'] > 0,
+        );
         $slow->writableDelay = 0.015;
         $slow->result = WriteResult::Accepted;
-        $this->waitUntil('the original backlog deadline despite partial progress', static fn () => $slow->ended !== null, 0.1);
+        $this->waitUntil(
+            'the original backlog deadline despite partial progress',
+            static fn() => $slow->ended !== null,
+            0.1,
+        );
         self::assertSame(['first'], $slow->messages);
         self::assertSame([1008, 'Read messages faster'], $slow->ended);
         self::assertSame(1, $channels->stats()['slow_clients']);
@@ -645,7 +734,7 @@ final class BroadcastTest extends TestCase
         $worker = new \Crab\Engine\Process\Worker($this->loop, new \Crab\Engine\Crab('test'), 0, [], 1.0);
         $provider->start($worker, $container);
         self::assertNull($container->get(Lifecycle::class)->carrier);
-        (new Broadcaster(new LocalCarrier()))->to('nobody')->send('text');
+        new Broadcaster(new LocalCarrier())->to('nobody')->send('text');
         self::assertSame([], $this->loop->getIdentifiers());
         self::assertSame([], $this->loop->getIdentifiers());
         $provider->stop($worker, $container);
@@ -664,10 +753,16 @@ final class BroadcastTest extends TestCase
 
     public function testStartupRefusesLocalBroadcastAcrossMultipleProcesses(): void
     {
-        foreach ([['server' => ['workers' => 2]], ['server' => ['with' => ['queue']]], ['server' => ['with' => ['schedule']]]] as $settings) {
+        foreach ([
+            ['server' => ['workers' => 2]],
+            ['server' => ['with' => ['queue']]],
+            ['server' => ['with' => ['schedule']]],
+        ] as $settings) {
             $app = new App(new Config($settings));
             $app->register(...App::PROVIDERS);
-            $app->router->websocket('/live', static function (Socket $socket): void { $socket->receive(); });
+            $app->router->websocket('/live', static function (Socket $socket): void {
+                $socket->receive();
+            });
             try {
                 $app->runtime('tcp://127.0.0.1:8219');
                 self::fail('A process-local carrier was allowed across processes.');
@@ -685,10 +780,12 @@ final class BroadcastTest extends TestCase
             $socket->join("orders.{$id}");
             $socket->join("orders.{$id}");
             foreach ($socket as $message) {
-                if ($message === 'leave') {
-                    $socket->leave("orders.{$id}");
-                    $socket->send('left');
+                if ($message !== 'leave') {
+                    continue;
                 }
+
+                $socket->leave("orders.{$id}");
+                $socket->send('left');
             }
         });
         $api = $this->apis[] = new Api($app);
@@ -712,7 +809,7 @@ final class BroadcastTest extends TestCase
     public function testJoinWithoutTheProviderNamesWhatToRegister(): void
     {
         $app = new App(new Config(['app' => ['debug' => true], 'log' => ['path' => '/dev/null']]));
-        $app->router->websocket('/live', static fn (Socket $socket) => $socket->join('orders'));
+        $app->router->websocket('/live', static fn(Socket $socket) => $socket->join('orders'));
         $api = $this->apis[] = new Api($app);
         try {
             $api->websocket('/live');
@@ -760,9 +857,7 @@ final class SpyCarrier implements Carrier
         }
     }
 
-    public function close(): void
-    {
-    }
+    public function close(): void {}
 }
 
 /**
@@ -776,9 +871,9 @@ final class TestRecipient implements Recipient
     public ?\Throwable $broadcastFailure = null;
     public float $writableDelay = 0.0;
 
-    public function __construct(public WriteResult $result = WriteResult::Accepted)
-    {
-    }
+    public function __construct(
+        public WriteResult $result = WriteResult::Accepted,
+    ) {}
 
     public function broadcast(string $message): WriteResult
     {

@@ -15,9 +15,10 @@ final readonly class Output implements OutputContract
      * @param resource $out
      * @param resource $error
      */
-    public function __construct(private mixed $out = STDOUT, private mixed $error = STDERR)
-    {
-    }
+    public function __construct(
+        private mixed $out = STDOUT,
+        private mixed $error = STDERR,
+    ) {}
 
     public function write(string $text): void
     {

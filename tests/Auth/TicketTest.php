@@ -62,12 +62,15 @@ final class TicketTest extends TestCase
         $this->app->container->instance(IdentityResolver::class, $this->users);
         $this->app->container->instance(TokenStore::class, new TicketTokens($this->user->id));
         $this->app->router->post('/ws/ticket', IssueTicket::class)->middleware(\Crab\Auth\TokenAuth::class);
-        $this->app->router->websocket('/live', static function (Socket $socket, TicketUser $user): void {
-            $socket->send(['user' => $user->id]);
-            foreach ($socket as $message) {
-                $socket->send($message);
-            }
-        })->middleware(Ticket::class);
+        $this->app
+            ->router
+            ->websocket('/live', static function (Socket $socket, TicketUser $user): void {
+                $socket->send(['user' => $user->id]);
+                foreach ($socket as $message) {
+                    $socket->send($message);
+                }
+            })
+            ->middleware(Ticket::class);
         $this->api = new Api($this->app);
     }
 
@@ -91,7 +94,14 @@ final class TicketTest extends TestCase
     {
         $ticket = $this->issue();
         $this->clock->advance('+30 seconds');
-        foreach ([[], ['ticket' => $ticket], ['ticket' => ''], ['ticket' => str_repeat('a', 64)], ['ticket' => ['nested']], ['ticket' => null]] as $query) {
+        foreach ([
+            [],
+            ['ticket' => $ticket],
+            ['ticket' => ''],
+            ['ticket' => str_repeat('a', 64)],
+            ['ticket' => ['nested']],
+            ['ticket' => null],
+        ] as $query) {
             self::assertSame(401, $this->refusal($this->api, $query));
         }
     }
@@ -123,19 +133,33 @@ final class TicketTest extends TestCase
     {
         $ticket = $this->issue();
         $store = $this->app->container->get(Store::class);
-        self::assertSame(serialize('0007'), $store->get('auth.ticket.' . hash('sha256', $ticket), $this->clock->now()->getTimestamp()));
+        self::assertSame(
+            serialize('0007'),
+            $store->get('auth.ticket.' . hash('sha256', $ticket), $this->clock->now()->getTimestamp()),
+        );
         self::assertNull($store->get($ticket, $this->clock->now()->getTimestamp()));
-        self::assertSame($this->app->container->get(TicketsContract::class), $this->app->container->get(Tickets::class));
+        self::assertSame(
+            $this->app->container->get(TicketsContract::class),
+            $this->app->container->get(Tickets::class),
+        );
         self::assertNotSame($ticket, $this->issue());
     }
 
     public function testOriginsAreMatchedExactlyBeforeATicketIsConsumedOrAHeaderIsChecked(): void
     {
-        $this->app->router->websocket('/restricted', static function (Socket $socket, TicketUser $user): void {
-            $socket->send(['user' => $user->id]);
-        })->middleware(new Ticket(origins: ['https://shop.example.com']));
+        $this->app
+            ->router
+            ->websocket('/restricted', static function (Socket $socket, TicketUser $user): void {
+                $socket->send(['user' => $user->id]);
+            })
+            ->middleware(new Ticket(origins: ['https://shop.example.com']));
         $ticket = $this->issue();
-        foreach (['', 'https://shop.example.com/', 'https://SHOP.example.com', 'https://other.example.com'] as $origin) {
+        foreach ([
+            '',
+            'https://shop.example.com/',
+            'https://SHOP.example.com',
+            'https://other.example.com',
+        ] as $origin) {
             try {
                 $this->api->websocket('/restricted', query: ['ticket' => $ticket], headers: ['Origin' => $origin]);
                 self::fail('A disallowed origin upgraded.');
@@ -143,8 +167,13 @@ final class TicketTest extends TestCase
                 $error->response->assertStatus(403);
             }
         }
-        $this->api->websocket('/restricted', query: ['ticket' => $ticket], headers: ['Origin' => 'https://shop.example.com'])->assertReceived(['user' => '0007']);
-        $this->api->withToken('known')->websocket('/restricted', headers: ['Origin' => 'https://shop.example.com'])->assertReceived(['user' => '0007']);
+        $this->api
+            ->websocket('/restricted', query: ['ticket' => $ticket], headers: ['Origin' => 'https://shop.example.com'])
+            ->assertReceived(['user' => '0007']);
+        $this->api
+            ->withToken('known')
+            ->websocket('/restricted', headers: ['Origin' => 'https://shop.example.com'])
+            ->assertReceived(['user' => '0007']);
         // The ordinary route permits a caller with no Origin header.
         $this->api->websocket('/live', query: ['ticket' => $this->issue()])->assertReceived(['user' => '0007']);
     }
@@ -152,16 +181,22 @@ final class TicketTest extends TestCase
     public function testAnAccessLogAndTheRouteListNeverContainTheTicket(): void
     {
         $records = [];
-        $logger = new class ($records) extends AbstractLogger {
-            public function __construct(private array &$records) {}
+        $logger = new class($records) extends AbstractLogger {
+            public function __construct(
+                private array &$records,
+            ) {}
+
             public function log($level, string|\Stringable $message, array $context = []): void
             {
                 $this->records[] = [(string) $message, $context];
             }
         };
-        $this->app->router->websocket('/logged', static function (Socket $socket): void {
-            $socket->send('ready');
-        })->middleware(new AccessLog(logger: $logger), Ticket::class);
+        $this->app
+            ->router
+            ->websocket('/logged', static function (Socket $socket): void {
+                $socket->send('ready');
+            })
+            ->middleware(new AccessLog(logger: $logger), Ticket::class);
         $ticket = $this->issue();
         $this->api->websocket('/logged', query: ['ticket' => $ticket, 'page' => 2])->assertReceived('ready');
         self::assertCount(1, $records);
@@ -180,12 +215,12 @@ final class TicketTest extends TestCase
             $second = new Tickets(new Cache(new FileStore($directory)), $this->users);
             $ticket = $first->issue($this->user);
             $loop = EventLoop::current();
-            $a = Task::spawn($loop, static fn (): ?Identity => $first->redeem($ticket));
-            $b = Task::spawn($loop, static fn (): ?Identity => $second->redeem($ticket));
+            $a = Task::spawn($loop, static fn(): ?Identity => $first->redeem($ticket));
+            $b = Task::spawn($loop, static fn(): ?Identity => $second->redeem($ticket));
             $results = [$a->await(), $b->await()];
             $loop->run();
-            self::assertSame(1, count(array_filter($results, static fn ($user): bool => $user instanceof Identity)));
-            self::assertSame(1, count(array_filter($results, static fn ($user): bool => $user === null)));
+            self::assertSame(1, count(array_filter($results, static fn($user): bool => $user instanceof Identity)));
+            self::assertSame(1, count(array_filter($results, static fn($user): bool => $user === null)));
         } finally {
             $store->clear();
             rmdir($directory);
@@ -195,7 +230,10 @@ final class TicketTest extends TestCase
     public function testMultipleWorkersRefuseAnArrayTicketStoreBeforeBindingAPort(): void
     {
         foreach ([1, 2] as $requested) {
-            $app = new App(new Config(['server' => ['workers' => $requested === 1 ? 2 : 1], 'cache' => ['store' => 'array']]));
+            $app = new App(new Config([
+                'server' => ['workers' => $requested === 1 ? 2 : 1],
+                'cache' => ['store' => 'array'],
+            ]));
             $app->register(CacheProvider::class);
             $app->router->post('/ws/ticket', IssueTicket::class);
             try {
@@ -245,7 +283,10 @@ final class TicketTest extends TestCase
                     $app->runtime('tcp://127.0.0.1:8291', workers: $requested);
                     self::fail('Global Ticket middleware accepted an array cache for multiple workers.');
                 } catch (\LogicException $error) {
-                    self::assertStringContainsString('An array cache keeps tickets in one worker only.', $error->getMessage());
+                    self::assertStringContainsString(
+                        'An array cache keeps tickets in one worker only.',
+                        $error->getMessage(),
+                    );
                     self::assertStringContainsString('Set cache.store to file', $error->getMessage());
                 }
                 $directory = sys_get_temp_dir() . '/crab-global-ticket-' . bin2hex(random_bytes(6));
@@ -266,7 +307,10 @@ final class TicketTest extends TestCase
             $api->websocket('/live', query: $query);
             self::fail('Invalid authentication upgraded.');
         } catch (WebSocketRefused $error) {
-            $error->response->assertJson('error.message', 'Authentication is required.')->assertHeader('WWW-Authenticate', 'Bearer');
+            $error->response->assertJson('error.message', 'Authentication is required.')->assertHeader(
+                'WWW-Authenticate',
+                'Bearer',
+            );
             return $error->response->status;
         }
     }
@@ -274,12 +318,17 @@ final class TicketTest extends TestCase
 
 final readonly class TicketUser implements Identity
 {
-    public function __construct(public int|string $id) {}
+    public function __construct(
+        public int|string $id,
+    ) {}
 }
 
 final class TicketUsers implements IdentityResolver
 {
-    public function __construct(public ?TicketUser $user) {}
+    public function __construct(
+        public ?TicketUser $user,
+    ) {}
+
     public function resolve(int|string $id): ?Identity
     {
         return $this->user?->id === $id ? $this->user : null;
@@ -288,9 +337,21 @@ final class TicketUsers implements IdentityResolver
 
 final readonly class TicketTokens implements TokenStore
 {
-    public function __construct(private int|string $id) {}
-    public function issue(Identity|int|string $for, string $name = '', ?\DateTimeInterface $expiresAt = null): string { return 'known'; }
-    public function owner(string $token): int|string|null { return $token === 'known' ? $this->id : null; }
-    public function revoke(string $token): void {}
+    public function __construct(
+        private int|string $id,
+    ) {}
+
+    public function issue(Identity|int|string $for, string $name = '', ?\DateTimeInterface $expiresAt = null): string
+    {
+        return 'known';
+    }
+
+    public function owner(#[\SensitiveParameter] string $token): int|string|null
+    {
+        return hash_equals('known', $token) ? $this->id : null;
+    }
+
+    public function revoke(#[\SensitiveParameter] string $token): void {}
+
     public function revokeAll(Identity|int|string $of): void {}
 }

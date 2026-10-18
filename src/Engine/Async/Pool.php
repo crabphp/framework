@@ -5,10 +5,10 @@ declare(strict_types=1);
 namespace Crab\Engine\Async;
 
 use Closure;
-use InvalidArgumentException;
-use LogicException;
 use Crab\Engine\EventLoop;
 use Crab\Engine\FailureReporter;
+use InvalidArgumentException;
+use LogicException;
 use Throwable;
 
 /**
@@ -68,7 +68,7 @@ final class Pool
         if ($this->idle !== []) {
             return $this->lend(array_pop($this->idle));
         }
-        if (count($this->borrowed) + $this->creating < $this->max) {
+        if ((count($this->borrowed) + $this->creating) < $this->max) {
             return $this->lend($this->create());
         }
         $suspension = $this->loop->getSuspension();
@@ -76,7 +76,13 @@ final class Pool
         $settled = false;
         $timer = null;
         $unsubscribe = null;
-        $finish = function (?object $resource, ?Throwable $error = null) use ($suspension, $id, &$settled, &$timer, &$unsubscribe): void {
+        $finish = function (?object $resource, ?Throwable $error = null) use (
+            $suspension,
+            $id,
+            &$settled,
+            &$timer,
+            &$unsubscribe,
+        ): void {
             if ($settled) {
                 return;
             }
@@ -93,10 +99,13 @@ final class Pool
             }
         };
         $this->waiting[$id] = $finish;
-        $timer = $this->loop->delay($this->timeout, fn () => $finish(null, new PoolExhaustedException(
-            "No resource became free within {$this->timeout} seconds; the pool holds {$this->max}.",
-        )));
-        $unsubscribe = $cancellation?->subscribe(static fn (CancelledException $error) => $finish(null, $error));
+        $timer = $this->loop->delay($this->timeout, fn() => $finish(
+            null,
+            new PoolExhaustedException(
+                "No resource became free within {$this->timeout} seconds; the pool holds {$this->max}.",
+            ),
+        ));
+        $unsubscribe = $cancellation?->subscribe(static fn(CancelledException $error) => $finish(null, $error));
         try {
             return $suspension->suspend();
         } finally {
@@ -185,7 +194,12 @@ final class Pool
      */
     public function stats(): array
     {
-        return ['max' => $this->max, 'idle' => count($this->idle), 'borrowed' => count($this->borrowed), 'waiting' => count($this->waiting)];
+        return [
+            'max' => $this->max,
+            'idle' => count($this->idle),
+            'borrowed' => count($this->borrowed),
+            'waiting' => count($this->waiting),
+        ];
     }
 
     private function create(): object

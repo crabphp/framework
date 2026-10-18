@@ -24,8 +24,10 @@ final class Task implements TaskContract
      * @param string $name What the task is listed and logged as.
      * @param \Closure(?ContainerInterface): void $run Does the task's work.
      */
-    public function __construct(private string $name, private readonly \Closure $run)
-    {
+    public function __construct(
+        private string $name,
+        private readonly \Closure $run,
+    ) {
         $this->cron = new Cron('* * * * *');
     }
 
@@ -39,7 +41,9 @@ final class Task implements TaskContract
     public function everySeconds(int|float $seconds): static
     {
         if ($seconds < 0.01) {
-            throw new \InvalidArgumentException("everySeconds({$seconds}) cannot be scheduled: give at least 0.01 of a second.");
+            throw new \InvalidArgumentException(
+                "everySeconds({$seconds}) cannot be scheduled: give at least 0.01 of a second.",
+            );
         }
         $this->seconds = (float) $seconds;
         return $this;
@@ -53,7 +57,9 @@ final class Task implements TaskContract
     public function everyMinutes(int $minutes): static
     {
         if ($minutes < 1 || $minutes > 59) {
-            throw new \InvalidArgumentException("everyMinutes({$minutes}) cannot be scheduled: give 1 to 59 minutes. For a longer interval use hourly(), daily() or cron().");
+            throw new \InvalidArgumentException(
+                "everyMinutes({$minutes}) cannot be scheduled: give 1 to 59 minutes. For a longer interval use hourly(), daily() or cron().",
+            );
         }
         return $this->cron("*/{$minutes} * * * *");
     }
@@ -159,7 +165,9 @@ final class Task implements TaskContract
     private static function time(string $at): array
     {
         if (preg_match('/^([01]?\d|2[0-3]):([0-5]\d)$/D', $at, $match) !== 1) {
-            throw new \InvalidArgumentException("\"{$at}\" is not a time of day. Write the hour and the minute, as in \"07:30\" or \"18:00\".");
+            throw new \InvalidArgumentException(
+                "\"{$at}\" is not a time of day. Write the hour and the minute, as in \"07:30\" or \"18:00\".",
+            );
         }
         return [(int) $match[1], (int) $match[2]];
     }

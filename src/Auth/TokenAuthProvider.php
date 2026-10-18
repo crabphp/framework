@@ -29,7 +29,9 @@ final class TokenAuthProvider implements Provider
     {
         $container->singleton(TokenStore::class, static function (Container $container): DatabaseTokenStore {
             if (!$container->has(Database::class)) {
-                throw new \LogicException('Tokens are kept in the database: register the database provider, DatabaseProvider, as well as TokenAuthProvider.');
+                throw new \LogicException(
+                    'Tokens are kept in the database: register the database provider, DatabaseProvider, as well as TokenAuthProvider.',
+                );
             }
             return new DatabaseTokenStore(
                 $container->get(Database::class),
@@ -38,13 +40,19 @@ final class TokenAuthProvider implements Provider
         });
         $container->singleton(TokenAuth::class, static function (Container $container): TokenAuth {
             if (!$container->has(IdentityResolver::class)) {
-                throw new \LogicException('To authenticate by token, bind ' . IdentityResolver::class . ' in a provider of your own: it finds one of your users by id.');
+                throw new \LogicException(
+                    'To authenticate by token, bind '
+                    . IdentityResolver::class
+                    . ' in a provider of your own: it finds one of your users by id.',
+                );
             }
             return new TokenAuth($container->get(TokenStore::class), $container->get(IdentityResolver::class));
         });
         if ($container->has(Console::class)) {
             $container->get(Console::class)->add('token:install', InstallTokens::class);
         }
-        $container->singleton(Ticket::class, static fn (Container $container): Ticket => (new Ticket())->withContainer($container));
+        $container->singleton(Ticket::class, static fn(Container $container): Ticket => new Ticket()->withContainer(
+            $container,
+        ));
     }
 }

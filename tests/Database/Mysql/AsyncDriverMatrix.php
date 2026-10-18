@@ -22,7 +22,9 @@ trait AsyncDriverMatrix
         if (!in_array('mysql-async', $testArguments, true)) {
             return parent::invokeTestMethod($methodName, $testArguments);
         }
-        $testArguments = array_map(static fn (mixed $value): mixed => $value === 'mysql-async' ? 'mysql' : $value, $testArguments);
+        $testArguments = array_map(static fn(mixed $value): mixed => $value === 'mysql-async'
+            ? 'mysql'
+            : $value, $testArguments);
         return WorkerHarness::run([], function (Worker $worker) use ($methodName, $testArguments): mixed {
             $this->matrixWorker = $worker;
             $this->matrixConnections = new \WeakMap();
@@ -45,7 +47,13 @@ trait AsyncDriverMatrix
         }
         return function (\Closure $owner) use ($opened): Connection {
             $opened?->__invoke();
-            $connection = new Connection($owner, (string) getenv('CRAB_TEST_MYSQL_DSN'), getenv('CRAB_TEST_MYSQL_USER') ?: 'root', getenv('CRAB_TEST_MYSQL_PASSWORD') ?: '', worker: $this->matrixWorker);
+            $connection = new Connection(
+                $owner,
+                (string) getenv('CRAB_TEST_MYSQL_DSN'),
+                getenv('CRAB_TEST_MYSQL_USER') ?: 'root',
+                getenv('CRAB_TEST_MYSQL_PASSWORD') ?: '',
+                worker: $this->matrixWorker,
+            );
             $this->matrixConnections[$connection] = true;
             return $connection;
         };

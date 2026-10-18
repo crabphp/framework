@@ -118,9 +118,7 @@ abstract class Message implements MessageInterface
     /**
      * Brings in headers held elsewhere before they are read or changed.
      */
-    protected function load(): void
-    {
-    }
+    protected function load(): void {}
 
     /**
      * Validates one field and stores it, replacing or extending its values.

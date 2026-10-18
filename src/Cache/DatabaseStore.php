@@ -16,9 +16,10 @@ use Crab\Contracts\Database\Connection;
  */
 final readonly class DatabaseStore implements Store
 {
-    public function __construct(private Connection $connection, private string $table = 'cache')
-    {
-    }
+    public function __construct(
+        private Connection $connection,
+        private string $table = 'cache',
+    ) {}
 
     public function get(string $key, int $now): ?string
     {
@@ -35,26 +36,32 @@ final readonly class DatabaseStore implements Store
 
     public function set(string $key, string $value, ?int $expiresAt): void
     {
-        $this->connection->table($this->table)->upsert(
-            ['key' => $key, 'value' => base64_encode($value), 'expires_at' => $expiresAt],
-            'key',
-        );
+        $this->connection->table($this->table)->upsert([
+            'key' => $key,
+            'value' => base64_encode($value),
+            'expires_at' => $expiresAt,
+        ], 'key');
     }
 
     public function add(string $key, string $value, ?int $expiresAt, int $now): bool
     {
         // An expired entry is out of the way first; then the key's uniqueness decides who wins.
         $this->connection->table($this->table)->where('key', $key)->where('expires_at', '<=', $now)->delete();
-        $inserted = $this->connection->table($this->table)->insertOrIgnore(
-            ['key' => $key, 'value' => base64_encode($value), 'expires_at' => $expiresAt],
-        );
+        $inserted = $this->connection
+            ->table($this->table)
+            ->insertOrIgnore(['key' => $key, 'value' => base64_encode($value), 'expires_at' => $expiresAt]);
         return $inserted === 1;
     }
 
     public function take(string $key, int $now): ?string
     {
         return $this->connection->transaction(function (Connection $connection) use ($key, $now): ?string {
-            $row = $connection->table($this->table)->select('value', 'expires_at')->where('key', $key)->lockForUpdate()->first();
+            $row = $connection
+                ->table($this->table)
+                ->select('value', 'expires_at')
+                ->where('key', $key)
+                ->lockForUpdate()
+                ->first();
             if ($row === null) {
                 return null;
             }
@@ -71,11 +78,25 @@ final readonly class DatabaseStore implements Store
     {
         for ($try = 0; $try < 5; ++$try) {
             // The row is there before it is locked: locking a row that is missing is what makes two callers wait on each other.
-            $this->connection->table($this->table)->insertOrIgnore(
-                ['key' => $key, 'value' => base64_encode(Counter::write(0)), 'expires_at' => $expiresAt],
-            );
-            $count = $this->connection->transaction(function (Connection $connection) use ($key, $by, $expiresAt, $now): ?int {
-                $row = $connection->table($this->table)->select('value', 'expires_at')->where('key', $key)->lockForUpdate()->first();
+            $this->connection
+                ->table($this->table)
+                ->insertOrIgnore([
+                    'key' => $key,
+                    'value' => base64_encode(Counter::write(0)),
+                    'expires_at' => $expiresAt,
+                ]);
+            $count = $this->connection->transaction(function (Connection $connection) use (
+                $key,
+                $by,
+                $expiresAt,
+                $now,
+            ): ?int {
+                $row = $connection
+                    ->table($this->table)
+                    ->select('value', 'expires_at')
+                    ->where('key', $key)
+                    ->lockForUpdate()
+                    ->first();
                 if ($row === null) {
                     // Deleted since it was inserted.
                     return null;
@@ -106,8 +127,13 @@ final readonly class DatabaseStore implements Store
     public function deleteIf(string $key, string $value, int $now): bool
     {
         return $this->connection->transaction(function (Connection $connection) use ($key, $value, $now): bool {
-            $row = $connection->table($this->table)->select('value', 'expires_at')->where('key', $key)->lockForUpdate()->first();
-            if ($row === null || ($row['expires_at'] !== null && (int) $row['expires_at'] <= $now)) {
+            $row = $connection
+                ->table($this->table)
+                ->select('value', 'expires_at')
+                ->where('key', $key)
+                ->lockForUpdate()
+                ->first();
+            if ($row === null || $row['expires_at'] !== null && (int) $row['expires_at'] <= $now) {
                 return false;
             }
             // Compare bytes here: a database's text collation may treat different base64 strings as equal.

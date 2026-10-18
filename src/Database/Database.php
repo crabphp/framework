@@ -45,21 +45,29 @@ final class Database implements DatabaseContract
         private readonly ?\Closure $factory = null,
     ) {
         if ($max < 1 || !is_finite($timeout) || $timeout <= 0) {
-            throw new \InvalidArgumentException('A database needs a positive pool size and a finite, positive timeout.');
+            throw new \InvalidArgumentException(
+                'A database needs a positive pool size and a finite, positive timeout.',
+            );
         }
     }
 
     public function connection(string $name): DatabaseContract
     {
         if ($this->manager === null) {
-            throw new \LogicException("This database was made on its own and knows no other, so it has none named \"{$name}\". Named databases come from a DatabaseManager, or from the \"database.connections\" setting.");
+            throw new \LogicException(
+                "This database was made on its own and knows no other, so it has none named \"{$name}\". Named databases come from a DatabaseManager, or from the \"database.connections\" setting.",
+            );
         }
         return $this->manager->connection($name);
     }
 
     public function owns(Connection $connection): bool
     {
-        return $connection === $this || ($connection instanceof ManagedConnection && $connection->opensWith($this->connect));
+        return (
+            $connection === $this
+            || $connection instanceof ManagedConnection
+            && $connection->opensWith($this->connect)
+        );
     }
 
     public function afterCommit(\Closure $callback): void
@@ -86,7 +94,9 @@ final class Database implements DatabaseContract
             // The next borrower must not inherit it.
             $connection->close();
             $this->pool()->release($connection);
-            throw new \LogicException('A connection was released inside a transaction; the transaction was rolled back.');
+            throw new \LogicException(
+                'A connection was released inside a transaction; the transaction was rolled back.',
+            );
         }
         try {
             $this->pool()->release($connection);
@@ -115,32 +125,32 @@ final class Database implements DatabaseContract
 
     public function driver(): string
     {
-        return $this->driver ??= $this->run(static fn (Connection $connection): string => $connection->driver());
+        return $this->driver ??= $this->run(static fn(Connection $connection): string => $connection->driver());
     }
 
     public function select(string $sql, array $bindings = []): array
     {
-        return $this->run(static fn (Connection $connection): array => $connection->select($sql, $bindings));
+        return $this->run(static fn(Connection $connection): array => $connection->select($sql, $bindings));
     }
 
     public function first(string $sql, array $bindings = []): ?array
     {
-        return $this->run(static fn (Connection $connection): ?array => $connection->first($sql, $bindings));
+        return $this->run(static fn(Connection $connection): ?array => $connection->first($sql, $bindings));
     }
 
     public function insert(string $sql, array $bindings = []): int|string
     {
-        return $this->run(static fn (Connection $connection): int|string => $connection->insert($sql, $bindings));
+        return $this->run(static fn(Connection $connection): int|string => $connection->insert($sql, $bindings));
     }
 
     public function execute(string $sql, array $bindings = []): int
     {
-        return $this->run(static fn (Connection $connection): int => $connection->execute($sql, $bindings));
+        return $this->run(static fn(Connection $connection): int => $connection->execute($sql, $bindings));
     }
 
     public function transaction(\Closure $callback): mixed
     {
-        return $this->run(static fn (Connection $connection): mixed => $connection->transaction($callback));
+        return $this->run(static fn(Connection $connection): mixed => $connection->transaction($callback));
     }
 
     /**
@@ -192,7 +202,7 @@ final class Database implements DatabaseContract
                 $this->make(...),
                 $this->max,
                 $this->timeout,
-                static fn (ManagedConnection $connection) => $connection->close(),
+                static fn(ManagedConnection $connection) => $connection->close(),
             );
         }
         return $this->pool;

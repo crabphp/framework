@@ -17,7 +17,7 @@ final class Codec
      */
     public static function bytes(string $packet, int &$offset, int $length): string
     {
-        if ($length < 0 || $offset < 0 || $length > strlen($packet) - $offset) {
+        if ($length < 0 || $offset < 0 || $length > (strlen($packet) - $offset)) {
             throw new \UnexpectedValueException('MySQL sent a truncated packet; reconnect before trying again.');
         }
         $value = substr($packet, $offset, $length);
@@ -31,7 +31,7 @@ final class Codec
      */
     public static function integer(string $packet, int &$offset, int $length): int
     {
-        if ($length < 0 || $offset < 0 || $length > strlen($packet) - $offset) {
+        if ($length < 0 || $offset < 0 || $length > (strlen($packet) - $offset)) {
             throw new \UnexpectedValueException('MySQL sent a truncated packet; reconnect before trying again.');
         }
         $value = match ($length) {
@@ -76,8 +76,8 @@ final class Codec
         }
         $parts = unpack('Vlow/Vhigh', $packet, $start);
         // Each partial product fits a 64-bit PHP integer, unlike the whole value.
-        $low = $parts['low'] + ($parts['high'] % 1_000_000_000) * 4_294_967_296;
-        $high = intdiv($parts['high'], 1_000_000_000) * 4_294_967_296 + intdiv($low, 1_000_000_000);
+        $low = $parts['low'] + (($parts['high'] % 1_000_000_000) * 4_294_967_296);
+        $high = (intdiv($parts['high'], 1_000_000_000) * 4_294_967_296) + intdiv($low, 1_000_000_000);
         return (string) $high . str_pad((string) ($low % 1_000_000_000), 9, '0', STR_PAD_LEFT);
     }
 
@@ -91,8 +91,8 @@ final class Codec
         }
         return match (true) {
             $value < 251 => chr($value),
-            $value <= 65535 => "\xfc" . pack('v', $value),
-            $value <= 16777215 => "\xfd" . substr(pack('V', $value), 0, 3),
+            $value <= 65_535 => "\xfc" . pack('v', $value),
+            $value <= 16_777_215 => "\xfd" . substr(pack('V', $value), 0, 3),
             default => "\xfe" . pack('P', $value),
         };
     }
@@ -111,7 +111,9 @@ final class Codec
             252 => self::integer($packet, $offset, 2),
             253 => self::integer($packet, $offset, 3),
             254 => self::unsigned64(self::bytes($packet, $offset, 8)),
-            255 => throw new \UnexpectedValueException('MySQL sent an invalid encoded length; reconnect before trying again.'),
+            255 => throw new \UnexpectedValueException(
+                'MySQL sent an invalid encoded length; reconnect before trying again.',
+            ),
             default => $first,
         };
     }
@@ -144,7 +146,7 @@ final class Codec
         if (!is_int($length)) {
             throw new \UnexpectedValueException('MySQL sent a string larger than PHP can hold.');
         }
-        if ($length > strlen($packet) - $offset) {
+        if ($length > (strlen($packet) - $offset)) {
             throw new \UnexpectedValueException('MySQL sent a truncated packet; reconnect before trying again.');
         }
         $value = substr($packet, $offset, $length);
@@ -158,7 +160,7 @@ final class Codec
     public static function skipString(string $packet, int &$offset): void
     {
         $length = self::readLength($packet, $offset);
-        if (!is_int($length) || $length > strlen($packet) - $offset) {
+        if (!is_int($length) || $length > (strlen($packet) - $offset)) {
             throw new \UnexpectedValueException('MySQL sent truncated column metadata.');
         }
         $offset += $length;

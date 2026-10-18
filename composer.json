@@ -36,7 +36,10 @@
             "Composer\\Config::disableProcessTimeout",
             "@php .claude/skills/sync-docs/scripts/serve.php"
         ],
-        "docs:check": "@php .claude/skills/sync-docs/scripts/check.php"
+        "docs:check": "@php .claude/skills/sync-docs/scripts/check.php",
+        "format": "@php vendor/bin/mago fmt",
+        "format:check": "@php vendor/bin/mago fmt --check",
+        "lint": "@php vendor/bin/mago lint"
     },
     "autoload": {
         "psr-4": {
@@ -60,6 +63,7 @@
         }
     ],
     "require-dev": {
-        "phpunit/phpunit": "^13.4"
+        "phpunit/phpunit": "^13.4",
+        "carthage-software/mago": "^1.57.0"
     }
 }

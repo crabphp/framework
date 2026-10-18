@@ -16,11 +16,11 @@ use Crab\Contracts\Console\Output as OutputContract;
 use Crab\Contracts\Queue\Store;
 use Crab\Contracts\Schedule\Schedule as ScheduleContract;
 use Crab\Contracts\Schedule\TaskRan;
-use Crab\Events\Dispatcher;
 use Crab\Engine\Async\Async;
 use Crab\Engine\Async\Cancellation;
 use Crab\Engine\FailureReporter;
 use Crab\Engine\Process\Worker;
+use Crab\Events\Dispatcher;
 use Crab\Queue\MemoryStore;
 use Crab\Queue\QueueProvider;
 use Crab\Schedule\Cron;
@@ -46,9 +46,7 @@ final class Beat
 
 final class PruneJob
 {
-    public function handle(int $olderThanDays): void
-    {
-    }
+    public function handle(int $olderThanDays): void {}
 }
 
 final class Records extends AbstractLogger
@@ -60,7 +58,10 @@ final class Records extends AbstractLogger
 
     public function log($level, string|\Stringable $message, array $context = []): void
     {
-        $this->records[] = [(string) $level, strtr((string) $message, ['{task}' => $context['task'] ?? '', '{message}' => $context['message'] ?? ''])];
+        $this->records[] = [
+            (string) $level,
+            strtr((string) $message, ['{task}' => $context['task'] ?? '', '{message}' => $context['message'] ?? '']),
+        ];
     }
 }
 
@@ -71,8 +72,9 @@ final class RunningClock implements ClockInterface
 {
     private float $started;
 
-    public function __construct(private readonly \DateTimeImmutable $from)
-    {
+    public function __construct(
+        private readonly \DateTimeImmutable $from,
+    ) {
         $this->started = microtime(true);
     }
 
@@ -123,13 +125,15 @@ final class ScheduleTest extends TestCase
     #[DataProvider('expressions')]
     public function testACronExpressionFitsItsMinutes(string $expression, string $time, bool $fits): void
     {
-        self::assertSame($fits, (new Cron($expression))->matches(new \DateTimeImmutable($time)));
+        self::assertSame($fits, new Cron($expression)->matches(new \DateTimeImmutable($time)));
     }
 
     public function testTheNextTimeAnExpressionFits(): void
     {
         $from = new \DateTimeImmutable('2026-03-10 14:07:30');
-        $next = static fn (string $expression): string => (new Cron($expression))->next($from)->format('Y-m-d H:i:s');
+        $next = static fn(string $expression): string => new Cron($expression)
+            ->next($from)
+            ->format('Y-m-d H:i:s');
 
         self::assertSame('2026-03-10 14:08:00', $next('* * * * *'));
         self::assertSame('2026-03-10 14:15:00', $next('*/15 * * * *'));
@@ -140,7 +144,12 @@ final class ScheduleTest extends TestCase
         self::assertSame('2027-01-01 00:00:00', $next('0 0 1 jan *'));
         self::assertSame('2028-02-29 12:00:00', $next('0 12 29 2 *'));
         // A minute that fits is not its own next.
-        self::assertSame('2026-03-10 14:08:00', (new Cron('* * * * *'))->next(new \DateTimeImmutable('2026-03-10 14:07:00'))->format('Y-m-d H:i:s'));
+        self::assertSame(
+            '2026-03-10 14:08:00',
+            new Cron('* * * * *')
+                ->next(new \DateTimeImmutable('2026-03-10 14:07:00'))
+                ->format('Y-m-d H:i:s'),
+        );
 
         $this->expectException(\LogicException::class);
         $this->expectExceptionMessage('never comes');
@@ -187,17 +196,28 @@ final class ScheduleTest extends TestCase
         ];
 
         self::assertSame(
-            ['* * * * *', '*/5 * * * *', '0 * * * *', '20 * * * *', '0 0 * * *', '5 7 * * *', '0 18 * * 1', '0 0 1 * *', '30 9 15 * *', '* * * * *'],
-            array_map(static fn ($task): string => $task->expression(), $made),
+            [
+                '* * * * *',
+                '*/5 * * * *',
+                '0 * * * *',
+                '20 * * * *',
+                '0 0 * * *',
+                '5 7 * * *',
+                '0 18 * * 1',
+                '0 0 1 * *',
+                '30 9 15 * *',
+                '* * * * *',
+            ],
+            array_map(static fn($task): string => $task->expression(), $made),
         );
 
         $refused = 0;
         foreach ([
-            static fn () => $schedule->call(Beat::class)->daily('25:00'),
-            static fn () => $schedule->call(Beat::class)->daily('7am'),
-            static fn () => $schedule->call(Beat::class)->everyMinutes(60),
-            static fn () => $schedule->call(Beat::class)->weekly(9),
-            static fn () => $schedule->call(Beat::class)->name(''),
+            static fn() => $schedule->call(Beat::class)->daily('25:00'),
+            static fn() => $schedule->call(Beat::class)->daily('7am'),
+            static fn() => $schedule->call(Beat::class)->everyMinutes(60),
+            static fn() => $schedule->call(Beat::class)->weekly(9),
+            static fn() => $schedule->call(Beat::class)->name(''),
         ] as $mistake) {
             try {
                 $mistake();
@@ -212,18 +232,24 @@ final class ScheduleTest extends TestCase
     {
         $schedule = new Schedule();
         $schedule->call(Beat::class);
-        $schedule->call(static fn () => null);
+        $schedule->call(static fn() => null);
         $schedule->command('reports:send', '--month=last');
         $schedule->job(PruneJob::class, olderThanDays: 30);
         $schedule->call(Beat::class)->name('heartbeat');
 
-        $names = array_map(static fn ($task): string => $task->named(), $schedule->tasks());
+        $names = array_map(static fn($task): string => $task->named(), $schedule->tasks());
 
         self::assertSame(Beat::class, $names[0]);
         self::assertMatchesRegularExpression('/^closure at ScheduleTest\.php:\d+$/', $names[1]);
-        self::assertSame(['command reports:send --month=last', 'job ' . PruneJob::class, 'heartbeat'], array_slice($names, 2));
+        self::assertSame(
+            ['command reports:send --month=last', 'job ' . PruneJob::class, 'heartbeat'],
+            array_slice($names, 2),
+        );
 
-        foreach ([static fn () => $schedule->call('App\\Missing'), static fn () => $schedule->job(\stdClass::class)] as $mistake) {
+        foreach ([
+            static fn() => $schedule->call('App\\Missing'),
+            static fn() => $schedule->job(\stdClass::class),
+        ] as $mistake) {
             try {
                 $mistake();
                 self::fail('What cannot be run was scheduled.');
@@ -243,12 +269,15 @@ final class ScheduleTest extends TestCase
         $schedule->call(static function () use (&$ran): void {
             $ran[] = 'at seven';
         })->daily('07:00');
-        $schedule->call(static fn () => throw new \RuntimeException('disk is full'))->name('backup')->daily('07:00');
+        $schedule
+            ->call(static fn() => throw new \RuntimeException('disk is full'))
+            ->name('backup')
+            ->daily('07:00');
         $schedule->call(Beat::class)->hourly(30);
         $scheduler = new Scheduler($schedule, new Container(), $this->log);
 
         $seven = new \DateTimeImmutable('2026-03-10 07:00:12');
-        $results = array_map(static fn ($task): bool => $scheduler->run($task, $seven), $scheduler->due($seven));
+        $results = array_map(static fn($task): bool => $scheduler->run($task, $seven), $scheduler->due($seven));
 
         self::assertSame([true, true, false], $results);
         self::assertSame(['every minute', 'at seven'], $ran);
@@ -321,21 +350,21 @@ final class ScheduleTest extends TestCase
 
         $this->expectException(\LogicException::class);
         $this->expectExceptionMessage('CacheProvider');
-        (new Scheduler($schedule))->check();
+        new Scheduler($schedule)->check();
     }
 
     public function testTheSchedulerWakesAtTheMinuteAndStopsWhenCancelled(): void
     {
         $schedule = new Schedule();
         $schedule->call(Beat::class)->cron('1 7 * * *');
-        $schedule->call(static fn () => throw new \LogicException('not due'))->cron('0 7 * * *');
+        $schedule->call(static fn() => throw new \LogicException('not due'))->cron('0 7 * * *');
         // Fifty milliseconds before 07:01.
         $clock = new RunningClock(new \DateTimeImmutable('2026-03-10 07:00:59.950'));
         $scheduler = new Scheduler($schedule, new Container(), $this->log, $clock);
 
         WorkerHarness::run([], static function (Worker $worker) use ($scheduler): void {
             $cancellation = new Cancellation();
-            $task = $worker->spawn(static fn () => $scheduler->work($worker, $cancellation));
+            $task = $worker->spawn(static fn() => $scheduler->work($worker, $cancellation));
             Async::sleep($worker->loop, 0.15);
             $cancellation->cancel();
             $task->await();
@@ -354,7 +383,10 @@ final class ScheduleTest extends TestCase
         self::assertSame('every 0.5 s', $task->expression());
         self::assertSame('every 5 s', $schedule->call(Beat::class)->everySeconds(5)->expression());
         self::assertFalse($task->isDue(new \DateTimeImmutable('2026-03-10 07:00:00')));
-        self::assertSame('07:00:00.500000', $task->next(new \DateTimeImmutable('2026-03-10 07:00:00'))->format('H:i:s.u'));
+        self::assertSame(
+            '07:00:00.500000',
+            $task->next(new \DateTimeImmutable('2026-03-10 07:00:00'))->format('H:i:s.u'),
+        );
         // Each way of saying when replaces the one before.
         self::assertNull($task->hourly()->interval());
         self::assertSame('0 * * * *', $task->expression());
@@ -370,7 +402,9 @@ final class ScheduleTest extends TestCase
         $schedule->call(Beat::class)->everySeconds(0.02);
         $scheduler = new Scheduler($schedule, new Container(), $this->log);
         $reports = [];
-        $previous = FailureReporter::handleWith(static function (string $what, ?\Throwable $error) use (&$reports): void {
+        $previous = FailureReporter::handleWith(static function (string $what, ?\Throwable $error) use (
+            &$reports,
+        ): void {
             $reports[] = $what . ': ' . $error?->getMessage();
         });
         $stopped = 0;
@@ -404,12 +438,15 @@ final class ScheduleTest extends TestCase
         $after = 0;
 
         WorkerHarness::run([], static function (Worker $worker) use ($schedule, $scheduler, &$slow, &$after): void {
-            $schedule->call(static function () use ($worker, &$slow): void {
-                ++$slow;
-                Async::sleep($worker->loop, 0.1);
-            })->everySeconds(0.02)->name('slow');
+            $schedule
+                ->call(static function () use ($worker, &$slow): void {
+                    ++$slow;
+                    Async::sleep($worker->loop, 0.1);
+                })
+                ->everySeconds(0.02)
+                ->name('slow');
             $cancellation = new Cancellation();
-            $task = $worker->spawn(static fn () => $scheduler->work($worker, $cancellation));
+            $task = $worker->spawn(static fn() => $scheduler->work($worker, $cancellation));
             Async::sleep($worker->loop, 0.17);
             $cancellation->cancel();
             $task->await();
@@ -437,7 +474,12 @@ final class ScheduleTest extends TestCase
         $first = new Scheduler($schedule, cache: new Cache($shared, clock: $clock));
         $second = new Scheduler($schedule, cache: new Cache($shared, clock: $clock));
 
-        self::assertSame([true, false, true, false], [$first->run($task, $clock->now()), $second->run($task, $clock->now()), $first->run($task, $clock->now()), $second->run($task, $clock->now())]);
+        self::assertSame([true, false, true, false], [
+            $first->run($task, $clock->now()),
+            $second->run($task, $clock->now()),
+            $first->run($task, $clock->now()),
+            $second->run($task, $clock->now()),
+        ]);
         // Each run renews it, so the first still has it a second later.
         $clock->advance('+1 second');
         self::assertSame([true, false], [$first->run($task, $clock->now()), $second->run($task, $clock->now())]);
@@ -451,7 +493,7 @@ final class ScheduleTest extends TestCase
     {
         $schedule = new Schedule();
         $schedule->call(Beat::class)->name('beat');
-        $schedule->call(static fn () => throw new \RuntimeException('disk full'))->name('backup');
+        $schedule->call(static fn() => throw new \RuntimeException('disk full'))->name('backup');
         $events = new Dispatcher();
         $heard = [];
         $events->listen(TaskRan::class, static function (TaskRan $event) use (&$heard): void {
@@ -460,10 +502,16 @@ final class ScheduleTest extends TestCase
         $scheduler = new Scheduler($schedule, new Container(), $this->log, events: $events);
 
         $now = new \DateTimeImmutable('2026-03-10 07:00:00');
-        $results = array_map(static fn ($task): bool => $scheduler->run($task, $now), $schedule->tasks());
+        $results = array_map(static fn($task): bool => $scheduler->run($task, $now), $schedule->tasks());
 
         self::assertSame([true, false], $results);
-        self::assertSame([['beat', null, true], ['backup', 'disk full', true]], $heard);
+        self::assertSame(
+            [
+                ['beat',   null,        true],
+                ['backup', 'disk full', true],
+            ],
+            $heard,
+        );
         // The failure is still logged, once.
         self::assertCount(1, $this->log->records);
     }
@@ -485,14 +533,20 @@ final class ScheduleTest extends TestCase
         $schedule->call(Beat::class)->everySeconds(5)->name('pulse');
         $seven = new \DateTimeImmutable('2026-03-10 07:00:00');
         $scheduler = new Scheduler($schedule, $app->container, $this->log);
-        $results = array_map(static fn ($task): bool => $scheduler->run($task, $seven), array_slice($scheduler->due($seven), 0, 3));
+        $results = array_map(
+            static fn($task): bool => $scheduler->run($task, $seven),
+            array_slice($scheduler->due($seven), 0, 3),
+        );
 
         self::assertSame([true, false, true], $results);
         self::assertSame(['last', null], $said);
         self::assertStringContainsString('ended with status 3', $this->log->records[0][1]);
         $waiting = $app->container->get(Store::class);
         self::assertInstanceOf(MemoryStore::class, $waiting);
-        self::assertSame([PruneJob::class, ['olderThanDays' => 30]], [$waiting->waiting()[0]->job, $waiting->waiting()[0]->data]);
+        self::assertSame([PruneJob::class, ['olderThanDays' => 30]], [
+            $waiting->waiting()[0]->job,
+            $waiting->waiting()[0]->data,
+        ]);
 
         [$output, $read] = $this->captured();
         self::assertSame(0, $app->console->run(['schedule:list'], $output));
@@ -512,9 +566,12 @@ final class ScheduleTest extends TestCase
     private function captured(): array
     {
         $stream = fopen('php://memory', 'w+');
-        return [new Output($stream, $stream), static function () use ($stream): string {
-            rewind($stream);
-            return (string) stream_get_contents($stream);
-        }];
+        return [
+            new Output($stream, $stream),
+            static function () use ($stream): string {
+                rewind($stream);
+                return (string) stream_get_contents($stream);
+            },
+        ];
     }
 }

@@ -76,17 +76,34 @@ final class DatabaseTest extends TestCase
     public function testStatementsBindValuesByPositionAndByName(string $driver): void
     {
         $db = $this->database($driver);
-        self::assertSame(1, $db->insert('insert into users (name, age, active, score, born) values (?, ?, ?, ?, ?)',
-            ['Ada', 36, true, 9.5, new \DateTimeImmutable('1815-12-10 00:00:00')]));
-        self::assertSame(2, $db->insert('insert into users (name, age, active, score, born) values (:name, :age, :active, :score, :born)',
-            ['name' => "Robert'); drop table users;--", 'age' => null, 'active' => false, 'score' => null, 'born' => null]));
+        self::assertSame(1, $db->insert('insert into users (name, age, active, score, born) values (?, ?, ?, ?, ?)', [
+            'Ada',
+            36,
+            true,
+            9.5,
+            new \DateTimeImmutable('1815-12-10 00:00:00'),
+        ]));
+        self::assertSame(2, $db->insert('insert into users (name, age, active, score, born) values (:name, :age, :active, :score, :born)', [
+            'name' => "Robert'); drop table users;--",
+            'age' => null,
+            'active' => false,
+            'score' => null,
+            'born' => null,
+        ]));
 
         $rows = $db->select('select * from users order by id');
         self::assertCount(2, $rows);
-        self::assertSame(['id' => 1, 'name' => 'Ada', 'age' => 36, 'active' => 1, 'born' => '1815-12-10 00:00:00'],
-            array_diff_key($rows[0], ['score' => 0]));
+        self::assertSame(
+            ['id' => 1, 'name' => 'Ada', 'age' => 36, 'active' => 1, 'born' => '1815-12-10 00:00:00'],
+            array_diff_key($rows[0], ['score' => 0]),
+        );
         self::assertEqualsWithDelta(9.5, (float) $rows[0]['score'], 0.0001);
-        self::assertSame(["Robert'); drop table users;--", null, 0, null], [$rows[1]['name'], $rows[1]['age'], $rows[1]['active'], $rows[1]['born']]);
+        self::assertSame(["Robert'); drop table users;--", null, 0, null], [
+            $rows[1]['name'],
+            $rows[1]['age'],
+            $rows[1]['active'],
+            $rows[1]['born'],
+        ]);
 
         self::assertSame('Ada', $db->first('select name from users where age > :age', ['age' => 30])['name']);
         self::assertNull($db->first('select name from users where age > ?', [99]));
@@ -101,7 +118,7 @@ final class DatabaseTest extends TestCase
     public function testTransactionsCommitRollBackAndNest(string $driver): void
     {
         $db = $this->database($driver);
-        $count = static fn (Connection $on): int => (int) $on->first('select count(*) as n from users')['n'];
+        $count = static fn(Connection $on): int => (int) $on->first('select count(*) as n from users')['n'];
 
         self::assertSame('done', $db->transaction(static function (Connection $tx) use ($count): string {
             $tx->insert('insert into users (name) values (?)', ['kept']);
@@ -126,15 +143,22 @@ final class DatabaseTest extends TestCase
             try {
                 $tx->transaction(static function (Connection $inner): void {
                     $inner->insert('insert into users (name) values (?)', ['inner, undone']);
-                    $inner->transaction(static fn (Connection $deepest) => $deepest->insert('insert into users (name) values (?)', ['deepest, undone']));
+                    $inner->transaction(static fn(Connection $deepest) => $deepest->insert('insert into users (name) values (?)', [
+                        'deepest, undone',
+                    ]));
                     throw new \DomainException('inner fails');
                 });
             } catch (\DomainException) {
             }
-            $tx->transaction(static fn (Connection $inner) => $inner->insert('insert into users (name) values (?)', ['inner, kept']));
+            $tx->transaction(static fn(Connection $inner) => $inner->insert('insert into users (name) values (?)', [
+                'inner, kept',
+            ]));
             self::assertSame(3, $count($tx));
         });
-        self::assertSame(['kept', 'outer', 'inner, kept'], array_column($db->select('select name from users order by id'), 'name'));
+        self::assertSame(
+            ['kept', 'outer', 'inner, kept'],
+            array_column($db->select('select name from users order by id'), 'name'),
+        );
         self::assertSame(1, $this->connects);
     }
 
@@ -162,7 +186,11 @@ final class DatabaseTest extends TestCase
         for ($i = 0; $i < 300; ++$i) {
             self::assertSame($i, $db->first("select {$i} as n, ? as again", [$i])['n']);
         }
-        self::assertSame(7, $db->first('select 0 as n, ? as again', [7])['again'], 'A statement prepared earlier runs again with new values.');
+        self::assertSame(
+            7,
+            $db->first('select 0 as n, ? as again', [7])['again'],
+            'A statement prepared earlier runs again with new values.',
+        );
     }
 
     public function testRunLendsOneConnectionAndReleaseRejectsAnOpenTransaction(): void
@@ -194,7 +222,7 @@ final class DatabaseTest extends TestCase
         $db->execute('select 1');
         $this->connects = 0;
         $peak = 0;
-        $finished = WorkerHarness::run([], function (Worker $worker) use ($db, &$peak): int {
+        $finished = WorkerHarness::run([], static function (Worker $worker) use ($db, &$peak): int {
             $held = 0;
             $tasks = [];
             for ($i = 0; $i < 6; ++$i) {
@@ -209,7 +237,7 @@ final class DatabaseTest extends TestCase
                     });
                 });
             }
-            return array_sum(array_map(static fn ($task): int => $task->await(), $tasks));
+            return array_sum(array_map(static fn($task): int => $task->await(), $tasks));
         });
         self::assertSame([6, 2], [$finished, $peak]);
         self::assertSame(2, $this->connects, 'The worker opens its own connections, up to the limit and no more.');
@@ -241,7 +269,11 @@ final class DatabaseTest extends TestCase
         FlakyPdo::$failures = ['SQLSTATE[HY000]: General error: 2006 MySQL server has gone away'];
         self::assertSame(1, $db->insert('insert into users (name) values (?)', ['after reconnect']));
         self::assertSame(2, $this->connects);
-        self::assertSame(1, (int) $db->first('select count(*) as n from users')['n'], 'The statement must not be applied twice.');
+        self::assertSame(
+            1,
+            (int) $db->first('select count(*) as n from users')['n'],
+            'The statement must not be applied twice.',
+        );
 
         FlakyPdo::$failures = ['server has gone away', 'server has gone away'];
         try {
@@ -294,8 +326,12 @@ final class DatabaseTest extends TestCase
         } catch (DatabaseException $error) {
             self::assertStringContainsString('transaction lost its session', $error->getMessage());
         }
-        self::assertSame([], $db->select('select name from users'), 'No callback write may autocommit after losing its transaction.');
-        self::assertSame(0, $db->transaction(static fn (Connection $tx): int => $tx->execute('delete from users')));
+        self::assertSame(
+            [],
+            $db->select('select name from users'),
+            'No callback write may autocommit after losing its transaction.',
+        );
+        self::assertSame(0, $db->transaction(static fn(Connection $tx): int => $tx->execute('delete from users')));
         self::assertSame('kept', $db->transaction(static function (Connection $tx): string {
             $tx->insert('insert into users (name) values (?)', ['kept']);
             return 'kept';
@@ -316,7 +352,10 @@ final class DatabaseTest extends TestCase
     public function testInvalidSettingsAreRejected(): void
     {
         $rejected = 0;
-        foreach ([static fn () => new Database(static fn () => null, max: 0), static fn () => new Database(static fn () => null, timeout: 0.0)] as $invalid) {
+        foreach ([
+            static fn() => new Database(static fn() => null, max: 0),
+            static fn() => new Database(static fn() => null, timeout: 0.0),
+        ] as $invalid) {
             try {
                 $invalid();
             } catch (\InvalidArgumentException) {
@@ -324,12 +363,12 @@ final class DatabaseTest extends TestCase
             }
         }
         try {
-            (new Database(static fn () => 'not a PDO'))->select('select 1');
+            new Database(static fn() => 'not a PDO')->select('select 1');
         } catch (\LogicException) {
             ++$rejected;
         }
         try {
-            (new Database(static fn () => new \PDO('sqlite:/no/such/directory/db.sqlite')))->select('select 1');
+            new Database(static fn() => new \PDO('sqlite:/no/such/directory/db.sqlite'))->select('select 1');
         } catch (DatabaseException $error) {
             self::assertStringStartsWith('Cannot connect to the database', $error->getMessage());
             ++$rejected;
@@ -343,7 +382,10 @@ final class DatabaseTest extends TestCase
         $flat->register(DatabaseProvider::class);
         $none = new App(new Config([]));
         $none->register(DatabaseProvider::class);
-        foreach ([[$flat, '"database.dsn" is not read'], [$none, 'No database is configured']] as [$app, $says]) {
+        foreach ([
+            [$flat, '"database.dsn" is not read'],
+            [$none, 'No database is configured'],
+        ] as [$app, $says]) {
             try {
                 $app->container->get(DatabaseContract::class);
                 self::fail('A database outside "connections" must be refused.');
@@ -365,9 +407,13 @@ final class DatabaseTest extends TestCase
         self::assertSame($db, $app->container->get(Connection::class));
         self::assertSame(1, $db->insert('insert into users (name) values (?)', ['from the provider']));
 
-        $names = WorkerHarness::run([new DatabaseProvider()], static function (Worker $worker, Container $container): array {
-            return array_column($container->get(DatabaseContract::class)->select('select name from users'), 'name');
-        }, $app->container);
+        $names = WorkerHarness::run(
+            [new DatabaseProvider()],
+            static function (Worker $worker, Container $container): array {
+                return array_column($container->get(DatabaseContract::class)->select('select name from users'), 'name');
+            },
+            $app->container,
+        );
         self::assertSame(['from the provider'], $names);
 
         // SQLite allows one writer, so its pool is one connection unless set: the second transaction waits its turn.
@@ -401,21 +447,32 @@ final class DatabaseTest extends TestCase
     private function database(string $driver, int $max = 10, float $timeout = 5.0, bool $flaky = false): Database
     {
         $this->connects = 0;
-        $db = new Database(function () use ($driver, $flaky): \PDO {
-            ++$this->connects;
-            return $this->pdo($driver, $flaky);
-        }, $max, $timeout, factory: $this->mysqlFactory($driver, fn () => ++$this->connects));
+        $db = new Database(
+            function () use ($driver, $flaky): \PDO {
+                ++$this->connects;
+                return $this->pdo($driver, $flaky);
+            },
+            $max,
+            $timeout,
+            factory: $this->mysqlFactory($driver, fn() => ++$this->connects),
+        );
         $db->execute('drop table if exists users');
-        $db->execute($driver === 'mysql'
-            ? 'create table users (id int auto_increment primary key, name varchar(100) not null, age int null, active tinyint(1) null, score double null, born datetime null) engine=InnoDB'
-            : 'create table users (id integer primary key autoincrement, name text not null, age integer null, active integer null, score real null, born text null)');
+        $db->execute(
+            $driver === 'mysql'
+                ? 'create table users (id int auto_increment primary key, name varchar(100) not null, age int null, active tinyint(1) null, score double null, born datetime null) engine=InnoDB'
+                : 'create table users (id integer primary key autoincrement, name text not null, age integer null, active integer null, score real null, born text null)',
+        );
         return $db;
     }
 
     private function pdo(string $driver, bool $flaky = false): \PDO
     {
         if ($driver === 'mysql') {
-            return new \PDO(getenv('CRAB_TEST_MYSQL_DSN'), getenv('CRAB_TEST_MYSQL_USER') ?: 'root', getenv('CRAB_TEST_MYSQL_PASSWORD') ?: '');
+            return new \PDO(
+                getenv('CRAB_TEST_MYSQL_DSN'),
+                getenv('CRAB_TEST_MYSQL_USER') ?: 'root',
+                getenv('CRAB_TEST_MYSQL_PASSWORD') ?: '',
+            );
         }
         return $flaky ? new FlakyPdo('sqlite:' . $this->file) : new \PDO('sqlite:' . $this->file);
     }

@@ -13,6 +13,4 @@ use Psr\Log\LoggerInterface;
  * to it; a logger from any PSR-3 library fits wherever only those methods
  * are needed.
  */
-interface Logger extends LoggerInterface
-{
-}
+interface Logger extends LoggerInterface {}

@@ -16,9 +16,11 @@ use Crab\Queue\Supervisor;
 
 final readonly class Work implements Command
 {
-    public function __construct(private Runner $runner, private Consumer $consumer, private Config $config)
-    {
-    }
+    public function __construct(
+        private Runner $runner,
+        private Consumer $consumer,
+        private Config $config,
+    ) {}
 
     public function description(): string
     {
@@ -54,7 +56,8 @@ final readonly class Work implements Command
                 $workers = $single ? 1 : $supervisor->workers;
                 $output->line(
                     (count($supervisors) > 1 ? "{$supervisor->name}: running" : 'Running')
-                    . ' jobs from ' . implode(', ', $supervisor->queues)
+                    . ' jobs from '
+                    . implode(', ', $supervisor->queues)
                     . ($workers > 1 ? " with {$workers} workers" : ''),
                 );
             }
@@ -66,19 +69,30 @@ final readonly class Work implements Command
             // One process does the work of every supervisor, each within its own limits.
             // Named after the supervisors it does the work of, "queue:mail+default", so that whoever
             // watches the workers knows these are served; the one of the queue's own settings is "queue".
-            $names = array_map(static fn (Supervisor $supervisor): string => $supervisor->name, $supervisors);
+            $names = array_map(static fn(Supervisor $supervisor): string => $supervisor->name, $supervisors);
             $group = $names === ['queue'] ? 'queue' : 'queue:' . implode('+', $names);
-            $this->runner->run($group, function (Worker $worker, Cancellation $cancellation) use ($supervisors, $drain, &$ran): void {
-                $tasks = [];
-                foreach ($supervisors as $supervisor) {
-                    $tasks[] = $worker->spawn(function () use ($worker, $cancellation, $supervisor, $drain, &$ran): void {
-                        $ran += $supervisor->consume($this->consumer, $worker, $cancellation, $drain);
-                    });
-                }
-                foreach ($tasks as $task) {
-                    $task->await();
-                }
-            }, shutdownTimeout: $grace, single: true);
+            $this->runner->run(
+                $group,
+                function (Worker $worker, Cancellation $cancellation) use ($supervisors, $drain, &$ran): void {
+                    $tasks = [];
+                    foreach ($supervisors as $supervisor) {
+                        $tasks[] = $worker->spawn(function () use (
+                            $worker,
+                            $cancellation,
+                            $supervisor,
+                            $drain,
+                            &$ran,
+                        ): void {
+                            $ran += $supervisor->consume($this->consumer, $worker, $cancellation, $drain);
+                        });
+                    }
+                    foreach ($tasks as $task) {
+                        $task->await();
+                    }
+                },
+                shutdownTimeout: $grace,
+                single: true,
+            );
         } else {
             $groups = Supervisor::groups($supervisors, $this->consumer);
             $this->runner->runAll($groups, $grace);
@@ -99,19 +113,35 @@ final readonly class Work implements Command
     private function supervisors(Input $input): array
     {
         $declared = Supervisor::all($this->config);
-        $described = array_filter([
-            'queues' => $input->option('queue'),
-            'workers' => $input->option('workers'),
-            'concurrency' => $input->option('concurrency'),
-        ], is_string(...));
+        $described = array_filter(
+            [
+                'queues' => $input->option('queue'),
+                'workers' => $input->option('workers'),
+                'concurrency' => $input->option('concurrency'),
+            ],
+            is_string(...),
+        );
         $name = $input->option('supervisor');
         if (is_string($name)) {
             if ($described !== []) {
-                throw new \LogicException('--supervisor runs a supervisor as it is declared; leave out --' . implode(', --', array_map(static fn (string $key): string => $key === 'queues' ? 'queue' : $key, array_keys($described))) . ', or leave out --supervisor.');
+                throw new \LogicException(
+                    '--supervisor runs a supervisor as it is declared; leave out --'
+                    . implode(', --', array_map(static fn(string $key): string => $key === 'queues'
+                        ? 'queue'
+                        : $key, array_keys($described)))
+                    . ', or leave out --supervisor.',
+                );
             }
-            return [$declared[$name] ?? throw new \LogicException(
-                "There is no queue supervisor \"{$name}\". " . ($declared === [] ? '"queue.supervisors" declares none.' : 'The supervisors are ' . implode(', ', array_keys($declared)) . '.'),
-            )];
+            return [
+                $declared[$name] ?? throw new \LogicException(
+                    "There is no queue supervisor \"{$name}\". "
+                    . (
+                        $declared === []
+                            ? '"queue.supervisors" declares none.'
+                            : 'The supervisors are ' . implode(', ', array_keys($declared)) . '.'
+                    ),
+                ),
+            ];
         }
         if ($described === [] && $declared !== []) {
             return array_values($declared);

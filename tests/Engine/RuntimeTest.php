@@ -6,6 +6,8 @@ namespace Crab\Engine\Tests;
 
 use Crab\Engine\Async\Async;
 use Crab\Engine\Async\Cancellation;
+use Crab\Engine\Crab;
+use Crab\Engine\EventLoop\RevoltEventLoop;
 use Crab\Engine\Http\Request;
 use Crab\Engine\Http\Response;
 use Crab\Engine\Network\Connection;
@@ -14,12 +16,10 @@ use Crab\Engine\Process\Worker;
 use Crab\Engine\Runtime;
 use Crab\Engine\Server\HttpServer;
 use Crab\Engine\Tests\Support\TestCase;
-use Crab\Engine\Crab;
 use Generator;
 use OverflowException;
 use PHPUnit\Framework\Attributes\RequiresPhpExtension;
 use Revolt\EventLoop\CallbackType;
-use Crab\Engine\EventLoop\RevoltEventLoop;
 use RuntimeException;
 use stdClass;
 use Throwable;
@@ -34,16 +34,23 @@ final class RuntimeTest extends TestCase
         $address = 'tcp://' . stream_socket_get_name($socket, false);
         $peer = $this->ownStream(stream_socket_client($address, $code, $message, 1));
         stream_set_timeout($peer, 2);
-        $runtime->group()
-            ->listen($address, static function (Connection $connection) use ($runtime): void {
-                // This open connection deliberately does not finish draining.
-                $connection->onDrainRequest(static function (): void {});
-                $connection->loop()->delay(0.005, $runtime->force(...));
-            }, socket: $socket)
+        $runtime
+            ->group()
+            ->listen(
+                $address,
+                static function (Connection $connection) use ($runtime): void {
+                    // This open connection deliberately does not finish draining.
+                    $connection->onDrainRequest(static function (): void {});
+                    $connection->loop()->delay(0.005, $runtime->force(...));
+                },
+                socket: $socket,
+            )
             ->onStart(static function (Worker $worker) use ($runtime): void {
-                $worker->loop->delay(1.0, static fn () => throw new RuntimeException('Force did not stop the runtime.'));
+                $worker->loop->delay(1.0, static fn() => throw new RuntimeException('Force did not stop the runtime.'));
             })
-            ->onStop(static function () use (&$stopped): void { $stopped = true; });
+            ->onStop(static function () use (&$stopped): void {
+                $stopped = true;
+            });
         $before = microtime(true);
         $runtime->run(singleProcess: true);
         self::assertTrue($stopped);
@@ -56,22 +63,28 @@ final class RuntimeTest extends TestCase
     {
         $cleaned = $ran = $bounded = false;
         $runtime = new Runtime(shutdownTimeout: 0.1);
-        $runtime->group(maxTasks: 1)->onStart(static function (Worker $worker) use (&$cleaned, &$ran, &$bounded): void {
-            $worker->spawn(static function (Cancellation $token) use ($worker, &$cleaned, &$ran): void {
+        $runtime
+            ->group(maxTasks: 1)
+            ->onStart(static function (Worker $worker) use (&$cleaned, &$ran, &$bounded): void {
+                $worker->spawn(static function (#[\SensitiveParameter] Cancellation $token) use (
+                    $worker,
+                    &$cleaned,
+                    &$ran,
+                ): void {
+                    try {
+                        $ran = true;
+                        Async::sleep($worker->loop, 60, $token);
+                    } finally {
+                        $cleaned = true;
+                    }
+                });
                 try {
-                    $ran = true;
-                    Async::sleep($worker->loop, 60, $token);
-                } finally {
-                    $cleaned = true;
+                    $worker->spawn(static function (): void {});
+                } catch (OverflowException) {
+                    $bounded = true;
                 }
+                $worker->loop->delay(0.005, $worker->stop(...));
             });
-            try {
-                $worker->spawn(static function (): void {});
-            } catch (OverflowException) {
-                $bounded = true;
-            }
-            $worker->loop->delay(0.005, $worker->stop(...));
-        });
         $runtime->run(singleProcess: true);
 
         self::assertTrue($bounded, 'The worker must reject tasks beyond its limit.');
@@ -84,7 +97,8 @@ final class RuntimeTest extends TestCase
         $events = [];
         $failures = [];
         $runtime = new Runtime(shutdownTimeout: 0.1);
-        $runtime->group()
+        $runtime
+            ->group()
             ->onStart(static function (Worker $worker) use (&$events): void {
                 $events[] = 'start';
                 $worker->spawn(static function () use ($worker, &$events): void {
@@ -115,7 +129,8 @@ final class RuntimeTest extends TestCase
         $failures = [];
         $continued = false;
         $runtime = new Runtime(shutdownTimeout: 0.1);
-        $runtime->group()
+        $runtime
+            ->group()
             ->onStart(static function (Worker $worker) use (&$continued): void {
                 $worker->loop->delay(0.002, static fn() => throw new RuntimeException('deliberate timer failure'));
                 $worker->loop->delay(0.01, static function () use ($worker, &$continued): void {
@@ -136,7 +151,8 @@ final class RuntimeTest extends TestCase
     {
         $stopped = false;
         $runtime = new Runtime(shutdownTimeout: 0.1);
-        $runtime->group()
+        $runtime
+            ->group()
             ->onStart(static function (): void {
                 throw new RuntimeException('deliberate startup failure');
             })
@@ -170,15 +186,24 @@ final class RuntimeTest extends TestCase
             }
             $runtime->run(singleProcess: true);
             PHP;
-        foreach (['no-callback' => [], 'failing-callback' => ['[Crab] Failure handler failed: LogicException: deliberate reporting failure']] as $mode => $alsoExpected) {
-            $process = proc_open([PHP_BINARY, '-r', $code, dirname(__DIR__, 2) . '/vendor/autoload.php', $mode],
-                [1 => ['pipe', 'w'], 2 => ['pipe', 'w']], $pipes);
+        foreach ([
+            'no-callback' => [],
+            'failing-callback' => ['[Crab] Failure handler failed: LogicException: deliberate reporting failure'],
+        ] as $mode => $alsoExpected) {
+            $process = proc_open(
+                [PHP_BINARY, '-r', $code, dirname(__DIR__, 2) . '/vendor/autoload.php', $mode],
+                [1 => ['pipe', 'w'], 2 => ['pipe', 'w']],
+                $pipes,
+            );
             self::assertIsResource($process);
             $output = stream_get_contents($pipes[1]);
             $errors = stream_get_contents($pipes[2]);
             self::assertSame(0, proc_close($process), $errors);
             self::assertSame('', $output);
-            self::assertStringContainsString('[Crab] Task failed: RuntimeException: deliberate task failure in ', $errors);
+            self::assertStringContainsString(
+                '[Crab] Task failed: RuntimeException: deliberate task failure in ',
+                $errors,
+            );
             self::assertStringContainsString('Stack trace:', $errors);
             foreach ($alsoExpected as $line) {
                 self::assertStringContainsString($line, $errors);
@@ -189,12 +214,14 @@ final class RuntimeTest extends TestCase
     public function testDetachedTaskFailureIsReported(): void
     {
         $runtime = new Runtime(shutdownTimeout: 0.1);
-        $runtime->group()->onStart(static function (Worker $worker): void {
-            $worker->spawn(static function (): void {
-                throw new RuntimeException('deliberate detached task failure');
+        $runtime
+            ->group()
+            ->onStart(static function (Worker $worker): void {
+                $worker->spawn(static function (): void {
+                    throw new RuntimeException('deliberate detached task failure');
+                });
+                $worker->loop->delay(0.005, $worker->stop(...));
             });
-            $worker->loop->delay(0.005, $worker->stop(...));
-        });
         $runtime->run(singleProcess: true);
         self::assertSame(['Task failed: deliberate detached task failure'], $this->reports);
     }
@@ -220,12 +247,17 @@ final class RuntimeTest extends TestCase
         $group = new Crab('bootstrap-failure');
         $group->listen('tcp://127.0.0.1:0', static function (): void {});
         $group->onStart(function (Worker $worker) use ($outboundAddress, &$cancelled, &$ran): void {
-            $worker->connect($outboundAddress, $this->guardCallback(static function (?Connection $connection, ?Throwable $error) use (&$cancelled): void {
+            $worker->connect($outboundAddress, $this->guardCallback(static function (
+                ?Connection $connection,
+                ?Throwable $error,
+            ) use (&$cancelled): void {
                 self::assertNull($connection);
                 self::assertNotNull($error, 'Bootstrap rollback must cancel pending connections.');
                 $cancelled++;
             }));
-            $worker->spawn(static function () use (&$ran): void { $ran = true; });
+            $worker->spawn(static function () use (&$ran): void {
+                $ran = true;
+            });
             throw new RuntimeException('Expected bootstrap rollback');
         });
         $worker = new Worker($loop, $group, 0, ['tcp' => [$bound], 'udp' => []], 0.1);
@@ -253,14 +285,20 @@ final class RuntimeTest extends TestCase
         $watcherRemoved = false;
         $group = new Crab('control-eof');
         $group->onStart(static function (Worker $worker) use ($loop, $pair, &$watcherRemoved): void {
-            $worker->spawn(static function () use ($loop): void { Async::sleep($loop, 0.02); });
-            $loop->defer(static function () use ($pair): void { fclose($pair[0]); });
+            $worker->spawn(static function () use ($loop): void {
+                Async::sleep($loop, 0.02);
+            });
+            $loop->defer(static function () use ($pair): void {
+                fclose($pair[0]);
+            });
             $loop->delay(0.005, static function () use ($loop, &$watcherRemoved): void {
                 $watcherRemoved = true;
                 foreach ($loop->getIdentifiers() as $id) {
-                    if ($loop->driver->getType($id) === CallbackType::Readable) {
-                        $watcherRemoved = false;
+                    if ($loop->driver->getType($id) !== CallbackType::Readable) {
+                        continue;
                     }
+
+                    $watcherRemoved = false;
                 }
             });
         });
@@ -327,7 +365,7 @@ final class RuntimeTest extends TestCase
             self::assertNotContains($restarted, $initial);
             // The reload signal belongs to the parent; a worker that receives it carries on.
             self::assertTrue(posix_kill($restarted, SIGUSR1));
-            usleep(150000);
+            usleep(150_000);
             self::assertTrue(posix_kill($restarted, 0), 'SIGUSR1 must not end a worker.');
             $parent = proc_get_status($fixture->process)['pid'];
             self::assertTrue(posix_kill($parent, SIGUSR1));
@@ -342,7 +380,7 @@ final class RuntimeTest extends TestCase
         }
         $this->assertFixtureExit($result);
         foreach (array_merge($initial, [$restarted], $reloaded) as $pid) {
-            self::assertFalse(posix_kill($pid, 0), "Child $pid must be reaped.");
+            self::assertFalse(posix_kill($pid, 0), "Child {$pid} must be reaped.");
         }
     }
 
@@ -404,14 +442,29 @@ final class RuntimeTest extends TestCase
         $released = false;
         $worker = null;
         $group = new Crab('admission', maxConnections: 1);
-        $group->listen($incomingAddress, $this->guardCallback(static function (Connection $connection) use (&$accepted, &$released, &$worker): void {
+        $group->listen($incomingAddress, $this->guardCallback(static function (Connection $connection) use (
+            &$accepted,
+            &$released,
+            &$worker,
+        ): void {
             self::assertTrue($released, 'An inbound socket was accepted before outbound capacity was released.');
             $accepted++;
             $connection->close();
             $worker->stop();
         }));
-        $group->onStart($this->guardCallback(function (Worker $worker) use ($loop, $mode, $outboundAddress, $incomingAddress, &$accepted, &$completions, &$released): void {
-            $cancel = $worker->connect($outboundAddress, $this->guardCallback(function (?Connection $connection, ?Throwable $error) use ($loop, $mode, &$accepted, &$completions, &$released): void {
+        $group->onStart($this->guardCallback(function (Worker $worker) use (
+            $loop,
+            $mode,
+            $outboundAddress,
+            $incomingAddress,
+            &$accepted,
+            &$completions,
+            &$released,
+        ): void {
+            $cancel = $worker->connect($outboundAddress, $this->guardCallback(function (
+                ?Connection $connection,
+                ?Throwable $error,
+            ) use ($loop, $mode, &$accepted, &$completions, &$released): void {
                 $completions++;
                 if ($mode === 'cancel') {
                     self::assertNull($connection);
@@ -420,7 +473,11 @@ final class RuntimeTest extends TestCase
                 } else {
                     self::assertNotNull($connection);
                     self::assertNull($error);
-                    $loop->delay(0.005, $this->guardCallback(static function () use ($connection, &$accepted, &$released): void {
+                    $loop->delay(0.005, $this->guardCallback(static function () use (
+                        $connection,
+                        &$accepted,
+                        &$released,
+                    ): void {
                         self::assertSame(0, $accepted, 'Active outbound connections must reserve admission capacity.');
                         $released = true;
                         $connection->close();
@@ -431,7 +488,7 @@ final class RuntimeTest extends TestCase
             self::assertIsResource($incoming, 'Could not queue an inbound client.');
             $this->ownStream($incoming);
             if ($mode === 'cancel') {
-                $loop->defer(static fn () => $cancel());
+                $loop->defer(static fn() => $cancel());
             }
             $loop->delay(1, $this->guardCallback(static function (): void {
                 self::fail('Admission did not resume after capacity release.');
@@ -458,8 +515,20 @@ final class RuntimeTest extends TestCase
         fwrite($peer, "GET / HTTP/1.1\r\nHost: localhost\r\n\r\n");
         $connection = null;
         $cleanupStarted = $cleanupDone = false;
-        $http = new HttpServer(static function (Request $request) use ($loop, $stage, $cleanupSeconds, &$cleanupStarted, &$cleanupDone): string|Response {
-            $operation = static function () use ($loop, $request, $cleanupSeconds, &$cleanupStarted, &$cleanupDone): void {
+        $http = new HttpServer(static function (Request $request) use (
+            $loop,
+            $stage,
+            $cleanupSeconds,
+            &$cleanupStarted,
+            &$cleanupDone,
+        ): string|Response {
+            $operation = static function () use (
+                $loop,
+                $request,
+                $cleanupSeconds,
+                &$cleanupStarted,
+                &$cleanupDone,
+            ): void {
                 try {
                     Async::sleep($loop, 60, $request->cancellation);
                 } finally {
@@ -472,11 +541,13 @@ final class RuntimeTest extends TestCase
                 $operation();
                 return 'finished';
             }
-            return new Response(body: (static function () use ($operation): Generator {
-                yield 'started';
-                $operation();
-                yield 'finished';
-            })());
+            return new Response(
+                body: (static function () use ($operation): Generator {
+                    yield 'started';
+                    $operation();
+                    yield 'finished';
+                })(),
+            );
         });
         $group = new Crab('http-drain');
         $group->listen($address, static function (Connection $value) use ($http, &$connection): void {
@@ -485,7 +556,9 @@ final class RuntimeTest extends TestCase
         });
         $group->onStart(static function (Worker $worker) use (&$connection): void {
             $worker->loop->delay(0.005, $worker->stop(...));
-            $worker->loop->delay(0.015, static function () use (&$connection): void { $connection->close(); });
+            $worker->loop->delay(0.015, static function () use (&$connection): void {
+                $connection->close();
+            });
         });
         $worker = new Worker($loop, $group, 0, ['tcp' => [$bound], 'udp' => []], $shutdownTimeout);
         $start = hrtime(true);
@@ -529,13 +602,27 @@ final class RuntimeTest extends TestCase
         fclose($probe);
         $stderr = tempnam(sys_get_temp_dir(), 'crab-runtime-');
         self::assertNotFalse($stderr);
-        $this->deferCleanup(static function () use ($stderr): void { if (is_file($stderr)) { unlink($stderr); } });
-        $process = proc_open([PHP_BINARY, __DIR__ . '/Fixtures/runtime.php', $mode, (string) $port],
-            [0 => ['pipe', 'r'], 1 => ['pipe', 'w'], 2 => ['file', $stderr, 'w']], $pipes);
+        $this->deferCleanup(static function () use ($stderr): void {
+            if (is_file($stderr)) {
+                unlink($stderr);
+            }
+        });
+        $process = proc_open(
+            [PHP_BINARY, __DIR__ . '/Fixtures/runtime.php', $mode, (string) $port],
+            [0 => ['pipe', 'r'], 1 => ['pipe', 'w'], 2 => ['file', $stderr, 'w']],
+            $pipes,
+        );
         self::assertIsResource($process);
-        $fixture = (object) ['process' => $process, 'stdout' => $pipes[1], 'port' => $port,
-            'stderr' => $stderr, 'ready' => [], 'buffer' => '', 'result' => null];
-        $this->deferCleanup(fn () => $this->finishFixture($fixture));
+        $fixture = (object) [
+            'process' => $process,
+            'stdout' => $pipes[1],
+            'port' => $port,
+            'stderr' => $stderr,
+            'ready' => [],
+            'buffer' => '',
+            'result' => null,
+        ];
+        $this->deferCleanup(fn() => $this->finishFixture($fixture));
         fclose($pipes[0]);
         stream_set_blocking($pipes[1], false);
         return $fixture;
@@ -575,7 +662,7 @@ final class RuntimeTest extends TestCase
      */
     private function connectTo(int $port): mixed
     {
-        $socket = stream_socket_client("tcp://127.0.0.1:$port", $code, $error, 1);
+        $socket = stream_socket_client("tcp://127.0.0.1:{$port}", $code, $error, 1);
         self::assertIsResource($socket);
         $this->ownStream($socket);
         stream_set_timeout($socket, 1);
@@ -610,7 +697,7 @@ final class RuntimeTest extends TestCase
             if (!$status['running']) {
                 break;
             }
-            usleep(10000);
+            usleep(10_000);
         } while (microtime(true) < $deadline);
         $timedOut = $status['running'];
         if ($timedOut) {

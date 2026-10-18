@@ -14,6 +14,8 @@ final readonly class Email implements Rule
 {
     public function check(mixed $value): ?string
     {
-        return is_string($value) && filter_var($value, FILTER_VALIDATE_EMAIL) !== false ? null : 'must be an email address';
+        return is_string($value) && filter_var($value, FILTER_VALIDATE_EMAIL) !== false
+            ? null
+            : 'must be an email address';
     }
 }

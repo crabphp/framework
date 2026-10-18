@@ -20,8 +20,7 @@ final class ResponseHeaderCacheTest extends TestCase
         array $headers,
         string $message,
         bool $hasPrevious,
-    ): void
-    {
+    ): void {
         $response = new Response(headers: $headers);
         self::assertInstanceOf(Response::class, $response, 'Construction must not validate header fields.');
         for ($attempt = 0; $attempt < 3; ++$attempt) {
@@ -147,7 +146,7 @@ final class ResponseHeaderCacheTest extends TestCase
     private static function wire(Response $response, string $method = 'GET', string $version = '1.1'): string
     {
         $request = new Request($method, '/', $version, [], new Body());
-        return implode('', iterator_to_array((new ResponseEncoder($response, $request))->bytes(), false));
+        return implode('', iterator_to_array(new ResponseEncoder($response, $request)->bytes(), false));
     }
 
     private static function encodingError(Response $response): InvalidArgumentException

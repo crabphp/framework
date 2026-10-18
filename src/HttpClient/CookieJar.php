@@ -34,9 +34,9 @@ final class CookieJar implements CookieJarContract
     /**
      * @param ClockInterface|null $clock Tells whether a cookie has expired; the real time when left out.
      */
-    public function __construct(private readonly ?ClockInterface $clock = null)
-    {
-    }
+    public function __construct(
+        private readonly ?ClockInterface $clock = null,
+    ) {}
 
     public function store(UriInterface $from, array $setCookie): void
     {
@@ -93,7 +93,13 @@ final class CookieJar implements CookieJarContract
                 $cookie['expires'] = $this->now() + $maxAge;
             }
             // A server speaks for itself and for the hosts under it, never for another domain or for every site of an ending such as "com".
-            if (!$cookie['hostOnly'] && ($cookie['domain'] !== $host && (!self::under($host, $cookie['domain']) || !str_contains($cookie['domain'], '.')))) {
+            if (
+                !$cookie['hostOnly']
+                && (
+                    $cookie['domain'] !== $host
+                    && (!self::under($host, $cookie['domain']) || !str_contains($cookie['domain'], '.'))
+                )
+            ) {
                 continue;
             }
             $key = "{$cookie['domain']}|{$cookie['path']}|{$cookie['name']}";
@@ -127,7 +133,13 @@ final class CookieJar implements CookieJarContract
             throw new \LogicException("A cookie is set for a whole URL, \"https://shop.example\", not \"{$shown}\".");
         }
         $this->cookies["{$host}|/|{$name}"] = [
-            'name' => $name, 'value' => $value, 'domain' => $host, 'hostOnly' => true, 'path' => '/', 'secure' => false, 'expires' => null,
+            'name' => $name,
+            'value' => $value,
+            'domain' => $host,
+            'hostOnly' => true,
+            'path' => '/',
+            'secure' => false,
+            'expires' => null,
         ];
     }
 
@@ -174,12 +186,15 @@ final class CookieJar implements CookieJarContract
                 continue;
             }
             $on = $cookie['path'];
-            if ($path !== $on && !(str_starts_with($path, $on) && (str_ends_with($on, '/') || $path[strlen($on)] === '/'))) {
+            if (
+                $path !== $on
+                && !(str_starts_with($path, $on) && (str_ends_with($on, '/') || $path[strlen($on)] === '/'))
+            ) {
                 continue;
             }
             $matching[] = $cookie;
         }
-        usort($matching, static fn (array $a, array $b): int => strlen($b['path']) <=> strlen($a['path']));
+        usort($matching, static fn(array $a, array $b): int => strlen($b['path']) <=> strlen($a['path']));
         return $matching;
     }
 

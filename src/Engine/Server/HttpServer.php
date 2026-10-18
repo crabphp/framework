@@ -16,8 +16,8 @@ final readonly class HttpServer
      */
     public function __construct(
         callable $handler,
-        private int $maxHeaderBytes = 16384,
-        private int $maxBodyBytes = 1048576,
+        private int $maxHeaderBytes = 16_384,
+        private int $maxBodyBytes = 1_048_576,
         private int $maxRequests = 1000,
         private float $headerTimeout = 10,
         private float $bodyTimeout = 30,
@@ -35,11 +35,23 @@ final readonly class HttpServer
         $this->handler = $handler(...);
     }
 
-    public function __invoke(Connection $connection): void { $this->attach($connection); }
+    public function __invoke(Connection $connection): void
+    {
+        $this->attach($connection);
+    }
 
     public function attach(Connection $connection): void
     {
-        new HttpSession($connection, $this->handler, $this->maxHeaderBytes, $this->maxBodyBytes,
-            $this->maxRequests, $this->headerTimeout, $this->bodyTimeout, $this->idleTimeout, $this->responseTimeout);
+        new HttpSession(
+            $connection,
+            $this->handler,
+            $this->maxHeaderBytes,
+            $this->maxBodyBytes,
+            $this->maxRequests,
+            $this->headerTimeout,
+            $this->bodyTimeout,
+            $this->idleTimeout,
+            $this->responseTimeout,
+        );
     }
 }

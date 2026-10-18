@@ -68,10 +68,12 @@ final readonly class FakeBroadcaster implements Broadcaster
     {
         $found = false;
         foreach ($this->sent as $sent) {
-            if ($sent === [$channel, $message]) {
-                $found = true;
-                break;
+            if ($sent !== [$channel, $message]) {
+                continue;
             }
+
+            $found = true;
+            break;
         }
         $this->assert($found, "No matching broadcast was sent to {$channel}.");
     }

@@ -5,8 +5,8 @@ declare(strict_types=1);
 namespace Crab\Contracts;
 
 use Crab\Engine\Async\Cancellation;
-use Crab\Engine\Process\Worker;
 use Crab\Engine\Crab;
+use Crab\Engine\Process\Worker;
 
 /**
  * One group of worker processes that serve no HTTP requests, for
@@ -34,7 +34,9 @@ final readonly class Workers
             throw new \InvalidArgumentException('A group of workers needs a name and at least one worker.');
         }
         if ($work === null && $setup === null) {
-            throw new \InvalidArgumentException("The group of workers \"{$group}\" has nothing to do: give it work, or a setup that has it listen.");
+            throw new \InvalidArgumentException(
+                "The group of workers \"{$group}\" has nothing to do: give it work, or a setup that has it listen.",
+            );
         }
     }
 }

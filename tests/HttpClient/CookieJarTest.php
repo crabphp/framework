@@ -18,12 +18,18 @@ final class CookieJarTest extends TestCase
     public function testAnInvalidCookieUrlIsReportedWithoutItsQueryOrFragment(): void
     {
         $jar = new CookieJar();
-        foreach (['shop.example?token=query-secret#fragment-secret', 'shop.example#fragment-secret?token=query-secret'] as $url) {
+        foreach ([
+            'shop.example?token=query-secret#fragment-secret',
+            'shop.example#fragment-secret?token=query-secret',
+        ] as $url) {
             try {
                 $jar->set($url, 'session', 'cookie-secret');
                 self::fail('An invalid cookie URL was accepted.');
             } catch (\LogicException $error) {
-                self::assertSame('A cookie is set for a whole URL, "https://shop.example", not "shop.example".', $error->getMessage());
+                self::assertSame(
+                    'A cookie is set for a whole URL, "https://shop.example", not "shop.example".',
+                    $error->getMessage(),
+                );
                 self::assertStringNotContainsString('secret', $error->getMessage());
             }
         }
@@ -44,12 +50,35 @@ final class CookieJarTest extends TestCase
             'no pair at all',
         ]);
 
-        self::assertSame(['host' => 'only', 'area' => 'account', 'wide' => '1', 'safe' => '1', 'quoted' => 'v'], $jar->for('https://shop.example/account/orders'));
-        self::assertSame('host=only; area=account; wide=1; safe=1; quoted=v', $jar->header(new Uri('https://shop.example/account/orders')), 'The more specific path comes first.');
-        self::assertSame(['wide' => '1', 'safe' => '1', 'quoted' => 'v'], $jar->for('https://shop.example/'), 'A cookie that named no path belongs to the folder it was set in.');
-        self::assertSame(['wide' => '1', 'safe' => '1', 'quoted' => 'v'], $jar->for('https://shop.example/accounting'), '"/account" is not the start of "/accounting".');
-        self::assertSame(['wide' => '1', 'quoted' => 'v'], $jar->for('http://shop.example/'), 'A secure cookie is not sent in the clear.');
-        self::assertSame(['wide' => '1'], $jar->for('https://api.shop.example/'), 'Only a cookie that named the domain goes to the hosts under it.');
+        self::assertSame(
+            ['host' => 'only', 'area' => 'account', 'wide' => '1', 'safe' => '1', 'quoted' => 'v'],
+            $jar->for('https://shop.example/account/orders'),
+        );
+        self::assertSame(
+            'host=only; area=account; wide=1; safe=1; quoted=v',
+            $jar->header(new Uri('https://shop.example/account/orders')),
+            'The more specific path comes first.',
+        );
+        self::assertSame(
+            ['wide' => '1', 'safe' => '1', 'quoted' => 'v'],
+            $jar->for('https://shop.example/'),
+            'A cookie that named no path belongs to the folder it was set in.',
+        );
+        self::assertSame(
+            ['wide' => '1', 'safe' => '1', 'quoted' => 'v'],
+            $jar->for('https://shop.example/accounting'),
+            '"/account" is not the start of "/accounting".',
+        );
+        self::assertSame(
+            ['wide' => '1', 'quoted' => 'v'],
+            $jar->for('http://shop.example/'),
+            'A secure cookie is not sent in the clear.',
+        );
+        self::assertSame(
+            ['wide' => '1'],
+            $jar->for('https://api.shop.example/'),
+            'Only a cookie that named the domain goes to the hosts under it.',
+        );
         self::assertSame([], $jar->for('https://other.example/'), 'A server does not set cookies for another.');
         self::assertSame([], $jar->for('https://evilshop.example/'));
         self::assertSame([], $jar->for('https://another.example/'), 'Nor for every site of an ending.');
@@ -80,11 +109,19 @@ final class CookieJarTest extends TestCase
         self::assertSame(['short', 'dated', 'both', 'kept'], array_keys($jar->for('https://shop.example/')));
 
         $clock->advance('+120 seconds');
-        self::assertSame(['dated', 'both', 'kept'], array_keys($jar->for('https://shop.example/')), 'Where both are given, the number of seconds counts.');
+        self::assertSame(
+            ['dated', 'both', 'kept'],
+            array_keys($jar->for('https://shop.example/')),
+            'Where both are given, the number of seconds counts.',
+        );
         $clock->advance('+600 seconds');
         self::assertSame(['both', 'kept'], array_keys($jar->for('https://shop.example/')));
 
         $jar->store($shop, ['kept=; Max-Age=0', 'both=2']);
-        self::assertSame(['both' => '2'], $jar->for('https://shop.example/'), 'Set again it is replaced, and set expired it is taken back.');
+        self::assertSame(
+            ['both' => '2'],
+            $jar->for('https://shop.example/'),
+            'Set again it is replaced, and set expired it is taken back.',
+        );
     }
 }

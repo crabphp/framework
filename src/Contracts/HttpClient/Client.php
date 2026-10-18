@@ -60,21 +60,39 @@ interface Client extends ClientInterface
      * @param array<string, File|UploadedFileInterface|list<File|UploadedFileInterface>> $files
      * @param array<string, string|list<string>> $headers
      */
-    public function post(string $url, mixed $json = null, array $form = [], array $files = [], array $headers = []): Response;
+    public function post(
+        string $url,
+        mixed $json = null,
+        array $form = [],
+        array $files = [],
+        array $headers = [],
+    ): Response;
 
     /**
      * @param array<string, mixed> $form
      * @param array<string, File|UploadedFileInterface|list<File|UploadedFileInterface>> $files
      * @param array<string, string|list<string>> $headers
      */
-    public function put(string $url, mixed $json = null, array $form = [], array $files = [], array $headers = []): Response;
+    public function put(
+        string $url,
+        mixed $json = null,
+        array $form = [],
+        array $files = [],
+        array $headers = [],
+    ): Response;
 
     /**
      * @param array<string, mixed> $form
      * @param array<string, File|UploadedFileInterface|list<File|UploadedFileInterface>> $files
      * @param array<string, string|list<string>> $headers
      */
-    public function patch(string $url, mixed $json = null, array $form = [], array $files = [], array $headers = []): Response;
+    public function patch(
+        string $url,
+        mixed $json = null,
+        array $form = [],
+        array $files = [],
+        array $headers = [],
+    ): Response;
 
     /**
      * @param array<string, mixed> $query
