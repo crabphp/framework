@@ -174,6 +174,26 @@ final class ServerTest extends TestCase
         self::assertSame(0.3, $app->runtime($this->address)->shutdownTimeout);
     }
 
+    public function testAWatchedChildLeavesALogSharedByStdoutAndStderrWhereItWas(): void
+    {
+        // `serve > dev.log 2>&1`: stdout and stderr share one file, and so one position in it.
+        $script = $this->directory . '/spawn.php';
+        $autoload = dirname(__DIR__) . '/vendor/autoload.php';
+        file_put_contents($this->directory . '/child.php', "<?php\necho \"child\\n\";\n");
+        file_put_contents($script, "<?php\nrequire '{$autoload}';\n"
+            . "fwrite(STDOUT, \"before\\n\");\n"
+            . "\$spawn = new ReflectionMethod(Crab\\Server::class, 'spawn');\n"
+            . "[\$process, \$report] = \$spawn->invoke(null, [__DIR__ . '/child.php']);\n"
+            . "while (proc_get_status(\$process)['running']) { usleep(10_000); }\n"
+            . "proc_close(\$process);\n"
+            . "fwrite(STDOUT, \"after\\n\");\n");
+        $log = $this->directory . '/dev.log';
+        exec(escapeshellarg(PHP_BINARY) . ' ' . escapeshellarg($script) . ' > ' . escapeshellarg($log) . ' 2>&1', $ignored, $status);
+
+        self::assertSame(0, $status);
+        self::assertSame("before\nchild\nafter\n", file_get_contents($log), 'Starting the child must not rewind the log.');
+    }
+
     public function testAWatchedChildReportsItsCurrentAllowanceAfterTheSettingChanges(): void
     {
         $spawn = new \ReflectionMethod(\Crab\Server::class, 'spawn');

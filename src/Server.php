@@ -423,8 +423,9 @@ final class Server
      */
     private static function spawn(array $command): array
     {
-        // The child reads and writes the terminal as this process does.
-        $process = proc_open([PHP_BINARY, ...$command, '--watch-report'], [STDIN, STDOUT, STDERR, self::WATCH_REPORT => ['pipe', 'w']], $pipes);
+        // The child inherits the terminal. Handing it STDERR instead would make PHP set the
+        // descriptor to that stream's own position, rewinding a log that `2>&1` shares with stdout.
+        $process = proc_open([PHP_BINARY, ...$command, '--watch-report'], [self::WATCH_REPORT => ['pipe', 'w']], $pipes);
         if ($process === false) {
             throw new \RuntimeException('Could not start the server process.');
         }
