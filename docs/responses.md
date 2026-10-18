@@ -48,6 +48,7 @@ Response::text('pong');                                  // text/plain
 Response::html('<h1>Hello</h1>');                        // text/html
 Response::redirect('/login');                            // 302
 Response::download($path, 'invoice.pdf');                // a file
+Response::attachment($csv, 'orders.csv', 'text/csv');    // text made here, saved as a file
 new Response(418, ['X-Reason' => 'teapot'], 'no coffee');
 ```
 
@@ -96,6 +97,12 @@ return Response::download('/var/reports/q3.pdf', 'q3-report.pdf', 'application/p
 ```
 
 The file is read as it is sent, not loaded into memory. The second argument is the name the client saves it under.
+
+For content the action makes, such as a CSV built from a query, send it as it is, with no file in between:
+
+```php
+return Response::attachment($csv, 'orders.csv', 'text/csv');
+```
 
 ## Errors
 

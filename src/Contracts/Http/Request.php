@@ -25,6 +25,12 @@ interface Request extends ServerRequestInterface
     public function input(string $name, mixed $default = null): mixed;
 
     /**
+     * One cookie the client sent, or the default when it sent none by
+     * that name. Its value is whatever the client chose; check it.
+     */
+    public function cookie(string $name, ?string $default = null): ?string;
+
+    /**
      * The file uploaded under a top-level field name, or null when there
      * is none or the name holds several files.
      */

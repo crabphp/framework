@@ -116,6 +116,7 @@ return Response::created($user, "/users/{$user->id}");    // 201, with a Locatio
 return Response::noContent();                             // 204
 return Response::redirect('/login');                      // 302; pass 301, 303, 307 or 308 for another
 return Response::download($path, 'invoice.pdf');          // a file, read as it is sent
+return Response::attachment($csv, 'orders.csv', 'text/csv'); // text made here, saved as a file
 return Response::json($user)->withHeader('Cache-Control', 'max-age=60');
 ~~~
 
@@ -380,7 +381,7 @@ Route::post('/users/{id}/avatar', static function (Request $request) {
 - **Uploads:** `getUploadedFiles()` returns the PSR-7 tree; `photos[]` fields nest as in PHP. A form may have at most 1,000 parts, and its fields together 1 MiB; a file may be as large as a body may.
 - **Large uploads:** a request body may be 1 MiB unless `server.max_body` says more, in bytes, and a client has `server.body_timeout` seconds to send it (30). A file is never held in memory: the engine keeps a large body on disk, the file is read from where it lies in it, and `moveTo()` copies it out. A 40 MiB upload is read and stored within a few megabytes. Copying a large file takes the worker's time while it lasts, as any reading or writing of a file does.
 - **Responses:** `Response::text()`, `html()` and `json()`, or `new Response($status, $headers, $body)`. `withCookie()` adds a `Set-Cookie`; with a response from another library use `withAddedHeader('Set-Cookie', (string) $cookie)`.
-- **Cookies:** `new Cookie($name, $value, maxAge: ..., path: ..., domain: ..., secure: ..., httpOnly: ..., sameSite: ...)` defaults to `HttpOnly` and `SameSite=Lax`; `Cookie::forget($name)` deletes one. Read them with `$request->getCookieParams()`.
+- **Cookies:** `new Cookie($name, $value, maxAge: ..., path: ..., domain: ..., secure: ..., httpOnly: ..., sameSite: ...)` defaults to `HttpOnly` and `SameSite=Lax`; `Cookie::forget($name)` deletes one. Read one with `$request->cookie('theme', 'light')`.
 - **Unmatched routes:** 404, or 405 with an `Allow` header, with the same JSON-or-text body as any other error.
 
 ## Calling other APIs

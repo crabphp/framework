@@ -571,6 +571,9 @@ final class ActionHandlerTest extends TestCase
         self::assertSame('attachment; filename="notes.txt"; filename*=UTF-8\'\'notes.txt', Response::download(__FILE__, 'notes.txt')->getHeaderLine('Content-Disposition'));
         self::assertStringContainsString('filename="ActionHandlerTest.php"', Response::download(__FILE__)->getHeaderLine('Content-Disposition'));
         self::assertSame('application/octet-stream', Response::download(__FILE__)->getHeaderLine('Content-Type'));
+        $csv = Response::attachment("id,total\n1,4200\n", 'commande été.csv', 'text/csv');
+        self::assertSame([200, 'text/csv', "attachment; filename=\"commande __t__.csv\"; filename*=UTF-8''commande%20%C3%A9t%C3%A9.csv", "id,total\n1,4200\n"],
+            [$csv->getStatusCode(), $csv->getHeaderLine('Content-Type'), $csv->getHeaderLine('Content-Disposition'), (string) $csv->getBody()]);
         $refused = 0;
         foreach ([static fn () => Response::redirect('/x', 200), static fn () => Response::download('/no/such/file'), static fn () => Response::download(__DIR__)] as $mistake) {
             try {

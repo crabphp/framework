@@ -53,7 +53,7 @@ Prefer declared fields to `input()`: a declared field is validated, an `input()`
 ```php
 $request->getHeaderLine('Accept');             // "" when absent
 $request->hasHeader('Authorization');
-$request->getCookieParams()['theme'] ?? 'light';
+$request->cookie('theme', 'light');            // a cookie, or the default when it was not sent
 $request->getMethod();                         // "POST"
 $request->getUri()->getPath();                 // "/users/7"
 ```

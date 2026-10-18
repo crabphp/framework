@@ -102,13 +102,28 @@ final class Response extends Message implements ResponseInterface
         if ($file === false) {
             throw new \RuntimeException("The file to download cannot be read: {$path}");
         }
-        $name ??= basename($path);
-        // A name in plain ASCII for old clients, and the real one, encoded, for the rest.
+        return new self(200, ['Content-Type' => $type, 'Content-Disposition' => self::disposition($name ?? basename($path))], new Stream($file));
+    }
+
+    /**
+     * Sends text made in the action for the client to save as a file, such
+     * as a CSV built from a query: attachment($csv, 'orders.csv', 'text/csv').
+     *
+     * @param string $name The name the client saves it under.
+     * @param string $type Its media type.
+     */
+    public static function attachment(string $body, string $name, string $type = 'application/octet-stream'): self
+    {
+        return new self(200, ['Content-Type' => $type, 'Content-Disposition' => self::disposition($name)], $body);
+    }
+
+    /**
+     * A name in plain ASCII for old clients, and the real one, encoded, for the rest.
+     */
+    private static function disposition(string $name): string
+    {
         $plain = preg_replace('/[^\x20-\x7E]|["\\\\]/', '_', $name);
-        return new self(200, [
-            'Content-Type' => $type,
-            'Content-Disposition' => "attachment; filename=\"{$plain}\"; filename*=UTF-8''" . rawurlencode($name),
-        ], new Stream($file));
+        return "attachment; filename=\"{$plain}\"; filename*=UTF-8''" . rawurlencode($name);
     }
 
     /**

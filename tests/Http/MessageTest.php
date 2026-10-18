@@ -210,6 +210,19 @@ final class MessageTest extends TestCase
         self::assertSame('/', (new Request('GET', 'http://example.com'))->getRequestTarget());
     }
 
+    public function testARequestCookieIsReadByNameWithADefault(): void
+    {
+        $request = (new Request('GET', '/'))->withCookieParams(['theme' => 'dark', 'empty' => '', 'odd' => ['nested']]);
+
+        self::assertSame(['dark', '', 'light', null, 'light'], [
+            $request->cookie('theme'),
+            $request->cookie('empty', 'light'),
+            $request->cookie('missing', 'light'),
+            $request->cookie('missing'),
+            $request->cookie('odd', 'light'),
+        ]);
+    }
+
     public function testRequestChangesReturnNewRequests(): void
     {
         $request = new Request('GET', 'http://example.com/a');

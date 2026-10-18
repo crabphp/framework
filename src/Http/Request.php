@@ -322,6 +322,12 @@ final class Request extends Message implements RequestContract
         return is_array($parsed) ? $parsed[$name] ?? $default : $default;
     }
 
+    public function cookie(string $name, ?string $default = null): ?string
+    {
+        $value = $this->getCookieParams()[$name] ?? null;
+        return is_string($value) ? $value : $default;
+    }
+
     public function file(string $name): ?UploadedFileInterface
     {
         $file = $this->getUploadedFiles()[$name] ?? null;
