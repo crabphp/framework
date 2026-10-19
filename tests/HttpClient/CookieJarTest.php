@@ -94,6 +94,15 @@ final class CookieJarTest extends TestCase
         $jar->set('shop.example', 'a', 'b');
     }
 
+    public function testAPlainHttpAnswerCannotSetASecureCookie(): void
+    {
+        $jar = new CookieJar();
+        $jar->store(new Uri('http://shop.example/'), ['session=forged; Secure; Path=/', 'theme=dark; Path=/']);
+        $jar->store(new Uri('https://shop.example/'), ['token=real; Secure; Path=/']);
+
+        self::assertSame('theme=dark; token=real', $jar->header(new Uri('https://shop.example/')));
+    }
+
     public function testCookiesExpireAndAreTakenBack(): void
     {
         $clock = new FrozenClock(new \DateTimeImmutable('2026-01-01 00:00:00 UTC'));

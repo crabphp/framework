@@ -1488,6 +1488,53 @@ final class QueueTest extends TestCase
         self::assertSame(0, $app->console->run(['queue:forget', 'all'], $this->quiet()));
     }
 
+    public function testTheInstalledQueueIndexExcludesFailedJobsBeforeTheAvailabilityRange(): void
+    {
+        $app = new App(new Config([
+            'database' => [
+                'connections' => ['main' => [
+                    'dsn' => 'sqlite:' . $this->directory . '/app.sqlite',
+                    'migrations' => $this->directory . '/migrations',
+                ]],
+            ],
+        ]));
+        $app->register(DatabaseProvider::class, QueueProvider::class);
+        self::assertSame(0, $app->console->run(['queue:install'], $this->quiet()));
+        self::assertSame(0, $app->console->run(['migrate'], $this->quiet()));
+        $database = $app->container->get(\Crab\Contracts\Database\Database::class);
+        $indexes = $database->select('PRAGMA index_list(jobs)');
+        self::assertCount(1, $indexes);
+        $columns = $database->select("PRAGMA index_info('{$indexes[0]['name']}')");
+        self::assertSame(['queue', 'failed_at', 'available_at'], array_column($columns, 'name'));
+
+        $now = $this->clock->now()->getTimestamp();
+        $database->execute('with recursive numbers(n) as (select 1 union all select n + 1 from numbers where n < 1000) '
+        . 'insert into jobs (queue, job, payload, available_at, failed_at, created_at) '
+        . "select 'default', 'old', '{}', ?, ?, ? from numbers", [$now - 100, $now - 1, $now - 100]);
+        $plan = $database->select('EXPLAIN QUERY PLAN select id from jobs where queue = ? and failed_at is null '
+        . 'and available_at <= ? and (reserved_at is null or reserved_at <= ?) order by id limit 5', [
+            'default',
+            $now,
+            $now - 90,
+        ]);
+        self::assertStringContainsString('queue=? AND failed_at=? AND available_at<?', implode(' ', array_column(
+            $plan,
+            'detail',
+        )));
+
+        $store = $app->container->get(Store::class);
+        self::assertNull($store->reserve(['default'], $now, 90));
+        $first = $store->push('default', GreetJob::class, ['name' => 'first'], $now, $now);
+        $second = $store->push('default', GreetJob::class, ['name' => 'second'], $now, $now);
+        $store->push('default', GreetJob::class, ['name' => 'future'], $now + 200, $now);
+        self::assertSame($first, $store->reserve(['default'], $now, 90)?->id);
+        self::assertSame($second, $store->reserve(['default'], $now, 90)?->id);
+        self::assertNull($store->reserve(['default'], $now, 90));
+        $recovered = $store->reserve(['default'], $now + 90, 90);
+        self::assertNotNull($recovered);
+        self::assertSame([$first, 2], [$recovered->id, $recovered->attempts]);
+    }
+
     public function testSupervisorsAreReadFromTheConfigurationWithTheQueuesOwnSettingsForWhatTheyLeaveOut(): void
     {
         $config = new Config([
@@ -1707,7 +1754,7 @@ final class QueueTest extends TestCase
             $table->bigInteger('failed_at')->nullable();
             $table->text('error')->nullable();
             $table->bigInteger('created_at');
-            $table->index(['queue', 'available_at']);
+            $table->index(['queue', 'failed_at', 'available_at']);
         });
         return new DatabaseStore($database, 'queue_test');
     }

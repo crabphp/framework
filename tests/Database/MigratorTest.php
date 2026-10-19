@@ -481,6 +481,70 @@ final class MigratorTest extends TestCase
         rmdir($this->directory . '/reports');
     }
 
+    public function testAValueOptionCannotChooseTheDefaultDatabaseByAccident(): void
+    {
+        $app = new App(new Config([
+            'database' => [
+                'default' => 'main',
+                'connections' => [
+                    'main' => ['dsn' => 'sqlite::memory:', 'migrations' => $this->directory . '/migrations'],
+                    'reports' => ['dsn' => 'sqlite::memory:', 'migrations' => $this->directory . '/package'],
+                ],
+            ],
+        ]));
+        $app->register(DatabaseProvider::class);
+        $this->migration(
+            'migrations/2026_01_01_000000_main',
+            "\$schema->create('marker', fn (Table \$table) => \$table->id());",
+            "\$schema->drop('marker');",
+        );
+        $this->migration(
+            'package/2026_01_01_000000_reports',
+            "\$schema->create('marker', fn (Table \$table) => \$table->id());",
+            "\$schema->drop('marker');",
+        );
+        $database = $app->container->get(DatabaseContract::class);
+        $main = new Schema($database);
+        $reports = new Schema($database->connection('reports'));
+        foreach (['--database', '--database reports'] as $argument) {
+            foreach (['migrate', 'migrate:status', 'make:migration'] as $command) {
+                $words = $command === 'make:migration' ? 'create_extra_table ' . $argument : $argument;
+                $output = $this->run_($app, $command, $words, expect: 1);
+                self::assertStringContainsString('--database needs a value', $output);
+                self::assertStringContainsString('--database=value', $output);
+            }
+        }
+        self::assertFalse($main->hasTable('migrations'));
+        self::assertFalse($reports->hasTable('migrations'));
+        self::assertCount(1, glob($this->directory . '/migrations/*.php'));
+        self::assertCount(1, glob($this->directory . '/package/*.php'));
+        self::assertStringContainsString('--database=value', $this->run_(
+            $app,
+            'make:migration',
+            '--database',
+            expect: 1,
+        ));
+
+        $this->run_($app, 'migrate', '--database=reports');
+        self::assertTrue($reports->hasTable('marker'));
+        self::assertFalse($main->hasTable('marker'));
+        $this->run_($app, 'migrate');
+        foreach (['--database', '--database reports'] as $argument) {
+            self::assertStringContainsString('--database=value', $this->run_(
+                $app,
+                'migrate:rollback',
+                $argument,
+                expect: 1,
+            ));
+            self::assertTrue($main->hasTable('marker'));
+            self::assertTrue($reports->hasTable('marker'));
+        }
+        $this->run_($app, 'migrate:rollback', '--database=reports');
+        self::assertFalse($reports->hasTable('marker'));
+        self::assertTrue($main->hasTable('marker'));
+        $app->container->get(\Crab\Database\DatabaseManager::class)->close();
+    }
+
     #[DataProvider('drivers')]
     public function testTwoDeploymentsRunEachPendingMigrationOnlyOnce(string $driver): void
     {

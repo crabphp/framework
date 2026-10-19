@@ -33,7 +33,7 @@ A request that does not fit is answered `422` with every problem, by field. The 
 | `int`, `float`, `string`, `bool` | That value |
 | `?type`, or a default value | May be left out |
 | A backed enum | One of its values |
-| `DateTimeImmutable` | A date and time as text, such as `2026-01-31T12:00:00Z` |
+| `DateTimeImmutable` | A date, or a date and time with an offset, such as `2026-01-31` or `2026-01-31T12:00:00Z`; not a phrase such as `now` |
 | Another class | An object, checked the same way |
 | `array` with `#[ListOf(...)]` | A list of the given kind |
 
@@ -67,9 +67,9 @@ Prefer an enum to `#[OneOf]` when the choices are used in more than one place: t
 | `#[OneOf('draft', 'published')]` | One of the listed values |
 | `#[ListOf(Tag::class)]`, `#[ListOf('int')]` | What an `array` holds |
 
-They live in `Crab\Validation`. A rule runs only when the value is present and of the right type, so `#[Email] ?string $email` accepts a missing email and checks one that is given.
+They live in `Crab\Validation`; import each rule you use. An attribute whose class cannot be found stops route registration and names the field and missing class. A rule runs only when the value is present and of the right type, so `#[Email] ?string $email` accepts a missing email and checks one that is given.
 
-A rule on a route parameter holds as on any field: with `#[Range(min: 1)] int $id`, a request for `/users/0` is answered `422`. A whole number too large for an integer, and a date the calendar does not have, such as February 31st, are refused and not read as something else.
+A rule on a route parameter holds as on any field: with `#[Range(min: 1)] int $id`, a request for `/users/0` is answered `422`. A whole number too large for an integer, including the value of an integer-backed enum, and a date the calendar does not have, such as February 31st, are refused and not read as something else.
 
 ## Nested objects and lists
 

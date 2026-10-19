@@ -25,6 +25,7 @@ app/
 
 config/
   app.php           name, debug
+  cache.php         store, application-specific cache directory
   database.php      which database, and where the migrations are
   log.php           where and how much to log
   server.php        address, worker count, what to watch, where the pid and log go

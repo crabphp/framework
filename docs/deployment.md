@@ -59,7 +59,7 @@ Point the platform's health check at the [health path](configuration.md#a-health
 
 ### On a server you manage
 
-Run it in the background:
+Choose the production settings and prepare the database in [A deploy, start to finish](#a-deploy-start-to-finish), then run it in the background:
 
 ```sh
 php cua serve --daemon       # start
@@ -107,6 +107,8 @@ The server starts a new process, with the code and configuration as they are now
 
 - **Connections keep being accepted.** The old and the new process accept from the same socket. Requests already in flight finish within the old workers' `server.drain` limit; connections still open at that limit are cut.
 - **A reload that fails at startup leaves the old process serving.** Syntax errors, middleware construction and provider start hooks can fail here; lazily made action services can still fail after takeover.
+
+The console loads the application before running a command. If broken files prevent that bootstrap, `reload`, `status`, `stop` and help cannot contact the existing server. Restore the last working application files and retry; with release directories, run the command from the previous working release using the same shared `storage/`. A bootstrap error does not mean the running server stopped.
 
 > [!NOTE]
 > Sending the server SIGUSR1 replaces its workers one at a time with the code it already has. It does not load new code; `reload` does.
@@ -165,21 +167,22 @@ server {
 
 Keep the server on `127.0.0.1` so that only the proxy reaches it. Match the proxy's body limit to `server.max_body`.
 
+Tell the application which proxy you trust, so `ip()` and address-based rate limits see the client:
+
+```php
+// app.php
+use Crab\Http\TrustedProxies;
+
+->withMiddleware(prepend: [new TrustedProxies(['127.0.0.1'])])
+```
+
+Name only the addresses of proxies you control; use your proxy's address if it is on another machine.
+
 ## The other processes
 
-An application that uses the queue or the scheduler has more to keep running than the HTTP server. There are two ways to run them.
+On one machine, run HTTP, queue and scheduler together with `serve`. No cron or separate queue/schedule process manager is needed.
 
-**On their own,** each with a command, which is how they run unless you say otherwise:
-
-| Process | Command | How many |
-| --- | --- | --- |
-| The HTTP server | `php cua serve --daemon` | One per machine |
-| Queue workers | `php cua queue:work` | One command per machine, or one per supervisor |
-| The scheduler | `php cua schedule:work` | Exactly one, or mark tasks `onOneServer()` |
-
-`queue:work` and `schedule:work` run in the foreground and have no `reload`: keep them alive with systemd, Supervisor or a container each, and restart them after a deploy. While you develop, you start them only when you are working on jobs or scheduled tasks.
-
-**With the server,** by switching them on in `server.with`, each from `.env`:
+The skeleton switches each on through `server.with`, reading its value from `.env`:
 
 ```php
 // config/server.php
@@ -191,13 +194,15 @@ An application that uses the queue or the scheduler has more to keep running tha
 
 ```text
 # .env, in production
+APP_DEBUG=false
+LOG_LEVEL=info
 SERVER_QUEUE=true
 SERVER_SCHEDULE=true
 ```
 
 ```text
 $ php cua serve
-Shop server running on http://127.0.0.1:8080
+Starting Shop server on http://127.0.0.1:8080
 
   Server    Workers  Runs
   --------  -------  -------------------------------
@@ -217,6 +222,16 @@ Each server running under `serve` has an id: `http`, `queue`, `schedule`. They a
 | Several web servers | `queue`, and `schedule` on one of them | The schedule must run in one place, or mark its tasks `onOneServer()` |
 | Web and workers apart | nothing on the web servers | The workers' machines run `queue:work` and `schedule:work` |
 
+**Separate processes** suit workers on other machines, or development where you start work only as needed:
+
+| Process | Command | How many |
+| --- | --- | --- |
+| The HTTP server | `php cua serve --daemon` | One per machine |
+| Queue workers | `php cua queue:work` | One command per machine, or one per supervisor |
+| The scheduler | `php cua schedule:work` | Exactly one, or mark tasks `onOneServer()` |
+
+In this arrangement, leave those `server.with` switches off on the HTTP server. Keep the separate workers alive with systemd, Supervisor or containers and restart them after deployment; `reload` only covers workers managed by `serve`. Do not start a second scheduler alongside the integrated one.
+
 `--single` serves HTTP alone whatever is switched on, as one process has room for nothing else. To add a server of your own to the list, a WebSocket server, a command of yours, or a program such as `npm run dev`, see [Service providers](providers.md#a-server-of-your-own-beside-http).
 
 To see all of it on one page, requests, the queue, scheduled tasks, workers and exceptions, install the `crabphp/clockwerk` package, a dashboard served by the application itself at `/clockwerk`.
@@ -225,13 +240,27 @@ See [Queues](queues.md#in-production) and [Task scheduling](scheduling.md#runnin
 
 ## A deploy, start to finish
 
+For one machine running HTTP, queue and scheduler together, set these production values in `.env`. Choose `SERVER_WORKERS` for the machine; four is an example. Leave the queue or schedule switch off when the application does not use it.
+
+```text
+APP_DEBUG=false
+LOG_LEVEL=info
+SERVER_WORKERS=4
+SERVER_QUEUE=true
+SERVER_SCHEDULE=true
+```
+
+When using the database queue, generate its migration once with `php cua queue:install` and ship it with the application. Then run this deploy script from the application directory:
+
 ```sh
+set -e
 git pull                                 # or unpack the new release
 composer install --no-dev --optimize-autoloader
 php cua migrate
 php cua reload
-systemctl restart app-queue app-schedule
 ```
+
+Installation and migration must succeed before reload; `set -e` stops the script at a failed step. For the first deployment, use `php cua serve --daemon` in place of `php cua reload`. The one command manages HTTP, queue and scheduler, so there are no separate services to restart. If you deliberately run workers separately, restart those services only after the preceding steps succeed.
 
 Run the migrations before the reload, and write them so that the old code still works on the new tables for the moment between the two: add a column in one deploy, start using it in the next.
 
@@ -239,9 +268,12 @@ Run the migrations before the reload, and write them so that the old code still 
 
 - `APP_DEBUG=false`. Debug mode shows traces to clients.
 - `LOG_LEVEL=info` or `warning`, and a `log.path` you collect or rotate.
+- Choose `SERVER_WORKERS` explicitly; the skeleton starts with one for development.
+- Set `SERVER_QUEUE=true` and `SERVER_SCHEDULE=true` for the work this machine must run, and apply the database queue migration before starting its workers. Run the scheduler in one place, or use `onOneServer()`.
 - The `pcntl` and `posix` extensions, for workers and the background server.
 - OPcache on, with `opcache.enable_cli=1`: the server runs under PHP's command line.
 - A proxy with TLS in front, and the server on `127.0.0.1`.
+- `TrustedProxies` in `app.php`, naming only the proxy addresses you control, so clients have their own address-based limits.
 - `storage/` writable by the user the server runs as.
 - `php cua status` and `GET /up` in your monitoring.
 

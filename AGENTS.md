@@ -40,12 +40,16 @@
 - `App` binds the core directly: configuration, container, validator, router, HTTP factory, logger, clock, error handler and console. The framework's providers are the list `App::PROVIDERS`, applied by `App::configure()`: Database, Auth, Cache, Events, Queue, Schedule, HttpClient, Broadcast, in that order. An application names its own providers and those of its packages with `withProviders()`, after the framework's; `remove:` leaves out a framework provider and `only:` replaces the list. A concrete way of doing something (`TokenAuthProvider`) and every package stay opt-in. Nothing is found by convention, and `new App()` used directly registers no providers.
 - A provider has `register(Container $container)`. There is no `boot()`; bindings are closures run on first use. A provider with work to do in each worker implements `WorkerProvider` as well: `start(Worker $worker, Container $container)` opens what holds a socket, file or timer and `stop(Worker $worker, Container $container)` releases it. Providers stop in reverse order, `stop()` must not suspend, and a provider keeps no state of its own.
 - A provider declares its settings and their defaults once with `Config::defaults()`; code reads them with no default argument. The container has no per-request scope: `singleton()` is one per worker, `bind()` is new on every `get()`.
+- A service known by two names is bound once under its contract and the other name is an alias of it, eagerly made services included.
 - Every error response is built by `Http\ErrorResponse`, for the error handler and for the router's 404 and 405 alike. Expected answers such as an unmatched route are returned as responses, not thrown, so they pass back through middleware.
 - Inside a worker, PHP warnings and notices are thrown as `ErrorException`; code must not rely on a warning being ignored, and uses `@` only where a failure is then checked by return value.
 - Anything that adds work to every request and is not needed to answer it, such as the request id or CORS, is off by default: it is middleware an application adds, with its measured cost documented.
 - A route the framework adds, such as the health path, is asked for in `app.php` (`withRouting(health: '/up')`) and shows in `route:list` like any other. `App` adds none by itself.
 - A command is named `area:action`, with the area in the singular: `route:list`, `schedule:work`, `queue:retry`, `cache:clear`, `make:migration`. The command that lists what a component holds is `<area>:list` (`route:list`, `schedule:list`); a new component that holds a list gets one. A bare name is only for the application itself (`serve`, `stop`, `reload`, `restart`, `status`), for the console's own `list` and `help`, and for `migrate`.
+- A console option that takes a value is given as `--name=value`; one given without `=` is refused before anything runs, naming the option and showing that form.
 - Nothing fails silently outside a request: `App` sends everything the engine catches in a worker (a failed task, a failure escaping a timer, a failing `stop()`, a request failure that escaped the error handler) to the logger through the engine group's `onFailure()`, and the worker keeps running. A new entry point (queue job, scheduled job) gets the same treatment.
+- What is logged about a request is its method and path, never its query string. `app.debug` is read as a validated boolean, so an unrecognised value never shows an exception's details.
+- A response cookie with a positive lifetime is sent with `Max-Age` alone; one being removed has `Max-Age=0` and the fixed 1970 `Expires`. `Cookie` stays a value object and never reads the clock.
 - `App` assembles its middleware, the error handler included, in each worker as the worker starts, never in the parent and never lazily on a request, so a misconfiguration stops startup with its cause printed.
 - A binding's closure and a constructor the container calls must not suspend: the container is shared by every fiber in the worker and guards against circular dependencies by entry name, so a second request asking for an entry that is still being made is refused.
 - Objects the container keeps are shared by every request a worker serves: they hold no state of a single request, and anything holding a socket or file is made in the worker on first use, not in the parent.
@@ -74,8 +78,10 @@
 - Attributes are for what PHP cannot say in a type: validation rules, and `#[ListOf]` for what an array holds.
 - Routing is declared by method chaining, never by named options: a route method declares one route and returns it as `Contracts\Routing\DeclaredRoute`, on which `->name()` and `->middleware()` say more; a group is `Route::prefix()` or `Route::middleware()`, further steps, then `->group()`. Each route is one statement; routes are never chained onto one another. A name is unique, a route has one, and groups add nothing to it. `Router::path()` writes a named route's path and `Contracts\Routing\Urls::to()` its full URL from `app.url`, never from the request, so that a job writes the same links an action does.
 - A signature is read when the route is added, never on a request, and one that cannot be honoured throws there, naming the route and saying what to do instead.
+- A route keeps the action it resolved for the worker's life, even when the container binding is `bind()`: an action holds no request state.
 - Data that does not fit is a 422 built by `Http\ErrorResponse` with every problem by field, returned and not thrown. JSON is taken as it is; only text sources (query string, route parameters) are converted to numbers and booleans. Fields an action does not declare are ignored and never reach it.
 - `Validation` knows nothing of HTTP or routing. A rule is an attribute implementing `Contracts\Validation\Rule`, which checks a value and says what is wrong with it.
+- A rule that cannot read a value refuses it with a message; it never treats an unreadable value as empty. `Pattern`'s `$` is the end of the text. A `float` refuses a value that is not finite, and a date accepts only the forms its message names (`2026-01-31`, `2026-01-31T12:00:00Z`), never a relative phrase such as `now`.
 - An action's input class, and every class inside it, is read when the route is added (`Validator::inspect()`), so one that cannot be validated stops startup.
 
 ## Running the server
@@ -146,13 +152,14 @@
 - What the client does not do is said where an application developer reads it: no HTTP/3, no HTTP/2 without encryption, no server push, no proxy other than a plain HTTP one, and no brotli.
 - HTTP/2 is offered to every `https` server and spoken with those that take it; one `Http2Session` per server carries all its requests, and its connection stays lent from that server's pool for as long as it lasts. Every header block received is decoded, wanted or not, because each may change the table the next refers to. Frames are written whole and one writer at a time.
 - The HPACK tables (`Hpack::STATIC`, `Hpack::HUFFMAN`) were generated from the text of RFC 7541 and are checked against its examples; do not edit them by hand.
+- A limit on an answer counts what it decodes to, not what came over the wire: a header block is bounded by its decoded size, the same 64 KiB as an HTTP/1 head.
 - `retry()` tries a request again only when that cannot do it twice: one that may safely be made twice, on no answer or 429, 502, 503, 504; any other only when none of it was sent (`NetworkException::$unsent`) or the server answered 429 or 503. A 500 is never tried again. Widening this needs the owner's agreement.
 - `timeout()` bounds the whole call: every try, redirect, connect and pause shares one deadline, and a connect is bounded by `connect_timeout` and by what is left. A pause that cannot fit ends the call with what the last try gave. Nothing is written after the deadline; a request of which no byte was written fails as unsent. A connection is opened by the caller that borrows it, under that caller's deadline.
 - A message that quotes a URL the caller gave shows it without its query and fragment.
 - A name is looked up with the engine's `DnsResolver`, never `gethostbyname()` directly: the hosts file, then answers kept for as long as they hold, then the name servers over UDP on the event loop. The system's blocking resolver is only what is fallen back on when they give nothing.
 - The client an application is given is shared by every request its worker serves, so nothing about one caller is set on it. `timeout()` and `cookies()` return another client over the same connections and leave the first as it was; a new option of that kind is added the same way, never as a setter.
 - What belongs to one request is an argument of the call (`query:`, `headers:`, `json:`, `form:`, `files:`, `body:`, `cancellation:`); what holds for several is an argument of the constructor and, where a caller needs to change it, a method that returns another client. One thing is said in one of the two, not both.
-- A client keeps no cookies unless it is given a jar. A jar gives a cookie back only where a browser would: host or named domain, path, `Secure`, and not expired.
+- A client keeps no cookies unless it is given a jar. A jar gives a cookie back only where a browser would: host or named domain, path, `Secure`, and not expired; and it keeps a `Secure` cookie only from an `https` answer.
 - `Response::throw()` is how an error status becomes an exception, asked for by the caller. Do not add a client-wide switch that makes every error status throw.
 - `FakeClient` extends `Client` and replaces only what carries a request (`Transport`), so that a test exercises the real request building, redirects and cookies. It is the one class in `src/` that extends a concrete class; a request no reply matches throws rather than reaching the network.
 
@@ -188,7 +195,7 @@
 - A store's `add()` sets a key only when it is absent, and its `deleteIf()` removes a key only while it still holds the given value, each as one step with respect to every other caller of that store. `Cache::lock()` is built on the two; a store that cannot do both atomically must not be used for locks.
 - A store's `take()` returns a live entry and removes it as one step with respect to every caller. Anything used once is redeemed with it, never with a get and then a delete.
 - A lock is an entry under `:lock:`, which a `cache.prefix` may not contain. `clear()` removes locks with everything else, and on the array, file and database stores it empties every prefix.
-- The file store never follows a link, and removes an entry by unlinking it before truncating, checking both. An entry that outlived its time stays until it is read or `cache:prune` runs.
+- The file store never follows a link (at an entry, its folder or the cache directory itself), keeps folders `0700` and entries `0600`, and removes an entry by unlinking it before truncating, checking both: the cache unserializes what it reads, so only the server's user may put a file there. Its default directory is the application's `storage/cache` (`app.path`); the system temp folder is only for an application with no base path. An entry that outlived its time stays until it is read or `cache:prune` runs.
 - Times are passed to a store, never read by it, so that every store can be tested with a frozen clock.
 - A cache is chosen with `cache.store`, and anything else by binding `Contracts\Cache\Store` after the provider. There is one cache per application; do not add named caches until the owner asks.
 
@@ -261,11 +268,14 @@
 
 - Code on the request path builds values on first use and avoids objects created per request. When changing `Http` or `Routing` request-path code, measure the per-request cost against the engine alone with JIT on, in the manner of `benchmarks/request-path.php`, and report it.
 - Do not add an optimization that reuses parsed data across identical requests; that is a benchmark hack. Lazy work is fine.
+- A worker-local cache reclaims expired entries even when their keys are never asked for again, and what a connection or task leaves in a map is removed on every way it can end.
 
 ## Workflow
 
 - Commit directly on `main`, without feature branches. Commit and push only when asked.
 - PHP is formatted and linted by Mago (`composer format`, `composer format:check`, `composer lint`) with one `mago.toml` shared by every repository, differing only in paths. A default rule is turned off only in `mago.toml`, with a comment saying why. Mago's automatic fixes are reviewed and tested like any change: a loop whose condition does the work is not empty.
+- A test of concurrency proves overlap or order with barriers and a diagnostic deadline, never a tight wall-clock window; elapsed-time bounds belong to timeout tests and benchmarks, with margins a loaded CI runner meets. A test double keeps production's serialization, validation and cleanup, and interchangeable stores share one set of contract cases. An exception test asserts outside the region whose exception it catches.
+- A shell example in the guide stops at the first failed step (`set -e`); one that prepares a release migrates before it reloads, and one reload restarts HTTP, queue and schedule together.
 
 ## Application skeleton
 

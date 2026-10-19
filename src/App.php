@@ -151,7 +151,21 @@ final class App implements RequestHandlerInterface, Runner
         public readonly ?string $basePath = null,
         array $middleware = self::MIDDLEWARE,
     ) {
-        $config->defaults('server', ['drain' => 5.0, 'max_connections' => 512, 'loop' => 'select']);
+        $config->defaults('app', ['name' => 'Crab', 'debug' => false, 'url' => null, 'path' => $basePath]);
+        $config->defaults('log', ['path' => 'php://stderr', 'level' => 'debug']);
+        $config->defaults('server', [
+            'address' => 'tcp://127.0.0.1:8080',
+            'workers' => 1,
+            'with' => [],
+            'watch' => Server::WATCHED,
+            'max_body' => 1_048_576,
+            'body_timeout' => 30,
+            'drain' => 5.0,
+            'max_connections' => 512,
+            'loop' => 'select',
+            'pid' => 'storage/crab.pid',
+            'log' => 'storage/logs/server.log',
+        ]);
         $config->defaults('websocket', SocketSettings::DEFAULTS);
         self::$current = $this;
         $container->instance(self::class, $this);
@@ -167,10 +181,9 @@ final class App implements RequestHandlerInterface, Runner
             LoggerContract::class,
             fn(): Logger => new Logger(
                 // A relative path is inside the application's directory, not wherever the process was started.
-                $basePath === null
-                    ? $config->get('log.path', 'php://stderr')
-                    : $this->path((string) $config->get('log.path', 'php://stderr')),
-                $config->get('log.level', 'debug'),
+                $basePath === null ? $config->get('log.path') : $this->path((string) $config->get('log.path')),
+                $config->get('log.level'),
+                $container->get(ClockContract::class),
             ),
         );
         // Each service is also reachable by its PSR name and by class, as the same object.
@@ -183,7 +196,7 @@ final class App implements RequestHandlerInterface, Runner
             ErrorHandler::class,
             static fn(ContainerContract $container): ErrorHandler => new ErrorHandler(
                 $container->get(LoggerInterface::class),
-                (bool) $config->get('app.debug', false),
+                filter_var($config->get('app.debug'), FILTER_VALIDATE_BOOL),
             ),
         );
         $container->singleton(FactoryContract::class, static fn(): Factory => new Factory());
@@ -232,7 +245,7 @@ final class App implements RequestHandlerInterface, Runner
         $this->stack->add(...$middleware);
         $container->instance(MiddlewareStackContract::class, $this->stack);
         $container->instance(MiddlewareStack::class, $this->stack);
-        $this->console = new Console($container, (string) $config->get('app.name', ''));
+        $this->console = new Console($container, (string) $config->get('app.name'));
         $this->console->add('serve', Serve::class);
         $this->console->add('stop', Stop::class);
         $this->console->add('reload', Reload::class);
@@ -360,7 +373,7 @@ final class App implements RequestHandlerInterface, Runner
         // Beside HTTP, the servers "server.with" switches on: none unless it says so. In one
         // process there is room for HTTP alone.
         $with = $servers ? $this->with() : [];
-        if (max($workers, (int) $this->config->get('server.workers', 1)) > 1) {
+        if (max($workers, (int) $this->config->get('server.workers')) > 1) {
             $tickets = $this->stack->has(\Crab\Auth\Ticket::class);
             foreach ($this->routes->routes() as $route) {
                 if (
@@ -389,7 +402,7 @@ final class App implements RequestHandlerInterface, Runner
             && $this->container->has(Broadcaster::class)
             && $this->config->get('broadcast.carrier') === 'local'
             && (
-                max($workers, (int) $this->config->get('server.workers', 1)) > 1
+                max($workers, (int) $this->config->get('server.workers')) > 1
                 || array_intersect($with, ['queue', 'schedule']) !== []
             )
         ) {
@@ -412,8 +425,8 @@ final class App implements RequestHandlerInterface, Runner
                 $address,
                 new HttpServer(
                     new EngineHandler($this->stack),
-                    maxBodyBytes: (int) $this->config->get('server.max_body', 1_048_576),
-                    bodyTimeout: (float) $this->config->get('server.body_timeout', 30),
+                    maxBodyBytes: (int) $this->config->get('server.max_body'),
+                    bodyTimeout: (float) $this->config->get('server.body_timeout'),
                 ),
                 socket: $socket,
             )
@@ -428,7 +441,7 @@ final class App implements RequestHandlerInterface, Runner
                             $this->container->get(LoggerContract::class)->warning($message, $context);
                         } catch (\Throwable $error) {
                             try {
-                                $fallback = new Logger();
+                                $fallback = new Logger(clock: $this->container->get(ClockContract::class));
                                 $fallback->warning($message, $context);
                             } finally {
                                 FailureReporter::report('HTTP drain warning logger failed', $error);
@@ -503,7 +516,7 @@ final class App implements RequestHandlerInterface, Runner
      */
     public function with(): array
     {
-        $setting = $this->config->get('server.with', []);
+        $setting = $this->config->get('server.with');
         if ($setting === null || $setting === false || $setting === '') {
             return [];
         }

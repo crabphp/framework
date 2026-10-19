@@ -51,9 +51,9 @@ final readonly class Cookie implements \Stringable
         $cookie = $this->name . '=' . rawurlencode($this->value);
         if ($this->maxAge !== null) {
             $cookie .= '; Max-Age=' . max(0, $this->maxAge);
-            // Older clients read only Expires.
-            $cookie .=
-                '; Expires=' . gmdate('D, d M Y H:i:s \\G\\M\\T', $this->maxAge > 0 ? time() + $this->maxAge : 1);
+            if ($this->maxAge <= 0) {
+                $cookie .= '; Expires=Thu, 01 Jan 1970 00:00:01 GMT';
+            }
         }
         if ($this->path !== '') {
             $cookie .= '; Path=' . $this->path;

@@ -42,7 +42,7 @@ final class ServerTest extends TestCase
         $autoload = dirname(__DIR__) . '/vendor/autoload.php';
         file_put_contents(
             $this->directory . '/cua',
-            "<?php\nrequire '{$autoload}';\nexit((require __DIR__ . '/app.php')->console->run(array_slice(\$argv, 1)));\n",
+            "<?php\nrequire '{$autoload}';\n\$app = require __DIR__ . '/app.php';\n\$arguments = array_slice(\$argv, 1);\n\$status = \$app->console->run(\$arguments);\nexit(\$status);\n",
         );
         file_put_contents(
             $this->directory . '/app.php',
@@ -127,6 +127,8 @@ final class ServerTest extends TestCase
         [$status, $output] = $this->cua('serve', "--address={$this->address}", '--single', '--no-watch');
         self::assertSame(1, $status, 'A second server in the foreground cannot take the address by accident.');
         self::assertStringContainsString('Address already in use', $output);
+        self::assertStringNotContainsString('server running', $output);
+        self::assertStringContainsString('choose another --address=', $output);
 
         self::assertSame([0, "Stopped the server, pid {$pid}.\n"], $this->cua('stop'));
         self::assertFalse(posix_kill($pid, 0), 'The process has gone.');
@@ -1435,7 +1437,7 @@ final class ServerTest extends TestCase
             $output = substr($output, strpos($output, $text) + strlen($text));
         };
 
-        $banner = "Crab server running on {$this->url}\nPress Ctrl+C to stop\n";
+        $banner = "Starting Crab server on {$this->url}\nPress Ctrl+C to stop\n";
         $until($banner);
         self::assertSame('one', $this->get(retry: true));
 

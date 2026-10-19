@@ -26,6 +26,7 @@ final class AuthProvider implements Provider
     {
         $container->get(Config::class)->defaults('auth', ['ticket_ttl' => 30]);
         $container->singleton(PasswordHasherContract::class, static fn(): PasswordHasher => new PasswordHasher());
+        $container->singleton(PasswordHasher::class, PasswordHasherContract::class);
         $container->singleton(TicketsContract::class, static function (Container $container): Tickets {
             if (!$container->has(Cache::class) || !$container->has(IdentityResolver::class)) {
                 throw new \LogicException(

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Crab\Schedule;
 
 use Crab\Contracts\Cache\Cache;
+use Crab\Contracts\Schedule\Schedule as ScheduleContract;
 use Crab\Contracts\Schedule\TaskRan;
 use Crab\Engine\Async\Async;
 use Crab\Engine\Async\Cancellation;
@@ -57,7 +58,7 @@ final class Scheduler
      * @param EventDispatcherInterface|null $events Told of each run of a task, with a TaskRan.
      */
     public function __construct(
-        private readonly Schedule $schedule,
+        private readonly ScheduleContract $schedule,
         private readonly ?ContainerInterface $container = null,
         private readonly ?LoggerInterface $logger = null,
         private readonly ?ClockInterface $clock = null,

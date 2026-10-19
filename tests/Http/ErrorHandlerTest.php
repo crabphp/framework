@@ -38,8 +38,18 @@ final class ErrorHandlerTest extends TestCase
         self::assertSame(500, $response->getStatusCode());
         self::assertSame("500 Internal Server Error\n", (string) $response->getBody());
         self::assertSame('text/plain; charset=utf-8', $response->getHeaderLine('Content-Type'));
-        self::assertStringContainsString(' ERROR GET /fail?x=1 failed: secret detail', $this->logged());
+        self::assertStringContainsString(' ERROR GET /fail failed: secret detail', $this->logged());
         self::assertStringContainsString('RuntimeException: secret detail in ' . __FILE__, $this->logged());
+    }
+
+    public function testAFailureIsLoggedWithoutTheQueryString(): void
+    {
+        new ErrorHandler(new Logger($this->log))->process(
+            new Request('GET', '/reset?token=s3cret-reset-token'),
+            new ClosureHandler(static fn() => throw new \RuntimeException('failed')),
+        );
+        self::assertStringContainsString(' ERROR GET /reset failed: failed', $this->logged());
+        self::assertStringNotContainsString('s3cret-reset-token', $this->logged());
     }
 
     public function testErrorsAsWellAsExceptionsAreHandled(): void

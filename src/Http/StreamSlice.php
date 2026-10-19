@@ -58,7 +58,7 @@ final class StreamSlice implements StreamInterface
     /**
      * Null, because the resource holds more than this part.
      */
-    public function detach()
+    public function detach(): mixed
     {
         $this->resource = null;
         return null;
@@ -152,7 +152,7 @@ final class StreamSlice implements StreamInterface
         return $contents;
     }
 
-    public function getMetadata(?string $key = null)
+    public function getMetadata(?string $key = null): mixed
     {
         if ($this->resource === null) {
             return $key === null ? [] : null;

@@ -360,7 +360,7 @@ final class ValidatorTest extends TestCase
                     'age' => ['must be at most 150'],
                     'score' => ['must be a number'],
                     'newsletter' => ['must be true or false'],
-                    'born' => ['must be a date and time, such as 2026-01-31T12:00:00Z'],
+                    'born' => ['must be a date or a date and time, such as 2026-01-31 or 2026-01-31T12:00:00Z'],
                     'tags.1.name' => ['must be at least 2 character(s)'],
                     'tags.2' => ['must be an object'],
                     'scores.1' => ['must be a whole number'],
@@ -408,8 +408,10 @@ final class ValidatorTest extends TestCase
         self::assertSame(['tags' => ['must have at most 2 item(s)']], $problems([
             'tags' => [['name' => 'aa'], ['name' => 'bb'], ['name' => 'cc']],
         ] + self::VALID));
-        self::assertSame(['born' => ['must be a date and time, such as 2026-01-31T12:00:00Z']], $problems(['born' => '']
-        + self::VALID));
+        self::assertSame(
+            ['born' => ['must be a date or a date and time, such as 2026-01-31 or 2026-01-31T12:00:00Z']],
+            $problems(['born' => ''] + self::VALID),
+        );
         self::assertSame(
             'name must not be null.',
             new ValidationException(['name' => ['must not be null']])->getMessage(),

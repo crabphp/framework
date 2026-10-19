@@ -92,6 +92,10 @@ final class CookieJar implements CookieJarContract
                 // Stated both ways, the number of seconds is the one that counts.
                 $cookie['expires'] = $this->now() + $maxAge;
             }
+            // Only an encrypted answer may set a cookie that is sent only encrypted, or anyone on the way could replace it.
+            if ($cookie['secure'] && strtolower($from->getScheme()) !== 'https') {
+                continue;
+            }
             // A server speaks for itself and for the hosts under it, never for another domain or for every site of an ending such as "com".
             if (
                 !$cookie['hostOnly']

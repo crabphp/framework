@@ -47,6 +47,18 @@ final class GreeterProvider implements Provider
     }
 }
 
+final readonly class CountActionConstruction
+{
+    public function __construct(
+        private int $number,
+    ) {}
+
+    public function handle(): array
+    {
+        return ['construction' => $this->number];
+    }
+}
+
 final class GreetHandler implements RequestHandlerInterface
 {
     public function __construct(
@@ -109,6 +121,65 @@ final class RecordingProvider implements WorkerProvider
 
 final class AppTest extends TestCase
 {
+    public function testARouteRetainsItsResolvedActionEvenWithATransientBinding(): void
+    {
+        $app = new App();
+        $made = 0;
+        $app->container->bind(CountActionConstruction::class, static function () use (&$made): CountActionConstruction {
+            return new CountActionConstruction(++$made);
+        });
+        $app->router->get('/count', CountActionConstruction::class);
+        foreach ([1, 2] as $request) {
+            $response = $app->handle(new Request('GET', '/count'));
+            self::assertSame('{"construction":1}', (string) $response->getBody(), 'Request ' . $request);
+        }
+        self::assertSame(1, $made);
+        $app->container->get(CountActionConstruction::class);
+        self::assertSame(2, $made, 'The binding remains transient when asked for directly.');
+    }
+
+    public function testCoreDefaultsAreVisibleToTheApplicationAndItsConsumers(): void
+    {
+        $app = new App();
+        self::assertSame(['name' => 'Crab', 'debug' => false, 'url' => null, 'path' => null], $app->config->get('app'));
+        self::assertSame(['path' => 'php://stderr', 'level' => 'debug'], $app->config->get('log'));
+        self::assertSame('tcp://127.0.0.1:8080', $app->config->get('server.address'));
+        self::assertSame(1, $app->config->get('server.workers'));
+        self::assertSame([], $app->config->get('server.with'));
+        self::assertSame(\Crab\Server::WATCHED, $app->config->get('server.watch'));
+        self::assertSame(1_048_576, $app->config->get('server.max_body'));
+        self::assertSame(30, $app->config->get('server.body_timeout'));
+        self::assertSame('storage/crab.pid', $app->config->get('server.pid'));
+        self::assertSame('storage/logs/server.log', $app->config->get('server.log'));
+        self::assertSame(
+            $app->config->get('server.address'),
+            \Crab\Commands\Serve::address($app, new \Crab\Console\Input()),
+        );
+        self::assertSame(
+            $app->config->get('server.workers'),
+            \Crab\Commands\Serve::workers($app, new \Crab\Console\Input()),
+        );
+    }
+
+    public function testCoreDefaultsPreserveExplicitNullFalseAndConfiguredValues(): void
+    {
+        $config = new Config([
+            'app' => ['name' => null, 'debug' => true, 'url' => null],
+            'log' => ['path' => 'php://memory', 'level' => 'warning'],
+            'server' => ['address' => 'tcp://127.0.0.1:28480', 'workers' => 3, 'watch' => null, 'with' => false],
+        ]);
+        $app = new App($config);
+        self::assertNull($config->get('app.name'));
+        self::assertTrue($config->get('app.debug'));
+        self::assertNull($config->get('app.url'));
+        self::assertSame(['path' => 'php://memory', 'level' => 'warning'], $config->get('log'));
+        self::assertNull($config->get('server.watch'));
+        self::assertFalse($config->get('server.with'));
+        self::assertSame([], $app->with());
+        self::assertSame('tcp://127.0.0.1:28480', \Crab\Commands\Serve::address($app, new \Crab\Console\Input()));
+        self::assertSame(3, \Crab\Commands\Serve::workers($app, new \Crab\Console\Input()));
+    }
+
     public function testApplicationHandlesRequestsAndBuildsARuntime(): void
     {
         $app = new App();
@@ -175,6 +246,81 @@ final class AppTest extends TestCase
             self::assertSame([404, ['inner', 'custom']], [$missing->getStatusCode(), $missing->getHeader('X-Trail')]);
         } finally {
             @unlink($path);
+        }
+    }
+
+    public function testDisabledOrUnrecognisedDebugEnvironmentValuesKeepFailuresPrivate(): void
+    {
+        $directory = sys_get_temp_dir() . '/crab-debug-' . bin2hex(random_bytes(6));
+        mkdir($directory . '/config', recursive: true);
+        file_put_contents($directory . '/config/app.php', "<?php\nreturn ['debug' => env('APP_DEBUG', false)];\n");
+        file_put_contents($directory . '/config/log.php', "<?php\nreturn ['path' => 'php://memory'];\n");
+        $original = getenv('APP_DEBUG');
+        try {
+            foreach (['off', 'no', 'unrecognised', 'false', '0', ''] as $value) {
+                putenv('APP_DEBUG=' . $value);
+                $app = App::configure($directory)->create();
+                $app->router->get('/fail', static fn(): never => throw new \RuntimeException('private failure detail'));
+                $response = $app->handle(new Request('GET', '/fail', ['Accept' => 'application/json']));
+                self::assertSame(500, $response->getStatusCode());
+                self::assertSame(
+                    '{"error":{"status":500,"message":"Internal Server Error"}}',
+                    (string) $response->getBody(),
+                    'APP_DEBUG=' . $value,
+                );
+            }
+        } finally {
+            putenv($original === false ? 'APP_DEBUG' : 'APP_DEBUG=' . $original);
+            unlink($directory . '/config/app.php');
+            unlink($directory . '/config/log.php');
+            rmdir($directory . '/config');
+            rmdir($directory);
+        }
+    }
+
+    public function testTheDocumentedLoginChecksAPasswordForBothKnownAndMissingUsers(): void
+    {
+        $page = file_get_contents(dirname(__DIR__) . '/docs/authentication.md');
+        preg_match('/```php\n([^`]*final readonly class AuthController[^`]*?)```/s', $page, $match);
+        self::assertArrayHasKey(1, $match);
+        $name = 'LoginExample' . bin2hex(random_bytes(6));
+        $file = sys_get_temp_dir() . '/' . $name . '.php';
+        file_put_contents($file, "<?php\n" . str_replace('class AuthController', 'class ' . $name, $match[1]));
+        $database = new \Crab\Database\Database(static fn(): \PDO => new \PDO('sqlite::memory:'), 1);
+        try {
+            require $file;
+            $database->execute('create table users (id integer primary key, email text, password text)');
+            $database->table('users')->insert(['email' => 'known@example.com', 'password' => 'stored-hash']);
+            $checked = [];
+            $passwords = $this->createStub(\Crab\Contracts\Auth\PasswordHasher::class);
+            $passwords
+                ->method('verify')
+                ->willReturnCallback(static function (#[\SensitiveParameter] string $password, string $hash) use (
+                    &$checked,
+                ): bool {
+                    $checked[] = $hash;
+                    return false;
+                });
+            $tokens = $this->createMock(\Crab\Contracts\Auth\TokenStore::class);
+            $tokens->expects(self::never())->method('issue');
+            $controller = new $name($database, $passwords, $tokens);
+            foreach (['known@example.com', 'missing@example.com'] as $email) {
+                try {
+                    $controller->login($email, 'incorrect');
+                } catch (\Crab\Http\HttpException $error) {
+                    self::assertSame(401, $error->status);
+                    self::assertSame('These credentials do not match.', $error->getMessage());
+                    continue;
+                }
+                self::fail('An incorrect login was accepted.');
+            }
+            self::assertCount(2, $checked, 'A missing user must still reach password verification.');
+            self::assertSame('stored-hash', $checked[0]);
+            self::assertSame('bcrypt', password_get_info($checked[1])['algoName']);
+            self::assertSame(12, password_get_info($checked[1])['options']['cost']);
+        } finally {
+            $database->close();
+            unlink($file);
         }
     }
 
@@ -446,6 +592,7 @@ final class AppTest extends TestCase
     public function testServeRunsTheServersNamedForItBesideHttp(): void
     {
         $app = new App(new Config([
+            'server' => ['with' => ' queue, schedule ,vite,'],
             'queue' => [
                 'store' => 'memory',
                 'supervisors' => [
@@ -490,8 +637,9 @@ final class AppTest extends TestCase
         self::assertSame([30.0, 12.0], [$app->servers->grace(['queue', 'chat']), $app->servers->grace(['chat'])]);
 
         // Nothing is named, so the server is HTTP alone.
-        self::assertSame([], $app->with());
-        self::assertInstanceOf(\Crab\Engine\Crab::class, $app->runtime('tcp://127.0.0.1:0')->group('queue:mail'));
+        $http = App::configure()->create();
+        self::assertSame([], $http->with());
+        self::assertInstanceOf(\Crab\Engine\Crab::class, $http->runtime('tcp://127.0.0.1:0')->group('queue:mail'));
 
         // Each id with whether it is on, as a configuration file reads it from the environment.
         $switched = new App(new Config([
@@ -511,7 +659,6 @@ final class AppTest extends TestCase
         self::assertSame(['queue', 'vite'], $switched->with());
 
         // Or a plain list, or ids with commas between. Switched on, they are part of the runtime.
-        $app->config->defaults('server', ['with' => ' queue, schedule ,vite,']);
         self::assertSame(['queue', 'schedule', 'vite'], $app->with());
         $runtime = $app->runtime('tcp://127.0.0.1:0');
         self::assertSame(30.0, $runtime->shutdownTimeout);

@@ -14,6 +14,7 @@ use Crab\Engine\EventLoop;
 use Crab\Http\Request;
 use Crab\Http\Stream;
 use Crab\Http\Uri;
+use Psr\Clock\ClockInterface;
 use Psr\Http\Message\RequestInterface;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\StreamInterface;
@@ -67,6 +68,7 @@ class Client implements ClientContract
      * @param float $retryDelay Seconds waited before the second try, doubled before each one after.
      * @param bool $http2 Whether HTTP/2 is used with servers that offer it over an encrypted connection.
      * @param Transport|null $transport @internal What carries the requests; the network when left out.
+     * @param ClockInterface|null $clock Reads Retry-After dates against this time; the real time when left out.
      */
     public function __construct(
         private readonly string $baseUrl = '',
@@ -82,6 +84,7 @@ class Client implements ClientContract
         float $retryDelay = 0.2,
         bool $http2 = true,
         ?Transport $transport = null,
+        private readonly ?ClockInterface $clock = null,
     ) {
         if (
             $timeout <= 0
@@ -294,7 +297,12 @@ class Client implements ClientContract
             return $wait;
         }
         // A number of seconds, or the time to come back at.
-        $asked = preg_match('/^\d+$/D', $after) === 1 ? (float) $after : (float) ((int) strtotime($after) - time());
+        if (preg_match('/^\d+$/D', $after) === 1) {
+            $asked = (float) $after;
+        } else {
+            $now = $this->clock?->now() ?? new \DateTimeImmutable();
+            $asked = (float) ((int) strtotime($after) - $now->getTimestamp());
+        }
         if ($asked > $this->timeout) {
             return null;
         }

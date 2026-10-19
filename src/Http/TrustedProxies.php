@@ -35,8 +35,13 @@ final readonly class TrustedProxies implements Middleware
         private array $proxies,
     ) {
         foreach ($proxies as $proxy) {
-            $address = explode('/', $proxy)[0];
-            if (@inet_pton($address) === false) {
+            [$address, $bits] = [...explode('/', $proxy, 2), null];
+            $packed = @inet_pton($address);
+            // A mask that is not a number of bits the address has would be read as /0: everyone.
+            if (
+                $packed === false
+                || $bits !== null && (preg_match('/^\d{1,3}$/D', $bits) !== 1 || (int) $bits > (strlen($packed) * 8))
+            ) {
                 throw new \InvalidArgumentException(
                     "\"{$proxy}\" is not an address or a range of addresses, such as 10.0.0.0/8.",
                 );

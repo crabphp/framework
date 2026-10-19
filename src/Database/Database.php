@@ -90,7 +90,12 @@ final class Database implements DatabaseContract
 
     public function release(Connection $connection): void
     {
-        if ($connection instanceof ManagedConnection && $connection->inTransaction()) {
+        if (!$connection instanceof ManagedConnection || !isset($this->connections[$connection])) {
+            throw new \LogicException(
+                'This connection was not borrowed from this database. Release it through the database that lent it.',
+            );
+        }
+        if ($connection->inTransaction()) {
             // The next borrower must not inherit it.
             $connection->close();
             $this->pool()->release($connection);
@@ -102,9 +107,7 @@ final class Database implements DatabaseContract
             $this->pool()->release($connection);
         } catch (\LogicException) {
             // Its pool was closed while it was out: there is nowhere to put it back, so it is closed.
-            if ($connection instanceof ManagedConnection) {
-                $connection->close();
-            }
+            $connection->close();
         }
     }
 

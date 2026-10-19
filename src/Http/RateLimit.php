@@ -22,8 +22,9 @@ use Psr\Http\Server\RequestHandlerInterface;
  *     Route::post('/login', Login::class)->middleware(new RateLimit(5, per: 60));
  *
  * A client is the logged-in user when the request has one, and the
- * address it comes from otherwise. The counts are kept in the cache, so
- * workers and servers that share a cache share the limit.
+ * address it comes from otherwise, an IPv6 address by its /64. The
+ * counts are kept in the cache, so workers and servers that share a
+ * cache share the limit.
  *
  * Time is cut into windows of $per seconds and each window counts from
  * zero, so across the edge of two windows a client can be let through
@@ -115,9 +116,21 @@ final readonly class RateLimit implements Middleware, UsesContainer
         if ($user instanceof Identity) {
             return 'user ' . $user->id;
         }
-        if ($request instanceof Request) {
-            return 'address ' . $request->ip();
-        }
-        return 'address ' . ($request->getServerParams()['REMOTE_ADDR'] ?? '');
+        $address = $request instanceof Request
+            ? $request->ip()
+            : (string) ($request->getServerParams()['REMOTE_ADDR'] ?? '');
+        return 'address ' . self::network($address);
+    }
+
+    /**
+     * An IPv6 client is counted by its /64: one machine is usually given
+     * that many addresses and may take a new one for every request.
+     */
+    private static function network(string $address): string
+    {
+        $packed = str_contains($address, ':') ? @inet_pton($address) : false;
+        return $packed === false || strlen($packed) !== 16
+            ? $address
+            : (string) inet_ntop(substr($packed, 0, 8) . str_repeat("\0", 8)) . '/64';
     }
 }

@@ -64,7 +64,7 @@ final class Stream implements StreamInterface
         }
     }
 
-    public function detach()
+    public function detach(): mixed
     {
         if ($this->text === null && $this->resource === null) {
             return null;
@@ -179,7 +179,7 @@ final class Stream implements StreamInterface
         return $bytes;
     }
 
-    public function getMetadata(?string $key = null)
+    public function getMetadata(?string $key = null): mixed
     {
         if ($this->text === null && $this->resource === null) {
             return $key === null ? [] : null;

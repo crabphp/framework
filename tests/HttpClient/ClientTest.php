@@ -292,41 +292,74 @@ final class ClientTest extends TestCase
 
     public function testTheWorkerGoesOnWhileRequestsWait(): void
     {
-        $server = $this->server(static fn(array $request): array => [TestServer::reply(200, $request['target']), 0.15]);
-        $http = $this->client();
         $loop = EventLoop::current();
-        $ticks = 0;
-        $timer = $loop->repeat(0.01, static function () use (&$ticks): void {
-            ++$ticks;
+        $waiting = [];
+        $arrived = 0;
+        $released = false;
+        $expired = false;
+        $progress = false;
+        $release = static function () use (&$waiting, &$released): void {
+            $released = true;
+            $pending = $waiting;
+            $waiting = [];
+            foreach ($pending as $suspension) {
+                $suspension->resume();
+            }
+        };
+        $server = $this->server(static function (array $request) use (
+            $loop,
+            $release,
+            &$waiting,
+            &$arrived,
+            &$released,
+            &$progress,
+        ): string {
+            if (!$released) {
+                $suspension = $loop->getSuspension();
+                $waiting[] = $suspension;
+                if (++$arrived === 3) {
+                    // Other loop work must run while all three replies are held.
+                    $loop->defer(static function () use ($release, &$progress): void {
+                        $progress = true;
+                        $release();
+                    });
+                }
+                $suspension->suspend();
+            }
+            return TestServer::reply(200, $request['target']);
+        });
+        $http = $this->client();
+        $timer = $loop->delay(5.0, static function () use ($release, &$released, &$expired): void {
+            if (!$released) {
+                $expired = true;
+                $release();
+            }
         });
 
-        $started = hrtime(true);
         $tasks = [];
         foreach (['/a', '/b', '/c'] as $path) {
             $tasks[] = Task::spawn($loop, static fn(): string => (string) $http->get($server->url($path))->getBody());
         }
-        $answers = array_map(static fn(Task $task): string => $task->await(), $tasks);
-        $took = (hrtime(true) - $started) / 1e9;
-        $loop->cancel($timer);
+        try {
+            $answers = array_map(static fn(Task $task): string => $task->await(), $tasks);
+        } finally {
+            $loop->cancel($timer);
+            $release();
+        }
 
         self::assertSame(['/a', '/b', '/c'], $answers);
-        self::assertLessThan(
-            0.35,
-            $took,
-            'Three requests of 0.15 seconds each were waited for together, not one after another.',
-        );
-        self::assertGreaterThan(5, $ticks, 'A timer went on firing while they waited.');
+        self::assertFalse($expired, 'Timed out waiting for three HTTP requests to arrive before releasing any reply.');
+        self::assertSame(3, $arrived);
+        self::assertTrue($progress, 'A separate loop callback released the waiting replies.');
         self::assertSame(3, $server->connections);
 
         // With one connection allowed, the second request waits for the first to give it back.
         $one = $this->client(connections: 1);
-        $started = hrtime(true);
         $tasks = [
             Task::spawn($loop, static fn(): string => (string) $one->get($server->url('/d'))->getBody()),
             Task::spawn($loop, static fn(): string => (string) $one->get($server->url('/e'))->getBody()),
         ];
         self::assertSame(['/d', '/e'], array_map(static fn(Task $task): string => $task->await(), $tasks));
-        self::assertGreaterThan(0.29, (hrtime(true) - $started) / 1e9);
         self::assertSame(4, $server->connections, 'Both went over the one connection.');
     }
 
@@ -366,8 +399,11 @@ final class ClientTest extends TestCase
                 $error->getMessage(),
             );
         }
+        $unresolved = $this->client(
+            transport: new Network(resolver: new DnsResolver(servers: [], fallback: false, hostsFile: '/dev/null')),
+        );
         try {
-            $http->get('http://no-such-host.invalid/');
+            $unresolved->get('http://no-such-host.invalid/');
             self::fail('A name that does not exist was found.');
         } catch (NetworkException $error) {
             self::assertSame(
@@ -1450,6 +1486,31 @@ final class ClientTest extends TestCase
             $config->get('http_client.redirects'),
             $config->get('http_client.base_url'),
         ]);
+    }
+
+    public function testTheProviderUsesTheApplicationClockForRetryDates(): void
+    {
+        $app = new \Crab\App(new \Crab\Config\Config([
+            'http_client' => ['timeout' => 1.0, 'retries' => 1],
+        ]));
+        $app->container->instance(
+            \Crab\Contracts\Clock\Clock::class,
+            new \Crab\Testing\FrozenClock('2001-02-03T04:05:06Z'),
+        );
+        $app->register(HttpClientProvider::class);
+        $server = $this->server(static fn(): string => TestServer::reply(429, 'slow down', [
+            'Retry-After' => 'Sat, 03 Feb 2001 04:05:08 GMT',
+        ]));
+        $http = $this->clients[] = $app->container->get(ClientContract::class);
+
+        $response = $http->retry(1, 0.0)->get($server->url());
+
+        self::assertSame(429, $response->getStatusCode());
+        self::assertCount(
+            1,
+            $server->requests,
+            'The provider passes the frozen clock, so the two-second wait cannot fit.',
+        );
     }
 
     private function server(\Closure $reply, ?string $certificate = null): TestServer

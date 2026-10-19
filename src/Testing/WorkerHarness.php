@@ -52,9 +52,13 @@ final class WorkerHarness
                     }
                 });
             })
-            ->onStop(static function (Worker $worker) use ($workerProviders, $container): void {
+            ->onStop(static function (Worker $worker) use ($workerProviders, $container, &$failure): void {
                 foreach (array_reverse($workerProviders) as $provider) {
-                    $provider->stop($worker, $container);
+                    try {
+                        $provider->stop($worker, $container);
+                    } catch (\Throwable $error) {
+                        $failure ??= $error;
+                    }
                 }
             })
             ->onFailure(static function (\Throwable $error) use (&$failure): void {

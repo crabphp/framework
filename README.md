@@ -66,7 +66,7 @@ final readonly class OrderController
 }
 ~~~
 
-An action is a closure, a class and the name of its method, or the name of a class with `handle()`. A class is made by the container, once per worker, and extends nothing.
+An action is a closure, a class and the name of its method, or the name of a class with `handle()`. A class extends nothing; its route retains the callable resolved from the container for the worker’s life, even with a transient binding.
 
 ### Groups
 
@@ -581,7 +581,7 @@ Anywhere after the application is created, `config('log.level')` reads that valu
 
 | Key | Meaning | Default |
 | --- | --- | --- |
-| `app.name` | The application's name, shown above the command list | none |
+| `app.name` | The application's name, shown above the command list | `Crab` |
 | `app.debug` | Show failure details to clients | `false` |
 | `app.url` | Where the application is reached, the start of each URL `Urls` writes | none |
 | `log.path` | Where the default logger writes | standard error |
@@ -865,7 +865,7 @@ use Crab\Contracts\Schedule\Schedule;
 
 // In a provider's register():
 $schedule = $container->get(Schedule::class);
-$schedule->command('reports:send', '--month=last')->monthly(1, '06:00');
+$schedule->command('report:send', '--month=last')->monthly(1, '06:00');
 $schedule->job(PruneTokens::class, olderThanDays: 30)->daily('03:00');
 $schedule->call(Heartbeat::class)->everyMinutes(5);
 $schedule->call(PollGateway::class)->everySeconds(0.5);
@@ -909,9 +909,9 @@ php cua stop                 # finish the requests in hand, then stop
 
 - **`serve --daemon`** (or `-d`) returns when the server accepts connections, and fails with the reason when it cannot start, so a deploy script can rely on its exit status. The server leaves the terminal behind: closing it does not stop the server.
 - **`reload`** is how new code goes live. The server starts a new process, with the code and configuration as they are now, on the socket it already listens on. When every worker of the new process accepts connections, the old process finishes the requests it has and stops. If the new one cannot start, because of a syntax error or a service that cannot be made, the old one goes on serving and `reload` fails, showing what went wrong first.
-- **`stop`** waits up to `--timeout=15` seconds for requests to finish. `--force` ends a server that has not stopped by then.
+- **`stop`** uses the running server’s recorded stop allowance; an explicit `--timeout` overrides that wait. `--force` cuts requests and ends the server. See [Finishing requests on stop](docs/deployment.md#finishing-requests-on-stop).
 - **Files.** The process id is in `server.pid` (`storage/crab.pid`) and everything the server prints goes to `server.log` (`storage/logs/server.log`); both are settings. The log is opened for appending, so it can be rotated by copying and truncating.
-- **A deploy** is then: put the new code in place, run the migrations, `php cua reload`.
+- **A deploy** installs dependencies and runs migrations successfully before `php cua reload`. For HTTP, queue and scheduler under one daemon, follow [A deploy, start to finish](docs/deployment.md#a-deploy-start-to-finish), including the production worker count and queue/schedule switches.
 
 How it holds together:
 
@@ -922,7 +922,7 @@ keeper            holds the listening socket; its process id is the server's and
    └─ worker
 ~~~
 
-- **No connection is refused or cut short by a reload.** The old and the new server process accept from the same socket, so a connection always has someone to take it, and a process that is stopping still answers a request that was already on its way. Measured on Linux and macOS with a client opening about 13,000 new connections a second through ten reloads in a row: none of some 100,000 requests failed.
+- **New connections remain accepted during reload.** The old and new server processes accept from the same socket. In-flight requests have the old worker’s `server.drain` allowance to finish; remaining connections are cut at the deadline. See [Finishing requests on stop](docs/deployment.md#finishing-requests-on-stop).
 - **A server process that dies is started again** by the keeper, on the socket that never closed, so connections made meanwhile wait and are served. Six deaths within a minute and the keeper gives up and stops.
 - **The keeper runs the code it was started with** until a `restart`. It does very little, so that rarely matters; restart after upgrading the framework itself.
 - **The new process starts in the directory `reload` was run from**, with the script it was run with, so deploying into a new folder and reloading from there works. `storage/` must then be shared between the folders, since the process id file is how `reload` finds the server.
@@ -956,7 +956,7 @@ Providers add theirs:
 | `QueueProvider` | `queue:work`, `queue:failed`, `queue:retry`, `queue:forget`, `queue:install` |
 | `ScheduleProvider` | `schedule:work`, `schedule:list` |
 
-Add your own with `Command::add('mail:send', SendMail::class)`, which is `$app->console->add()` under a shorter name. A command is a class implementing `Contracts\Console\Command` (`description()` and `handle(Input $input, Output $output): int`), made by the container when it runs, or a closure taking the input and output. `Input` gives positional arguments and `--name=value` or `--flag` options. A provider adds commands through the container's `Contracts\Console\Console` entry.
+Add your own with `Command::add('mail:send', SendMail::class)`, which is `$app->console->add()` under a shorter name. A command is a class implementing `Contracts\Console\Command` (`description()` and `handle(Input $input, Output $output): int`), made by the container when its description or execution is first needed, or a closure taking the input and output. `Input` gives positional arguments and `--name=value` or `--flag` options. A provider adds commands through the container's `Contracts\Console\Console` entry.
 
 ## Services, providers and middleware
 

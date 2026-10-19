@@ -15,6 +15,7 @@ use Crab\HttpClient\Hpack;
 use Crab\HttpClient\Network;
 use Crab\HttpClient\NetworkException;
 use Crab\HttpClient\TimedOut;
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 use Psr\Http\Message\RequestInterface;
 use Psr\Http\Message\StreamInterface;
@@ -97,12 +98,12 @@ final class Http2Test extends TestCase
             $answers->decode((string) hex2bin('4883640effc1c0bf')),
         );
 
-        // What is written is read back the same, whatever the lengths.
+        // What is written is read back the same, including long values within the header-list limit.
         $fields = [
             [':method',       'PATCH'],
             [':path',         '/a?b=c'],
             ['authorization', 'Bearer secret'],
-            ['x-long',        str_repeat('v', 70_000)],
+            ['x-long',        str_repeat('v', 60_000)],
             ['x-empty',       ''],
             ['accept',        '*/*'],
         ];
@@ -112,14 +113,34 @@ final class Http2Test extends TestCase
             Hpack::encode([[':method', 'GET'], [':scheme', 'https'], [':path', '/']]),
             'A field the connection knows whole is one byte.',
         );
+    }
 
-        foreach (['ff', '40', '7f', 'be', '3fe11f', '4082ffff'] as $broken) {
-            try {
-                new Hpack()->decode((string) hex2bin($broken));
-                self::fail("{$broken} was read as a header block.");
-            } catch (\RuntimeException) {
-            }
-        }
+    /**
+     * @return array<string, array{string}>
+     */
+    public static function malformedHeaderBlocks(): array
+    {
+        return [
+            'truncated index' => ['ff'],
+            'missing name' => ['40'],
+            'truncated name index' => ['7f'],
+            'missing dynamic entry' => ['be'],
+            'table too large' => ['3fe21f'],
+            'invalid Huffman code' => ['4082ffff'],
+        ];
+    }
+
+    #[DataProvider('malformedHeaderBlocks')]
+    public function testAMalformedHeaderBlockIsRefused(string $hex): void
+    {
+        $this->expectException(\RuntimeException::class);
+
+        new Hpack()->decode((string) hex2bin($hex));
+    }
+
+    public function testAHeaderTableMayReachTheAdvertisedLimit(): void
+    {
+        self::assertSame([], new Hpack()->decode((string) hex2bin('3fe11f')));
     }
 
     public function testRequestsShareOneConnectionAndRunAtOnce(): void
@@ -153,22 +174,23 @@ final class Http2Test extends TestCase
             $posted['session'],
         ]);
 
-        // Six requests of 0.2 seconds each, to a server that takes three at a time, on the one connection.
+        // Each batch holds its replies until all three requests have arrived.
         $loop = EventLoop::current();
-        $started = hrtime(true);
         $tasks = [];
         for ($i = 0; $i < 6; ++$i) {
-            $tasks[] = Task::spawn($loop, fn(): array => $http->get($this->url . '/slow', query: ['n' => $i])->json());
+            $tasks[] = Task::spawn($loop, fn(): array => $http->get($this->url . '/batch', query: ['n' => $i])->json());
         }
         $answers = array_map(static fn(Task $task): array => $task->await(), $tasks);
-        $took = (hrtime(true) - $started) / 1e9;
         self::assertSame(
-            ['/slow?n=0', '/slow?n=1', '/slow?n=2', '/slow?n=3', '/slow?n=4', '/slow?n=5'],
+            ['/batch?n=0', '/batch?n=1', '/batch?n=2', '/batch?n=3', '/batch?n=4', '/batch?n=5'],
             array_column($answers, 'path'),
         );
         self::assertSame([1], array_values(array_unique(array_column($answers, 'session'))));
-        self::assertGreaterThan(0.35, $took, 'No more at once than the server allows.');
-        self::assertLessThan(0.9, $took, 'And not one after another.');
+        self::assertSame(
+            [1, 1, 1, 2, 2, 2],
+            array_column($answers, 'batch'),
+            'Three requests overlap in each batch on the same session.',
+        );
 
         $jar = new CookieJar();
         $http->cookies($jar)->get($this->url . '/echo');

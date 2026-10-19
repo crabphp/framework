@@ -84,6 +84,8 @@ $container->singleton(Mailer::class, static fn (): Mailer => new SmtpMailer(
 ));
 ```
 
+The core and providers declare their defaults before your application runs, so `config()` exposes the same values their consumers use. Values you supply, including explicit `null` and `false`, take precedence.
+
 Configuration is fixed once the application is defined. Do not change it at run time: every worker has its own copy, and a change in one is seen by no other.
 
 ## Describing the application
@@ -168,7 +170,7 @@ It says that this worker answers, and asks nothing of the database. That is deli
 
 | Setting | Default | |
 | --- | --- | --- |
-| `app.name` | none | Shown above the command list and when the server starts |
+| `app.name` | `Crab` | Shown above the command list and when the server starts |
 | `app.debug` | `false` | Show a failure's details to the client. Never in production. |
 | `app.url` | none | Where the application is reached, such as `https://api.example.com`; the start of every URL `Urls` writes. See [Named routes](routing.md#named-routes) |
 | `auth.ticket_ttl` | `30` | Positive whole seconds a single-use browser socket ticket lives; see [Authentication](authentication.md#browser-socket-tickets) |

@@ -43,7 +43,7 @@ public function register(Container $container): void
 {
     $schedule = $container->get(Schedule::class);
 
-    $schedule->command('reports:send', '--month=last')->monthly(1, '06:00');
+    $schedule->command('report:send', '--month=last')->monthly(1, '06:00');
     $schedule->job(PruneTokens::class, olderThanDays: 30)->daily('03:00');
     $schedule->call(RefreshRates::class)->everyMinutes(5);
 }
@@ -60,7 +60,7 @@ shows every task, its cron expression or interval, and when it runs next. Run it
 `command()` runs one of your [console commands](console.md), with its words:
 
 ```php
-$schedule->command('users:prune', '--days=30')->daily('03:00');
+$schedule->command('user:prune', '--days=30')->daily('03:00');
 ```
 
 An exit status other than `0` is logged as a failure. Use a command for work you also want to run by hand.
@@ -161,7 +161,9 @@ php cua schedule:work
 
 To have `php cua serve` run the scheduler itself, in a worker of its own beside the HTTP workers, switch it on in `server.with`, with `SERVER_SCHEDULE=true` in `.env`; see [Deployment](deployment.md#the-other-processes).
 
-However it is run, keep exactly one wherever the application is deployed. With systemd:
+On one machine, set `SERVER_SCHEDULE=true` and run `php cua serve --daemon`; `php cua reload` updates the scheduler with the HTTP and queue workers. Keep one scheduler wherever the application is deployed, unless its tasks use `onOneServer()`.
+
+If you run the scheduler separately, leave that switch off on the HTTP server. For example, with systemd:
 
 ```text
 [Service]
@@ -172,7 +174,7 @@ Restart=always
 `--single` runs it in one process, without the `pcntl` and `posix` extensions.
 
 > [!WARNING]
-> The scheduler runs the code it started with. After a deploy, stop it and start it again.
+> The scheduler runs the code it started with. Use `php cua reload` when `serve` manages it; otherwise stop and restart the separate `schedule:work` process after a deploy.
 
 A minute during which the scheduler was not running is not made up for. A task due at 03:00 does not run when the scheduler starts at 03:01. For work that must not be missed, have the task check what is outstanding instead of assuming it ran yesterday.
 

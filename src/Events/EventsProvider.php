@@ -23,8 +23,8 @@ final class EventsProvider implements Provider
         // Made now, in the parent: listeners are part of what the application is defined as.
         $dispatcher = new Dispatcher($container);
         $container->instance(DispatcherContract::class, $dispatcher);
-        $container->instance(Dispatcher::class, $dispatcher);
-        $container->instance(EventDispatcherInterface::class, $dispatcher);
-        $container->instance(ListenerProviderInterface::class, $dispatcher);
+        $container->singleton(Dispatcher::class, DispatcherContract::class);
+        $container->singleton(EventDispatcherInterface::class, DispatcherContract::class);
+        $container->singleton(ListenerProviderInterface::class, DispatcherContract::class);
     }
 }

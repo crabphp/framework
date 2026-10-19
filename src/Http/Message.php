@@ -72,7 +72,7 @@ abstract class Message implements MessageInterface
         return implode(', ', $this->getHeader($name));
     }
 
-    public function withHeader(string $name, $value): static
+    public function withHeader(string $name, mixed $value): static
     {
         $this->load();
         $new = clone $this;
@@ -80,7 +80,7 @@ abstract class Message implements MessageInterface
         return $new;
     }
 
-    public function withAddedHeader(string $name, $value): static
+    public function withAddedHeader(string $name, mixed $value): static
     {
         $this->load();
         $new = clone $this;

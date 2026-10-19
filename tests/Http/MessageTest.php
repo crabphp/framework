@@ -135,17 +135,27 @@ final class MessageTest extends TestCase
         self::assertFalse($stream->isWritable());
         self::assertSame(filesize(__FILE__), $stream->getSize());
         self::assertStringStartsWith('<?php', (string) $stream);
-        try {
-            $stream->write('x');
-            self::fail('A read-only stream accepted a write.');
-        } catch (\RuntimeException) {
-        }
-        try {
-            $factory->createStreamFromFile(__DIR__ . '/missing');
-            self::fail('A missing file was opened.');
-        } catch (\RuntimeException) {
-        }
+    }
+
+    public function testAReadOnlyStreamRefusesWrites(): void
+    {
+        $stream = new Factory()->createStreamFromFile(__FILE__);
+        $this->expectException(\RuntimeException::class);
+
+        $stream->write('x');
+    }
+
+    public function testOpeningAMissingStreamReportsAnError(): void
+    {
+        $this->expectException(\RuntimeException::class);
+
+        new Factory()->createStreamFromFile(__DIR__ . '/missing');
+    }
+
+    public function testAStreamNeedsTextOrAResource(): void
+    {
         $this->expectException(\InvalidArgumentException::class);
+
         new Stream(42);
     }
 

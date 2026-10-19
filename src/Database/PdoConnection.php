@@ -319,7 +319,7 @@ final class PdoConnection implements ManagedConnection
             try {
                 return $operation();
             } catch (\PDOException $error) {
-                unset($this->statements[$sql]);
+                unset($this->statements[$sql], $this->takes[$sql]);
                 $message = $error->getMessage();
                 $failure = new DatabaseException($message, $sql, $error);
                 if (($error->errorInfo[1] ?? null) === 1213 && $this->driver === 'mysql') {

@@ -33,6 +33,9 @@ final readonly class MakeMigration implements Command
 
     public function handle(Input $input, Output $output): int
     {
+        if ($input->option('database') === true) {
+            throw new \InvalidArgumentException('--database needs a value; use --database=value.');
+        }
         $name = implode(' ', $input->arguments());
         if ($name === '') {
             $output->error('Give the migration a name: make:migration create_users_table');

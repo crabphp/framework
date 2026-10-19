@@ -75,6 +75,9 @@ final class DatabaseProvider implements WorkerProvider
             DatabaseManager::class,
         )->migrator());
         $container->singleton(Migrators::class, DatabaseManager::class);
+        $container->singleton(Database::class, DatabaseContract::class);
+        $container->singleton(Schema::class, SchemaContract::class);
+        $container->singleton(Migrator::class, MigratorContract::class);
         if ($container->has(Console::class)) {
             $console = $container->get(Console::class);
             $console->add('migrate', Migrate::class);

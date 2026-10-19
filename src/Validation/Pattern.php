@@ -30,8 +30,11 @@ final readonly class Pattern implements Rule
         return is_string($value) && preg_match($this->delimited(), $value) === 1 ? null : $this->message;
     }
 
+    /**
+     * With D, "$" means the end of the text, not before a final line break as well.
+     */
     private function delimited(): string
     {
-        return '~' . str_replace('~', '\~', $this->expression) . '~u';
+        return '~' . str_replace('~', '\~', $this->expression) . '~uD';
     }
 }

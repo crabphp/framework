@@ -12,6 +12,8 @@ const { NGHTTP2_REFUSED_STREAM, NGHTTP2_INTERNAL_ERROR } = http2.constants;
 let sessions = 0;
 const seen = {};
 const received = {};
+let batch = [];
+let batchNumber = 0;
 server.on('session', (session) => {
     session.number = ++sessions;
 });
@@ -51,6 +53,19 @@ server.on('stream', (stream, headers) => {
             break;
         case '/slow':
             setTimeout(() => { if (!stream.destroyed) reply(200, echo(), { 'content-type': 'application/json' }); }, 200);
+            break;
+        case '/batch':
+            batch.push({ reply, echo });
+            if (batch.length === 3) {
+                const ready = batch;
+                const number = ++batchNumber;
+                batch = [];
+                setImmediate(() => {
+                    for (const pending of ready) {
+                        pending.reply(200, JSON.stringify({ ...JSON.parse(pending.echo()), batch: number }), { 'content-type': 'application/json' });
+                    }
+                });
+            }
             break;
         case '/big': {
             stream.respond({ ':status': 200, 'content-type': 'application/octet-stream' });

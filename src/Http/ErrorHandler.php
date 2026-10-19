@@ -36,7 +36,8 @@ final readonly class ErrorHandler implements Middleware
             if ($status >= 500) {
                 $context = [
                     'method' => $request->getMethod(),
-                    'target' => $request->getRequestTarget(),
+                    // As AccessLog: without the query string, which may hold a token or a ticket.
+                    'path' => $request->getUri()->getPath(),
                     'message' => $error->getMessage(),
                     'exception' => $error,
                 ];
@@ -44,7 +45,7 @@ final readonly class ErrorHandler implements Middleware
                 if ($id !== null) {
                     $context['request_id'] = $id;
                 }
-                $this->logger->error('{method} {target} failed: {message}', $context);
+                $this->logger->error('{method} {path} failed: {message}', $context);
             }
             $shown = $error instanceof HttpException || $this->debug;
             return ErrorResponse::make(

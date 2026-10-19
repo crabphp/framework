@@ -4,7 +4,11 @@ declare(strict_types=1);
 
 namespace Crab\Tests\Log;
 
+use Crab\App;
+use Crab\Config\Config;
+use Crab\Contracts\Clock\Clock;
 use Crab\Log\Logger;
+use Crab\Testing\FrozenClock;
 use PHPUnit\Framework\TestCase;
 use Psr\Log\InvalidArgumentException;
 use Psr\Log\LoggerInterface;
@@ -12,6 +16,82 @@ use Psr\Log\LogLevel;
 
 final class LoggerTest extends TestCase
 {
+    public function testEachRecordUsesTheClockGivenToTheLogger(): void
+    {
+        $stream = fopen('php://memory', 'w+b');
+        $clock = new FrozenClock('2001-02-03T04:05:06.123456+07:00');
+        $logger = new Logger($stream, clock: $clock);
+
+        $logger->info('first');
+        $clock->advance('+2 seconds');
+        $logger->warning('second');
+
+        self::assertSame(
+            "2001-02-03T04:05:06.123+07:00 INFO first\n2001-02-03T04:05:08.123+07:00 WARNING second\n",
+            self::contents($stream),
+        );
+        fclose($stream);
+    }
+
+    public function testTheApplicationPassesItsClockToTheLogger(): void
+    {
+        $path = sys_get_temp_dir() . '/crab-clock-log-' . bin2hex(random_bytes(6)) . '.log';
+        try {
+            $app = new App(new Config(['log' => ['path' => $path]]));
+            $clock = new FrozenClock('2001-02-03T04:05:06.123456+07:00');
+            $app->container->instance(Clock::class, $clock);
+
+            $app->container->get(LoggerInterface::class)->info('application clock');
+
+            self::assertSame("2001-02-03T04:05:06.123+07:00 INFO application clock\n", file_get_contents($path));
+        } finally {
+            @unlink($path);
+        }
+    }
+
+    public function testTheDrainFallbackLoggerUsesTheApplicationClock(): void
+    {
+        // Capture the fallback's stderr without starting a listening server.
+        $code = <<<'PHP'
+            require $argv[1];
+            $app = new Crab\App();
+            $app->container->instance(Crab\Contracts\Clock\Clock::class, new Crab\Testing\FrozenClock('2001-02-03T04:05:06Z'));
+            $app->container->instance(Crab\Contracts\Log\Logger::class, new class extends Psr\Log\AbstractLogger implements Crab\Contracts\Log\Logger {
+                public function log(mixed $level, string|Stringable $message, array $context = []): void
+                {
+                    throw new RuntimeException('log unavailable');
+                }
+            });
+            Crab\Engine\FailureReporter::handleWith(static fn(): bool => true);
+            $runtime = $app->runtime();
+            $group = new ReflectionProperty($runtime, 'groups')->getValue($runtime)['http'];
+            $worker = new Crab\Engine\Process\Worker(Crab\Engine\EventLoop::current(), $group, 0, ['tcp' => [], 'udp' => []], 5.0);
+            // Exercise the registered stop callback with one request cut at the drain deadline.
+            new ReflectionProperty($worker, 'cutConnections')->setValue($worker, 1);
+            foreach ($group->stopCallbacks() as $stop) {
+                $stop($worker);
+            }
+            PHP;
+        $process = proc_open(
+            [PHP_BINARY, '-r', $code, dirname(__DIR__, 2) . '/vendor/autoload.php'],
+            [1 => ['pipe', 'w'], 2 => ['pipe', 'w']],
+            $pipes,
+        );
+        self::assertIsResource($process);
+        $output = stream_get_contents($pipes[1]);
+        $errors = stream_get_contents($pipes[2]);
+        fclose($pipes[1]);
+        fclose($pipes[2]);
+        $status = proc_close($process);
+
+        self::assertSame(0, $status, $errors);
+        self::assertSame('', $output);
+        self::assertMatchesRegularExpression(
+            '/^2001-02-03T04:05:06\.000\+00:00 WARNING HTTP worker \d+ reached server\.drain; cut 1 connections\.\n$/',
+            $errors,
+        );
+    }
+
     public function testWritesOneLinePerRecord(): void
     {
         $stream = fopen('php://memory', 'w+b');

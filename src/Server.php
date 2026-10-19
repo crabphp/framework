@@ -42,7 +42,7 @@ final class Server
 
     public function pidFile(): PidFile
     {
-        return new PidFile($this->path((string) $this->app->config->get('server.pid', 'storage/crab.pid')));
+        return new PidFile($this->path((string) $this->app->config->get('server.pid')));
     }
 
     /**
@@ -50,7 +50,7 @@ final class Server
      */
     public function logFile(): string
     {
-        return $this->path((string) $this->app->config->get('server.log', 'storage/logs/server.log'));
+        return $this->path((string) $this->app->config->get('server.log'));
     }
 
     /**

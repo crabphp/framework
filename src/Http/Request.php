@@ -257,7 +257,7 @@ final class Request extends Message implements RequestContract
         return $new;
     }
 
-    public function getParsedBody()
+    public function getParsedBody(): array|object|null
     {
         if (!$this->parsedKnown) {
             $type = strtolower($this->getHeaderLine('content-type'));
@@ -273,7 +273,7 @@ final class Request extends Message implements RequestContract
         return $this->parsed;
     }
 
-    public function withParsedBody($data): static
+    public function withParsedBody(mixed $data): static
     {
         if ($data !== null && !is_array($data) && !is_object($data)) {
             throw new \InvalidArgumentException('A parsed body must be an array, an object or null.');
@@ -289,12 +289,12 @@ final class Request extends Message implements RequestContract
         return $this->attributes;
     }
 
-    public function getAttribute(string $name, $default = null)
+    public function getAttribute(string $name, mixed $default = null): mixed
     {
         return array_key_exists($name, $this->attributes) ? $this->attributes[$name] : $default;
     }
 
-    public function withAttribute(string $name, $value): static
+    public function withAttribute(string $name, mixed $value): static
     {
         $new = clone $this;
         $new->attributes[$name] = $value;

@@ -50,6 +50,10 @@ final class DnsResolver
      */
     private array $kept = [];
     /**
+     * The next expiry sweep, on the same monotonic clock as cached answers.
+     */
+    private float $pruneAt = 0.0;
+    /**
      * Callers waiting for a name another caller is already asking for; each takes (?list<string>, ?Throwable).
      *
      * @var array<string, list<\Closure>>
@@ -107,6 +111,15 @@ final class DnsResolver
             return $this->hosts[$name];
         }
         $now = hrtime(true) / 1_000_000_000;
+        if ($now >= $this->pruneAt) {
+            foreach ($this->kept as $key => $entry) {
+                if ($entry[1] > $now) {
+                    continue;
+                }
+                unset($this->kept[$key]);
+            }
+            $this->pruneAt = $now + self::KEEP_AT_LEAST;
+        }
         if (isset($this->kept[$name]) && $this->kept[$name][1] > $now) {
             return $this->kept[$name][0];
         }
@@ -138,6 +151,7 @@ final class DnsResolver
     public function forget(): void
     {
         $this->kept = [];
+        $this->pruneAt = 0.0;
         $this->hosts = null;
     }
 

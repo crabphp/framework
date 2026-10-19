@@ -345,7 +345,8 @@ final class AppBuilderTest extends TestCase
 
         $bare = sys_get_temp_dir() . '/crab-bare-' . bin2hex(random_bytes(4));
         mkdir($bare);
-        self::assertNull(
+        self::assertSame(
+            'Crab',
             App::configure($bare)->create()->config->get('app.name'),
             'A base path with no .env and no config folder is still an application.',
         );
@@ -540,7 +541,7 @@ final class AppBuilderTest extends TestCase
     {
         $app = App::configure()->create();
         self::assertSame(404, $app->handle(new Request('GET', '/'))->getStatusCode());
-        self::assertNull($app->config->get('app.name'));
+        self::assertSame('Crab', $app->config->get('app.name'));
 
         $withoutEnvFile = App::configure()
             ->withEnv($this->directory . '/absent.env')

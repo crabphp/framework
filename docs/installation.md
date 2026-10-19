@@ -46,21 +46,21 @@ Routes are declared in `routes/web.php`:
 
 ```php
 // routes/web.php
-use App\Actions\Hello;
+use App\Actions\SayHello;
 use Crab\Route;
 
 Route::get('/', static fn (): string => "Hello from Crab\n");
 
-Route::get('/hello/{name}', Hello::class);
+Route::get('/hello/{name}', SayHello::class);
 ```
 
 An action is a closure or a class. The class takes the route's parameter by name and returns data, which is sent as JSON:
 
 ```php
-// app/Actions/Hello.php
+// app/Actions/SayHello.php
 namespace App\Actions;
 
-final class Hello
+final class SayHello
 {
     /**
      * @return array{hello: string}

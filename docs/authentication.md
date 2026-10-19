@@ -141,7 +141,8 @@ final readonly class AuthController
     public function login(#[Email] string $email, string $password): array
     {
         $row = $this->db->table('users')->where('email', $email)->first();
-        if ($row === null || !$this->passwords->verify($password, $row['password'])) {
+        $hash = $row['password'] ?? '$2y$12$.....................................................';
+        if (!$this->passwords->verify($password, $hash) || $row === null) {
             throw new HttpException(401, 'These credentials do not match.');
         }
 
@@ -149,6 +150,8 @@ final readonly class AuthController
     }
 }
 ```
+
+The fixed dummy hash makes a missing account perform password verification too. Keep its algorithm and cost aligned with stored passwords; this example uses PHP 8.4's default bcrypt cost of 12. Do not generate the dummy hash during login.
 
 The client then sends the token with every request:
 

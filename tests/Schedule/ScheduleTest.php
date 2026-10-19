@@ -560,6 +560,46 @@ final class ScheduleTest extends TestCase
         self::assertStringContainsString('CacheProvider', $read());
     }
 
+    public function testTheSchedulerUsesAReplacementScheduleFromTheContainer(): void
+    {
+        $container = new Container();
+        $container->instance(\Crab\Contracts\Config\Config::class, new Config());
+        new ScheduleProvider()->register($container);
+        $container->get(Schedule::class);
+        $replacement = new Schedule();
+        $ran = false;
+        $task = $replacement->call(static function () use (&$ran): void {
+            $ran = true;
+        })->name('replacement');
+
+        $container->instance(ScheduleContract::class, $replacement);
+        $scheduler = $container->get(Scheduler::class);
+        $minute = new \DateTimeImmutable('2026-01-01 12:00:00');
+
+        self::assertSame([$task], $scheduler->due($minute));
+        self::assertSame($replacement, $container->get(Schedule::class));
+        self::assertTrue($scheduler->run($task, $minute));
+        self::assertTrue($ran);
+    }
+
+    public function testTheSchedulerReadsTasksThroughTheScheduleContract(): void
+    {
+        $container = new Container();
+        $container->instance(\Crab\Contracts\Config\Config::class, new Config());
+        new ScheduleProvider()->register($container);
+        $task = new Schedule()->call(Beat::class);
+        $replacement = $this->createStub(ScheduleContract::class);
+        $replacement->method('tasks')->willReturn([$task]);
+        $container->instance(ScheduleContract::class, $replacement);
+
+        $scheduler = $container->get(Scheduler::class);
+        $minute = new \DateTimeImmutable('2026-01-01 12:00:00');
+
+        self::assertSame([$task], $scheduler->due($minute));
+        self::assertTrue($scheduler->run($task, $minute));
+        self::assertSame(1, Beat::$count);
+    }
+
     /**
      * @return array{Output, \Closure(): string} An output, and what has been written to it.
      */

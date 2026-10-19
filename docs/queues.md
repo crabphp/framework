@@ -219,7 +219,7 @@ While you develop, start it in a second terminal when you are working on jobs. T
 | `--stop-when-empty` | Run jobs due now, print how many ran, and return when none are due; future delayed jobs and retries remain stored |
 
 > [!WARNING]
-> A worker runs the code it started with. After a deploy, stop `queue:work` and start it again, or it goes on running the old jobs.
+> A worker runs the code it started with. When `serve` manages it, `php cua reload` replaces it after deployment. A separately started `queue:work` must be stopped and started again.
 
 ### Workers and concurrency
 
@@ -269,7 +269,9 @@ A queue no supervisor names is run by nobody, so list every queue you push to. T
 
 ### In production
 
-Keep `queue:work` running with whatever keeps your other processes running. With systemd:
+On one machine, set `SERVER_QUEUE=true` and run `php cua serve --daemon`; `php cua reload` updates HTTP and queue workers together. See [Deployment](deployment.md#a-deploy-start-to-finish).
+
+When queue workers run separately, leave that switch off on the HTTP server and keep `queue:work` running with a process manager. For example, with systemd:
 
 ```text
 [Service]

@@ -30,7 +30,11 @@ final readonly class Length implements Rule
             $verb = 'have';
         } else {
             // Characters, not bytes, without needing the mbstring extension.
-            $length = (int) preg_match_all('/./su', (string) $value);
+            $length = preg_match_all('/./su', (string) $value);
+            if ($length === false) {
+                // Not text at all: it has no length in characters to compare.
+                return 'must be valid UTF-8 text';
+            }
             $unit = 'character(s)';
             $verb = 'be';
         }

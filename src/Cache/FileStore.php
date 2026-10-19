@@ -12,6 +12,11 @@ use Crab\Contracts\Cache\Store;
  * written. A file holds the time it expires on its first line and the
  * entry after it; it is named after a hash of the key, so any key is a
  * safe file name.
+ *
+ * Folders and entries can be read and written by the server's user only,
+ * and a link, whether at an entry, its folder or the directory itself,
+ * is never followed: what Cache reads back it unserializes, so no one
+ * else may put a file where it reads.
  */
 final readonly class FileStore implements Store
 {
@@ -25,7 +30,12 @@ final readonly class FileStore implements Store
 
     public function get(string $key, int $now): ?string
     {
-        $handle = @fopen($this->file($key), 'r');
+        $file = $this->file($key);
+        clearstatcache(true, $file);
+        if (is_link($file) || is_link(dirname($file))) {
+            return null;
+        }
+        $handle = @fopen($file, 'r');
         if ($handle === false) {
             return null;
         }
@@ -150,7 +160,7 @@ final readonly class FileStore implements Store
     public function prune(int $now): int
     {
         $removed = 0;
-        foreach (glob($this->directory . '/[0-9a-f][0-9a-f]', GLOB_ONLYDIR) ?: [] as $folder) {
+        foreach (glob($this->directory() . '/[0-9a-f][0-9a-f]', GLOB_ONLYDIR) ?: [] as $folder) {
             if (is_link($folder)) {
                 continue;
             }
@@ -188,7 +198,7 @@ final readonly class FileStore implements Store
     public function clear(): void
     {
         // Only what this store wrote: two-letter folders of hash-named files.
-        foreach (glob($this->directory . '/[0-9a-f][0-9a-f]', GLOB_ONLYDIR) ?: [] as $folder) {
+        foreach (glob($this->directory() . '/[0-9a-f][0-9a-f]', GLOB_ONLYDIR) ?: [] as $folder) {
             if (is_link($folder)) {
                 continue;
             }
@@ -211,7 +221,22 @@ final readonly class FileStore implements Store
     private function file(string $key): string
     {
         $hash = sha1($key);
-        return $this->directory . '/' . substr($hash, 0, 2) . '/' . $hash;
+        return $this->directory() . '/' . substr($hash, 0, 2) . '/' . $hash;
+    }
+
+    /**
+     * The directory, refused when it is a link: its entries would be
+     * wherever the link points.
+     */
+    private function directory(): string
+    {
+        clearstatcache(true, $this->directory);
+        if (is_link($this->directory)) {
+            throw new \RuntimeException(
+                "The cache directory {$this->directory} is a link. Set cache.directory to the folder it points to.",
+            );
+        }
+        return $this->directory;
     }
 
     /**
@@ -253,7 +278,12 @@ final readonly class FileStore implements Store
             flock($handle, LOCK_EX);
             clearstatcache(true, $file);
             // Deleted or cleared while this waited: the lock is on a file no one else will open. Start again.
-            if ((fstat($handle)['ino'] ?? null) === (@lstat($file)['ino'] ?? false) && !is_link(dirname($file))) {
+            $stat = fstat($handle);
+            if (($stat['ino'] ?? null) === (@lstat($file)['ino'] ?? false) && !is_link(dirname($file))) {
+                // A new file has the umask's permissions; an entry is the server's alone.
+                if ($create && ($stat['mode'] & 0o077) !== 0) {
+                    @chmod($file, 0o600);
+                }
                 return $handle;
             }
             flock($handle, LOCK_UN);
@@ -331,7 +361,7 @@ final readonly class FileStore implements Store
     private function prepare(string $file): void
     {
         $folder = dirname($file);
-        if (!is_dir($folder) && !@mkdir($folder, 0o775, true) && !is_dir($folder)) {
+        if (!is_dir($folder) && !@mkdir($folder, 0o700, true) && !is_dir($folder)) {
             throw new \RuntimeException(
                 "The cache directory {$folder} cannot be created. Check that {$this->directory} can be written to.",
             );

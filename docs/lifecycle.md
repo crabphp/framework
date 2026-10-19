@@ -40,7 +40,7 @@ A worker serves requests that **overlap**. While one waits for another API to an
 
 ### Services hold no request state
 
-The container keeps autowired classes and singleton bindings per worker; `bind()` makes a new value on each `get()`. A property in a kept service that belongs to one request will be read by another.
+The container keeps autowired classes and singleton bindings per worker; `bind()` makes a new value on each `get()`. A route keeps its resolved action callable for the worker’s life, including an action obtained from a transient binding; it does not ask the container again for each request. A property in a kept service that belongs to one request will be read by another.
 
 ```php
 use App\User;

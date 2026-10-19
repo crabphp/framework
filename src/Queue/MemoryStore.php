@@ -22,6 +22,12 @@ final class MemoryStore implements Store
 
     public function push(string $queue, string $job, array $data, int $availableAt, int $now): int|string
     {
+        // Match persisted jobs: reject invalid JSON and detach references to the producer's data.
+        $payload = json_encode(
+            $data,
+            JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_PRESERVE_ZERO_FRACTION,
+        );
+        $data = json_decode($payload, true, flags: JSON_THROW_ON_ERROR);
         $this->jobs[++$this->lastId] = [
             'queue' => $queue,
             'job' => $job,
@@ -162,6 +168,11 @@ final class MemoryStore implements Store
 
     public function jobs(string $queue, string $state, int $now, int $limit = 50): array
     {
+        if (!in_array($state, ['pending', 'delayed', 'processing'], true)) {
+            throw new \InvalidArgumentException(
+                "\"{$state}\" is not a state a waiting job is in: pending, delayed or processing.",
+            );
+        }
         $found = [];
         foreach ($this->jobs as $id => $job) {
             if ($job['queue'] !== $queue || $job['failed'] !== null) {

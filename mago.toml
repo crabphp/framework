@@ -4,7 +4,7 @@ php-version = "8.4.0"
 
 [source]
 workspace = "."
-paths = ["src/", "tests/", "benchmarks/*.php"]
+paths = ["src/", "tests/", "benchmarks/*.php", "bin/crab"]
 includes = ["vendor"]
 excludes = ["vendor/**", "storage/**", "benchmarks/results/**"]
 

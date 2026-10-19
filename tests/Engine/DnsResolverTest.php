@@ -198,6 +198,79 @@ final class DnsResolverTest extends TestCase
         self::assertSame(['shared.test A'], $asked);
     }
 
+    public function testExpiredAnswersAreReclaimedWhileLiveAnswersStayCached(): void
+    {
+        $loop = $this->loop = $this->newLoop();
+        $asked = [];
+        $records = ['live.test' => [[1, 300, "\x0A\x00\x00\x01"]]];
+        for ($i = 0; $i < 60; ++$i) {
+            $records["old-{$i}.test"] = [[1, 5, "\x0A\x00\x00\x02"]];
+        }
+        $server = $this->nameServer($loop, $asked, $records);
+        $dns = new DnsResolver([$server], 0.2, 1, false, $this->hosts);
+        self::assertSame(['10.0.0.1'], $this->within($loop, static fn(): array => $dns->resolve($loop, 'live.test')));
+
+        for ($wave = 0; $wave < 3; ++$wave) {
+            for ($i = $wave * 20; $i < (($wave + 1) * 20); ++$i) {
+                self::assertSame(
+                    ['10.0.0.2'],
+                    $this->within($loop, static fn(): array => $dns->resolve($loop, "old-{$i}.test")),
+                );
+            }
+            $this->expireAnswers($dns, except: 'live.test');
+            self::assertSame(
+                ['10.0.0.1'],
+                $this->within($loop, static fn(): array => $dns->resolve($loop, 'LIVE.TEST.')),
+            );
+            $kept = new \ReflectionProperty($dns, 'kept')->getValue($dns);
+            self::assertSame(['live.test'], array_keys($kept), 'Expired names must not accumulate between waves.');
+            self::assertCount(1 + (($wave + 1) * 20), $asked, 'Maintenance must not refresh live answers.');
+        }
+
+        $dns->forget();
+        self::assertSame([], new \ReflectionProperty($dns, 'kept')->getValue($dns));
+        self::assertSame(['10.0.0.1'], $this->within($loop, static fn(): array => $dns->resolve($loop, 'live.test')));
+        self::assertCount(62, $asked);
+    }
+
+    public function testAFailedLookupStillReclaimsExpiredAnswers(): void
+    {
+        $loop = $this->loop = $this->newLoop();
+        $asked = [];
+        $server = $this->nameServer($loop, $asked, ['old.test' => [[1, 5, "\x0A\x00\x00\x02"]]]);
+        $dns = new DnsResolver([$server], 0.2, 1, false, $this->hosts);
+        $this->within($loop, static fn(): array => $dns->resolve($loop, 'old.test'));
+        $this->expireAnswers($dns);
+
+        try {
+            $this->within($loop, static fn(): array => $dns->resolve($loop, 'missing.test'));
+            self::fail('An absent name was resolved.');
+        } catch (RuntimeException $error) {
+            self::assertSame('no address was found for the name missing.test', $error->getMessage());
+        }
+        self::assertSame([], new \ReflectionProperty($dns, 'kept')->getValue($dns));
+    }
+
+    /**
+     * Move stored deadlines into the past without sleeping through real TTLs.
+     * The optional sweep deadline is rewound too, so maintenance is due now.
+     */
+    private function expireAnswers(DnsResolver $dns, ?string $except = null): void
+    {
+        $property = new \ReflectionProperty($dns, 'kept');
+        $kept = $property->getValue($dns);
+        foreach (array_keys($kept) as $name) {
+            if ($name === $except) {
+                continue;
+            }
+            $kept[$name][1] = 0.0;
+        }
+        $property->setValue($dns, $kept);
+        if (property_exists($dns, 'pruneAt')) {
+            new \ReflectionProperty($dns, 'pruneAt')->setValue($dns, 0.0);
+        }
+    }
+
     /**
      * Runs code that waits on the loop, in a task, and returns what it returned.
      */

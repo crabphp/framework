@@ -12,8 +12,9 @@ use Psr\Container\ContainerInterface;
 
 /**
  * Runs commands by name. A command is a Command, a closure taking the input
- * and output, or a class name; a class is made only when its command runs,
- * by the container when there is one. `<command> --help`, or `-h`, describes
+ * and output, or a class name; a class is made when its description or
+ * execution is first needed, by the container when there is one.
+ * `<command> --help`, or `-h`, describes
  * a command without running it, as `help <command>` does.
  */
 final class Console implements ConsoleContract
@@ -42,8 +43,15 @@ final class Console implements ConsoleContract
      */
     public function add(string $name, Command|\Closure|string $command, string $description = ''): static
     {
-        if (preg_match('/^[a-z0-9][a-z0-9:_-]*$/D', $name) !== 1 || in_array($name, ['list', 'help'], true)) {
-            throw new \InvalidArgumentException("\"{$name}\" cannot be used as a command name.");
+        if (in_array($name, ['list', 'help'], true)) {
+            throw new \InvalidArgumentException(
+                "Command name \"{$name}\" is reserved by the console; choose a singular area:action name, such as user:prune.",
+            );
+        }
+        if (preg_match('/^[a-z0-9][a-z0-9:_-]*$/D', $name) !== 1) {
+            throw new \InvalidArgumentException(
+                "Command name \"{$name}\" must start with a lower-case letter or digit and contain only lower-case letters, digits, :, _ or -; use a singular area:action name, such as user:prune.",
+            );
         }
         $this->commands[$name] = $command;
         $this->descriptions[$name] = $description;

@@ -11,6 +11,7 @@ use Crab\HttpClient\CookieJar;
 use Crab\HttpClient\FakeClient;
 use Crab\HttpClient\NetworkException;
 use Crab\HttpClient\ResponseException;
+use Crab\Testing\FrozenClock;
 use PHPUnit\Framework\TestCase;
 use Psr\Http\Client\ClientExceptionInterface;
 use Psr\Http\Message\RequestInterface;
@@ -303,15 +304,55 @@ final class FakeClientTest extends TestCase
         );
         self::assertLessThan(0.5, (hrtime(true) - $started) / 1e9);
 
-        $tries = 0;
-        $started = hrtime(true);
-        self::assertSame(
-            'done',
-            (string) $client(gmdate('D, d M Y H:i:s', time() + 1) . ' GMT')->get('https://api.example.com/')->getBody(),
-            'A time to come back at is read too.',
-        );
-        self::assertLessThan(1.6, (hrtime(true) - $started) / 1e9);
         \Crab\Engine\EventLoop::current()->run();
+    }
+
+    public function testARetryDateWaitsAgainstTheClientsClock(): void
+    {
+        $clock = new FrozenClock('2001-02-03T04:05:06Z');
+        $tries = 0;
+        $transport = new FakeClient([
+            '*' => static function () use (&$tries): mixed {
+                return ++$tries === 1 ? FakeClient::response(429, 'slow down', [
+                        'Retry-After' => 'Sat, 03 Feb 2001 04:05:08 GMT',
+                    ]) : 'done';
+            },
+        ]);
+        $client = new Client(timeout: 10.0, retries: 1, retryDelay: 0.0, transport: $transport, clock: $clock);
+        $started = hrtime(true);
+
+        $response = $client->get('https://api.example.com/');
+
+        self::assertSame('done', (string) $response->getBody());
+        self::assertCount(2, $transport->requests);
+        self::assertGreaterThanOrEqual(2.0, (hrtime(true) - $started) / 1e9, 'The frozen date is two seconds away.');
+    }
+
+    public function testClientCopiesKeepTheClockAndDoNotWaitPastTheirDeadline(): void
+    {
+        $clock = new FrozenClock('2001-02-03T04:05:06Z');
+        $transport = new FakeClient([
+            '*' => FakeClient::response(429, 'slow down', ['Retry-After' => 'Sat, 03 Feb 2001 04:05:08 GMT']),
+        ]);
+        $client = new Client(timeout: 0.1, retries: 1, retryDelay: 0.0, transport: $transport, clock: $clock);
+        $copies = [$client, $client->timeout(0.2), $client->cookies(new CookieJar()), $client->retry(2, 0.0)];
+        foreach ($copies as $copy) {
+            $before = count($transport->requests);
+
+            $response = $copy->get('https://api.example.com/');
+
+            self::assertSame(429, $response->getStatusCode());
+            self::assertSame('slow down', (string) $response->getBody());
+            self::assertCount($before + 1, $transport->requests, 'A two-second pause cannot fit the call deadline.');
+        }
+        $clock->advance('+2 seconds');
+        $before = count($transport->requests);
+        $copies[1]->get('https://api.example.com/');
+        self::assertCount(
+            $before + 2,
+            $transport->requests,
+            'Copies read the shared clock when used, not when copied.',
+        );
     }
 
     public function testAPauseThatCannotFitThrowsTheLastFailureUnchanged(): void

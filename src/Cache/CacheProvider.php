@@ -22,7 +22,7 @@ use Psr\SimpleCache\CacheInterface;
  * `cache:clear`, `cache:prune` and `cache:install` commands.
  *
  *     store       "file", "database" or "array"; file unless set
- *     directory   where the file store keeps its entries
+ *     directory   storage/cache in the application, or the system temp folder for an application with no base path
  *     table       the database store's table; "cache"
  *     database    the name of the database it is in; the default one when null
  *     prefix      put before every key, to keep two applications apart in one store
@@ -37,7 +37,7 @@ final class CacheProvider implements Provider
     {
         $container->get(Config::class)->defaults('cache', [
             'store' => 'file',
-            'directory' => sys_get_temp_dir() . '/crab-cache',
+            'directory' => null,
             'table' => 'cache',
             'database' => null,
             'prefix' => '',
@@ -47,7 +47,12 @@ final class CacheProvider implements Provider
             $config = $container->get(Config::class);
             $store = (string) $config->get('cache.store');
             if ($store === 'file') {
-                return new FileStore((string) $config->get('cache.directory'));
+                $directory = $config->get('cache.directory');
+                if ($directory === null) {
+                    $base = $config->get('app.path');
+                    $directory = is_string($base) ? $base . '/storage/cache' : sys_get_temp_dir() . '/crab-cache';
+                }
+                return new FileStore((string) $directory);
             }
             if ($store === 'array') {
                 return new ArrayStore();

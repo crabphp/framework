@@ -193,6 +193,40 @@ final class DatabaseTest extends TestCase
         );
     }
 
+    public function testExecutionErrorsReleaseTheStatementAndItsBindingCount(): void
+    {
+        $connection = new PdoConnection(static fn(): \PDO => new \PDO('sqlite::memory:'));
+        $connection->execute('create table entries (id integer primary key, value integer unique)');
+        $connection->execute('insert into entries values (1, 1), (2, 2)');
+        self::assertSame(7, $connection->first('select ? as kept', [7])['kept']);
+
+        for ($i = 0; $i < 300; ++$i) {
+            $sql = "update entries set value = ? where id = 1 /* shape {$i} */";
+            self::assertSame(1, $connection->execute($sql, [3]));
+            try {
+                $connection->execute($sql, [2]);
+                self::fail('An update violating the unique key succeeded.');
+            } catch (DatabaseException $error) {
+                self::assertSame($sql, $error->sql);
+                self::assertInstanceOf(\PDOException::class, $error->getPrevious());
+            }
+        }
+
+        $statements = new \ReflectionProperty($connection, 'statements')->getValue($connection);
+        $takes = new \ReflectionProperty($connection, 'takes')->getValue($connection);
+        self::assertSame(array_keys($statements), array_keys($takes), 'Discarded handles must leave no SQL metadata.');
+        self::assertLessThanOrEqual(256, count($takes));
+        self::assertSame(3, $connection->first('select value from entries where id = 1')['value']);
+        self::assertSame(8, $connection->first('select ? as kept', [8])['kept']);
+
+        // A failed handle is prepared afresh; later reuse still rejects missing values.
+        self::assertSame(1, $connection->execute($sql, [4]));
+        self::assertSame(4, $connection->first('select value from entries where id = 1')['value']);
+        $this->expectException(DatabaseException::class);
+        $this->expectExceptionMessage('The statement takes 1 values and was given 0');
+        $connection->execute($sql);
+    }
+
     public function testRunLendsOneConnectionAndReleaseRejectsAnOpenTransaction(): void
     {
         $db = $this->database('sqlite');

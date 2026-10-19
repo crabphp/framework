@@ -40,11 +40,11 @@ final class ScheduleProvider implements Provider
         // Made now, in the parent: the tasks are part of what the application is defined as.
         $schedule = new Schedule();
         $container->instance(ScheduleContract::class, $schedule);
-        $container->instance(Schedule::class, $schedule);
-        $container->singleton(Scheduler::class, static function (Container $container) use ($schedule): Scheduler {
+        $container->singleton(Schedule::class, ScheduleContract::class);
+        $container->singleton(Scheduler::class, static function (Container $container): Scheduler {
             $timezone = $container->get(Config::class)->get('schedule.timezone');
             return new Scheduler(
-                $schedule,
+                $container->get(ScheduleContract::class),
                 $container,
                 $container->has(LoggerInterface::class) ? $container->get(LoggerInterface::class) : null,
                 $container->has(ClockInterface::class) ? $container->get(ClockInterface::class) : null,

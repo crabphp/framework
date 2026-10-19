@@ -20,8 +20,8 @@ use Psr\Http\Message\ServerRequestInterface;
 use Psr\Http\Server\RequestHandlerInterface;
 
 /**
- * The PSR-15 handler of a route whose action is a closure, an invokable
- * class or a method of a class. It calls the action with what its
+ * The PSR-15 handler of a route whose action is a closure, a class with
+ * handle() or a method of a class. It calls the action with what its
  * signature asks for. Each parameter is one of these:
  *
  *     the request          typed as a PSR-7 server request

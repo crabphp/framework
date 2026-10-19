@@ -21,7 +21,7 @@ final class Factory implements FactoryContract
         return new Response($code, reason: $reasonPhrase);
     }
 
-    public function createServerRequest(string $method, $uri, array $serverParams = []): ServerRequestInterface
+    public function createServerRequest(string $method, mixed $uri, array $serverParams = []): ServerRequestInterface
     {
         return new Request($method, $uri, serverParams: $serverParams);
     }
@@ -43,7 +43,7 @@ final class Factory implements FactoryContract
         return new Stream($resource);
     }
 
-    public function createStreamFromResource($resource): StreamInterface
+    public function createStreamFromResource(mixed $resource): StreamInterface
     {
         return new Stream($resource);
     }

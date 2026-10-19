@@ -80,6 +80,13 @@ final class RateLimitTest extends TestCase
         // One limit on two routes is one count; a limit of another name is another.
         self::assertSame([429, 200], [$from('203.0.113.8', '/b'), $from('203.0.113.8', '/named')]);
 
+        // An IPv6 machine is counted by its /64, which it may take a new address from for every request.
+        self::assertSame([200, 429, 200], [
+            $from('2001:db8:1:2::1'),
+            $from('2001:db8:1:2:ffff::9'),
+            $from('2001:db8:1:3::1'),
+        ]);
+
         // A user is counted as the user, whatever address they come from.
         self::assertSame([200, 429, 200], [
             $api->actingAs(new Caller(1))->get('/a')->status,

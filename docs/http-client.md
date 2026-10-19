@@ -209,9 +209,11 @@ final readonly class StripeClient
 
 Wrapping the client in a class of your own gives the rest of the application methods that mean something, and one place to fake in tests.
 
+A redirect to another origin drops only `Authorization` and `Cookie`; other credential headers, such as `X-Api-Key`, remain. Send those credentials with `redirects: 0` on the client, or follow redirects only from a base URL you trust.
+
 ## Cookies
 
-A client keeps no cookies unless it is given a jar, because one jar on a client that every request shares would hand one caller's cookies to the next. Make a jar per caller:
+A client keeps no cookies unless it is given a jar, because one jar on a client that every request shares would hand one caller's cookies to the next. Give each caller a separate jar for each site. A jar accepts cookies for parent domains and does not check a public suffix list, so a jar shared across unrelated hosts can be given a parent-domain cookie that reaches another site:
 
 ```php
 use Crab\HttpClient\CookieJar;

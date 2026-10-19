@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Crab\Log;
 
 use Crab\Contracts\Log\Logger as LoggerContract;
+use Psr\Clock\ClockInterface;
 use Psr\Log\AbstractLogger;
 use Psr\Log\InvalidArgumentException;
 use Psr\Log\LogLevel;
@@ -36,10 +37,12 @@ final class Logger extends AbstractLogger implements LoggerContract
     /**
      * @param string|resource $target A path or stream URL, opened for appending on the first record, or an open stream.
      * @param string $level The least severe level that is written.
+     * @param ClockInterface|null $clock Supplies record timestamps; the real time when left out.
      */
     public function __construct(
         private readonly mixed $target = 'php://stderr',
         string $level = LogLevel::DEBUG,
+        private readonly ?ClockInterface $clock = null,
     ) {
         if (!is_string($target) && !is_resource($target)) {
             throw new \InvalidArgumentException('A log target is a path or an open stream.');
@@ -47,7 +50,7 @@ final class Logger extends AbstractLogger implements LoggerContract
         $this->minimum = self::severity($level);
     }
 
-    public function log($level, string|\Stringable $message, array $context = []): void
+    public function log(mixed $level, string|\Stringable $message, array $context = []): void
     {
         if (self::severity($level) < $this->minimum) {
             return;
@@ -74,7 +77,8 @@ final class Logger extends AbstractLogger implements LoggerContract
             // One pass, so a placeholder inside a value is left as text.
             $message = strtr($message, $replacements);
         }
-        $line = new \DateTimeImmutable()->format('Y-m-d\TH:i:s.vP') . ' ' . strtoupper($level) . ' ' . $message;
+        $now = $this->clock?->now() ?? new \DateTimeImmutable();
+        $line = $now->format('Y-m-d\TH:i:s.vP') . ' ' . strtoupper($level) . ' ' . $message;
         if ($context !== []) {
             $line .=
                 ' '

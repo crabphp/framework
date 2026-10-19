@@ -86,4 +86,52 @@ final class WorkerHarnessTest extends TestCase
             Async::sleep($worker->loop, 0.01);
         });
     }
+
+    public function testEveryProviderStopsBeforeTheFirstFailureIsThrown(): void
+    {
+        foreach ([null, new \LogicException('body failed')] as $bodyFailure) {
+            $stopped = new \ArrayObject();
+            $stopFailure = new \RuntimeException('stop failed');
+            $provider = static fn(string $name, ?\Throwable $failure = null): WorkerProvider => new class(
+                $name,
+                $stopped,
+                $failure,
+            ) implements WorkerProvider {
+                public function __construct(
+                    private readonly string $name,
+                    private readonly \ArrayObject $stopped,
+                    private readonly ?\Throwable $failure,
+                ) {}
+
+                public function register(Container $container): void {}
+
+                public function start(Worker $worker, Container $container): void {}
+
+                public function stop(Worker $worker, Container $container): void
+                {
+                    $this->stopped[] = $this->name;
+                    if ($this->failure !== null) {
+                        throw $this->failure;
+                    }
+                }
+            };
+            $caught = null;
+            try {
+                WorkerHarness::run([
+                    $provider('first'),
+                    $provider('second', new \RuntimeException('another stop failed')),
+                    $provider('third', $stopFailure),
+                ], static function () use ($bodyFailure): void {
+                    if ($bodyFailure !== null) {
+                        throw $bodyFailure;
+                    }
+                });
+            } catch (\Throwable $error) {
+                $caught = $error;
+            }
+
+            self::assertSame(['third', 'second', 'first'], $stopped->getArrayCopy());
+            self::assertSame($bodyFailure ?? $stopFailure, $caught);
+        }
+    }
 }

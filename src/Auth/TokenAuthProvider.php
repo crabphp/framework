@@ -38,6 +38,7 @@ final class TokenAuthProvider implements Provider
                 clock: $container->has(ClockInterface::class) ? $container->get(ClockInterface::class) : null,
             );
         });
+        $container->singleton(DatabaseTokenStore::class, TokenStore::class);
         $container->singleton(TokenAuth::class, static function (Container $container): TokenAuth {
             if (!$container->has(IdentityResolver::class)) {
                 throw new \LogicException(

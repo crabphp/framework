@@ -231,6 +231,20 @@ final class ConsoleTest extends TestCase
         self::assertTrue(new Console()->add('make:thing-2', static fn() => 0)->has('make:thing-2'));
     }
 
+    public function testAnInvalidNameExplainsTheAllowedSpelling(): void
+    {
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessageMatches('/Bad Name.*lower-case letters.*user:prune/');
+        new Console()->add('Bad Name', static fn(): int => 0);
+    }
+
+    public function testAReservedNameIsIdentifiedAsReserved(): void
+    {
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessageMatches('/"help" is reserved.*user:prune/');
+        new Console()->add('help', static fn(): int => 0);
+    }
+
     public function testApplicationCommands(): void
     {
         $app = new App();
@@ -270,11 +284,11 @@ final class ConsoleTest extends TestCase
             $this->written($this->out),
         );
 
-        $app->console->add('hello', static function (Input $input, Output $output): int {
+        $app->console->add('hello:say', static function (Input $input, Output $output): int {
             $output->line('hello');
             return 0;
         });
-        self::assertSame(0, $this->exec($app->console, 'hello'));
+        self::assertSame(0, $this->exec($app->console, 'hello:say'));
     }
 
     private function exec(Console $console, string ...$arguments): int

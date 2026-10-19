@@ -29,7 +29,7 @@ It is the PSR-16 cache, so a library that asks for `Psr\SimpleCache\CacheInterfa
 
 The cache is registered by default by `App::configure()`, so it needs nothing in `app.php`.
 
-It works with no configuration, keeping entries in files. To change that, add `config/cache.php`:
+An application with a base path keeps cache files in its own `storage/cache` directory, even without a cache configuration file. `App::configure($basePath)` exposes that base as `app.path`. Only an application without a base path falls back to `crab-cache` in the system's temporary folder. The skeleton's `config/cache.php` reads `CACHE_STORE`; add a directory when you want to override the default:
 
 ```php
 // config/cache.php
@@ -43,7 +43,7 @@ return [
 | Setting | Default | |
 | --- | --- | --- |
 | `cache.store` | `file` | Where entries are kept: `file`, `database` or `array`, or `redis` with the `crabphp/redis` package |
-| `cache.directory` | `crab-cache` inside the system's temporary folder | The file store's folder |
+| `cache.directory` | `null`: `storage/cache` under `app.path`, or `crab-cache` in the system's temporary folder without a base path | The file store's folder; an explicit path overrides the default |
 | `cache.table` | `cache` | The database store's table |
 | `cache.database` | `null` | The name of the database the table is in; the default one when null |
 | `cache.prefix` | none | Put before every key, to keep two applications apart in one store |

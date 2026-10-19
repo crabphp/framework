@@ -9,6 +9,7 @@ use Crab\Contracts\Container\Container;
 use Crab\Contracts\HttpClient\Client as ClientContract;
 use Crab\Contracts\WorkerProvider;
 use Crab\Engine\Process\Worker;
+use Psr\Clock\ClockInterface;
 use Psr\Http\Client\ClientInterface;
 
 /**
@@ -56,6 +57,7 @@ final class HttpClientProvider implements WorkerProvider
                 $config->get('http_client.proxy'),
                 retries: (int) $config->get('http_client.retries'),
                 http2: (bool) $config->get('http_client.http2'),
+                clock: $container->has(ClockInterface::class) ? $container->get(ClockInterface::class) : null,
             );
         });
         // The same object for code written against the standard, and by class.

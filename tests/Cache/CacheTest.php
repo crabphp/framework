@@ -776,6 +776,77 @@ final class CacheTest extends TestCase
         }
     }
 
+    public function testFileReadsRefuseALinkedEntryOrFolder(): void
+    {
+        $store = new FileStore($this->directory . '/files');
+        $planted = $this->directory . '/planted';
+        file_put_contents($planted, "0\n" . serialize('planted'));
+        $hash = sha1('linked');
+        mkdir($this->directory . '/files/' . substr($hash, 0, 2), 0o700, true);
+        self::assertTrue(symlink($planted, $this->directory . '/files/' . substr($hash, 0, 2) . '/' . $hash));
+        self::assertNull($store->get('linked', 100));
+
+        $other = sha1('in a linked folder');
+        mkdir($this->directory . '/elsewhere');
+        copy($planted, $this->directory . '/elsewhere/' . $other);
+        $folder = $this->directory . '/files/' . substr($other, 0, 2);
+        self::assertTrue(symlink($this->directory . '/elsewhere', $folder));
+        try {
+            self::assertNull($store->get('in a linked folder', 100));
+        } finally {
+            unlink($folder);
+        }
+    }
+
+    public function testAFileStoreWhoseDirectoryIsALinkRefusesToReadOrWrite(): void
+    {
+        mkdir($this->directory . '/real');
+        self::assertTrue(symlink($this->directory . '/real', $this->directory . '/link'));
+        $store = new FileStore($this->directory . '/link');
+
+        foreach ([
+            static fn(): ?string => $store->get('key', 100),
+            static function () use ($store): void {
+                $store->set('key', 'value', null);
+            },
+            static function () use ($store): void {
+                $store->clear();
+            },
+            static fn(): int => $store->prune(100),
+        ] as $use) {
+            $error = null;
+            try {
+                $use();
+            } catch (\RuntimeException $error) {
+            }
+            self::assertInstanceOf(\RuntimeException::class, $error);
+            self::assertStringContainsString('is a link', $error->getMessage());
+        }
+        self::assertSame([], glob($this->directory . '/real/*'));
+    }
+
+    public function testFileEntriesAndTheirFoldersBelongToTheServersUserAlone(): void
+    {
+        $mask = umask(0o022);
+        try {
+            $store = new FileStore($this->directory . '/files');
+            $store->set('private', 'value', null);
+        } finally {
+            umask($mask);
+        }
+        $hash = sha1('private');
+        $folder = $this->directory . '/files/' . substr($hash, 0, 2);
+        clearstatcache();
+        self::assertSame(
+            ['0700', '0700', '0600'],
+            array_map(static fn(string $path): string => sprintf('%04o', fileperms($path) & 0o777), [
+                $this->directory . '/files',
+                $folder,
+                $folder . '/' . $hash,
+            ]),
+        );
+    }
+
     public function testAFailedFileRemovalLeavesTheEntryWholeAndCanBePrunedAfterPermissionsRecover(): void
     {
         if (!function_exists('posix_geteuid') || posix_geteuid() === 0) {
@@ -1082,6 +1153,48 @@ final class CacheTest extends TestCase
         $output = $this->quiet();
         self::assertSame(0, $app->console->run(['cache:clear'], $output));
         self::assertFalse($cache->has('greeting'));
+    }
+
+    public function testApplicationsWithoutCacheConfigurationUseTheirOwnStorageDirectories(): void
+    {
+        $firstPath = $this->directory . '/first';
+        $secondPath = $this->directory . '/second';
+        mkdir($firstPath);
+        mkdir($secondPath);
+        $first = App::configure($firstPath)->create();
+        $second = App::configure($secondPath)->create();
+        $one = $first->container->get(CacheContract::class);
+        $two = $second->container->get(CacheContract::class);
+        $key = 'application.' . bin2hex(random_bytes(6));
+        try {
+            $one->set($key, 'first');
+            self::assertDirectoryExists($firstPath . '/storage/cache');
+            self::assertSame($firstPath, $first->config->get('app.path'));
+            self::assertNull($two->get($key));
+            $two->set($key, 'second');
+            self::assertDirectoryExists($secondPath . '/storage/cache');
+            $two->clear();
+            self::assertSame('first', $one->get($key));
+        } finally {
+            $one->delete($key);
+            $two->delete($key);
+        }
+    }
+
+    public function testAnApplicationWithoutABasePathKeepsTheTemporaryCacheFallback(): void
+    {
+        $app = new App();
+        $app->register(CacheProvider::class);
+        $cache = $app->container->get(CacheContract::class);
+        $temporary = new Cache(new FileStore(sys_get_temp_dir() . '/crab-cache'));
+        $key = 'no-base.' . bin2hex(random_bytes(6));
+        try {
+            $cache->set($key, 'temporary');
+            self::assertSame('temporary', $temporary->get($key));
+            self::assertNull($app->config->get('app.path'));
+        } finally {
+            $cache->delete($key);
+        }
     }
 
     public function testTheDatabaseStoreIsInstalledByAMigrationTheApplicationOwns(): void

@@ -42,6 +42,9 @@ final readonly class Status implements Command
     private function migrator(Input $input): Migrator
     {
         $name = $input->option('database');
+        if ($name === true) {
+            throw new \InvalidArgumentException('--database needs a value; use --database=value.');
+        }
         return $this->databases->migrator(is_string($name) ? $name : null);
     }
 }

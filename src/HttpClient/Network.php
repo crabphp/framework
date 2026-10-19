@@ -107,61 +107,97 @@ final class Network implements Transport
         }
         $port = $uri->getPort() ?? ($scheme === 'https' ? 443 : 80);
         $origin = "{$scheme}://{$host}:{$port}";
-        $pool = $this->pool($scheme, $host, $port);
         $body = $request->getBody();
         $resendable = $body->getSize() === 0 || $body->isSeekable();
         $repeatable = in_array($request->getMethod(), self::REPEATABLE, true) && $resendable;
         for ($attempt = 1;; ++$attempt) {
-            $session = $this->sessions[$origin] ?? null;
-            if ($session !== null && !$session->accepts()) {
-                $session = null;
-            }
+            // A closing HTTP/2 session may retire its pool before this call retries.
+            $pool = $this->pool($scheme, $host, $port);
             try {
-                $slot = $session === null
-                    ? $this->connection($pool, $deadline, $cancellation, $origin, $scheme, $host, $port)
-                    : null;
-                $connection = $slot?->connection;
-                if ($slot === null && $session === null) {
-                    // While this one waited, another request opened an HTTP/2 conversation that has room for it.
-                    continue;
+                $session = $this->sessions[$origin] ?? null;
+                if ($session !== null && !$session->accepts()) {
+                    $session = null;
                 }
-                if ($connection !== null && $connection->protocol === 'h2') {
-                    $session = $this->session($origin, $pool, $slot, $deadline);
-                }
-            } catch (CancelledException $cancelled) {
-                throw $cancelled;
-            } catch (PoolExhaustedException|TimedOut $error) {
-                $why =
-                    $error instanceof TimedOut && $error->doing !== 'waiting for a connection'
-                        ? "was {$error->doing} when given up"
-                        : "every one of the {$this->connections} connections to {$host} was still busy";
-                throw new NetworkException(
-                    "{$what} failed: it took more than {$timeout} seconds, and {$why}.",
-                    $request,
-                    $error,
-                    unsent: true,
-                );
-            } catch (\RuntimeException $error) {
-                throw new NetworkException("{$what} failed: {$error->getMessage()}.", $request, $error, unsent: true);
-            }
-            if ($session !== null) {
-                $sent = false;
                 try {
-                    return $session->exchange($request, $deadline, $cancellation, $sent);
-                } catch (CancelledException $cancelled) {
-                    throw $cancelled;
-                } catch (Unprocessed $error) {
-                    // The server says it did not act on the request, so it may be made again, whatever it is.
-                    if ($resendable && $attempt < 3) {
+                    $slot = $session === null
+                        ? $this->connection($pool, $deadline, $cancellation, $origin, $scheme, $host, $port)
+                        : null;
+                    $connection = $slot?->connection;
+                    if ($slot === null && $session === null) {
+                        // While this one waited, another request opened an HTTP/2 conversation that has room for it.
                         continue;
                     }
+                    if ($connection !== null && $connection->protocol === 'h2') {
+                        $session = $this->session($origin, $pool, $slot, $deadline);
+                    }
+                } catch (CancelledException $cancelled) {
+                    throw $cancelled;
+                } catch (PoolExhaustedException|TimedOut $error) {
+                    $why =
+                        $error instanceof TimedOut && $error->doing !== 'waiting for a connection'
+                            ? "was {$error->doing} when given up"
+                            : "every one of the {$this->connections} connections to {$host} was still busy";
+                    throw new NetworkException(
+                        "{$what} failed: it took more than {$timeout} seconds, and {$why}.",
+                        $request,
+                        $error,
+                        unsent: true,
+                    );
+                } catch (\RuntimeException $error) {
                     throw new NetworkException(
                         "{$what} failed: {$error->getMessage()}.",
                         $request,
                         $error,
                         unsent: true,
                     );
-                } catch (\RuntimeException $error) {
+                }
+                if ($session !== null) {
+                    $sent = false;
+                    try {
+                        return $session->exchange($request, $deadline, $cancellation, $sent);
+                    } catch (CancelledException $cancelled) {
+                        throw $cancelled;
+                    } catch (Unprocessed $error) {
+                        // The server says it did not act on the request, so it may be made again, whatever it is.
+                        if ($resendable && $attempt < 3) {
+                            continue;
+                        }
+                        throw new NetworkException(
+                            "{$what} failed: {$error->getMessage()}.",
+                            $request,
+                            $error,
+                            unsent: true,
+                        );
+                    } catch (\RuntimeException $error) {
+                        $why = $error instanceof TimedOut
+                            ? "it took more than {$timeout} seconds, and was {$error->doing} when given up"
+                            : $error->getMessage();
+                        throw new NetworkException(
+                            "{$what} failed: {$why}.",
+                            $request,
+                            $error,
+                            unsent: $error instanceof TimedOut && !$sent,
+                        );
+                    }
+                }
+                $exchange = new Exchange($connection, $deadline, $cancellation);
+                try {
+                    $response = $exchange->run($request);
+                } catch (\Throwable $error) {
+                    $pool->discard($slot);
+                    if ($error instanceof CancelledException || !$error instanceof \RuntimeException) {
+                        throw $error;
+                    }
+                    // A kept connection the server had closed carried nothing: the request is sent once more, on a new one.
+                    if (
+                        $connection->used
+                        && !$exchange->answered
+                        && !$error instanceof TimedOut
+                        && $repeatable
+                        && $attempt === 1
+                    ) {
+                        continue;
+                    }
                     $why = $error instanceof TimedOut
                         ? "it took more than {$timeout} seconds, and was {$error->doing} when given up"
                         : $error->getMessage();
@@ -169,46 +205,20 @@ final class Network implements Transport
                         "{$what} failed: {$why}.",
                         $request,
                         $error,
-                        unsent: $error instanceof TimedOut && !$sent,
+                        unsent: $error instanceof TimedOut && !$exchange->sent,
                     );
                 }
-            }
-            $exchange = new Exchange($connection, $deadline, $cancellation);
-            try {
-                $response = $exchange->run($request);
-            } catch (\Throwable $error) {
-                $pool->discard($slot);
-                if ($error instanceof CancelledException || !$error instanceof \RuntimeException) {
-                    throw $error;
+                if ($exchange->reusable) {
+                    $connection->used = true;
+                    $connection->idleSince = hrtime(true) / 1_000_000_000;
+                    $pool->release($slot);
+                } else {
+                    $pool->discard($slot);
                 }
-                // A kept connection the server had closed carried nothing: the request is sent once more, on a new one.
-                if (
-                    $connection->used
-                    && !$exchange->answered
-                    && !$error instanceof TimedOut
-                    && $repeatable
-                    && $attempt === 1
-                ) {
-                    continue;
-                }
-                $why = $error instanceof TimedOut
-                    ? "it took more than {$timeout} seconds, and was {$error->doing} when given up"
-                    : $error->getMessage();
-                throw new NetworkException(
-                    "{$what} failed: {$why}.",
-                    $request,
-                    $error,
-                    unsent: $error instanceof TimedOut && !$exchange->sent,
-                );
+                return $response;
+            } finally {
+                $this->forgetEmptyPool($origin, $pool);
             }
-            if ($exchange->reusable) {
-                $connection->used = true;
-                $connection->idleSince = hrtime(true) / 1_000_000_000;
-                $pool->release($slot);
-            } else {
-                $pool->discard($slot);
-            }
-            return $response;
         }
     }
 
@@ -253,6 +263,7 @@ final class Network implements Transport
             }
             // The connection stays lent to its session for as long as the session lasts.
             $pool->discard($slot);
+            $this->forgetEmptyPool($origin, $pool);
         });
         $this->sessions[$origin] = $session;
         try {
@@ -341,8 +352,30 @@ final class Network implements Transport
             throw new TimedOut('waiting for a connection');
         } finally {
             unset($this->waiting[$origin][spl_object_id($limit)]);
+            if (($this->waiting[$origin] ?? []) === []) {
+                unset($this->waiting[$origin]);
+            }
             $loop->cancel($timer);
             $unsubscribe?->__invoke();
+        }
+    }
+
+    /**
+     * A finished origin owns nothing once its last connection and waiter are
+     * gone. Never remove a replacement pool or another caller's live session.
+     */
+    private function forgetEmptyPool(string $origin, Pool $pool): void
+    {
+        if (
+            ($this->pools[$origin] ?? null) !== $pool
+            || isset($this->sessions[$origin])
+            || isset($this->waiting[$origin])
+        ) {
+            return;
+        }
+        $stats = $pool->stats();
+        if ($stats['idle'] === 0 && $stats['borrowed'] === 0 && $stats['waiting'] === 0) {
+            unset($this->pools[$origin]);
         }
     }
 

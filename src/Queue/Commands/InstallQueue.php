@@ -75,7 +75,7 @@ final readonly class InstallQueue implements Command
                         \$table->bigInteger('failed_at')->nullable();
                         \$table->text('error')->nullable();
                         \$table->bigInteger('created_at');
-                        \$table->index(['queue', 'available_at']);
+                        \$table->index(['queue', 'failed_at', 'available_at']);
                     });
                 }
 

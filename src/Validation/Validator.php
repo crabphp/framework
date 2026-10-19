@@ -14,7 +14,7 @@ use Crab\Contracts\Validation\Validator as ValidatorContract;
  *     int, float, string, bool   that value; a float also takes a whole number
  *     array                      any array, or with #[ListOf(...)] a list of that
  *     a backed enum              one of its values
- *     DateTimeImmutable          a date and time as text, ISO 8601
+ *     DateTimeImmutable          a date, or a date and time, as ISO 8601 text
  *     another class              an object, validated the same way
  *     ?type                      also null, and the field may be left out
  *
@@ -185,23 +185,20 @@ final class Validator implements ValidatorContract
                 if (is_int($value)) {
                     return $value;
                 }
-                // Only when the number read is the number written: one past what an integer holds would be another.
-                if (
-                    $coerce
-                    && is_string($value)
-                    && preg_match('/^-?\d+$/D', $value) === 1
-                    && (string) (int) $value === preg_replace('/^(-?)0+(?=\d)/', '$1', $value)
-                ) {
-                    return (int) $value;
+                if ($coerce && is_string($value)) {
+                    $integer = self::integer($value);
+                    if ($integer !== null) {
+                        return $integer;
+                    }
                 }
                 $errors[$field][] = 'must be a whole number';
                 return null;
             case Property::FLOAT:
-                if (is_int($value) || is_float($value)) {
-                    return (float) $value;
-                }
-                if ($coerce && is_string($value) && is_numeric($value)) {
-                    return (float) $value;
+                if (is_int($value) || is_float($value) || $coerce && is_string($value) && is_numeric($value)) {
+                    $number = (float) $value;
+                    if (is_finite($number)) {
+                        return $number;
+                    }
                 }
                 $errors[$field][] = 'must be a number';
                 return null;
@@ -237,8 +234,8 @@ final class Validator implements ValidatorContract
     {
         $class = $property->class;
         $integers = is_int($class::cases()[0]->value ?? '');
-        if ($integers && $coerce && is_string($value) && preg_match('/^-?\d+$/D', $value) === 1) {
-            $value = (int) $value;
+        if ($integers && $coerce && is_string($value)) {
+            $value = self::integer($value);
         }
         $validType = $integers ? is_int($value) : is_string($value);
         $case = $validType ? $class::tryFrom($value) : null;
@@ -249,23 +246,43 @@ final class Validator implements ValidatorContract
     }
 
     /**
+     * Only accept text whose number survives conversion, for integers and enum backing values alike.
+     */
+    private static function integer(string $value): ?int
+    {
+        if (preg_match('/^-?\d+$/D', $value) !== 1) {
+            return null;
+        }
+        $integer = (int) $value;
+        return (string) $integer === preg_replace('/^(-?)0+(?=\d)/', '$1', $value) ? $integer : null;
+    }
+
+    /**
      * @param array<string, list<string>> $errors
      */
     private function date(Property $property, mixed $value, string $field, array &$errors): ?\DateTimeInterface
     {
-        if (is_string($value) && $value !== '') {
-            try {
-                $date = new $property->class($value);
-                // PHP reads February 31st as March 3rd and only notes that it did; such a date is refused.
-                $doubts = \DateTimeImmutable::getLastErrors();
-                if ($doubts === false || $doubts['warning_count'] === 0 && $doubts['error_count'] === 0) {
-                    return $date;
-                }
-            } catch (\Exception) {
-                // Reported below, with what was expected.
+        // A calendar date, or the guide's ISO 8601 timestamp with seconds and an offset; never a relative phrase.
+        $format = match (true) {
+            !is_string($value) => null,
+            preg_match('/^\d{4}-\d{2}-\d{2}$/D', $value) === 1 => '!Y-m-d',
+            preg_match('/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:Z|[+-](?:[01]\d|2[0-3]):[0-5]\d)$/D', $value) === 1
+                => '!' . DATE_ATOM,
+            default => null,
+        };
+        if ($format !== null) {
+            $class = $property->class;
+            $date = $class::createFromFormat($format, $value);
+            // PHP reads February 31st as March 3rd and only notes that it did; such a date is refused.
+            $doubts = \DateTimeImmutable::getLastErrors();
+            if (
+                $date !== false
+                && ($doubts === false || $doubts['warning_count'] === 0 && $doubts['error_count'] === 0)
+            ) {
+                return $date;
             }
         }
-        $errors[$field][] = 'must be a date and time, such as 2026-01-31T12:00:00Z';
+        $errors[$field][] = 'must be a date or a date and time, such as 2026-01-31 or 2026-01-31T12:00:00Z';
         return null;
     }
 
@@ -393,6 +410,11 @@ final class Validator implements ValidatorContract
         $rules = [];
         foreach ($parameter->getAttributes() as $attribute) {
             $attributeClass = $attribute->getName();
+            if (!class_exists($attributeClass)) {
+                throw new \LogicException(
+                    "{$where} has an unknown attribute #[{$attributeClass}]; check its spelling and import the attribute class.",
+                );
+            }
             if ($attributeClass === ListOf::class) {
                 if ($type !== Property::ARRAY) {
                     throw new \LogicException("{$where} has #[ListOf] but is not declared as an array.");

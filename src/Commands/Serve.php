@@ -41,7 +41,13 @@ final readonly class Serve implements Command
         $server = new Server($this->app);
         $address = self::address($this->app, $input);
         $single = $input->flag('single');
-        $workers = $single ? 1 : self::workers($this->app, $input);
+        $workers = self::workers($this->app, $input);
+        if ($single) {
+            $workers = 1;
+        }
+        if ($input->option('watch') === true) {
+            throw new \InvalidArgumentException('--watch needs a value; use --watch=value.');
+        }
         $daemon = $input->flag('daemon') || $input->flag('d');
 
         if ($input->flag('generation')) {
@@ -87,7 +93,17 @@ final readonly class Serve implements Command
         if (!$input->flag('quiet')) {
             $this->announce($output, $address, $workers, $single);
         }
-        $server->serve($address, $workers, $single);
+        try {
+            $server->serve($address, $workers, $single);
+        } catch (\RuntimeException $error) {
+            if (!str_starts_with($error->getMessage(), 'Could not bind ')) {
+                throw $error;
+            }
+            $output->error(
+                $error->getMessage() . '. Free the address or choose another --address=tcp://127.0.0.1:8081.',
+            );
+            return 1;
+        }
         return 0;
     }
 
@@ -97,7 +113,7 @@ final readonly class Serve implements Command
      */
     private function announce(Output $output, string $address, int $workers, bool $single = false): void
     {
-        $output->line(self::name($this->app) . ' server running on ' . Server::describe($address));
+        $output->line('Starting ' . self::name($this->app) . ' server on ' . Server::describe($address));
         if ($single) {
             $left = $this->app->with();
             if ($left !== []) {
@@ -170,7 +186,7 @@ final readonly class Serve implements Command
 
     private static function name(App $app): string
     {
-        return (string) $app->config->get('app.name', 'Crab');
+        return (string) $app->config->get('app.name');
     }
 
     /**
@@ -190,7 +206,7 @@ final readonly class Serve implements Command
             $paths = array_values(array_filter(explode(',', $option)));
             return $paths === [] ? null : $paths;
         }
-        $configured = $this->app->config->get('server.watch', Server::WATCHED);
+        $configured = $this->app->config->get('server.watch');
         if ($configured === false || $configured === null || $configured === []) {
             return null;
         }
@@ -203,7 +219,10 @@ final readonly class Serve implements Command
     public static function address(App $app, Input $input): string
     {
         $address = $input->option('address');
-        return is_string($address) ? $address : (string) $app->config->get('server.address', 'tcp://127.0.0.1:8080');
+        if ($address === true) {
+            throw new \InvalidArgumentException('--address needs a value; use --address=value.');
+        }
+        return is_string($address) ? $address : (string) $app->config->get('server.address');
     }
 
     /**
@@ -211,7 +230,11 @@ final readonly class Serve implements Command
      */
     public static function workers(App $app, Input $input): int
     {
-        return (int) ($input->option('workers') ?? $app->config->get('server.workers', 1));
+        $workers = $input->option('workers');
+        if ($workers === true) {
+            throw new \InvalidArgumentException('--workers needs a value; use --workers=value.');
+        }
+        return (int) ($workers ?? $app->config->get('server.workers'));
     }
 
     /**

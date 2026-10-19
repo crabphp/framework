@@ -352,6 +352,14 @@ final class Hpack
     private const SECRET = ['authorization' => true, 'cookie' => true, 'proxy-authorization' => true];
 
     /**
+     * How large the fields of one block may be once decoded, counted as
+     * the standard counts a header list: each name and value and 32 more.
+     * A byte on the wire can repeat a whole table entry, so the block's own
+     * length bounds nothing. The same 64 KiB an HTTP/1 answer's head may be.
+     */
+    private const MAX_LIST = 65_536;
+
+    /**
      * The Huffman code by length and code, to the byte each stands for.
      *
      * @var array<int, array<int, string>>|null
@@ -374,7 +382,7 @@ final class Hpack
     private int $limit;
 
     /**
-     * @param int $limit How large the table may be, as this side told the server; 4096 unless it said otherwise.
+     * @param int $allowed How large the table may be, as this side told the server; 4096 unless it said otherwise.
      */
     public function __construct(
         private readonly int $allowed = 4096,
@@ -388,18 +396,24 @@ final class Hpack
      * table the next refers to.
      *
      * @return list<array{string, string}> The fields as name and value, in the order sent.
-     * @throws \RuntimeException When the block is not valid, after which the connection cannot go on.
+     * @throws \RuntimeException When the block is not valid or too large, after which the connection cannot go on.
      */
     public function decode(string $block): array
     {
         $fields = [];
         $offset = 0;
         $length = strlen($block);
+        $listSize = 0;
         while ($offset < $length) {
+            if ($listSize > self::MAX_LIST) {
+                throw new \RuntimeException('the answer\'s headers are too long');
+            }
             $first = ord($block[$offset]);
             if (($first & 0x80) !== 0) {
                 // A field that is in a table whole.
-                $fields[] = $this->entry(self::integer($block, $offset, 7));
+                $field = $this->entry(self::integer($block, $offset, 7));
+                $fields[] = $field;
+                $listSize += strlen($field[0]) + strlen($field[1]) + 32;
                 continue;
             }
             if (($first & 0xE0) === 0x20) {
@@ -417,11 +431,15 @@ final class Hpack
             $name = $index === 0 ? self::text($block, $offset) : $this->entry($index)[0];
             $value = self::text($block, $offset);
             $fields[] = [$name, $value];
+            $listSize += strlen($name) + strlen($value) + 32;
             if ($remember) {
                 array_unshift($this->table, [$name, $value]);
                 $this->size += strlen($name) + strlen($value) + 32;
                 $this->evict();
             }
+        }
+        if ($listSize > self::MAX_LIST) {
+            throw new \RuntimeException('the answer\'s headers are too long');
         }
         return $fields;
     }

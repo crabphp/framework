@@ -18,10 +18,10 @@ use Psr\Clock\ClockInterface;
 final class Queue implements QueueContract
 {
     /**
-     * For each job class already looked at: its parameters' names, and
-     * which of them must be given.
+     * For each job class already looked at: its parameters' names, which
+     * of them must be given, and the types each accepts.
      *
-     * @var array<string, array{list<string>, list<string>}>
+     * @var array<string, array{list<string>, list<string>, array<string, list<string>|null>}>
      */
     private static array $signatures = [];
 

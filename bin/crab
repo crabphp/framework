@@ -6,20 +6,25 @@ declare(strict_types=1);
 use Crab\App;
 use Crab\Engine\Runtime;
 
-require $_composer_autoload_path ?? dirname(__DIR__).'/vendor/autoload.php';
+require $_composer_autoload_path ?? dirname(__DIR__) . '/vendor/autoload.php';
 
 if (!isset($argv[1]) || in_array($argv[1], ['--help', '-h'], true)) {
-    fwrite(STDOUT, "Usage: crab <app.php> [command] [arguments] [--options]\n"
-        ."       crab <runtime.php> [--single]\n"
-        ."A file returning a Crab\\App runs its console commands; without a command they are listed.\n"
-        ."A file returning a Crab\\Engine\\Runtime is served directly.\n"
-        ."SIGINT/SIGTERM: graceful stop. SIGUSR1: rolling worker restart.\n");
+    fwrite(
+        STDOUT,
+        "Usage: crab <app.php> [command] [arguments] [--options]\n"
+        . "       crab <runtime.php> [--single]\n"
+        . "A file returning a Crab\\App runs its console commands; without a command they are listed.\n"
+        . "A file returning a Crab\\Engine\\Runtime is served directly.\n"
+        . "SIGINT/SIGTERM: graceful stop. SIGUSR1: rolling worker restart.\n",
+    );
     exit(0);
 }
 try {
     $file = realpath($argv[1]);
     if ($file === false || !is_file($file)) {
-        throw new InvalidArgumentException('Configuration file does not exist.');
+        throw new InvalidArgumentException(
+            "Application file \"{$argv[1]}\" does not exist. Pass an existing application file returning Crab\\App or Crab\\Engine\\Runtime.",
+        );
     }
     $runtime = require $file;
     if ($runtime instanceof App) {
@@ -28,11 +33,11 @@ try {
     if (!$runtime instanceof Runtime) {
         throw new UnexpectedValueException('The file must return a Crab\\App or a Crab\\Engine\\Runtime.');
     }
-    if (count($argv) > 3 || (isset($argv[2]) && $argv[2] !== '--single')) {
+    if (count($argv) > 3 || isset($argv[2]) && $argv[2] !== '--single') {
         throw new InvalidArgumentException('Only --single is supported after a runtime file.');
     }
     $runtime->run(singleProcess: ($argv[2] ?? '') === '--single');
 } catch (Throwable $error) {
-    fwrite(STDERR, '[Crab] '.$error->getMessage()."\n");
+    fwrite(STDERR, '[Crab] ' . $error->getMessage() . "\n");
     exit(1);
 }

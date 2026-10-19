@@ -21,6 +21,11 @@ An action is the code that answers a route. In Crab an action says in its signat
 This is where Crab differs most from Laravel. There is no base controller, no `$request->validate()` and no form request class. The signature is the validation, and an action is an ordinary function you can call in a test.
 
 ```php
+use Crab\Http\Response;
+use Crab\Route;
+use Crab\Validation\Email;
+use Crab\Validation\Length;
+
 Route::post('/users', static function (#[Email] string $email, #[Length(min: 2, max: 50)] string $name): Response {
     // $email and $name are already checked.
 
@@ -104,7 +109,7 @@ final readonly class OrderController
 }
 ```
 
-An action class extends nothing and is kept per worker unless it has a transient `bind()` binding. Like every service it must not keep anything about one request in a property; see [Request lifecycle](lifecycle.md#services-hold-no-request-state).
+An action class extends nothing. Each route retains its resolved action callable for the worker’s life, even when the class has a transient `bind()` binding. Like every service it must not keep anything about one request in a property; see [Request lifecycle](lifecycle.md#services-hold-no-request-state).
 
 ## What an action takes
 
@@ -196,9 +201,16 @@ It holds what the request sent. A field that may be left out, and was, reads as 
 // PATCH /users/7 with {"name": "Ada"} changes the name and leaves the rest alone
 public function handle(int $id, #[Fields(['name' => '?string', 'bio' => '?string'])] Data $changes): void
 {
-    $this->db->table('users')->where('id', $id)->update($changes->toArray());
+    $values = $changes->toArray();
+    if ($values === []) {
+        return;
+    }
+
+    $this->db->table('users')->where('id', $id)->update($values);
 }
 ```
+
+An empty object, or one containing only undeclared fields, changes nothing and returns `204`.
 
 It is validated before the action runs, as an input class is, and a problem is reported the same way: `lines.0.quantity`. A description that makes no sense stops the server from starting. Reading a field you did not describe throws, so a slip of the hand shows in the first test.
 

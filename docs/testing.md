@@ -28,14 +28,14 @@ Tests use PHPUnit and live in `tests/`. Run them with `composer test`.
 ## Testing a route
 
 ```php
-// tests/HelloTest.php
+// tests/SayHelloTest.php
 namespace Tests;
 
 use Crab\App;
 use Crab\Http\Request;
 use PHPUnit\Framework\TestCase;
 
-final class HelloTest extends TestCase
+final class SayHelloTest extends TestCase
 {
     private App $app;
 
@@ -150,12 +150,14 @@ Tests should not use your development database or send real email. Configuration
 </phpunit>
 ```
 
+The skeleton already maps `DB_DSN`, `CACHE_STORE` and `LOG_PATH` in its configuration. Add the queue mapping when you use the memory queue in tests:
+
 ```php
 // config/queue.php
 return ['store' => env('QUEUE_STORE', 'database')];
 ```
 
-The real environment wins over `.env`, so these apply whatever `.env` says.
+The real environment wins over `.env`, so these apply whatever `.env` says. For an application without the skeleton, add `'store' => env('CACHE_STORE', 'file')` in `config/cache.php` too; setting an environment variable alone does not configure a component.
 
 ## The database
 

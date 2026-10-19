@@ -10,6 +10,7 @@ use Crab\Events\Dispatcher;
 use Crab\Events\EventsProvider;
 use PHPUnit\Framework\TestCase;
 use Psr\EventDispatcher\EventDispatcherInterface;
+use Psr\EventDispatcher\ListenerProviderInterface;
 use Psr\EventDispatcher\StoppableEventInterface;
 
 interface Audited {}
@@ -170,6 +171,25 @@ final class DispatcherTest extends TestCase
         self::assertInstanceOf(Dispatcher::class, $dispatcher);
         self::assertSame($dispatcher, $container->get(EventDispatcherInterface::class));
         self::assertSame($dispatcher, $container->get(Dispatcher::class));
+    }
+
+    public function testReplacingTheDispatcherAlsoReplacesItsOtherNames(): void
+    {
+        $container = new Container();
+        new EventsProvider()->register($container);
+        $container->get(EventDispatcherInterface::class);
+        $replacement = new Dispatcher();
+        $replacement->listen(UserRegistered::class, static function (UserRegistered $event): void {
+            $event->heard[] = 'replacement';
+        });
+
+        $container->instance(DispatcherContract::class, $replacement);
+        $event = new UserRegistered(1);
+        $container->get(EventDispatcherInterface::class)->dispatch($event);
+
+        self::assertSame(['replacement'], $event->heard);
+        self::assertSame($replacement, $container->get(Dispatcher::class));
+        self::assertSame($replacement, $container->get(ListenerProviderInterface::class));
     }
 
     public function testListenersRunInTheOrderAddedWhateverTheyListenFor(): void

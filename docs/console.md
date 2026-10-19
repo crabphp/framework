@@ -35,15 +35,15 @@ use Crab\Command;
 use Crab\Contracts\Console\Input;
 use Crab\Contracts\Console\Output;
 
-Command::add('hello', static function (Input $input, Output $output): int {
+Command::add('hello:say', static function (Input $input, Output $output): int {
     $output->line('Hello, ' . $input->argument(0, 'world') . '!');
 
     return 0;
-}, 'Say hello: php cua hello [name]');
+}, 'Say hello: php cua hello:say [name]');
 ```
 
 ```sh
-php cua hello Ada
+php cua hello:say Ada
 # Hello, Ada!
 ```
 
@@ -98,23 +98,23 @@ final readonly class PruneUsers implements Command
 
 ```php
 // routes/console.php
-Command::add('users:prune', PruneUsers::class);
+Command::add('user:prune', PruneUsers::class);
 ```
 
 The first line of `description()` is shown in the command list, and all of it by `--help`. `handle()` returns the exit status: `0` for success, anything else for failure. An exception is printed and the status is `1`.
 
-A name starts with a lower-case letter or digit and contains only lower-case letters, digits, `:`, `_` and `-`; `list` and `help` are reserved. Use `area:action`, as in `users:prune`, with the area in the singular. The framework's own follow it: `route:list`, `schedule:list`, `queue:work`, `cache:clear`. Name a command that lists things `area:list`.
+A name starts with a lower-case letter or digit and contains only lower-case letters, digits, `:`, `_` and `-`; `list` and `help` are reserved. Use `area:action`, as in `user:prune`, with the area in the singular. The framework's own follow it: `route:list`, `schedule:list`, `queue:work`, `cache:clear`. Name a command that lists things `area:list`.
 
 ## Arguments and options
 
 What follows the command's name reaches it as the input. Take a command declared as:
 
 ```php
-Command::add('import', ImportUsers::class);
+Command::add('user:import', ImportUsers::class);
 ```
 
 ```sh
-php cua import users.csv --batch=500 --force -v
+php cua user:import users.csv --batch=500 --force -v
 ```
 
 ```php
@@ -129,7 +129,7 @@ $input->flag('v');                   // true: each letter of -abc is a flag
 $input->options();                   // ["batch" => "500", "force" => true, "v" => true]
 ```
 
-- An option's value is text; write `--batch=500` and cast it, since `--batch 500` makes `batch` a flag and `500` an argument.
+- An option's value is text; write `--batch=500` and cast it, since `--batch 500` makes `batch` a flag and `500` an argument. The server’s `--address`, `--workers` and `--watch`, and the migration commands’ `--database`, reject a missing `=` value before doing any work. Commands of your own should reject `true` for an option that needs a value.
 - `flag()` is true when the option is present and not `false`, `0`, `no` or an empty value, so `--force=false` and `--force=` switch it off.
 - Everything after `--` is an argument, even when it starts with a dash.
 - `--help` and `-h` are taken by the console; do not use `h` for an option of your own.
@@ -181,7 +181,7 @@ The default framework providers add their commands automatically; `TokenAuthProv
 Do not add a cron entry per command. Declare it on the schedule and keep one `php cua schedule:work` running:
 
 ```php
-$schedule->command('users:prune', '--days=30')->daily('03:00');
+$schedule->command('user:prune', '--days=30')->daily('03:00');
 ```
 
 See [Task scheduling](scheduling.md).

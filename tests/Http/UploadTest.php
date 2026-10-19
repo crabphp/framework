@@ -252,14 +252,6 @@ final class UploadTest extends TestCase
             self::assertSame(7, $file->getSize());
             $file->moveTo($target);
             self::assertSame('content', file_get_contents($target));
-            foreach ([static fn() => $file->moveTo($target), static fn() => $file->getStream()] as $again) {
-                try {
-                    $again();
-                    self::fail('A moved file was used again.');
-                } catch (\RuntimeException) {
-                }
-            }
-
             $read = new UploadedFile(new Stream('partly read'));
             $read->getStream()->read(3);
             $read->moveTo($target);
@@ -269,6 +261,33 @@ final class UploadTest extends TestCase
             fwrite($resource, str_repeat('z', 200_000));
             new UploadedFile(new Stream($resource))->moveTo($target);
             self::assertSame(200_000, filesize($target));
+        } finally {
+            @unlink($target);
+        }
+    }
+
+    /**
+     * @return array<string, array{string}>
+     */
+    public static function movedFileOperations(): array
+    {
+        return ['move again' => ['move'], 'read stream' => ['read']];
+    }
+
+    #[DataProvider('movedFileOperations')]
+    public function testAMovedUploadCannotBeUsedAgain(string $operation): void
+    {
+        $target = sys_get_temp_dir() . '/crab-upload-' . bin2hex(random_bytes(6));
+        try {
+            $file = new UploadedFile(new Stream('content'));
+            $file->moveTo($target);
+            $this->expectException(\RuntimeException::class);
+
+            if ($operation === 'move') {
+                $file->moveTo($target);
+            } else {
+                $file->getStream();
+            }
         } finally {
             @unlink($target);
         }
@@ -384,13 +403,17 @@ final class UploadTest extends TestCase
                 sameSite: 'None',
             ),
         );
-        self::assertMatchesRegularExpression(
-            '/^s=1; Max-Age=3600; Expires=\w{3}, \d\d \w{3} \d{4} \d\d:\d\d:\d\d GMT; Path=\/; HttpOnly; SameSite=Strict$/',
+        self::assertSame(
+            's=1; Max-Age=3600; Path=/; HttpOnly; SameSite=Strict',
             (string) new Cookie('s', '1', 3600, sameSite: 'Strict'),
         );
         self::assertSame(
             's=; Max-Age=0; Expires=Thu, 01 Jan 1970 00:00:01 GMT; Path=/; HttpOnly; SameSite=Lax',
             (string) Cookie::forget('s'),
+        );
+        self::assertSame(
+            's=; Max-Age=0; Expires=Thu, 01 Jan 1970 00:00:01 GMT; Path=/; HttpOnly; SameSite=Lax',
+            (string) new Cookie('s', maxAge: -1),
         );
 
         $response = Response::text('ok')->withCookie(new Cookie('a', '1'))->withCookie(new Cookie('b', '2'));

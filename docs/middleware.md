@@ -294,7 +294,7 @@ Route::middleware(TokenAuth::class, new RateLimit(120))->group(function () {
 | `by` | A function from the request to who it counts against | the user, else the address |
 | `name` | Tells one limit from another | `''` |
 
-A client is the logged-in user when the request has one, so put the limit after the middleware that authenticates. Otherwise it is [the client's address](requests.md#the-clients-address); behind a proxy, add `TrustedProxies` or every client shares one count.
+A client is the logged-in user when the request has one, so put the limit after the middleware that authenticates. Otherwise it is [the client's address](requests.md#the-clients-address): an IPv4 address is counted individually, and IPv6 addresses in the same `/64` share a count. Behind a proxy, add `TrustedProxies` or every client shares one count.
 
 Responses returned through `RateLimit` say where the client stands, and a refusal says when to come back; an exception answered by an outer error handler bypasses these headers:
 
