@@ -53,10 +53,39 @@ final class CorsTest extends TestCase
         }
         $plain = $api->handle(new Request('GET', '/'));
         self::assertSame(
-            [200, false, false],
-            [$plain->getStatusCode(), $plain->hasHeader('Access-Control-Allow-Origin'), $plain->hasHeader('Vary')],
-            'A request that names no origin is left alone.',
+            [200, false, 'Origin'],
+            [$plain->getStatusCode(), $plain->hasHeader('Access-Control-Allow-Origin'), $plain->getHeaderLine('Vary')],
+            'A response without an origin must not be reused for a different origin.',
         );
+    }
+
+    public function testEveryOriginVariantOfACacheableResponseDeclaresItsVariation(): void
+    {
+        $handler = new class implements RequestHandlerInterface {
+            public function handle(ServerRequestInterface $request): ResponseInterface
+            {
+                return Response::text('public data', headers: [
+                    'Cache-Control' => 'public, max-age=600',
+                    'Vary' => 'Accept-Encoding',
+                ]);
+            }
+        };
+        $cors = new Cors(['https://app.example.com']);
+        foreach ([[], ['Origin' => 'https://other.example'], ['Origin' => 'https://app.example.com']] as $headers) {
+            $response = $cors->process(new Request('GET', '/', $headers), $handler);
+            self::assertSame('Accept-Encoding, Origin', $response->getHeaderLine('Vary'));
+            self::assertSame('public, max-age=600', $response->getHeaderLine('Cache-Control'));
+            self::assertSame(
+                ($headers['Origin'] ?? '') === 'https://app.example.com' ? 'https://app.example.com' : '',
+                $response->getHeaderLine('Access-Control-Allow-Origin'),
+            );
+        }
+
+        $wildcard = new Cors(['*'], exposed: ['X-Total']);
+        $plain = $wildcard->process(new Request('GET', '/'), $handler);
+        $browser = $wildcard->process(new Request('GET', '/', ['Origin' => 'https://app.example.com']), $handler);
+        self::assertSame('*', $plain->getHeaderLine('Access-Control-Allow-Origin'));
+        self::assertSame($browser->getHeaders(), $plain->getHeaders());
     }
 
     public function testTheBrowsersQuestionIsAnsweredWithoutReachingTheRoute(): void
@@ -97,6 +126,10 @@ final class CorsTest extends TestCase
 
         $refused = $api->handle($ask('https://evil.example'));
         self::assertSame([403, false], [$refused->getStatusCode(), $refused->hasHeader('Access-Control-Allow-Origin')]);
+        self::assertSame(
+            'Origin, Access-Control-Request-Method, Access-Control-Request-Headers',
+            $refused->getHeaderLine('Vary'),
+        );
 
         // An OPTIONS request that asks nothing is an ordinary request.
         $ordinary = $api->handle(new Request('OPTIONS', '/users', ['Origin' => 'https://app.example.com']));

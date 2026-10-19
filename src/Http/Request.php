@@ -22,6 +22,8 @@ use Psr\Http\Message\UriInterface;
  */
 final class Request extends Message implements RequestContract
 {
+    private const MAX_JSON_MEMBERS = 1000;
+
     private static ?self $blank = null;
 
     private ?EngineRequest $source = null;
@@ -415,11 +417,76 @@ final class Request extends Message implements RequestContract
             return null;
         }
         try {
-            $value = json_decode($body, true, flags: JSON_THROW_ON_ERROR);
+            $value = self::decodeJson($body);
+        } catch (\LengthException $error) {
+            throw new HttpException(413, $error->getMessage(), previous: $error);
         } catch (\JsonException $error) {
             throw new HttpException(400, 'The JSON body is malformed.', previous: $error);
         }
         return is_array($value) ? $value : null;
+    }
+
+    /**
+     * Decodes untrusted JSON for HTTP bodies and socket messages. Depth and
+     * bytes alone do not bound the work of inserting adversarial object keys.
+     *
+     * @internal
+     *
+     * @throws \LengthException When an object has more than 1000 members.
+     * @throws \JsonException When the text is not JSON within the native depth limit.
+     */
+    public static function decodeJson(string $json): mixed
+    {
+        // Most messages cannot contain a wide object; colons inside strings
+        // only cause an unnecessary scan, never a refusal.
+        if (substr_count($json, ':') > self::MAX_JSON_MEMBERS) {
+            self::limitJsonObjects($json);
+        }
+        return json_decode($json, true, flags: JSON_THROW_ON_ERROR);
+    }
+
+    /**
+     * Counts members before PHP builds any hash tables. Validation uses no
+     * object storage and bounds nesting; malformed socket text stays text.
+     */
+    private static function limitJsonObjects(string $json): void
+    {
+        if (!json_validate($json)) {
+            throw new \JsonException(json_last_error_msg(), json_last_error());
+        }
+        $members = [];
+        $level = -1;
+        $length = strlen($json);
+        for ($offset = 0; $offset < $length; ++$offset) {
+            $offset += strcspn($json, '"{}:', $offset);
+            if ($offset === $length) {
+                break;
+            }
+            switch ($json[$offset]) {
+                case '"':
+                    // Skip whole string spans, including escaped quotes and backslashes.
+                    for (++$offset; $offset < $length; $offset += 2) {
+                        $offset += strcspn($json, '"\\', $offset);
+                        if ($json[$offset] === '"') {
+                            break;
+                        }
+                    }
+                    break;
+                case '{':
+                    $members[++$level] = 0;
+                    break;
+                case '}':
+                    unset($members[$level--]);
+                    break;
+                case ':':
+                    if (++$members[$level] > self::MAX_JSON_MEMBERS) {
+                        throw new \LengthException(
+                            'A JSON object may have at most 1000 members. Send smaller objects.',
+                        );
+                    }
+                    break;
+            }
+        }
     }
 
     /**

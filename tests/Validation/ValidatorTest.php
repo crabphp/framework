@@ -361,8 +361,7 @@ final class ValidatorTest extends TestCase
                     'score' => ['must be a number'],
                     'newsletter' => ['must be true or false'],
                     'born' => ['must be a date or a date and time, such as 2026-01-31 or 2026-01-31T12:00:00Z'],
-                    'tags.1.name' => ['must be at least 2 character(s)'],
-                    'tags.2' => ['must be an object'],
+                    'tags' => ['must have at most 2 item(s)'],
                     'scores.1' => ['must be a whole number'],
                     'website' => ['must be a web address starting with http:// or https://'],
                     'theme' => ['must be one of: light, dark'],
@@ -373,7 +372,7 @@ final class ValidatorTest extends TestCase
                 ],
                 $invalid->errors,
             );
-            self::assertSame('email must be an email address, and 17 more invalid field(s).', $invalid->getMessage());
+            self::assertSame('email must be an email address, and 16 more invalid field(s).', $invalid->getMessage());
         }
 
         $problems = static function (array $data) use ($validator): array {
@@ -408,6 +407,13 @@ final class ValidatorTest extends TestCase
         self::assertSame(['tags' => ['must have at most 2 item(s)']], $problems([
             'tags' => [['name' => 'aa'], ['name' => 'bb'], ['name' => 'cc']],
         ] + self::VALID));
+        self::assertSame(
+            [
+                'tags.0.name' => ['must be at least 2 character(s)'],
+                'tags.1' => ['must be an object'],
+            ],
+            $problems(['tags' => [['name' => 'x'], 'not an object']] + self::VALID),
+        );
         self::assertSame(
             ['born' => ['must be a date or a date and time, such as 2026-01-31 or 2026-01-31T12:00:00Z']],
             $problems(['born' => ''] + self::VALID),

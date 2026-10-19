@@ -109,7 +109,7 @@ final class Http2Session
     /**
      * Fibers waiting their turn to write, in order.
      *
-     * @var list<\Crab\Engine\Suspension>
+     * @var array<int, \Closure>
      */
     private array $writers = [];
     /**
@@ -134,7 +134,7 @@ final class Http2Session
     /**
      * Opens the conversation and starts listening. Called once, by the fiber that made the connection.
      */
-    public function start(float $deadline): void
+    public function start(float $deadline, ?Cancellation $cancellation = null): void
     {
         $settings = pack('nN', 2, 0) . pack('nN', 4, self::STREAM_WINDOW);
         $this->write(
@@ -143,6 +143,7 @@ final class Http2Session
                 . self::frame(self::SETTINGS, 0, 0, $settings)
                 . self::frame(self::WINDOW_UPDATE, 0, 0, pack('N', self::CONNECTION_WINDOW - 65_535)),
             $deadline,
+            $cancellation,
         );
         $this->loop->defer(function (): void {
             $this->listen();
@@ -179,7 +180,7 @@ final class Http2Session
         $stream = null;
         try {
             // The streams of a connection are opened in the order they are numbered, so one is numbered when its turn to write comes.
-            $this->lock();
+            $this->lock($deadline, $cancellation);
             try {
                 $this->alive();
                 $stream = new Http2Stream($this->nextId, $this->streamWindow, $request->getMethod() === 'HEAD');
@@ -348,11 +349,22 @@ final class Http2Session
             $length = min(strlen($pending), $this->window, $stream->window, $this->maxFrame);
             $this->window -= $length;
             $stream->window -= $length;
-            $this->write(
-                self::frame(self::DATA, 0, $stream->id, substr($pending, 0, $length)),
-                $deadline,
-                $cancellation,
-            );
+            $locked = false;
+            try {
+                $this->write(
+                    self::frame(self::DATA, 0, $stream->id, substr($pending, 0, $length)),
+                    $deadline,
+                    $cancellation,
+                    $locked,
+                );
+            } finally {
+                if (!$locked) {
+                    // A cancelled/expired writer sent no DATA; its reserved credit is still available.
+                    $this->window += $length;
+                    $stream->window += $length;
+                    $this->wakeAll();
+                }
+            }
             $pending = (string) substr($pending, $length);
         }
         if (!$stream->done && $stream->error === null) {
@@ -378,8 +390,9 @@ final class Http2Session
         $this->loop->defer(function () use ($reset): void {
             try {
                 $this->write($reset, (hrtime(true) / 1_000_000_000) + 5.0);
-            } catch (\Throwable) {
-                // A connection that cannot be written to is found out by its reader.
+            } catch (\Throwable $error) {
+                // Even a reset that never acquired the writer must release the peer's abandoned stream.
+                $this->close($error);
             }
         });
     }
@@ -642,10 +655,17 @@ final class Http2Session
 
     /**
      * Writes whole frames, one writer at a time so that the frames of two never mix.
+     *
+     * @param bool $locked Set once the turn is owned, so DATA can return credit if its wait ends first.
      */
-    private function write(string $frames, float $deadline, ?Cancellation $cancellation = null): void
-    {
-        $this->lock();
+    private function write(
+        string $frames,
+        float $deadline,
+        ?Cancellation $cancellation = null,
+        bool &$locked = false,
+    ): void {
+        $this->lock($deadline, $cancellation);
+        $locked = true;
         try {
             $this->alive();
             $this->connection->write($frames, $deadline, $cancellation);
@@ -676,26 +696,48 @@ final class Http2Session
         }
     }
 
-    private function lock(): void
+    private function lock(float $deadline, ?Cancellation $cancellation): void
     {
+        $cancellation?->throwIfCancelled();
         if (!$this->writing) {
             $this->writing = true;
             return;
         }
-        $turn = $this->loop->getSuspension();
-        $this->writers[] = $turn;
-        // Resumed holding the lock: whoever had it hands it on.
-        $turn->suspend();
+        $id = $this->nextWaiter++;
+        $this->suspend(
+            function (?\Closure $wake) use ($id): void {
+                if ($wake === null) {
+                    unset($this->writers[$id]);
+                } else {
+                    $this->writers[$id] = $wake;
+                }
+            },
+            $deadline,
+            $cancellation,
+            'waiting to write',
+        );
+        // The turn can be handed over before this fiber resumes.
+        try {
+            $cancellation?->throwIfCancelled();
+            if ((hrtime(true) / 1_000_000_000) >= $deadline) {
+                throw new TimedOut('waiting to write');
+            }
+        } catch (\Throwable $error) {
+            $this->unlock();
+            throw $error;
+        }
     }
 
     private function unlock(): void
     {
-        $next = array_shift($this->writers);
-        if ($next === null) {
+        $id = array_key_first($this->writers);
+        if ($id === null) {
             $this->writing = false;
-        } else {
-            $next->resume();
+            return;
         }
+        $next = $this->writers[$id];
+        unset($this->writers[$id]);
+        $next();
     }
 
     /**
@@ -752,11 +794,13 @@ final class Http2Session
         }
         $suspension = $this->loop->getSuspension();
         $settled = false;
-        $finish = static function (?\Throwable $error = null) use ($suspension, &$settled): void {
+        $finish = static function (?\Throwable $error = null) use ($suspension, $register, &$settled): void {
             if ($settled) {
                 return;
             }
             $settled = true;
+            // A settled writer must leave the queue before another turn is handed out.
+            $register(null);
             if ($error !== null) {
                 $suspension->throw($error);
             } else {

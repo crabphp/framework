@@ -44,6 +44,7 @@
 - Every error response is built by `Http\ErrorResponse`, for the error handler and for the router's 404 and 405 alike. Expected answers such as an unmatched route are returned as responses, not thrown, so they pass back through middleware.
 - Inside a worker, PHP warnings and notices are thrown as `ErrorException`; code must not rely on a warning being ignored, and uses `@` only where a failure is then checked by return value.
 - Anything that adds work to every request and is not needed to answer it, such as the request id or CORS, is off by default: it is middleware an application adds, with its measured cost documented.
+- CORS declares `Vary: Origin` on every answer whose headers depend on the origin, absent and refused origins included, and keeps any `Vary` already set.
 - A route the framework adds, such as the health path, is asked for in `app.php` (`withRouting(health: '/up')`) and shows in `route:list` like any other. `App` adds none by itself.
 - A command is named `area:action`, with the area in the singular: `route:list`, `schedule:work`, `queue:retry`, `cache:clear`, `make:migration`. The command that lists what a component holds is `<area>:list` (`route:list`, `schedule:list`); a new component that holds a list gets one. A bare name is only for the application itself (`serve`, `stop`, `reload`, `restart`, `status`), for the console's own `list` and `help`, and for `migrate`.
 - A console option that takes a value is given as `--name=value`; one given without `=`, or with a value of the wrong form or range, is refused before anything runs (before stopping a server or writing a file), naming the option and showing a valid invocation. Every command entry point is checked this way, restart, reload, selectors, comma-separated lists and generators included, and its test shows that an invalid value touches nothing. Report a supplied value-taking option with no value before checking other option values or positional arguments. A raw environment or option value stays raw until the reader that owns it checks its whole form and range. A generator checks every write, stub included, and reports success only once the final file is as intended.
@@ -86,6 +87,7 @@
 - Data that does not fit is a 422 built by `Http\ErrorResponse` with every problem by field, returned and not thrown. JSON is taken as it is; only text sources (query string, route parameters) are converted to numbers and booleans. Fields an action does not declare are ignored and never reach it.
 - `Validation` knows nothing of HTTP or routing. A rule is an attribute implementing `Contracts\Validation\Rule`, which checks a value and says what is wrong with it.
 - A rule that cannot read a value refuses it with a message; it never treats an unreadable value as empty. `Pattern`'s `$` is the end of the text. A `float` refuses a value that is not finite, and a date accepts only the forms its message names (`2026-01-31`, `2026-01-31T12:00:00Z`), never a relative phrase such as `now`.
+- A typed list's `Length` bounds are checked after its shape and before any item is validated or made, so an oversized list costs one error, not one per item.
 - An action's input class, and every class inside it, is read when the route is added (`Validator::inspect()`), so one that cannot be validated stops startup.
 
 ## Running the server
@@ -164,6 +166,7 @@
 - The client an application is given is shared by every request its worker serves, so nothing about one caller is set on it. `timeout()` and `cookies()` return another client over the same connections and leave the first as it was; a new option of that kind is added the same way, never as a setter.
 - What belongs to one request is an argument of the call (`query:`, `headers:`, `json:`, `form:`, `files:`, `body:`, `cancellation:`); what holds for several is an argument of the constructor and, where a caller needs to change it, a method that returns another client. One thing is said in one of the two, not both.
 - A client keeps no cookies unless it is given a jar. A jar gives a cookie back only where a browser would: host or named domain, path, `Secure`, and not expired; and it keeps a `Secure` cookie only from an `https` answer.
+- A plaintext answer cannot replace, delete or shadow a live `Secure` cookie of the same name on an overlapping domain and path; selection and protection use one path-matching rule.
 - `Response::throw()` is how an error status becomes an exception, asked for by the caller. Do not add a client-wide switch that makes every error status throw.
 - `FakeClient` extends `Client` and replaces only what carries a request (`Transport`), so that a test exercises the real request building, redirects and cookies. It is the one class in `src/` that extends a concrete class; a request no reply matches throws rather than reaching the network.
 
@@ -171,6 +174,7 @@
 
 - A file in a request is never read into memory by the framework. The engine keeps a large body on disk, `Multipart` reads it through a window, and an `UploadedFile` is a `StreamSlice` of the place the file lies in. Do not turn an upload into a string to parse or to move it.
 - What is kept in memory is bounded: a form's fields together, the number of its parts, and the headers of one part.
+- JSON from outside (a request body, a socket message, an answer the client reads) is refused before decoding when any object has more than 1,000 members, repeated names included, at any depth: a request is answered 413, a socket closes with 1009, and the client's `json()` throws `LengthException`.
 - The size a body may be and the time a client has to send it are settings, `server.max_body` and `server.body_timeout`, with the engine's defaults.
 
 ## Generality
@@ -274,6 +278,7 @@
 - Code on the request path builds values on first use and avoids objects created per request. When changing `Http` or `Routing` request-path code, measure the per-request cost against the engine alone with JIT on, in the manner of `benchmarks/request-path.php`, and report it.
 - Do not add an optimization that reuses parsed data across identical requests; that is a benchmark hack. Lazy work is fine.
 - A worker-local cache reclaims expired entries even when their keys are never asked for again, and what a connection or task leaves in a map is removed on every way it can end.
+- A caller waiting for exclusive use of a shared connection waits under its own cancellation and deadline; one that gives up leaves the queue, and one that abandons a turn it got returns it and any flow-control window it reserved.
 - The HTTP client closes connection pools that have stayed idle, during later client activity, even for servers it never calls again; a failed attempt that borrowed nothing does not renew their idle time.
 
 ## Workflow

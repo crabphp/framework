@@ -124,7 +124,7 @@ $user = $http->get($url)->throw()->json();
 
 No answer always throws. All three are a `Psr\Http\Client\ClientExceptionInterface`, and no message holds the query string or a header, so they are safe to log.
 
-`json()` throws `JsonException` for an empty or malformed JSON body; exceeding the redirect limit throws `Crab\HttpClient\ClientException`.
+`json()` throws `JsonException` for an empty or malformed JSON body, and `LengthException` when any JSON object has more than 1,000 members, including repeated names. Lists of smaller objects may contain more than 1,000 items. Exceeding the redirect limit throws `Crab\HttpClient\ClientException`.
 
 ## Timeouts
 
@@ -222,6 +222,8 @@ $session = $http->cookies(new CookieJar());
 $session->post('https://shop.example/login', form: ['user' => 'ada', 'pass' => $secret]);
 $session->get('https://shop.example/orders');            // sent with the cookie the login set
 ```
+
+A plaintext HTTP response cannot replace, delete or shadow an unexpired Secure cookie of the same name on an overlapping domain and path. This also holds while following redirects. HTTPS responses can update or remove those cookies normally.
 
 ## A proxy
 

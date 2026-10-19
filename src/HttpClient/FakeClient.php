@@ -9,6 +9,7 @@ use Crab\Engine\Async\Cancellation;
 use Crab\Http\Stream;
 use Psr\Http\Message\RequestInterface;
 use Psr\Http\Message\ResponseInterface;
+use Psr\Http\Message\StreamInterface;
 
 /**
  * The HTTP client for tests: nothing leaves the process, each request is
@@ -20,7 +21,7 @@ use Psr\Http\Message\ResponseInterface;
  *         'POST https://api.example.com/charges' => FakeClient::response(402, ['error' => 'card_declined']),
  *         'https://slow.example.com/*' => new \RuntimeException('it timed out'),
  *     ]);
- *     $app->container->instance(Client::class, $http);
+ *     $app->container->instance(\Crab\Contracts\HttpClient\Client::class, $http);
  *
  *     // ... run the code under test ...
  *
@@ -53,6 +54,11 @@ final class FakeClient extends Client implements Transport
     public array $requests = [];
 
     /**
+     * The original fake carries every copy's requests and owns their shared history.
+     */
+    private readonly self $recorder;
+
+    /**
      * @param array<string, mixed> $replies By pattern: "GET https://api.example.com/users/*", or without the method.
      * @param array<string, string|list<string>> $headers
      */
@@ -64,6 +70,7 @@ final class FakeClient extends Client implements Transport
         ?CookieJarContract $cookies = null,
         int $retries = 0,
     ) {
+        $this->recorder = $this;
         // Retries wait no time in a test.
         parent::__construct(
             $baseUrl,
@@ -74,6 +81,11 @@ final class FakeClient extends Client implements Transport
             retryDelay: 0.0,
             transport: $this,
         );
+    }
+
+    public function __clone(): void
+    {
+        $this->requests = &$this->recorder->requests;
     }
 
     /**
@@ -131,14 +143,18 @@ final class FakeClient extends Client implements Transport
         ?Cancellation $cancellation,
     ): Response {
         $cancellation?->throwIfCancelled();
-        $this->requests[] = $request;
+        $record = $request->withBody(self::copyBody($request->getBody()));
+        $this->requests[] = $record;
         $what = Exchange::describe($request);
         foreach ($this->replies as $pattern => $reply) {
             if (!self::matches((string) $pattern, $request)) {
                 continue;
             }
             if ($reply instanceof \Closure) {
-                $reply = $reply($request);
+                // A reply may consume or close its stream without rewriting the sent history.
+                $body = self::copyBody($record->getBody());
+                $record->getBody()->rewind();
+                $reply = $reply($request->withBody($body));
             }
             if ($reply instanceof \Throwable) {
                 throw $reply;
@@ -171,6 +187,29 @@ final class FakeClient extends Client implements Transport
      * There are no connections to close.
      */
     public function close(): void {}
+
+    /**
+     * As on the wire, a seekable body starts at zero and any other body at its current position.
+     * Copy in chunks into a temporary stream so large bodies spill to disk.
+     */
+    private static function copyBody(StreamInterface $body): Stream
+    {
+        $copy = new Stream();
+        if ($body->getSize() === 0) {
+            return $copy;
+        }
+        if ($body->isSeekable()) {
+            $body->rewind();
+        }
+        while (!$body->eof()) {
+            $bytes = $body->read(65_536);
+            if ($copy->write($bytes) !== strlen($bytes)) {
+                throw new \RuntimeException('Cannot keep the fake request body. Check temporary storage space.');
+            }
+        }
+        $copy->rewind();
+        return $copy;
+    }
 
     private static function matches(string $pattern, RequestInterface $request): bool
     {

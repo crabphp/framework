@@ -1287,8 +1287,10 @@ final class ServerTest extends TestCase
 
         // Requests keep arriving, each on a new connection, while the server is replaced.
         $load = proc_open([PHP_BINARY, '-r', <<<'PHP'
-            $end = microtime(true) + 2.5; $seen = []; $failed = 0;
-            while (microtime(true) < $end) {
+            $deadline = microtime(true) + 20.0;
+            $ready = fopen('php://fd/3', 'w');
+            $seen = []; $failed = 0;
+            while (!isset($seen['two']) && microtime(true) < $deadline) {
                 $c = @stream_socket_client($argv[1], $e, $m, 2);
                 if ($c === false) { $failed++; continue; }
                 stream_set_timeout($c, 5);
@@ -1298,27 +1300,54 @@ final class ServerTest extends TestCase
                 if (!str_contains($r, '200 OK')) { $failed++; continue; }
                 $body = substr($r, strrpos($r, "\r\n\r\n") + 4);
                 $seen[$body] = ($seen[$body] ?? 0) + 1;
+                if ($body === 'one' && $seen[$body] === 1) {
+                    fwrite($ready, "one\n");
+                }
             }
             echo json_encode(['failed' => $failed, 'seen' => $seen]);
-            PHP, $this->address], [1 => ['pipe', 'w']], $pipes);
-        usleep(400_000);
-        $this->version('two');
-        [$status, $output] = $this->cua('reload', "--address={$this->address}", '--workers=2');
-        self::assertSame(0, $status, $output);
-        self::assertSame($pid, $this->pid(), 'The server keeps its process id across a reload.');
-        self::assertMatchesRegularExpression(
-            "~^Reloaded the server, pid {$pid}, on {$this->url} with 2 workers\\. It now runs the code as it is\\.\nProcess (\\d+) took over from process (\\d+), which finishes the requests it has and stops\\.\n$~",
-            $output,
-        );
-        preg_match('~Process (\d+) took over from process (\d+)~', $output, $processes);
-        [, $new, $old] = array_map(intval(...), $processes);
-        self::assertSame('two', $this->get());
+            PHP, $this->address], [1 => ['pipe', 'w'], 3 => ['pipe', 'w']], $pipes);
+        self::assertIsResource($load);
+        try {
+            stream_set_timeout($pipes[3], 25);
+            self::assertSame(
+                "one\n",
+                fgets($pipes[3]),
+                'The load client did not observe the old generation within twenty seconds.',
+            );
+            $this->version('two');
+            [$status, $output] = $this->cua('reload', "--address={$this->address}", '--workers=2');
+            self::assertSame(0, $status, $output);
+            self::assertSame($pid, $this->pid(), 'The server keeps its process id across a reload.');
+            self::assertMatchesRegularExpression(
+                "~^Reloaded the server, pid {$pid}, on {$this->url} with 2 workers\\. It now runs the code as it is\\.\nProcess (\\d+) took over from process (\\d+), which finishes the requests it has and stops\\.\n$~",
+                $output,
+            );
+            preg_match('~Process (\d+) took over from process (\d+)~', $output, $processes);
+            [, $new, $old] = array_map(intval(...), $processes);
+            self::assertSame('two', $this->get());
 
-        $result = json_decode((string) stream_get_contents($pipes[1]), true);
-        proc_close($load);
+            stream_set_timeout($pipes[1], 25);
+            $result = json_decode((string) stream_get_contents($pipes[1]), true, flags: JSON_THROW_ON_ERROR);
+            self::assertSame(0, proc_close($load), 'The load client did not exit successfully.');
+        } finally {
+            if (is_resource($load)) {
+                proc_terminate($load);
+                proc_close($load);
+            }
+            foreach ($pipes as $pipe) {
+                if (!is_resource($pipe)) {
+                    continue;
+                }
+                fclose($pipe);
+            }
+        }
         self::assertSame(0, $result['failed'], 'No request was refused or cut short during the reload.');
         self::assertGreaterThan(0, $result['seen']['one'] ?? 0, 'The old process served until the new one was ready.');
-        self::assertGreaterThan(0, $result['seen']['two'] ?? 0, 'The new process took over.');
+        self::assertGreaterThan(
+            0,
+            $result['seen']['two'] ?? 0,
+            'The load client did not observe the new generation within twenty seconds.',
+        );
         for ($waited = 0; $waited < 200 && posix_kill($old, 0); ++$waited) {
             usleep(50_000);
         }

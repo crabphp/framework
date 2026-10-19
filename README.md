@@ -533,10 +533,10 @@ self::assertSame('{"amount":500}', (string) $http->requests[0]->getBody());
 
 | Setting | Default | |
 | --- | --- | --- |
-| `http_client.timeout` | `30.0` | Seconds a whole exchange may take |
+| `http_client.timeout` | `30.0` | Seconds a whole call may take, retries included |
 | `http_client.connect_timeout` | `5.0` | Seconds connecting may take |
 | `http_client.redirects` | `5` | `0` returns the redirect itself |
-| `http_client.connections` | `8` | Requests on their way to one server at once |
+| `http_client.connections` | `8` | HTTP/1.1 connections to one server; HTTP/2 stream concurrency follows the peer's settings |
 | `http_client.base_url`, `http_client.headers` | none | Added to every request of the default client |
 | `http_client.proxy` | none | `http://host:port`, with `user:password@` when it asks |
 | `http_client.retries` | `0` | More tries for a request that may be tried again |
@@ -788,7 +788,7 @@ return new class implements Migration {
 - **A column must have a value** unless it is `nullable()` or has a default.
 - **The same file runs on MySQL and SQLite.** The schema is written for the database in use.
 - **Migrations run in the order of their file names** and each run is a batch; `migrate:rollback` takes back the last batch, newest first.
-- **On SQLite a migration that fails leaves nothing behind**, because it runs in a transaction. MySQL commits each change to a table as it is made, so there a migration that fails halfway has done the first half: keep each one small.
+- **On SQLite a migration that fails before commit rolls back its changes.** A failed commit callback leaves the changes and migration record already committed. MySQL commits each change to a table as it is made, so there a migration that fails halfway has done the first half: keep each one small. See [MySQL and SQLite](docs/migrations.md#mysql-and-sqlite).
 - **Rows can be moved in a migration** with `$schema->connection()->table('users')->...`.
 - **SQLite checks foreign keys** on the connections the provider opens.
 - **A column's type cannot be changed** in `$schema->table()`; SQLite has no statement for it. Add a column, copy the values and drop the old one.

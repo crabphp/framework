@@ -53,6 +53,7 @@ final class DnsResolverTest extends TestCase
     {
         $loop = $this->loop = $this->newLoop();
         $asked = [];
+        $answer = null;
         $server = $this->nameServer(
             $loop,
             $asked,
@@ -68,24 +69,38 @@ final class DnsResolverTest extends TestCase
                 ],
                 'six.example.test' => [[28, 60, inet_pton('2001:db8::5')]],
             ],
-            delay: 0.005,
+            hold: static function (\Closure $send) use (&$answer): void {
+                if ($answer === null) {
+                    $answer = $send;
+                } else {
+                    $send();
+                }
+            },
         );
-        $dns = new DnsResolver([$server], 0.2, 1, false, $this->hosts);
-        $ticks = 0;
-        $timer = $loop->repeat(0.001, static function () use (&$ticks): void {
-            ++$ticks;
-        });
-        $found = $this->within($loop, static fn(): array => [
-            $dns->resolve($loop, 'api.example.test'),
-            $dns->resolve($loop, 'API.Example.Test.'),
-            $dns->resolve($loop, 'www.example.test'),
-            $dns->resolve($loop, 'six.example.test'),
-            $dns->resolve($loop, '192.0.2.4'),
-            $dns->resolve($loop, '[2001:db8::1]'),
-            $dns->resolve($loop, 'localhost'),
-            $dns->resolve($loop, 'mixed.case'),
-        ]);
-        $loop->cancel($timer);
+        $dns = new DnsResolver([$server], 10.0, 1, false, $this->hosts);
+        $found = $this->within(
+            $loop,
+            function () use ($loop, $dns, &$answer): array {
+                $lookup = Task::spawn($loop, static fn(#[\SensitiveParameter] Cancellation $token): array => [
+                    $dns->resolve($loop, 'api.example.test', $token),
+                    $dns->resolve($loop, 'API.Example.Test.', $token),
+                    $dns->resolve($loop, 'www.example.test', $token),
+                    $dns->resolve($loop, 'six.example.test', $token),
+                    $dns->resolve($loop, '192.0.2.4', $token),
+                    $dns->resolve($loop, '[2001:db8::1]', $token),
+                    $dns->resolve($loop, 'localhost', $token),
+                    $dns->resolve($loop, 'mixed.case', $token),
+                ]);
+                $this->deferCleanup($lookup->cancel(...));
+                while ($answer === null) {
+                    Async::sleep($loop, 0);
+                }
+                self::assertFalse($lookup->isComplete(), 'Other loop work runs while the first DNS answer is held.');
+                $answer();
+                return $lookup->await();
+            },
+            'The held DNS question and subsequent lookups did not finish within five seconds.',
+        );
 
         self::assertSame(
             [
@@ -105,7 +120,6 @@ final class DnsResolverTest extends TestCase
             $asked,
             'A name kept, a numeric address and a name in the hosts file are not asked for.',
         );
-        self::assertGreaterThan(0, $ticks);
 
         $dns->forget();
         $this->within($loop, static fn(): array => $dns->resolve($loop, 'api.example.test'));
@@ -134,7 +148,7 @@ final class DnsResolverTest extends TestCase
         );
         self::assertGreaterThan(0.04, (hrtime(true) - $started) / 1e9);
 
-        $only = new DnsResolver([$server], 0.05, 1, false, $this->hosts);
+        $only = new DnsResolver([$server], 10.0, 1, false, $this->hosts);
         foreach ([
             'missing.test',
             'cut.test',
@@ -185,16 +199,46 @@ final class DnsResolverTest extends TestCase
     {
         $loop = $this->loop = $this->newLoop();
         $asked = [];
-        $server = $this->nameServer($loop, $asked, ['shared.test' => [[1, 60, "\x0A\x00\x00\x04"]]], delay: 0.03);
-        $dns = new DnsResolver([$server], 0.5, 1, false, $this->hosts);
+        $answer = null;
+        $server = $this->nameServer(
+            $loop,
+            $asked,
+            ['shared.test' => [[1, 60, "\x0A\x00\x00\x04"]]],
+            hold: static function (\Closure $send) use (&$answer): void {
+                $answer = $send;
+            },
+        );
+        $dns = new DnsResolver([$server], 10.0, 1, false, $this->hosts);
         $tasks = [];
         for ($i = 0; $i < 5; ++$i) {
-            $tasks[] = Task::spawn($loop, static fn(): array => $dns->resolve($loop, 'shared.test'));
+            $task = Task::spawn($loop, static fn(#[\SensitiveParameter] Cancellation $token): array => $dns->resolve(
+                $loop,
+                'shared.test',
+                $token,
+            ));
+            $this->deferCleanup($task->cancel(...));
+            $tasks[] = $task;
         }
-        $found = $this->within($loop, static fn(): array => array_map(
-            static fn(Task $task): array => $task->await(),
-            $tasks,
-        ));
+        $found = $this->within(
+            $loop,
+            static function () use ($loop, $dns, $tasks, &$answer, &$asked): array {
+                $asking = new \ReflectionProperty($dns, 'asking');
+                while ($answer === null || count($asking->getValue($dns)['shared.test'] ?? []) !== 4) {
+                    Async::sleep($loop, 0);
+                }
+                self::assertSame(
+                    ['shared.test A'],
+                    $asked,
+                    'All four followers joined before any answer was released.',
+                );
+                foreach ($tasks as $task) {
+                    self::assertFalse($task->isComplete());
+                }
+                $answer();
+                return array_map(static fn(Task $task): array => $task->await(), $tasks);
+            },
+            'The DNS leader and four followers did not share and finish one question within five seconds.',
+        );
         self::assertSame(array_fill(0, 5, ['10.0.0.4']), $found);
         self::assertSame(['shared.test A'], $asked);
     }
@@ -223,7 +267,7 @@ final class DnsResolverTest extends TestCase
             $records["old-{$i}.test"] = [[1, 5, "\x0A\x00\x00\x02"]];
         }
         $server = $this->nameServer($loop, $asked, $records);
-        $dns = new DnsResolver([$server], 0.2, 1, false, $this->hosts);
+        $dns = new DnsResolver([$server], 10.0, 1, false, $this->hosts);
         self::assertSame(['10.0.0.1'], $this->within($loop, static fn(): array => $dns->resolve($loop, 'live.test')));
 
         for ($wave = 0; $wave < 3; ++$wave) {
@@ -254,7 +298,7 @@ final class DnsResolverTest extends TestCase
         $loop = $this->loop = $this->newLoop();
         $asked = [];
         $server = $this->nameServer($loop, $asked, ['old.test' => [[1, 5, "\x0A\x00\x00\x02"]]]);
-        $dns = new DnsResolver([$server], 0.2, 1, false, $this->hosts);
+        $dns = new DnsResolver([$server], 10.0, 1, false, $this->hosts);
         $this->within($loop, static fn(): array => $dns->resolve($loop, 'old.test'));
         $this->expireAnswers($dns);
 
@@ -441,13 +485,8 @@ final class DnsResolverTest extends TestCase
      * @param (\Closure(\Closure): void)|null $hold Holds a prepared reply until the test's callers have joined.
      * @return string Its address and port.
      */
-    private function nameServer(
-        EventLoop $loop,
-        array &$asked,
-        array $records,
-        float $delay = 0.0,
-        ?\Closure $hold = null,
-    ): string {
+    private function nameServer(EventLoop $loop, array &$asked, array $records, ?\Closure $hold = null): string
+    {
         $socket = stream_socket_server('udp://127.0.0.1:0', $code, $reason, STREAM_SERVER_BIND);
         stream_set_blocking($socket, false);
         $this->sockets[] = $socket;
@@ -455,7 +494,6 @@ final class DnsResolverTest extends TestCase
             $loop,
             $socket,
             $records,
-            $delay,
             $hold,
             &$asked,
         ): void {
@@ -500,7 +538,7 @@ final class DnsResolverTest extends TestCase
             if ($hold !== null) {
                 $hold($send);
             } else {
-                $delay > 0 ? $loop->delay($delay, $send) : $send();
+                $send();
             }
         });
         return (string) stream_socket_get_name($socket, false);

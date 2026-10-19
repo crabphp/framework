@@ -50,7 +50,7 @@ return [
     'tries' => 5,
     'backoff' => [10, 60, 300],
     'retry_after' => 180,
-    'workers' => (int) env('QUEUE_WORKERS', 2),
+    'workers' => env('QUEUE_WORKERS', 2),
 ];
 ```
 
@@ -221,7 +221,7 @@ While you develop, start it in a second terminal when you are working on jobs. T
 > [!WARNING]
 > A worker runs the code it started with. When `serve` manages it, `php cua reload` replaces it after deployment. A separately started `queue:work` must be stopped and started again.
 
-Value options are checked before consuming jobs. Worker and concurrency counts must be positive whole numbers within PHP's integer range. A queue list must contain a nonempty name at every comma, and `--supervisor` must name a configured supervisor.
+Value options are checked before consuming jobs. Worker and concurrency counts from configuration, supervisor overrides and command options must be positive whole numbers within PHP's integer range. Leave environment values uncast so invalid text can be refused. A queue list must contain a nonempty name at every comma, and `--supervisor` must name a configured supervisor.
 
 ### Workers and concurrency
 

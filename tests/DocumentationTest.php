@@ -130,11 +130,64 @@ final class DocumentationTest extends TestCase
         }
     }
 
+    public function testTheDescribedFieldsExampleDistinguishesOmissionFromExplicitNull(): void
+    {
+        $example = $this->example('validation.md', 'php', "'shipTo?'");
+        $namespace = 'DescribedFields' . bin2hex(random_bytes(6));
+        file_put_contents(
+            $this->directory . '/described-fields.php',
+            "<?php\nnamespace {$namespace};\nuse Crab\\Validation\\Fields;\nuse Crab\\Validation\\Data;\n"
+            . "use Crab\\Validation\\Email;\nuse Crab\\Validation\\Length;\n"
+            . "enum Plan: string { case Free = 'free'; }\nreturn static fn(\n"
+            . $example
+            . "): array => \$signup->toArray();\n",
+        );
+        $action = require $this->directory . '/described-fields.php';
+        $app = new App(new Config(['log' => ['path' => 'php://memory']]));
+        $app->router->post('/signup', $action);
+        $api = new \Crab\Testing\Api($app);
+        $fields = ['email' => 'ada@example.com', 'plan' => 'free', 'tags' => []];
+
+        $omitted = $api->post('/signup', $fields)->assertStatus(200)->json();
+        self::assertArrayNotHasKey('shipTo', $omitted);
+        $api->post('/signup', [...$fields, 'shipTo' => null])->assertStatus(200)->assertJson('shipTo', null);
+        $api
+            ->post('/signup', [...$fields, 'shipTo' => ['street' => 7, 'country' => 'GB']])
+            ->assertStatus(422)
+            ->assertJson('error.fields', ['shipTo.street' => ['must be text']]);
+        $api
+            ->post('/signup', [...$fields, 'shipTo' => ['street' => '1 Main St', 'country' => 'GB']])
+            ->assertStatus(200)
+            ->assertJson('shipTo.street', '1 Main St');
+    }
+
+    /**
+     * @return iterable<string, array{string}>
+     */
+    public static function httpClientLimits(): iterable
+    {
+        yield 'whole-call deadline' => ['http_client.timeout'];
+        yield 'HTTP/1.1 connection limit' => ['http_client.connections'];
+    }
+
+    #[DataProvider('httpClientLimits')]
+    public function testTheReadmeHttpClientLimitsMatchTheGuide(string $setting): void
+    {
+        $pattern = '/^\| `' . preg_quote($setting, '/') . '` \| (.+)$/m';
+        $guide = file_get_contents(dirname(__DIR__) . '/docs/http-client.md');
+        $readme = file_get_contents(dirname(__DIR__) . '/README.md');
+        preg_match($pattern, $guide, $canonical);
+        preg_match($pattern, $readme, $summary);
+        self::assertArrayHasKey(1, $canonical, $setting);
+        self::assertArrayHasKey(1, $summary, $setting);
+        self::assertSame($canonical[1], $summary[1], $setting . ' must describe the same limit in both places.');
+    }
+
     public function testThePartialUpdateExampleAcceptsAnEmptyChangeSet(): void
     {
         $db = new Database(static fn(): \PDO => new \PDO('sqlite::memory:'), 1);
         $db->execute('create table users (id integer primary key, name text not null, bio text)');
-        $db->table('users')->insert(['id' => 7, 'name' => 'Original']);
+        $db->table('users')->insert(['id' => 7, 'name' => 'Original', 'bio' => 'Original bio']);
         $example = $this->example('actions.md', 'php', '// PATCH /users/7');
         file_put_contents(
             $this->directory . '/action.php',
@@ -159,6 +212,12 @@ final class DocumentationTest extends TestCase
             );
             self::assertSame(204, $response->getStatusCode());
             self::assertSame('Ada', $db->table('users')->find(7)['name']);
+            self::assertSame('Original bio', $db->table('users')->find(7)['bio'], 'Omission leaves the column alone.');
+            $response = $app->handle(
+                new Request('PATCH', '/users/7', ['Content-Type' => 'application/json'], '{"bio":null}'),
+            );
+            self::assertSame(204, $response->getStatusCode());
+            self::assertNull($db->table('users')->find(7)['bio'], 'An explicit null writes SQL NULL.');
         } finally {
             $db->close();
         }

@@ -210,7 +210,7 @@ public function handle(int $id, #[Fields(['name' => '?string', 'bio' => '?string
 }
 ```
 
-An empty object, or one containing only undeclared fields, changes nothing and returns `204`.
+An empty object, or one containing only undeclared fields, changes nothing and returns `204`. A supplied null stays in `toArray()` and writes SQL NULL, so these nullable fields must map to columns that accept NULL. Omit a field to leave its column unchanged.
 
 It is validated before the action runs, as an input class is, and a problem is reported the same way: `lines.0.quantity`. A description that makes no sense stops the server from starting. Reading a field you did not describe throws, so a slip of the hand shows in the first test.
 

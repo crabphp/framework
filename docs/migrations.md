@@ -27,7 +27,7 @@ php cua make:migration create_posts_table
 # Created database/migrations/2026_10_10_101500_create_posts_table.php
 ```
 
-A name of the form `create_<table>_table` starts the file with that table. Any other name, such as `add_phone_to_users`, starts it empty.
+A name of the form `create_<table>_table` starts the file with that table. Any other name, such as `add_phone_to_users`, starts it empty. If the stub cannot be written, the command exits nonzero and names the destination and permissions to check; it reports creation only after a successful write.
 
 ```php
 use Crab\Contracts\Database\Migration;

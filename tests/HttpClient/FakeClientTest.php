@@ -6,12 +6,14 @@ namespace Crab\Tests\HttpClient;
 
 use Crab\Contracts\HttpClient\Client as ClientContract;
 use Crab\Contracts\HttpClient\File;
+use Crab\Http\Stream;
 use Crab\HttpClient\Client;
 use Crab\HttpClient\CookieJar;
 use Crab\HttpClient\FakeClient;
 use Crab\HttpClient\NetworkException;
 use Crab\HttpClient\ResponseException;
 use Crab\Testing\FrozenClock;
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 use Psr\Http\Client\ClientExceptionInterface;
 use Psr\Http\Message\RequestInterface;
@@ -23,6 +25,114 @@ final class FakeClientTest extends TestCase
         // A fake retry or redirect can suspend from main just like a real
         // client. Finish the driver before the next test installs a loop.
         \Crab\Engine\EventLoop::current()->run();
+    }
+
+    /**
+     * @return iterable<string, array{int, bool}>
+     */
+    public static function recordedBodies(): iterable
+    {
+        yield 'seekable body already read in part' => [6, true];
+        yield 'body larger than temporary memory storage' => [3_000_000, true];
+        yield 'nonseekable body' => [6, false];
+    }
+
+    #[DataProvider('recordedBodies')]
+    public function testRecordedBodiesKeepWhatThePeerReceivedAfterTheCallerChangesOrClosesItsStream(
+        int $size,
+        bool $seekable,
+    ): void {
+        $content = str_repeat('x', $size);
+        $server = new TestServer(static fn(): string => TestServer::reply(200, '', ['Connection' => 'close']));
+        $real = new Client();
+        $fake = new FakeClient(['*' => 200]);
+        try {
+            foreach ([$real, $fake] as $client) {
+                if ($seekable) {
+                    $body = new Stream($content);
+                    $body->seek(2);
+                } else {
+                    [$reader, $writer] = stream_socket_pair(STREAM_PF_UNIX, STREAM_SOCK_STREAM, 0);
+                    fwrite($writer, $content);
+                    fclose($writer);
+                    $body = new Stream($reader);
+                }
+                try {
+                    $client->request('POST', $server->url('/body'), body: $body);
+                    if ($seekable) {
+                        $body->rewind();
+                        $body->write('after!');
+                    }
+                    if ($client === $fake) {
+                        self::assertSame(
+                            hash('sha256', $server->requests[0]['body']),
+                            hash('sha256', (string) $fake->sent()[0]->getBody()),
+                        );
+                    }
+                } finally {
+                    $body->close();
+                }
+            }
+            self::assertSame(hash('sha256', $content), hash('sha256', $server->requests[0]['body']));
+            self::assertSame(hash('sha256', $content), hash('sha256', (string) $fake->requests[0]->getBody()));
+        } finally {
+            $real->close();
+            $server->close();
+        }
+    }
+
+    public function testAReplyCanReadChangeAndCloseItsBodyWithoutChangingTheRecordedRequest(): void
+    {
+        $body = new Stream('before');
+        $body->seek(3);
+        $http = new FakeClient(['*' => static function (RequestInterface $request): string {
+            $received = $request->getBody()->getContents();
+            $request->getBody()->rewind();
+            $request->getBody()->write('after!');
+            $request->getBody()->close();
+            return $received;
+        }]);
+
+        $response = $http->request('POST', 'https://api.example.com/body', body: $body);
+        $body->close();
+
+        self::assertSame('before', (string) $response->getBody());
+        self::assertSame('before', $http->sent()[0]->getBody()->getContents());
+    }
+
+    public function testCopiesShareOneOrderedHistoryWhileTheirOptionsRemainIndependent(): void
+    {
+        $http = new FakeClient([
+            '*' => static fn(RequestInterface $request): string => $request->getHeaderLine('Cookie'),
+        ]);
+        $http->get('https://api.example.com/before');
+        $jar = new CookieJar();
+        $jar->set('https://api.example.com/', 'session', 'one');
+        $copies = [$http->timeout(1), $http->retry(1), $http->cookies($jar), clone $http];
+        $copies[] = $copies[0]->retry(2)->cookies($jar);
+        $paths = ['/before'];
+        foreach ($copies as $index => $copy) {
+            $path = '/copy-' . $index;
+            $copy->get('https://api.example.com' . $path);
+            $paths[] = $path;
+        }
+        self::assertSame('', (string) $http->get('https://api.example.com/after')->getBody());
+        $paths[] = '/after';
+        foreach ([$http, ...$copies] as $copy) {
+            self::assertSame($paths, array_map(static fn(RequestInterface $request): string => $request
+                ->getUri()
+                ->getPath(), $copy->sent()));
+            self::assertSame($http->requests, $copy->requests);
+        }
+        self::assertSame('session=one', $copies[2]->sent()[3]->getHeaderLine('Cookie'));
+        $copies[0]->requests = [];
+        self::assertSame([], $http->sent());
+
+        $temporary = new FakeClient(['*' => 200])
+            ->timeout(1)
+            ->retry(1);
+        $temporary->get('https://api.example.com/temporary');
+        self::assertCount(1, $temporary->sent());
     }
 
     public function testRepliesAreFoundByMethodAndUrlAndRequestsAreKept(): void

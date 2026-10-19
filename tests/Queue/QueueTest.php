@@ -1625,6 +1625,92 @@ final class QueueTest extends TestCase
         }
     }
 
+    /**
+     * @return iterable<string, array{string, mixed}>
+     */
+    public static function invalidWorkerCounts(): iterable
+    {
+        foreach (['workers', 'concurrency'] as $setting) {
+            foreach ([
+                '2workers',
+                '1.5',
+                '9223372036854775808',
+                '',
+                '0',
+                '-1',
+                '2e1',
+                "2\n",
+                0,
+                -1,
+                1.5,
+                true,
+                false,
+                null,
+                [],
+            ] as $index => $value) {
+                yield $setting . ' case ' . $index => [$setting, $value];
+            }
+        }
+    }
+
+    #[DataProvider('invalidWorkerCounts')]
+    public function testMalformedConfiguredCountsCannotReachStandaloneOrIntegratedWorkers(
+        string $setting,
+        mixed $value,
+    ): void {
+        foreach ([false, true] as $named) {
+            $settings = $named
+                ? ['supervisors' => ['mail' => ['queues' => ['mail'], $setting => $value]]]
+                : [$setting => $value];
+            $app = new App(new Config(['queue' => ['store' => 'memory', ...$settings]]));
+            $app->register(QueueProvider::class);
+            $runner = $this->createMock(\Crab\Contracts\Runner::class);
+            $runner->expects(self::never())->method('run');
+            $runner->expects(self::never())->method('runAll');
+            $command = new \Crab\Queue\Commands\Work($runner, new Consumer(new MemoryStore()), $app->config);
+            foreach ([
+                static fn() => $command->handle(new \Crab\Console\Input(), new Output(fopen('php://memory', 'w+'))),
+                static fn() => $app->alongside(['queue']),
+            ] as $start) {
+                $caught = null;
+                try {
+                    $start();
+                } catch (\InvalidArgumentException $error) {
+                    $caught = $error;
+                }
+                self::assertNotNull($caught, $setting . ' was accepted before starting workers.');
+                self::assertStringContainsString($setting, $caught->getMessage());
+                self::assertStringContainsString('--' . $setting . '=1', $caught->getMessage());
+            }
+        }
+    }
+
+    public function testWholeConfiguredAndCommandCountsAgreeWithoutStartingWorkers(): void
+    {
+        foreach ([1, 4, PHP_INT_MAX, '2', (string) PHP_INT_MAX] as $value) {
+            $config = new Config(['queue' => ['workers' => $value, 'concurrency' => $value]]);
+            $app = new App($config);
+            $app->register(QueueProvider::class);
+            $supervisor = Supervisor::from($config, 'queue');
+            self::assertSame([(int) $value, (int) $value], [$supervisor->workers, $supervisor->concurrency]);
+            $runner = $this->createMock(\Crab\Contracts\Runner::class);
+            $runner
+                ->expects(self::once())
+                ->method('runAll')
+                ->with(
+                    self::callback(
+                        static fn(array $groups): bool => count($groups) === 1 && $groups[0]->workers === (int) $value,
+                    ),
+                    30.0,
+                );
+            $command = new \Crab\Queue\Commands\Work($runner, new Consumer(new MemoryStore()), $config);
+            self::assertSame(0, $command->handle(
+                new \Crab\Console\Input(['--quiet', '--workers=' . $value, '--concurrency=' . $value]),
+                $this->quiet(),
+            ));
+        }
+    }
+
     public function testEachSupervisorRunsItsOwnQueuesWithinItsOwnLimits(): void
     {
         $app = new App(new Config([

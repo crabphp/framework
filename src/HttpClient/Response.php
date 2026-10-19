@@ -7,6 +7,7 @@ namespace Crab\HttpClient;
 use Crab\Contracts\HttpClient\Response as ResponseContract;
 use Crab\Engine\Http\Response as EngineResponse;
 use Crab\Http\Message;
+use Crab\Http\Request;
 use Psr\Http\Message\StreamInterface;
 
 /**
@@ -48,7 +49,7 @@ final class Response extends Message implements ResponseContract
 
     public function json(): mixed
     {
-        return json_decode((string) $this->getBody(), true, flags: JSON_THROW_ON_ERROR);
+        return Request::decodeJson((string) $this->getBody());
     }
 
     public function getStatusCode(): int

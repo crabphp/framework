@@ -18,6 +18,7 @@ use Crab\Engine\Network\WriteResult;
 use Crab\Engine\Suspension;
 use Crab\Engine\WebSocket\MessageType;
 use Crab\Engine\WebSocket\WebSocketSession;
+use Crab\Http\Request as HttpRequest;
 use Psr\Log\LoggerInterface;
 
 /**
@@ -212,7 +213,7 @@ final class Socket implements SocketContract, Recipient
                 $this->cancelPauseTimer();
                 $this->session->resumeRead();
             }
-            return self::decode($message, $type);
+            return $this->decode($message, $type);
         } finally {
             $this->receiving = false;
             $this->reader = null;
@@ -396,16 +397,21 @@ final class Socket implements SocketContract, Recipient
     /**
      * JSON scalars and invalid JSON remain text. Binary never gets decoded.
      */
-    private static function decode(string $message, MessageType $type): array|string|Binary
+    private function decode(string $message, MessageType $type): array|string|Binary|null
     {
         if ($type === MessageType::Binary) {
             return new Binary($message);
         }
         if ($type === MessageType::Text) {
-            $decoded = json_decode($message, true);
-            if (is_array($decoded) && json_last_error() === JSON_ERROR_NONE) {
-                return $decoded;
+            try {
+                $decoded = HttpRequest::decodeJson($message);
+            } catch (\LengthException) {
+                $this->close(1009, 'JSON object limit');
+                return null;
+            } catch (\JsonException) {
+                return $message;
             }
+            return is_array($decoded) ? $decoded : $message;
         }
         return $message;
     }

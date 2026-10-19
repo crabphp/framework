@@ -24,6 +24,44 @@ final class GeneratorWriteTest extends TestCase
         }
     }
 
+    public function testAFailedInitialMigrationWriteNamesTheDestinationWithoutClaimingCreation(): void
+    {
+        $directory = sys_get_temp_dir() . '/crab-migration-write-' . bin2hex(random_bytes(6));
+        $file = $directory . '/2099_01_01_000000_create_example_table.php';
+        // A directory cannot be overwritten with a stub, including when the test runs as root.
+        mkdir($file, recursive: true);
+        $app = new \Crab\App(new Config([
+            'database' => [
+                'connections' => ['main' => [
+                    'dsn' => 'sqlite::memory:',
+                    'migrations' => $directory,
+                ]],
+            ],
+        ]));
+        $app->container->instance(
+            \Crab\Contracts\Clock\Clock::class,
+            new \Crab\Testing\FrozenClock('2099-01-01 00:00:00'),
+        );
+        $app->register(\Crab\Database\DatabaseProvider::class);
+        $stream = fopen('php://memory', 'w+b');
+        try {
+            $status = $app->console->run(['make:migration', 'create_example_table'], new Output($stream, $stream));
+            rewind($stream);
+            $output = stream_get_contents($stream);
+            self::assertSame(1, $status, $output);
+            self::assertStringContainsString($file, $output);
+            self::assertStringContainsString('permissions', $output);
+            self::assertStringNotContainsString('Created ', $output);
+            self::assertStringNotContainsString('Warning:', $output);
+            self::assertDirectoryExists($file);
+        } finally {
+            fclose($stream);
+            $app->container->get(\Crab\Contracts\Database\Database::class)->close();
+            rmdir($file);
+            rmdir($directory);
+        }
+    }
+
     #[DataProvider('installers')]
     public function testAnInstallerRefusesAFailedFinalWriteWithoutClaimingSuccess(string $name): void
     {

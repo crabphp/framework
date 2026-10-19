@@ -55,7 +55,11 @@ final readonly class Cache implements CacheContract
             $this->store->delete($this->key($key));
             return true;
         }
-        $this->store->set($this->key($key), serialize($value), $expiresAt);
+        $key = $this->key($key);
+        if ($this->store instanceof ArrayStore) {
+            $this->store->pruneIfDue($now);
+        }
+        $this->store->set($key, serialize($value), $expiresAt);
         return true;
     }
 

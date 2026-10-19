@@ -146,7 +146,7 @@ final class Network implements Transport
                         continue;
                     }
                     if ($connection !== null && $connection->protocol === 'h2') {
-                        $session = $this->session($origin, $pool, $slot, $deadline);
+                        $session = $this->session($origin, $pool, $slot, $deadline, $cancellation);
                     }
                 } catch (CancelledException $cancelled) {
                     throw $cancelled;
@@ -273,8 +273,13 @@ final class Network implements Transport
      * another request made to the same server a moment earlier, which is
      * then the one to use.
      */
-    private function session(string $origin, Pool $pool, PooledConnection $slot, float $deadline): Http2Session
-    {
+    private function session(
+        string $origin,
+        Pool $pool,
+        PooledConnection $slot,
+        float $deadline,
+        ?Cancellation $cancellation = null,
+    ): Http2Session {
         $connection = $slot->connection;
         $existing = $this->sessions[$origin] ?? null;
         if ($existing !== null && $existing->accepts()) {
@@ -296,7 +301,7 @@ final class Network implements Transport
         });
         $this->sessions[$origin] = $session;
         try {
-            $session->start($deadline);
+            $session->start($deadline, $cancellation);
             $this->idleSince[$origin] = hrtime(true) / 1_000_000_000;
             // Whoever waits for a connection to this server need wait no longer.
             foreach ($this->waiting[$origin] ?? [] as $waiter) {
@@ -304,7 +309,7 @@ final class Network implements Transport
             }
         } catch (\Throwable $error) {
             $session->close($error);
-            throw $error instanceof TimedOut
+            throw $error instanceof TimedOut || $error instanceof CancelledException
                 ? $error
                 : new \RuntimeException('the connection was lost while sending', previous: $error);
         }

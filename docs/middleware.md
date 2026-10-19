@@ -27,7 +27,7 @@ There is one kind, PSR-15's, so middleware from any PSR-15 library works. There 
 php cua make:middleware RequireJson
 ```
 
-writes a pass-through stub at `app/Http/RequireJson.php`. The generator checks the class name, namespace and local destination before writing; PHP keywords and names imported by the stub are refused with a valid example. Failed writes name the path and exit nonzero. Edit the stub to check JSON and add a response header:
+writes a pass-through stub at `app/Http/RequireJson.php`. The generator checks the class name, namespace and local destination before writing; PHP keywords and names imported by the stub are refused with a valid example. Failed writes name the path and exit nonzero. Quote a supplied namespace, as in `--namespace='App\Http'`, so the shell keeps its backslashes. Edit the stub to check JSON and add a response header:
 
 ```php
 namespace App\Http;
@@ -224,6 +224,8 @@ return App::configure(__DIR__)
 | `exposed` | Response headers a page may read beyond the few a browser always shows | none |
 | `credentials` | Whether cookies and HTTP authentication may be sent. Not with `['*']`. | `false` |
 | `maxAge` | Seconds a browser remembers the permission | `600` |
+
+Named-origin policies send `Vary: Origin` even when Origin is absent or refused, so a shared cache cannot reuse that response for an allowed origin. With `['*']`, ordinary responses carry the same wildcard permission and exposed headers with or without Origin.
 
 Put it first, with `prepend:`, so that a page can read an error's body too. It answers preflight requests from allowed origins with `204`, otherwise `403`; the methods header tells the browser which methods it may use.
 

@@ -106,6 +106,9 @@ final class CookieJar implements CookieJarContract
             ) {
                 continue;
             }
+            if (strtolower($from->getScheme()) !== 'https' && $this->overlaysSecure($cookie)) {
+                continue;
+            }
             $key = "{$cookie['domain']}|{$cookie['path']}|{$cookie['name']}";
             if ($cookie['expires'] !== null && $cookie['expires'] <= $this->now()) {
                 // Setting a cookie that has already expired is how one is taken back.
@@ -190,16 +193,53 @@ final class CookieJar implements CookieJarContract
                 continue;
             }
             $on = $cookie['path'];
-            if (
-                $path !== $on
-                && !(str_starts_with($path, $on) && (str_ends_with($on, '/') || $path[strlen($on)] === '/'))
-            ) {
+            if (!self::onPath($path, $on)) {
                 continue;
             }
             $matching[] = $cookie;
         }
         usort($matching, static fn(array $a, array $b): int => strlen($b['path']) <=> strlen($a['path']));
         return $matching;
+    }
+
+    /**
+     * An insecure answer may neither replace nor shadow a live Secure
+     * cookie, including one on an overlapping domain or a shorter path.
+     *
+     * @param array{name: string, domain: string, path: string} $incoming
+     */
+    private function overlaysSecure(array $incoming): bool
+    {
+        $now = $this->now();
+        foreach ($this->cookies as $cookie) {
+            if (
+                !$cookie['secure']
+                || $cookie['name'] !== $incoming['name']
+                || $cookie['expires'] !== null && $cookie['expires'] <= $now
+            ) {
+                continue;
+            }
+            $overlaps =
+                $cookie['domain'] === $incoming['domain']
+                || self::under($cookie['domain'], $incoming['domain'])
+                || self::under($incoming['domain'], $cookie['domain']);
+            if ($overlaps && self::onPath($incoming['path'], $cookie['path'])) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * A cookie path matches itself and descendants at a path separator.
+     */
+    private static function onPath(string $path, string $cookiePath): bool
+    {
+        return (
+            $path === $cookiePath
+            || str_starts_with($path, $cookiePath)
+            && (str_ends_with($cookiePath, '/') || $path[strlen($cookiePath)] === '/')
+        );
     }
 
     /**

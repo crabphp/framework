@@ -125,19 +125,6 @@ final readonly class Work implements Command
             ],
             is_string(...),
         );
-        foreach (['workers', 'concurrency'] as $option) {
-            if (!isset($described[$option])) {
-                continue;
-            }
-            $value = $described[$option];
-            if (preg_match('/^[1-9][0-9]*$/D', $value) !== 1 || filter_var($value, FILTER_VALIDATE_INT, ['options' => [
-                'min_range' => 1,
-            ]]) === false) {
-                throw new \InvalidArgumentException(
-                    "--{$option} must be a positive whole number within PHP's integer range; use --{$option}=1.",
-                );
-            }
-        }
         if (isset($described['queues'])) {
             $described['queues'] = explode(',', $described['queues']);
             foreach ($described['queues'] as $queue) {
@@ -148,6 +135,8 @@ final readonly class Work implements Command
                 }
             }
         }
+        // Options and configuration reach the same validation before either can start work.
+        $selected = $described === [] ? null : Supervisor::from($this->config, 'queue', $described);
         $declared = Supervisor::all($this->config);
         $name = $input->option('supervisor');
         if (is_string($name)) {
@@ -176,6 +165,6 @@ final readonly class Work implements Command
         if ($described === [] && $declared !== []) {
             return array_values($declared);
         }
-        return [Supervisor::from($this->config, 'queue', $described)];
+        return [$selected ?? Supervisor::from($this->config, 'queue')];
     }
 }

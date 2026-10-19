@@ -238,6 +238,8 @@ $socket->send($message ?? 'finished');
 
 `receive()` waits and returns `array|string|Binary|null`. JSON objects and arrays become arrays; scalars, invalid JSON and ordinary text remain strings. Binary frames always become readonly `Binary` values, even if their bytes look like JSON. The echo loop preserves both kinds without inspecting the type. The engine validates message size and text UTF-8.
 
+Each decoded JSON object may have at most 1,000 members, including repeated names and objects nested inside lists. Exceeding this bound closes the socket with `1009` before the message reaches the action. Lists of smaller objects remain allowed within `websocket.max_message`; ordinary text and binary messages keep their existing behavior.
+
 `null` means the socket ended. Iteration repeats `receive()` until `null`; only one consumer may wait at a time. The readonly `$socket->request` holds the handshake headers, query, route parameters, authenticated user and `ip()`. Call `$socket->accept()` to upgrade without sending; it is harmless after acceptance.
 
 ## Closing and cancellation

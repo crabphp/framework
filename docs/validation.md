@@ -100,6 +100,8 @@ final readonly class CreateOrder
 }
 ```
 
+A typed list is checked against its `Length` bounds before any item is validated or constructed. A list outside those bounds reports its size error on the list's field; items inside an accepted list report their own errors as usual.
+
 A problem inside is reported by its path: `shipTo.country`, `lines.0.quantity`.
 
 Every class is read when the route is added, so one that cannot be validated, such as a constructor parameter with no type, stops the server from starting.
@@ -118,7 +120,7 @@ Every class is read when the route is added, so one that cannot be validated, su
 | `[['int']]` | A list of ints |
 | `[[...], new Length(min: 1)]` | A list, then rules for the list |
 
-A name ending in `?`, as in `'shipTo?' => [...]`, is a field that may be left out, whatever it is.
+A name ending in `?`, as in `'shipTo?' => [...]`, is a field that may be left out or sent as null, whether it describes a scalar, an object or a list. Rules and nested fields are checked only for non-null values. A supplied null stays in `Data::toArray()`; an omitted field does not.
 
 ```php
 #[Fields([

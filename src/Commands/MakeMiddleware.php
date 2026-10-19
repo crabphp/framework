@@ -25,7 +25,7 @@ final readonly class MakeMiddleware implements Command
 
             Options:
               --path=app/Http               The folder to write it in
-              --namespace=App\Http          The namespace of that folder
+              --namespace='App\Http'        The namespace of that folder
             TEXT;
     }
 
@@ -69,7 +69,7 @@ final readonly class MakeMiddleware implements Command
             || in_array(strtolower($name), $reserved, true)
         ) {
             $output->error(
-                'Give a PHP class name and namespace without reserved or imported names: make:middleware RequireAdmin --namespace=App\\Http',
+                'Give a PHP class name and namespace without reserved or imported names: make:middleware RequireAdmin --namespace=\'App\\Http\'',
             );
             return 1;
         }
@@ -77,7 +77,9 @@ final readonly class MakeMiddleware implements Command
             // The parser knows PHP's keywords; the checks above cover reserved type names and import collisions.
             token_get_all("<?php namespace {$namespace}; final class {$name} {}", TOKEN_PARSE);
         } catch (\ParseError) {
-            $output->error('Give a PHP class name and namespace: make:middleware RequireAdmin --namespace=App\\Http');
+            $output->error(
+                'Give a PHP class name and namespace: make:middleware RequireAdmin --namespace=\'App\\Http\'',
+            );
             return 1;
         }
         $path = (string) $input->option('path', 'app/Http');

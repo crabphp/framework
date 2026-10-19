@@ -161,12 +161,28 @@ final readonly class Supervisor
      */
     public static function from(Config $config, string $name, array $settings = []): self
     {
+        $counts = [];
+        foreach (['workers', 'concurrency'] as $setting) {
+            $value = array_key_exists($setting, $settings) ? $settings[$setting] : $config->get('queue.' . $setting);
+            if (
+                !is_int($value) && (!is_string($value) || preg_match('/^[1-9][0-9]*$/D', $value) !== 1)
+                || filter_var($value, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]) === false
+            ) {
+                $shown = is_scalar($value) || $value === null ? var_export($value, true) : get_debug_type($value);
+                throw new \InvalidArgumentException(
+                    "The queue supervisor \"{$name}\" has \"{$setting}\" set to {$shown}; "
+                    . "set queue.{$setting} or its supervisor override to a positive whole number within PHP's integer range. "
+                    . "On the command line, use --{$setting}=1.",
+                );
+            }
+            $counts[$setting] = (int) $value;
+        }
         $queues = $settings['queues'] ?? [(string) $config->get('queue.queue')];
         return new self(
             $name,
             array_values(array_map(strval(...), (array) $queues)),
-            (int) ($settings['workers'] ?? $config->get('queue.workers')),
-            (int) ($settings['concurrency'] ?? $config->get('queue.concurrency')),
+            $counts['workers'],
+            $counts['concurrency'],
             (int) ($settings['tries'] ?? $config->get('queue.tries')),
             array_map(intval(...), array_values((array) ($settings['backoff'] ?? $config->get('queue.backoff')))),
             (int) ($settings['retry_after'] ?? $config->get('queue.retry_after')),

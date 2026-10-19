@@ -219,6 +219,56 @@ final class ValueOptionsTest extends TestCase
     }
 
     /**
+     * @return iterable<string, array{?string}>
+     */
+    public static function middlewareShellHints(): iterable
+    {
+        yield 'help' => [null];
+        yield 'reserved import' => ['Middleware'];
+        yield 'PHP keyword' => ['Readonly'];
+    }
+
+    #[DataProvider('middlewareShellHints')]
+    public function testTheMiddlewareNamespaceHintCanBeCopiedThroughAShell(?string $invalidName): void
+    {
+        $app = new App(basePath: $this->directory);
+        [$status, $output] = $this->command($app, ['make:middleware', $invalidName ?? '--help']);
+        self::assertSame($invalidName === null ? 0 : 1, $status, $output);
+        if ($invalidName === null) {
+            preg_match('/--namespace=\S+/', $output, $match);
+            self::assertArrayHasKey(0, $match, $output);
+            $hint = 'make:middleware RequireAdmin ' . $match[0];
+        } else {
+            preg_match('/make:middleware[^\n]+/', $output, $match);
+            self::assertArrayHasKey(0, $match, $output);
+            $hint = $match[0];
+        }
+        $autoload = var_export(dirname(__DIR__, 2) . '/vendor/autoload.php', true);
+        $entry = <<<'PHP'
+            $loader = require AUTOLOAD;
+            $loader->addPsr4('App\\', __DIR__ . '/app/');
+            $app = new Crab\App(basePath: __DIR__);
+            if (is_file(__DIR__ . '/route.php')) {
+                require __DIR__ . '/route.php';
+            }
+            exit($app->console->run(array_slice($argv, 1)));
+            PHP;
+        file_put_contents($this->directory . '/cua', "<?php\n" . str_replace('AUTOLOAD', $autoload, $entry));
+        [$status, $generated] = $this->runProcess(['/bin/sh', '-c', escapeshellarg(PHP_BINARY) . ' cua ' . $hint]);
+        self::assertSame(0, $status, $generated);
+        self::assertFileExists($this->directory . '/app/Http/RequireAdmin.php');
+        preg_match('/->middleware\([^)]+\)/', $generated, $route);
+        self::assertArrayHasKey(0, $route, $generated);
+        file_put_contents(
+            $this->directory . '/route.php',
+            "<?php\nuse Crab\\Route;\nRoute::get('/guarded', static fn(): array => ['ok' => true])" . $route[0] . ";\n",
+        );
+        [$status, $routes] = $this->runProcess([PHP_BINARY, 'cua', 'route:list']);
+        self::assertSame(0, $status, $routes);
+        self::assertStringContainsString('App\\Http\\RequireAdmin', $routes);
+    }
+
+    /**
      * @return iterable<string, array{string, list<string>, string}>
      */
     public static function invalidServerValues(): iterable
@@ -528,6 +578,36 @@ final class ValueOptionsTest extends TestCase
         $queue->push(EchoQueueValue::class, value: 'default');
         $queue->on('mail')->push(EchoQueueValue::class, value: 'mail');
         return $app;
+    }
+
+    /**
+     * @param list<string> $arguments
+     * @return array{int, string}
+     */
+    private function runProcess(array $arguments): array
+    {
+        $path = $this->directory . '/command-output';
+        $process = proc_open($arguments, [1 => ['file', $path, 'w'], 2 => ['redirect', 1]], $pipes, $this->directory);
+        self::assertIsResource($process);
+        $state = proc_get_status($process);
+        $deadline = hrtime(true) + 5_000_000_000;
+        try {
+            while ($state['running']) {
+                if (hrtime(true) >= $deadline) {
+                    self::fail(
+                        'The middleware example command did not finish within 5 seconds: ' . implode(' ', $arguments),
+                    );
+                }
+                usleep(1000);
+                $state = proc_get_status($process);
+            }
+            return [$state['exitcode'], file_get_contents($path)];
+        } finally {
+            if ($state['running']) {
+                proc_terminate($process, 9);
+            }
+            proc_close($process);
+        }
     }
 
     /**

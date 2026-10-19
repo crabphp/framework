@@ -44,6 +44,8 @@ $raw = (string) $request->getBody();           // the body as it was sent
 
 `input()` and `getParsedBody()` read JSON objects and arrays, urlencoded forms and `multipart/form-data` on first use. Malformed JSON and multipart bodies are answered `400`; urlencoded forms use PHP's permissive `parse_str()`.
 
+Each JSON object may have at most 1,000 members, including repeated names. This bound applies inside nested objects too; exceeding it is answered `413` before the object is decoded. Lists of smaller objects may contain more than 1,000 items, within `server.max_body`. Declared `Length` bounds on typed lists are checked before their items are validated.
+
 PHP's `max_input_vars` can silently truncate query strings and urlencoded forms; multipart forms exceeding their field or part limits are answered `413`.
 
 Prefer declared fields to `input()`: a declared field is validated, an `input()` value is whatever the client sent.

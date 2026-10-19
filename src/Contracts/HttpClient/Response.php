@@ -31,6 +31,7 @@ interface Response extends ResponseInterface
      * The body read as JSON, an object as an array.
      *
      * @throws \JsonException When the body is not JSON.
+     * @throws \LengthException When a JSON object has more than 1000 members.
      */
     public function json(): mixed;
 }

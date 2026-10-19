@@ -5,16 +5,22 @@ declare(strict_types=1);
 namespace Crab\Tests\HttpClient;
 
 use Crab\Engine\Async\Async;
+use Crab\Engine\Async\Cancellation;
+use Crab\Engine\Async\CancelledException;
 use Crab\Engine\Async\Task;
 use Crab\Engine\EventLoop;
+use Crab\Engine\EventLoop\RevoltEventLoop;
 use Crab\Http\Request;
 use Crab\Http\Stream;
 use Crab\HttpClient\Client;
+use Crab\HttpClient\Connection;
 use Crab\HttpClient\CookieJar;
 use Crab\HttpClient\Hpack;
+use Crab\HttpClient\Http2Session;
 use Crab\HttpClient\Network;
 use Crab\HttpClient\NetworkException;
 use Crab\HttpClient\TimedOut;
+use Crab\Tests\Support\Wait;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 use Psr\Http\Message\RequestInterface;
@@ -431,6 +437,247 @@ final class Http2Test extends TestCase
         } catch (NetworkException $error) {
             self::assertStringContainsString('the encrypted connection could not be made', $error->getMessage());
         }
+    }
+
+    /**
+     * @return iterable<string, array{string}>
+     */
+    public static function writerHandoffs(): iterable
+    {
+        foreach (['before', 'after', 'none'] as $when) {
+            yield $when => [$when];
+        }
+    }
+
+    #[DataProvider('writerHandoffs')]
+    public function testWriterHandoffPreservesCancellationAndTheNextCallersTurn(string $when): void
+    {
+        $this->withWriterSession(function (Http2Session $session, EventLoop $loop) use ($when): void {
+            $lock = new \ReflectionMethod($session, 'lock');
+            $unlock = new \ReflectionMethod($session, 'unlock');
+            $lock->invoke($session, INF, null);
+            $cancellation = new Cancellation();
+            $seen = [];
+            $first = Task::spawn($loop, static function () use (
+                $session,
+                $lock,
+                $unlock,
+                $cancellation,
+                &$seen,
+            ): ?\Throwable {
+                try {
+                    $lock->invoke($session, (hrtime(true) / 1e9) + 10, $cancellation);
+                    try {
+                        $seen[] = 'first';
+                    } finally {
+                        $unlock->invoke($session);
+                    }
+                } catch (\Throwable $error) {
+                    return $error;
+                }
+                return null;
+            });
+            $next = Task::spawn($loop, static function () use ($session, $lock, $unlock, &$seen): void {
+                $lock->invoke($session, (hrtime(true) / 1e9) + 10, null);
+                try {
+                    $seen[] = 'next';
+                } finally {
+                    $unlock->invoke($session);
+                }
+            });
+            Wait::until(
+                $loop,
+                fn(): bool => count($this->writerState($session, 'writers')) === 2,
+                'both writers queued in order',
+            );
+            if ($when === 'before') {
+                $cancellation->cancel();
+            }
+            $unlock->invoke($session);
+            if ($when === 'after') {
+                $cancellation->cancel();
+            }
+            Wait::until(
+                $loop,
+                static fn(): bool => $first->isComplete() && $next->isComplete(),
+                'both writer turns to finish',
+            );
+            if ($when === 'none') {
+                self::assertNull($first->result());
+                self::assertSame(['first', 'next'], $seen);
+            } else {
+                self::assertInstanceOf(CancelledException::class, $first->result());
+                self::assertSame(['next'], $seen);
+            }
+            self::assertNull($next->result());
+            self::assertFalse($this->writerState($session, 'writing'));
+            self::assertSame([], $this->writerState($session, 'writers'));
+        });
+    }
+
+    public function testAControlFrameDeadlineEndsItsWriterWaitWithoutClosingTheSession(): void
+    {
+        $this->withWriterSession(function (Http2Session $session, EventLoop $loop, mixed $peer): void {
+            new \ReflectionMethod($session, 'lock')->invoke($session, INF, null);
+            $task = Task::spawn($loop, static function () use ($session): ?\Throwable {
+                try {
+                    new \ReflectionMethod($session, 'write')->invoke(
+                        $session,
+                        "\0\0\0\x04\x01\0\0\0\0",
+                        (hrtime(true) / 1e9) + 0.5,
+                    );
+                } catch (\Throwable $error) {
+                    return $error;
+                }
+                return null;
+            });
+            Wait::until(
+                $loop,
+                fn(): bool => count($this->writerState($session, 'writers')) === 1,
+                'the control frame queued for the writer',
+            );
+            Wait::until($loop, $task->isComplete(...), 'the control frame deadline ending its own wait');
+            self::assertInstanceOf(TimedOut::class, $task->result());
+            self::assertSame([], $this->writerState($session, 'writers'));
+            self::assertTrue($session->accepts());
+            self::assertSame('', stream_get_contents($peer));
+        });
+    }
+
+    public function testAnAbandonedStreamClosesTheSessionIfItsResetCannotBeWritten(): void
+    {
+        $this->withWriterSession(function (Http2Session $session, EventLoop $loop): void {
+            new \ReflectionMethod($session, 'lock')->invoke($session, INF, null);
+            $stream = new \Crab\HttpClient\Http2Stream(1, 65_535, false);
+            new \ReflectionProperty($session, 'streams')->setValue($session, [1 => $stream]);
+            new \ReflectionMethod($session, 'abandon')->invoke($session, $stream);
+            Wait::until(
+                $loop,
+                fn(): bool => count($this->writerState($session, 'writers')) === 1,
+                'the abandoned stream reset queued behind the writer',
+            );
+            // The reset has its own five-second deadline. Observe its timer
+            // being removed, with a separate ten-second diagnostic deadline.
+            $finished = $loop->getSuspension();
+            $watcher = $loop->repeat(0.01, function () use ($session, $finished): void {
+                if ($this->writerState($session, 'writers') === []) {
+                    $finished->resume();
+                }
+            });
+            $guard = $loop->delay(10, static fn() => $finished->throw(
+                new \RuntimeException('The abandoned HTTP/2 reset did not reach its deadline.'),
+            ));
+            try {
+                $finished->suspend();
+                $loop->cancel($watcher);
+                Async::sleep($loop, 0);
+            } finally {
+                $loop->cancel($watcher);
+                $loop->cancel($guard);
+            }
+            self::assertFalse(
+                $session->accepts(),
+                'A reset that could not be sent must not leave the peer holding an abandoned stream.',
+            );
+        });
+    }
+
+    /**
+     * @return iterable<string, array{string}>
+     */
+    public static function dataWriterEndings(): iterable
+    {
+        yield 'cancellation' => ['cancel'];
+        yield 'deadline' => ['timeout'];
+    }
+
+    #[DataProvider('dataWriterEndings')]
+    public function testAnAbandonedDataWriterReturnsTheWindowItReservedBeforeWaiting(string $ending): void
+    {
+        $this->withWriterSession(function (Http2Session $session, EventLoop $loop) use ($ending): void {
+            $cancellation = new Cancellation();
+            $read = false;
+            $body = $this->createStub(StreamInterface::class);
+            $body->method('getSize')->willReturn(4);
+            $body->method('isSeekable')->willReturn(false);
+            $body->method('eof')->willReturnCallback(static function () use (&$read): bool {
+                return $read;
+            });
+            $body->method('read')->willReturnCallback(static function () use ($session, &$read): string {
+                $read = true;
+                // Another writer owns the turn after this request's HEADERS.
+                new \ReflectionMethod($session, 'lock')->invoke($session, INF, null);
+                return 'data';
+            });
+            $task = Task::spawn($loop, static function () use ($session, $body, $cancellation, $ending): ?\Throwable {
+                try {
+                    $session->exchange(
+                        new Request('POST', 'https://writer.test/body', [], $body),
+                        (hrtime(true) / 1e9) + ($ending === 'timeout' ? 0.5 : 10),
+                        $cancellation,
+                    );
+                } catch (\Throwable $error) {
+                    return $error;
+                }
+                return null;
+            });
+            Wait::until(
+                $loop,
+                fn(): bool => count($this->writerState($session, 'writers')) === 1,
+                'the request body queued behind another writer',
+            );
+            self::assertSame(
+                65_531,
+                $this->writerState($session, 'window'),
+                'Four DATA bytes reserved connection credit.',
+            );
+            if ($ending === 'cancel') {
+                $cancellation->cancel();
+                self::assertSame([], $this->writerState($session, 'writers'));
+            }
+            Wait::until($loop, $task->isComplete(...), 'the abandoned DATA caller leaving its writer wait');
+            self::assertInstanceOf($ending === 'cancel' ? CancelledException::class : TimedOut::class, $task->result());
+            self::assertSame(
+                65_535,
+                $this->writerState($session, 'window'),
+                'No DATA was written, so another stream must retain the credit.',
+            );
+            self::assertTrue($session->accepts());
+        });
+    }
+
+    /**
+     * Socket pairs isolate writer ownership from TLS negotiation. A held
+     * turn is always released, even when the old implementation fails.
+     *
+     * @param \Closure(Http2Session, EventLoop, resource): void $check
+     */
+    private function withWriterSession(\Closure $check): void
+    {
+        $loop = EventLoop::install(RevoltEventLoop::create());
+        [$socket, $peer] = stream_socket_pair(STREAM_PF_UNIX, STREAM_SOCK_STREAM, 0);
+        stream_set_blocking($socket, false);
+        stream_set_blocking($peer, false);
+        $class = new \ReflectionClass(Connection::class);
+        $connection = $class->newInstanceWithoutConstructor();
+        $class->getConstructor()->invoke($connection, $loop, $socket);
+        $session = new Http2Session($connection, $loop, $connection->close(...));
+        try {
+            $check($session, $loop, $peer);
+        } finally {
+            $session->close();
+            if ($this->writerState($session, 'writing')) {
+                new \ReflectionMethod($session, 'unlock')->invoke($session);
+            }
+            fclose($peer);
+            $loop->run();
+        }
+        self::assertSame([], $loop->getIdentifiers(), 'Writer cleanup must release timers and watchers.');
+    }
+
+    private function writerState(Http2Session $session, string $property): mixed
+    {
+        return new \ReflectionProperty($session, $property)->getValue($session);
     }
 
     /**

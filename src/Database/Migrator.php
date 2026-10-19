@@ -176,7 +176,9 @@ final class Migrator implements MigratorContract
         }
         // "create users table" is taken at its word.
         $creates = preg_match('/^create_(.+)_table$/', $slug, $match) === 1 ? $match[1] : null;
-        file_put_contents($file, self::stub($creates));
+        if (@file_put_contents($file, self::stub($creates)) === false) {
+            throw new \RuntimeException("Could not write {$file}. Check the destination and its permissions.");
+        }
         return $file;
     }
 

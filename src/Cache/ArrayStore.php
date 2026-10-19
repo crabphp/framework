@@ -17,9 +17,25 @@ final class ArrayStore implements Store
      * @var array<string, array{string, ?int}> The entry and when it expires, by key.
      */
     private array $entries = [];
+    private ?int $prunedAt = null;
+
+    /**
+     * Reclaim expired keys during activity, at most once per five seconds.
+     * Cache supplies the time for writes, whose store contract has no clock.
+     *
+     * @internal
+     */
+    public function pruneIfDue(int $now): void
+    {
+        if ($this->prunedAt !== null && $now >= $this->prunedAt && ($now - $this->prunedAt) < 5) {
+            return;
+        }
+        $this->prune($now);
+    }
 
     public function get(string $key, int $now): ?string
     {
+        $this->pruneIfDue($now);
         $entry = $this->entries[$key] ?? null;
         if ($entry === null) {
             return null;
@@ -38,6 +54,7 @@ final class ArrayStore implements Store
 
     public function take(string $key, int $now): ?string
     {
+        $this->pruneIfDue($now);
         $entry = $this->entries[$key] ?? null;
         unset($this->entries[$key]);
         return $entry === null || $entry[1] !== null && $entry[1] <= $now ? null : $entry[0];
@@ -67,6 +84,7 @@ final class ArrayStore implements Store
 
     public function deleteIf(string $key, string $value, int $now): bool
     {
+        $this->pruneIfDue($now);
         $entry = $this->entries[$key] ?? null;
         if ($entry === null || $entry[1] !== null && $entry[1] <= $now || $entry[0] !== $value) {
             return false;
@@ -77,6 +95,7 @@ final class ArrayStore implements Store
 
     public function prune(int $now): int
     {
+        $this->prunedAt = $now;
         $removed = 0;
         foreach ($this->entries as $key => $entry) {
             if (!($entry[1] !== null && $entry[1] <= $now)) {
@@ -92,5 +111,6 @@ final class ArrayStore implements Store
     public function clear(): void
     {
         $this->entries = [];
+        $this->prunedAt = null;
     }
 }

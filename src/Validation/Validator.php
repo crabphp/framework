@@ -145,6 +145,10 @@ final class Validator implements ValidatorContract
             return null;
         }
         foreach ($property->rules as $rule) {
+            if ($rule instanceof Length && $property->type === Property::ARRAY && $property->items !== null) {
+                // A typed list's size was checked before its items were built.
+                continue;
+            }
             $problem = $rule->check($value);
             if ($problem !== null) {
                 $errors[$field][] = $problem;
@@ -301,6 +305,18 @@ final class Validator implements ValidatorContract
         }
         if (!array_is_list($value)) {
             $errors[$field][] = 'must be a list';
+            return null;
+        }
+        foreach ($property->rules as $rule) {
+            if (!$rule instanceof Length) {
+                continue;
+            }
+            $problem = $rule->check($value);
+            if ($problem === null) {
+                continue;
+            }
+            // Reject the list before constructing items or allocating one error per item.
+            $errors[$field][] = $problem;
             return null;
         }
         $items = [];

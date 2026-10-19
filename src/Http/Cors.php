@@ -108,19 +108,25 @@ final readonly class Cors implements Middleware
     public function process(ServerRequestInterface $request, RequestHandlerInterface $handler): ResponseInterface
     {
         $origin = $request->getHeaderLine('Origin');
-        if ($origin === '') {
-            // Not a request from a page on another origin.
-            return $handler->handle($request);
-        }
+        // Wildcard permission and exposed headers are the same with no
+        // Origin: a cache may serve that answer to a browser later.
         $allowed = $this->allows($origin);
-        if ($request->getMethod() === 'OPTIONS' && $request->hasHeader('Access-Control-Request-Method')) {
-            return $allowed
-                ? $this->permission($request, $origin)
-                : ErrorResponse::make($request, 403, 'This origin may not call the API.');
+        if (
+            $origin !== ''
+            && $request->getMethod() === 'OPTIONS'
+            && $request->hasHeader('Access-Control-Request-Method')
+        ) {
+            return (
+                $allowed
+                    ? $this->permission($request, $origin)
+                    : ErrorResponse::make($request, 403, 'This origin may not call the API.', [
+                        'Vary' => 'Origin, Access-Control-Request-Method, Access-Control-Request-Headers',
+                    ])
+            );
         }
         $response = $handler->handle($request);
         if (!$allowed) {
-            return $response;
+            return $response->withAddedHeader('Vary', 'Origin');
         }
         $response = $this->named($response, $origin);
         return $this->exposed === ''

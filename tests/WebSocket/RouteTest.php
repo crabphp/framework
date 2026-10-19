@@ -355,6 +355,40 @@ final class RouteTest extends TestCase
         $socket->assertReceived(new Binary('{"a":1}'));
     }
 
+    public function testAnOverlyWideJsonObjectCloses1009WithoutReachingTheAction(): void
+    {
+        $received = [];
+        $socket = $this->open($this->api(static function (Socket $socket) use (&$received): void {
+            foreach ($socket as $message) {
+                $received[] = $message;
+            }
+        }));
+        $body = '{' . implode(',', array_fill(0, 1001, '"member":0')) . '}';
+        $socket->send($body);
+        $socket->assertClosed(1009);
+
+        self::assertSame([], $received);
+        self::assertSame([], $this->reports);
+    }
+
+    public function testJsonMemberLimitsLeaveOrdinaryTextBinaryAndListsUnchanged(): void
+    {
+        $socket = $this->open($this->api(static function (Socket $socket): void {
+            foreach ($socket as $message) {
+                $socket->send($message);
+            }
+        }));
+        $text = '{ordinary text' . str_repeat(':', 1001);
+        $socket->send($text);
+        $socket->assertReceived($text);
+        $binary = new Binary('{' . implode(',', array_fill(0, 1001, '"member":0')) . '}');
+        $socket->send($binary);
+        $socket->assertReceived($binary);
+        $list = array_fill(0, 1001, ['id' => 1]);
+        $socket->send($list);
+        $socket->assertReceived($list);
+    }
+
     public function testTheReceiveLoopEndsAndCodeAfterItRunsWhenTheClientCloses(): void
     {
         $finished = false;
