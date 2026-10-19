@@ -150,7 +150,7 @@ return ['carrier' => env('BROADCAST_CARRIER', 'local')];
 
 `local` suits one HTTP worker with sends inside that process. Startup refuses it when socket routes exist and `server.workers` exceeds one or `server.with` includes `queue` or `schedule`. A console sender, including `queue:work` and `schedule:work`, fails with an instruction to choose Redis: it cannot reach another process through local memory.
 
-For `redis`, install `crabphp/redis` and register its `RedisProvider` after the default framework providers. Follow the [Redis package installation example](../../redis/README.md#installation).
+For `redis`, install `crabphp/redis` and register its `RedisProvider` after the default framework providers. Follow the [Redis package installation example](https://github.com/crabphp/redis#installation).
 
 Set `BROADCAST_CARRIER=redis` and configure `redis.url`. Joins wait for Redis confirmation; leaves do not delay socket cleanup. Unused broadcasting opens no connection, subscription or timer. Stop and reload release broadcast resources.
 
