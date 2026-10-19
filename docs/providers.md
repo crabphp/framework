@@ -158,8 +158,12 @@ use Crab\Contracts\Container\Container;
 use Crab\Contracts\WorkerProvider;
 use Crab\Engine\Process\Worker;
 
-final class MetricsProvider implements WorkerProvider
+final readonly class MetricsProvider implements WorkerProvider
 {
+    public function __construct(private float $interval = 10.0)
+    {
+    }
+
     public function register(Container $container): void
     {
         $container->singleton(Metrics::class);
@@ -168,7 +172,7 @@ final class MetricsProvider implements WorkerProvider
     public function start(Worker $worker, Container $container): void
     {
         $metrics = $container->get(Metrics::class);
-        $worker->loop->repeat(10.0, static fn () => $metrics->flush());       // every ten seconds
+        $worker->loop->repeat($this->interval, static fn () => $metrics->flush());
     }
 
     public function stop(Worker $worker, Container $container): void
@@ -178,7 +182,7 @@ final class MetricsProvider implements WorkerProvider
 }
 ```
 
-`start()` runs in each worker after it is forked and before it takes requests; throwing there stops the server from starting. `stop()` runs after the worker has finished its requests, in reverse order of registration, and must not wait on anything. What a timer throws is logged and the worker keeps running.
+This provider flushes every ten seconds by default; its constructor accepts a shorter interval for a [test](testing.md#code-that-waits). `start()` runs in each worker after it is forked and before it takes requests; throwing there stops the server from starting. `stop()` runs after the worker has finished its requests, in reverse order of registration, and must not wait on anything. What a timer throws is logged and the worker keeps running.
 
 > [!WARNING]
 > Never open a connection in `register()` or in a constructor. It would be opened once in the parent process and then shared by every forked worker, which corrupts it. Open on first use, or in `start()`.

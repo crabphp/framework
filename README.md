@@ -434,13 +434,13 @@ $http->request('PUT', $url, body: $csv, headers: ['Content-Type' => 'text/csv'])
 $http->timeout(2.0)->get($url);
 ~~~
 
-`timeout()` gives a client that allows each exchange that many seconds, redirects and waiting for a free connection included, and is otherwise the same: it uses the same connections. The client it was asked of is left as it was, which matters because every request a worker serves shares it.
+`timeout()` bounds the whole call: finding the address, connecting, waiting for a free connection, redirects, retries and their pauses share one deadline. Each later try gets the time left. It returns another client over the same connections and leaves the original unchanged, which matters because every request a worker serves shares it. See [Timeouts](docs/http-client.md#timeouts).
 
 ### Trying again
 
 ~~~php
 $http->retry(3)->get($url);                 // up to three more times
-$http->retry(3, delay: 0.5)->get($url);     // waiting 0.5 s, then 1 s, then 2 s
+$http->retry(3, delay: 0.5)->get($url);     // random pauses: 0.375–0.5 s, 0.75–1 s, 1.5–2 s
 ~~~
 
 A request is tried again only when that cannot do it twice:
@@ -450,7 +450,7 @@ A request is tried again only when that cannot do it twice:
 | `GET`, `HEAD`, `OPTIONS`, `PUT`, `DELETE` | It got no answer, or 429, 502, 503 or 504 |
 | `POST`, `PATCH` | None of it was sent, or it was answered 429 or 503, with which a server says it did not act on it |
 
-A server's `Retry-After` is waited when it is longer than the delay, and when it is longer than the client's timeout the answer is returned as it is. A 500 is never tried again: a server that failed may fail the same way. `http_client.retries` sets it for the default client, which by itself tries once.
+A server's `Retry-After` replaces a shorter delay and must fit within the time left before the whole-call deadline. A pause that cannot fit ends the call with the last response or failure. A 500 is never tried again: a server that failed may fail the same way. `http_client.retries` sets it for the default client, which by itself tries once. See [Trying again](docs/http-client.md#trying-again).
 
 ### Sending files
 
@@ -628,7 +628,7 @@ $db->transaction(function (Connection $tx) use ($from, $to, $amount) {
 
 - **Values are always bound.** Write `?` or `:name` and pass the values; never build them into the SQL. Integers, booleans, null, strings, floats and dates are bound with their type.
 - **Transactions** commit when the callback returns and roll back when it throws. Inside the callback use the connection it is given, `$tx`, not `$db`: `$db` would run on a different connection, outside the transaction. A transaction inside a transaction is a savepoint.
-- **Connections are pooled per worker.** Each statement on `$db` borrows one and returns it; `$db->run(fn (Connection $c) => ...)` keeps one for several statements. A worker opens them on first use, at most the connection's `pool` of them (10, or 1 for SQLite, which allows one writer), and a caller waits up to `database.timeout` seconds (5) for a free one.
+- **Connections are pooled per worker.** Each statement on `$db` borrows one and returns it; `$db->run(fn (Connection $c) => ...)` keeps one for several statements. A worker opens them on first use, at most the connection's `pool` of them (10, or 1 for SQLite, which allows one writer), and a caller waits up to `database.connections.<name>.timeout` seconds (5) for a free one. See [Database configuration](docs/database.md#configuration).
 - **A dropped connection is replaced.** When the server had already closed it, the statement runs once on a new connection. When it was lost mid-statement or inside a transaction, the failure is reported and nothing is retried, so nothing is applied twice.
 - **Failures** throw `Crab\Database\DatabaseException`, whose message and `$sql` hold the SQL but never the bound values.
 - **PDO blocks.** While a statement runs, its worker serves nothing else; run more workers for more concurrent queries.

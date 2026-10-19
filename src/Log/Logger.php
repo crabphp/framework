@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Crab\Log;
 
 use Crab\Contracts\Log\Logger as LoggerContract;
+use Crab\Engine\FailureReporter;
 use Psr\Clock\ClockInterface;
 use Psr\Log\AbstractLogger;
 use Psr\Log\InvalidArgumentException;
@@ -95,33 +96,9 @@ final class Logger extends AbstractLogger implements LoggerContract
                 );
         }
         if ($exception !== null) {
-            $line .= "\n" . self::describe($exception);
+            $line .= "\n" . FailureReporter::describe($exception);
         }
         fwrite($this->stream ??= $this->open(), $line . "\n");
-    }
-
-    /**
-     * An exception and those before it, as PHP writes them, but each call
-     * named without its arguments.
-     */
-    private static function describe(\Throwable $exception): string
-    {
-        $chain = [];
-        for ($error = $exception; $error !== null; $error = $error->getPrevious()) {
-            $chain[] = $error;
-        }
-        $parts = [];
-        foreach (array_reverse($chain) as $error) {
-            $text = $error::class . ": {$error->getMessage()} in {$error->getFile()}:{$error->getLine()}\nStack trace:";
-            $frames = $error->getTrace();
-            foreach ($frames as $number => $frame) {
-                $where = isset($frame['file']) ? "{$frame['file']}({$frame['line']})" : '[internal function]';
-                $call = ($frame['class'] ?? '') . ($frame['type'] ?? '') . $frame['function'];
-                $text .= "\n#{$number} {$where}: {$call}()";
-            }
-            $parts[] = $text . "\n#" . count($frames) . ' {main}';
-        }
-        return implode("\n\nNext ", $parts);
     }
 
     /**

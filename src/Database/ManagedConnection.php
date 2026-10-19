@@ -7,19 +7,13 @@ namespace Crab\Database;
 use Crab\Contracts\Database\Connection;
 
 /**
- * Driver identity and physical-session scopes used inside the database component.
+ * Physical-session scopes used inside the database component.
  * These operations do not widen the contract that application packages use.
  *
  * @internal
  */
 interface ManagedConnection extends Connection
 {
-    /**
-     * Whether this driver was given the same connection factory.
-     * Database tracks pool ownership separately for each connection.
-     */
-    public function opensWith(\Closure $connect): bool;
-
     /**
      * Includes raw server transactions as well as managed callback depth.
      */

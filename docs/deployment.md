@@ -73,7 +73,7 @@ php cua stop                 # allow server.drain seconds for requests, then sto
 
 `stop` uses the running server's longest remaining stop allowance, with time to deliver the signal and collect its processes. Changing `server.drain` on disk, even to an invalid value, does not shorten that wait. `restart` drains the old server the same way, then uses the new configuration to start its replacement. An older server without a recorded allowance uses the configuration fallback, at least 15 seconds by default.
 
-`--timeout` sets a graceful stop's wait exactly, including `--timeout=15`. A shorter explicit timeout can return before draining finishes. Use `--force` to cut requests and end the background server, including registered programs. When the keeper does not lead its own session, force ends only the keeper, reports that workers may remain and exits non-zero; whatever started the server must end them.
+`--timeout` sets a graceful stop's wait exactly, including `--timeout=15`. Give a finite number of seconds at least zero; an invalid value is refused before the server is contacted. A shorter explicit timeout can return before draining finishes. Use `--force` to cut requests and end the background server, including registered programs. When the keeper does not lead its own session, force ends only the keeper, reports that workers may remain and exits non-zero; whatever started the server must end them.
 
 ```sh
 php cua stop --timeout=15     # give a graceful stop exactly this wait

@@ -896,6 +896,29 @@ final class CacheTest extends TestCase
         self::assertSame('i:1;', $store->get('ticket', 100));
     }
 
+    public function testAFileStoreRefusesAFolderAnotherUserOwns(): void
+    {
+        if (!function_exists('posix_geteuid') || posix_geteuid() === 0 || fileowner('/') === posix_geteuid()) {
+            self::markTestSkipped('Needs a user other than root, and a root-owned /.');
+        }
+        // As a /tmp/crab-cache another account made first, 0755, which only that account can fill.
+        $store = new FileStore('/');
+        foreach ([
+            static fn(): ?string => $store->get('ticket', 100),
+            static fn(): ?string => $store->take('ticket', 100),
+        ] as $operation) {
+            try {
+                $operation();
+                self::fail('A cache directory another user owns was used.');
+            } catch (\RuntimeException $error) {
+                self::assertSame(
+                    "The cache directory / is owned by another user. Set cache.directory to a folder of the server's user.",
+                    $error->getMessage(),
+                );
+            }
+        }
+    }
+
     public function testAFailedFileRemovalLeavesTheEntryWholeAndCanBePrunedAfterPermissionsRecover(): void
     {
         if (!function_exists('posix_geteuid') || posix_geteuid() === 0) {

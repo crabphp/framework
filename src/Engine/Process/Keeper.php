@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Crab\Engine\Process;
 
+use Crab\Engine\FailureReporter;
 use Crab\Engine\Network\Listener;
 
 /**
@@ -147,7 +148,7 @@ final class Keeper
                     $this->tend();
                 } catch (\Throwable $error) {
                     // The keeper has to outlive its own mistakes; the service depends on it.
-                    $this->log('The keeper caught: ' . $error);
+                    $this->log('The keeper caught: ' . FailureReporter::describe($error));
                 }
                 if ($this->current === null && !$this->stopping) {
                     $status = 1;

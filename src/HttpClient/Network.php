@@ -40,7 +40,8 @@ final class Network implements Transport
      */
     private array $pools = [];
     /**
-     * When each HTTP/1.1 pool became wholly idle; borrowing ends that period.
+     * When an origin last finished work. HTTP/1.1 borrowing ends its idle
+     * period; active HTTP/2 calls keep their session alive during a sweep.
      *
      * @var array<string, float>
      */
@@ -55,6 +56,12 @@ final class Network implements Transport
      * @var array<string, Http2Session>
      */
     private array $sessions = [];
+    /**
+     * Calls using each HTTP/2 session, including callers waiting for capacity.
+     *
+     * @var array<int, int>
+     */
+    private array $http2Calls = [];
     /**
      * Requests waiting for a connection to each server, by what ends their wait.
      *
@@ -164,6 +171,8 @@ final class Network implements Transport
                 }
                 if ($session !== null) {
                     $sent = false;
+                    $sessionId = spl_object_id($session);
+                    $this->http2Calls[$sessionId] = ($this->http2Calls[$sessionId] ?? 0) + 1;
                     try {
                         return $session->exchange($request, $deadline, $cancellation, $sent);
                     } catch (CancelledException $cancelled) {
@@ -189,6 +198,13 @@ final class Network implements Transport
                             $error,
                             unsent: $error instanceof TimedOut && !$sent,
                         );
+                    } finally {
+                        if (--$this->http2Calls[$sessionId] === 0) {
+                            unset($this->http2Calls[$sessionId]);
+                        }
+                        if ($sent && ($this->sessions[$origin] ?? null) === $session) {
+                            $this->idleSince[$origin] = hrtime(true) / 1_000_000_000;
+                        }
                     }
                 }
                 $exchange = new Exchange($connection, $deadline, $cancellation);
@@ -281,6 +297,7 @@ final class Network implements Transport
         $this->sessions[$origin] = $session;
         try {
             $session->start($deadline);
+            $this->idleSince[$origin] = hrtime(true) / 1_000_000_000;
             // Whoever waits for a connection to this server need wait no longer.
             foreach ($this->waiting[$origin] ?? [] as $waiter) {
                 $waiter->cancel();
@@ -401,7 +418,7 @@ final class Network implements Transport
 
     /**
      * Reclaim expired pools even when their origins are never visited again.
-     * Only wholly idle HTTP/1.1 pools can be retired without ending a request.
+     * Only origins without active calls or waiting callers may be retired.
      */
     private function pruneIdlePools(): void
     {
@@ -412,6 +429,15 @@ final class Network implements Transport
         $this->pruneAt = $now + self::IDLE;
         foreach ($this->idleSince as $origin => $since) {
             if (($now - $since) < self::IDLE) {
+                continue;
+            }
+            $session = $this->sessions[$origin] ?? null;
+            if ($session !== null) {
+                if (isset($this->http2Calls[spl_object_id($session)]) || isset($this->waiting[$origin])) {
+                    continue;
+                }
+                unset($this->idleSince[$origin]);
+                $session->close();
                 continue;
             }
             $pool = $this->pools[$origin] ?? null;

@@ -30,7 +30,7 @@ final class ProtocolTest extends TestCase
                     self::assertTrue($server->eof());
                 }
             }, static function (string $dsn) use ($bindings): void {
-                $connection = new Connection(static fn() => null, $dsn);
+                $connection = new Connection($dsn);
                 try {
                     if ($bindings === []) {
                         self::assertSame(0, $connection->execute('LOCK TABLES example WRITE'));
@@ -60,7 +60,7 @@ final class ProtocolTest extends TestCase
             $server->send("\xfbsensitive-file");
             self::assertTrue($server->eof());
         }, static function (string $dsn): void {
-            $connection = new Connection(static fn() => null, $dsn);
+            $connection = new Connection($dsn);
             try {
                 $connection->execute('LOAD DATA LOCAL INFILE ...');
                 self::fail('A file request was accepted.');
@@ -86,7 +86,7 @@ final class ProtocolTest extends TestCase
             $server->send("\0\0" . \Crab\Database\Mysql\Codec::string(str_repeat('x', 18_000_000)));
             $server->send("\xfe\0\0\x02\0");
         }, static function (string $dsn, \Crab\Engine\Process\Worker $worker): void {
-            $connection = new Connection(static fn() => null, $dsn);
+            $connection = new Connection($dsn);
             $ticks = 0;
             $timer = $worker->loop->repeat(0.001, static function () use (&$ticks): void {
                 ++$ticks;
@@ -121,7 +121,7 @@ final class ProtocolTest extends TestCase
                     $server->ok();
                 },
                 static function (string $dsn) use ($twice): void {
-                    $connection = new Connection(static fn() => null, $dsn);
+                    $connection = new Connection($dsn);
                     try {
                         if ($twice) {
                             try {
@@ -158,7 +158,7 @@ final class ProtocolTest extends TestCase
                 $server->ok();
             }
         }, static function (string $dsn): void {
-            $connection = new Connection(static fn() => null, $dsn);
+            $connection = new Connection($dsn);
             try {
                 for ($i = 0; $i < 257; ++$i) {
                     self::assertSame(0, $connection->execute("select {$i}"));
@@ -187,7 +187,7 @@ final class ProtocolTest extends TestCase
                 }
             },
             static function (string $dsn): void {
-                $connection = new Connection(static fn() => null, $dsn);
+                $connection = new Connection($dsn);
                 try {
                     self::assertSame([['n' => 42], ['n' => null]], $connection->select('select example'));
                     self::assertSame(

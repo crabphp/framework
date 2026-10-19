@@ -37,7 +37,7 @@ final class WireRegressionTest extends TestCase
                 self::assertSame("\x17" . pack('V', 2), substr($server->receive(), 0, 5));
                 $server->ok();
             }, static function (string $dsn) use ($number): void {
-                $connection = new Connection(static fn() => null, $dsn);
+                $connection = new Connection($dsn);
                 try {
                     try {
                         $connection->execute('UPDATE example SET n = 1');
@@ -73,7 +73,7 @@ final class WireRegressionTest extends TestCase
                 }
             },
             static function (string $dsn): void {
-                $connection = new Connection(static fn() => null, $dsn, timeout: 0.01);
+                $connection = new Connection($dsn, timeout: 0.01);
                 $start = hrtime(true);
                 try {
                     $connection->execute('SELECT 1');
@@ -96,7 +96,7 @@ final class WireRegressionTest extends TestCase
             $server->send("\xfemysql_native_password\0abcdefghijklmnopqrst\0");
             self::assertTrue($server->eof());
         }, static function (string $dsn): void {
-            $connection = new Connection(static fn() => null, $dsn, timeout: 0.01);
+            $connection = new Connection($dsn, timeout: 0.01);
             try {
                 $connection->execute('SELECT 1');
                 self::fail('An authentication switch started after the deadline.');
@@ -142,7 +142,7 @@ final class WireRegressionTest extends TestCase
             $server->send("\0\0\0\x02\0");
             self::assertTrue($server->eof());
         }, static function (string $dsn): void {
-            $connection = new Connection(static fn() => null, $dsn);
+            $connection = new Connection($dsn);
             try {
                 $connection->execute('UPDATE example SET n = 1');
                 self::fail('The acknowledgement omitted its mandatory warnings field.');

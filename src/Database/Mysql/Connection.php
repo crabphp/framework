@@ -38,14 +38,11 @@ final class Connection implements ManagedConnection
     private readonly Settings $settings;
 
     /**
-     * The connect closure identifies the factory this driver was given;
-     * Database tracks the ownership of the connection itself.
      * Cancellation may be supplied by a standalone coroutine consumer.
      *
      * @param array<int|string, mixed> $options
      */
     public function __construct(
-        private readonly \Closure $connect,
         string $dsn,
         private readonly string $username = '',
         #[\SensitiveParameter]
@@ -93,11 +90,6 @@ final class Connection implements ManagedConnection
     public function insert(string $sql, array $bindings = []): int|string
     {
         return $this->statement($sql, $bindings, 'insert')['id'];
-    }
-
-    public function opensWith(\Closure $connect): bool
-    {
-        return $connect === $this->connect;
     }
 
     public function inTransaction(): bool

@@ -133,42 +133,74 @@ final class LoggerTest extends TestCase
 
     public function testATraceNamesEachCallWithoutTheArgumentsItWasGiven(): void
     {
-        $login = static function (string $email, string $typed): never {
-            try {
-                (static function (string $word): never {
-                    throw new \LogicException('inner');
-                })('swordfish');
-            } catch (\LogicException $error) {
-                throw new \RuntimeException('SQLSTATE[HY000] [2002] Connection refused', 0, $error);
+        $script = <<<'PHP'
+            require $argv[1];
+            function login(string $email, string $typed): never
+            {
+                try {
+                    (static fn(string $word): never => throw new LogicException('inner'))('swordfish');
+                } catch (LogicException $error) {
+                    throw new RuntimeException('SQLSTATE[HY000] [2002] Connection refused', 0, $error);
+                }
             }
-        };
-        try {
-            $login('ann@example.com', 'hunter2');
-        } catch (\RuntimeException $error) {
-        }
+            try {
+                login('ann@example.com', 'hunter2');
+            } catch (RuntimeException $error) {
+            }
+            $stream = fopen('php://memory', 'w+b');
+            new Crab\Log\Logger($stream)->error('POST /login failed', ['exception' => $error]);
+            rewind($stream);
+            echo json_encode(['written' => stream_get_contents($stream), 'arguments' => $error->getTrace()[0]['args']], JSON_THROW_ON_ERROR);
+            fclose($stream);
+            PHP;
+        [$status, $output, $errors] = self::capture($script);
+        self::assertSame(0, $status, $errors);
+        self::assertSame('', $errors);
+        $record = json_decode($output, true, flags: JSON_THROW_ON_ERROR);
+        $written = $record['written'];
 
-        $stream = fopen('php://memory', 'w+b');
-        new Logger($stream)->error('POST /login failed', ['exception' => $error]);
-        $written = self::contents($stream);
-
-        // PHP's own text of an exception shows the first 15 characters of every argument, a password among them.
-        self::assertStringContainsString("'hunter2'", (string) $error);
+        // The fixture contains arguments regardless of PHP's trace-text truncation setting.
+        self::assertSame(['ann@example.com', 'hunter2'], $record['arguments']);
         self::assertStringNotContainsString('hunter2', $written);
         self::assertStringNotContainsString('ann@example.com', $written);
         self::assertStringNotContainsString('swordfish', $written);
-        // Still each exception, where it was thrown and every call that led there, as PHP writes them.
-        self::assertStringContainsString("\nLogicException: inner in " . __FILE__, $written);
+        self::assertStringContainsString("\nLogicException: inner in Command line code", $written);
         self::assertStringContainsString(
-            "\n\nNext RuntimeException: SQLSTATE[HY000] [2002] Connection refused in " . __FILE__,
+            "\n\nNext RuntimeException: SQLSTATE[HY000] [2002] Connection refused in Command line code",
             $written,
         );
         self::assertMatchesRegularExpression(
-            '/\n#0 [^\n]+LoggerTest\.php\(\d+\): [^\n]*\{closure[^\n]*\}\(\)\n/',
+            '/\n#0 Command line code\(\d+\): [^\n]*\{closure[^\n]*\}\(\)\n/',
             $written,
         );
-        self::assertStringContainsString('->testATraceNamesEachCallWithoutTheArgumentsItWasGiven()', $written);
+        self::assertStringContainsString('login()', $written);
         self::assertStringContainsString("Stack trace:\n#0 ", $written);
         self::assertMatchesRegularExpression('/\n#\d+ \{main\}\n/', $written);
+    }
+
+    public function testAServerStartupFailureNamesItsCallsWithoutTheirArguments(): void
+    {
+        $script = <<<'PHP'
+            require $argv[1];
+            function startWithCredential(string $credential): never
+            {
+                $server = new Crab\Server(new Crab\App());
+                $server->generation('tcp://127.0.0.1:8080', 1);
+            }
+            startWithCredential('trace_marker');
+            PHP;
+        // A plain file makes inheritance fail before any listener or worker starts.
+        [$status, $output, $errors] = self::capture($script, [3 => ['file', '/dev/null', 'r']]);
+
+        self::assertSame(1, $status, $errors);
+        self::assertSame('', $errors);
+        self::assertStringContainsString(
+            'The server failed: RuntimeException: Descriptor 3 is not a listening socket',
+            $output,
+        );
+        self::assertStringContainsString('Crab\\Server->generation()', $output);
+        self::assertStringContainsString('startWithCredential()', $output);
+        self::assertStringNotContainsString('trace_marker', $output);
     }
 
     public function testMinimumLevel(): void
@@ -206,6 +238,55 @@ final class LoggerTest extends TestCase
         }
         $this->expectException(InvalidArgumentException::class);
         new Logger(fopen('php://memory', 'w+b'))->log('loud', 'message');
+    }
+
+    /**
+     * Captures a failure with PHP retaining its original call arguments.
+     *
+     * @param array<int, array<string>> $descriptors
+     * @return array{int, string, string}
+     */
+    private static function capture(string $script, array $descriptors = []): array
+    {
+        $process = proc_open(
+            [
+                PHP_BINARY,
+                '-d',
+                'zend.exception_ignore_args=0',
+                '-r',
+                $script,
+                dirname(__DIR__, 2) . '/vendor/autoload.php',
+            ],
+            [1 => ['pipe', 'w'], 2 => ['pipe', 'w']] + $descriptors,
+            $pipes,
+        );
+        self::assertIsResource($process);
+        stream_set_blocking($pipes[1], false);
+        stream_set_blocking($pipes[2], false);
+        $output = '';
+        $errors = '';
+        $deadline = hrtime(true) + 5_000_000_000;
+        try {
+            while (true) {
+                $state = proc_get_status($process);
+                $output .= stream_get_contents($pipes[1]);
+                $errors .= stream_get_contents($pipes[2]);
+                if (!$state['running']) {
+                    $status = $state['exitcode'];
+                    break;
+                }
+                if (hrtime(true) >= $deadline) {
+                    proc_terminate($process, 9);
+                    self::fail('Timed out waiting for the logger/server failure probe to exit.');
+                }
+                usleep(1_000);
+            }
+        } finally {
+            fclose($pipes[1]);
+            fclose($pipes[2]);
+            proc_close($process);
+        }
+        return [$status, $output, $errors];
     }
 
     /**

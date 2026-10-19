@@ -156,14 +156,6 @@ final class PdoConnection implements ManagedConnection
         $this->afterCommit[] = [$this->depth, $callback];
     }
 
-    /**
-     * Whether this connection is opened by the given function.
-     */
-    public function opensWith(\Closure $connect): bool
-    {
-        return $this->connect === $connect;
-    }
-
     public function inTransaction(): bool
     {
         return $this->depth > 0 || ($this->pdo?->inTransaction() ?? false);

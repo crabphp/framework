@@ -166,9 +166,8 @@ final class ParityRegressionTest extends TestCase
     {
         WorkerHarness::run([], static function (Worker $worker) use ($body): void {
             $dsn = (string) getenv('CRAB_TEST_MYSQL_DSN');
-            $owner = static fn(): \PDO => new \PDO($dsn, 'root', '');
-            $pdo = new PdoConnection($owner);
-            $async = new Connection($owner, $dsn, 'root', worker: $worker);
+            $pdo = new PdoConnection(static fn(): \PDO => new \PDO($dsn, 'root', ''));
+            $async = new Connection($dsn, 'root', worker: $worker);
             $table = 'mysql_fix_parity_' . bin2hex(random_bytes(6));
             try {
                 $body($async, $pdo, $table);

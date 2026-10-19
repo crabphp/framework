@@ -179,9 +179,8 @@ final class DatabaseManager implements Migrators
         $timeout = (float) ($settings['timeout'] ?? 5.0);
         $async = (bool) ($settings['async'] ?? false) && str_starts_with($dsn, 'mysql:');
         $resolver = new DnsResolver(fallback: false);
-        $factory = fn(\Closure $owner): ManagedConnection => $async && $this->worker !== null
+        $factory = fn(\Closure $connect): ManagedConnection => $async && $this->worker !== null
             ? new Mysql\Connection(
-                $owner,
                 $dsn,
                 (string) $username,
                 (string) $password,
@@ -190,7 +189,7 @@ final class DatabaseManager implements Migrators
                 $this->worker,
                 resolver: $resolver,
             )
-            : new PdoConnection($owner);
+            : new PdoConnection($connect);
         return new Database($connect, $pool, $timeout, $this, $factory);
     }
 

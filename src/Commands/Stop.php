@@ -34,8 +34,14 @@ final readonly class Stop implements Command
         if ($timeout === true) {
             throw new \InvalidArgumentException('--timeout needs a value; use --timeout=value.');
         }
+        $seconds = is_numeric($timeout) ? (float) $timeout : null;
+        if ($timeout !== null && ($seconds === null || !is_finite($seconds) || $seconds < 0)) {
+            throw new \InvalidArgumentException(
+                '--timeout must be a finite number of seconds at least zero; use --timeout=15.',
+            );
+        }
         try {
-            $pid = $server->stop($timeout === null ? null : (float) $timeout, $input->flag('force'));
+            $pid = $server->stop($seconds, $input->flag('force'));
         } catch (\RuntimeException $error) {
             $output->error($error->getMessage());
             return 1;

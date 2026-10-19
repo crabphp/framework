@@ -152,7 +152,6 @@ final class RealAuthenticationTest extends TestCase
         WorkerHarness::run([], static function (Worker $worker) use ($user, $password, $ssl, $encrypted): void {
             $options = $ssl === null ? [] : ['ssl' => $ssl];
             $connection = new Connection(
-                static fn() => null,
                 (string) getenv('CRAB_TEST_MYSQL_DSN'),
                 $user,
                 $password,

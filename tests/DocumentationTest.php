@@ -6,8 +6,14 @@ namespace Crab\Tests;
 
 use Crab\App;
 use Crab\Config\Config;
+use Crab\Console\Console;
+use Crab\Console\Output;
+use Crab\Contracts\Console\Command;
+use Crab\Contracts\Database\Database as DatabaseContract;
 use Crab\Database\Database;
+use Crab\Database\Migrator;
 use Crab\Http\Request;
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 
 final class DocumentationTest extends TestCase
@@ -197,6 +203,190 @@ final class DocumentationTest extends TestCase
         self::assertStringContainsString('php cua migrate', $invoked);
         self::assertStringNotContainsString('php cua reload', $invoked);
         self::assertStringNotContainsString('systemctl', $invoked);
+    }
+
+    /**
+     * @return iterable<string, array{list<string>}>
+     */
+    public static function missingPruningDays(): iterable
+    {
+        yield 'bare' => [['--days']];
+        yield 'separated' => [['--days', '30']];
+        yield 'bare dry run' => [['--days', '--dry-run']];
+        yield 'separated dry run' => [['--days', '30', '--dry-run']];
+    }
+
+    #[DataProvider('missingPruningDays')]
+    public function testThePruningExampleRefusesMissingDaysBeforeQuerying(array $arguments): void
+    {
+        $db = $this->createMock(DatabaseContract::class);
+        $db->expects(self::never())->method('table');
+        [$status, $output] = $this->prune($db, $arguments);
+
+        self::assertSame(1, $status, $output);
+        self::assertStringContainsString('--days needs a value', $output);
+        self::assertStringContainsString('--days=30', $output);
+        self::assertStringNotContainsString('users deleted', $output);
+        self::assertStringNotContainsString('users would be deleted', $output);
+    }
+
+    /**
+     * @return iterable<string, array{list<string>, list<string>, string}>
+     */
+    public static function validPruningDays(): iterable
+    {
+        yield 'default' => [[], ['recent'], '1 users deleted.'];
+        yield 'explicit' => [['--days=30'], ['recent'], '1 users deleted.'];
+        yield 'dry run' => [['--days=30', '--dry-run'], ['recent', 'old'], '1 users would be deleted.'];
+    }
+
+    #[DataProvider('validPruningDays')]
+    public function testThePruningExampleKeepsRecentUsersAndHonorsDryRun(
+        array $arguments,
+        array $remaining,
+        string $message,
+    ): void {
+        $db = new Database(static fn(): \PDO => new \PDO('sqlite::memory:'), 1);
+        try {
+            $db->execute('create table users (id integer primary key, name text, created_at text, confirmed_at text)');
+            foreach (['recent' => 10, 'old' => 40] as $name => $days) {
+                $db->table('users')->insert([
+                    'name' => $name,
+                    'created_at' => date('Y-m-d H:i:s', time() - (86_400 * $days)),
+                ]);
+            }
+            [$status, $output] = $this->prune($db, $arguments);
+
+            self::assertSame(0, $status, $output);
+            self::assertSame($message . "\n", $output);
+            self::assertSame($remaining, $db->table('users')->orderBy('id')->pluck('name'));
+        } finally {
+            $db->close();
+        }
+    }
+
+    public function testTheChangingTablesExampleRollsBackItsIndexAndColumns(): void
+    {
+        $db = new Database(static fn(): \PDO => new \PDO('sqlite::memory:'), 1);
+        try {
+            $db->execute('create table users (id integer primary key, name text, legacy_code text)');
+            $example = $this->example('migrations.md', 'php', "renameColumn('name', 'full_name')");
+            $name = '2026_01_01_000000_change_users';
+            file_put_contents(
+                $this->directory . '/' . $name . '.php',
+                "<?php\nuse Crab\\Contracts\\Database\\Schema;\nuse Crab\\Contracts\\Database\\Table;\n"
+                . "return new class implements Crab\\Contracts\\Database\\Migration {\n"
+                . $example
+                . "\n};\n",
+            );
+            $migrator = new Migrator($db, $this->directory);
+
+            self::assertSame([$name], $migrator->run());
+            self::assertContains('users_phone_index', array_column($db->select('pragma index_list(users)'), 'name'));
+            self::assertSame([$name], $migrator->rollback());
+            self::assertSame(
+                ['id', 'name', 'legacy_code'],
+                array_column($db->select('pragma table_info(users)'), 'name'),
+            );
+            self::assertSame([], $db->select('pragma index_list(users)'));
+            self::assertSame(0, $db->table('migrations')->count());
+        } finally {
+            $db->close();
+        }
+    }
+
+    /**
+     * @return iterable<string, array{int}>
+     */
+    public static function timerPauses(): iterable
+    {
+        yield 'ordinary loop' => [0];
+        yield 'paused loop' => [250_000];
+    }
+
+    #[DataProvider('timerPauses')]
+    public function testTheTimerExampleWaitsForAnObservedFlush(int $pause): void
+    {
+        $this->runTimerExample($pause);
+    }
+
+    public function testTheTimerExampleNamesTheDeadlineWhenNothingFlushes(): void
+    {
+        $this->expectException(\RuntimeException::class);
+        $this->expectExceptionMessage('The metrics timer did not flush within 5 seconds.');
+
+        $this->runTimerExample(0, flushes: false);
+    }
+
+    /**
+     * @param list<string> $arguments
+     * @return array{int, string}
+     */
+    private function prune(DatabaseContract $db, array $arguments): array
+    {
+        $name = 'PruneUsers' . bin2hex(random_bytes(6));
+        $example = $this->example('console.md', 'php', 'class PruneUsers');
+        file_put_contents(
+            $this->directory . '/prune.php',
+            "<?php\n" . str_replace('class PruneUsers', 'class ' . $name, $example),
+        );
+        require $this->directory . '/prune.php';
+        $class = 'App\\Console\\' . $name;
+        /** @var Command $command */
+        $command = new $class($db);
+        $console = new Console();
+        $console->add('user:prune', $command);
+        $stream = fopen('php://memory', 'w+b');
+        try {
+            $status = $console->run(['user:prune', ...$arguments], new Output($stream, $stream));
+            rewind($stream);
+            return [$status, stream_get_contents($stream)];
+        } finally {
+            fclose($stream);
+        }
+    }
+
+    private function runTimerExample(int $pause, bool $flushes = true): void
+    {
+        $namespace = 'DocumentedTimer' . bin2hex(random_bytes(6));
+        $provider = $this->example('providers.md', 'php', 'class MetricsProvider');
+        if ($pause > 0) {
+            $provider = str_replace(
+                '$worker->loop->repeat(',
+                '$worker->loop->defer(static function (): void { usleep('
+                . $pause
+                . '); });'
+                . "\n"
+                . '$worker->loop->repeat(',
+                $provider,
+            );
+        }
+        if (!$flushes) {
+            // Keep the timer active but disable its effect, so only the documented deadline can end the wait.
+            $provider = str_replace('static fn () => $metrics->flush()', 'static fn () => null', $provider);
+        }
+        $metrics = <<<'PHP'
+            final class Metrics
+            {
+                public int $flushes = 0;
+
+                public function flush(): void
+                {
+                    ++$this->flushes;
+                }
+            }
+            PHP;
+        file_put_contents(
+            $this->directory . '/timer-provider.php',
+            "<?php\nnamespace {$namespace};\n" . $provider . "\n" . $metrics,
+        );
+        require $this->directory . '/timer-provider.php';
+        $example = $this->example('testing.md', 'php', 'WorkerHarness::run(');
+        file_put_contents(
+            $this->directory . '/timer-test.php',
+            "<?php\nnamespace {$namespace};\n" . str_replace('self::', '\\PHPUnit\\Framework\\Assert::', $example),
+        );
+        require $this->directory . '/timer-test.php';
     }
 
     private function example(string $page, string $language, string $contains, string $fence = '```'): string

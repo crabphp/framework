@@ -249,7 +249,7 @@ final class SafetyTest extends TestCase
             ): void {
                 $connection = $driver === 'pdo'
                     ? new PdoConnection($raw)
-                    : new Connection($raw, $dsn, 'root', worker: $worker);
+                    : new Connection($dsn, 'root', worker: $worker);
                 $callbackRan = false;
                 $attempts = 0;
                 try {
@@ -353,10 +353,10 @@ final class SafetyTest extends TestCase
             $setup = new \PDO($dsn, 'root', '', [\PDO::ATTR_ERRMODE => \PDO::ERRMODE_EXCEPTION]);
             $table = 'mysql_fix_safety_' . bin2hex(random_bytes(6));
             $setup->exec("CREATE TABLE {$table} (id INT PRIMARY KEY) ENGINE=InnoDB");
-            $owner = static fn(): \PDO => new \PDO($dsn, 'root', '');
+            $connect = static fn(): \PDO => new \PDO($dsn, 'root', '');
             $connection = $driver === 'pdo'
-                ? new PdoConnection($owner)
-                : new Connection($owner, $dsn, 'root', worker: $worker);
+                ? new PdoConnection($connect)
+                : new Connection($dsn, 'root', worker: $worker);
             try {
                 $body($connection, $setup, $table, $worker);
             } finally {
@@ -431,11 +431,6 @@ final class LockLossConnection implements ManagedConnection
     public function afterCommit(\Closure $callback): void
     {
         $this->delegate->afterCommit($callback);
-    }
-
-    public function opensWith(\Closure $connect): bool
-    {
-        return $this->delegate->opensWith($connect);
     }
 
     public function inTransaction(): bool

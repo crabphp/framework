@@ -243,15 +243,26 @@ final readonly class FileStore implements Store
 
     /**
      * Refuses a folder that already exists and that another user can write
-     * to, as one left 0775 or 0777 would be: they could put an entry there
-     * for Cache to unserialize. A folder this store makes is 0700.
+     * to, as one left 0775 or 0777 would be, or that another user owns, as
+     * one made first in a shared temp folder would be: they could put an
+     * entry there for Cache to unserialize. A folder this store makes is
+     * 0700. Root may use any user's folder, as it can write to it anyway.
      */
     private static function private(string $folder): void
     {
-        $mode = PHP_OS_FAMILY === 'Windows' ? false : @fileperms($folder);
-        if ($mode !== false && ($mode & 0o022) !== 0) {
+        $stat = PHP_OS_FAMILY === 'Windows' ? false : @stat($folder);
+        if ($stat === false) {
+            return;
+        }
+        if (($stat['mode'] & 0o022) !== 0) {
             throw new \RuntimeException(
                 "The cache directory {$folder} can be written by other users. Run chmod 700 on it.",
+            );
+        }
+        $user = function_exists('posix_geteuid') ? posix_geteuid() : null;
+        if ($user !== null && $user !== 0 && $stat['uid'] !== $user) {
+            throw new \RuntimeException(
+                "The cache directory {$folder} is owned by another user. Set cache.directory to a folder of the server's user.",
             );
         }
     }

@@ -95,6 +95,12 @@ final class RateLimitTest extends TestCase
             $from('::ffff:192.0.2.11'),
             $from('192.0.2.11'),
         ]);
+        // Whichever way the mapped address is written.
+        self::assertSame([200, 429, 429], [
+            $from('::ffff:c000:21e'),
+            $from('0:0:0:0:0:ffff:192.0.2.30'),
+            $from('192.0.2.30'),
+        ]);
         // So is one a proxy passed on.
         $passedOn = static fn(string $address): int => $app->handle(new Request('GET', '/a')->withAttribute(
             TrustedProxies::ATTRIBUTE,

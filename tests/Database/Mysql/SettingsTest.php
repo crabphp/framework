@@ -6,7 +6,10 @@ namespace Crab\Tests\Database\Mysql;
 
 use Crab\Database\DatabaseException;
 use Crab\Database\DatabaseManager;
+use Crab\Database\Mysql\Connection;
 use Crab\Database\Mysql\Settings;
+use Crab\Engine\Process\Worker;
+use Crab\Testing\WorkerHarness;
 use PHPUnit\Framework\TestCase;
 
 /**
@@ -15,6 +18,42 @@ use PHPUnit\Framework\TestCase;
  */
 final class SettingsTest extends TestCase
 {
+    public function testAConnectionCanBeConfiguredWithoutOpeningAMysqlSession(): void
+    {
+        $connection = new Connection('mysql:host=database.invalid;dbname=app', 'user', 'password');
+        try {
+            self::assertSame('mysql', $connection->driver());
+            self::assertFalse($connection->isOpen());
+            self::assertFalse($connection->inTransaction());
+        } finally {
+            $connection->close();
+        }
+    }
+
+    public function testTheManagerLendsAnUnopenedAsyncConnectionInsideAWorker(): void
+    {
+        $manager = new DatabaseManager(['main' => [
+            'dsn' => 'mysql:host=database.invalid;dbname=app',
+            'async' => true,
+        ]], 'main');
+        WorkerHarness::run([], static function (Worker $worker) use ($manager): void {
+            $manager->start($worker);
+            try {
+                $database = $manager->connection();
+                $connection = $database->acquire();
+                try {
+                    self::assertInstanceOf(Connection::class, $connection);
+                    self::assertSame('mysql', $connection->driver());
+                    self::assertFalse($connection->isOpen());
+                } finally {
+                    $database->release($connection);
+                }
+            } finally {
+                $manager->stop();
+            }
+        });
+    }
+
     public function testDsnValuesAndSslOptionsAreReadWithoutPdoAttributes(): void
     {
         $settings =

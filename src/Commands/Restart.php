@@ -41,8 +41,14 @@ final readonly class Restart implements Command
         if ($timeout === true) {
             throw new \InvalidArgumentException('--timeout needs a value; use --timeout=value.');
         }
+        $seconds = is_numeric($timeout) ? (float) $timeout : null;
+        if ($timeout !== null && ($seconds === null || !is_finite($seconds) || $seconds < 0)) {
+            throw new \InvalidArgumentException(
+                '--timeout must be a finite number of seconds at least zero; use --timeout=15.',
+            );
+        }
         try {
-            $old = $server->stop($timeout === null ? null : (float) $timeout, $input->flag('force'));
+            $old = $server->stop($seconds, $input->flag('force'));
             if ($old !== null) {
                 $output->line("Stopped the server, pid {$old}.");
             }

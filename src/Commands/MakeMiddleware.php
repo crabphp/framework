@@ -52,7 +52,10 @@ final readonly class MakeMiddleware implements Command
             $output->error("The folder {$directory} cannot be created.");
             return 1;
         }
-        file_put_contents($file, self::source($namespace, $name));
+        if (@file_put_contents($file, self::source($namespace, $name)) === false) {
+            $output->error("Could not write {$file}. Check the destination and its permissions.");
+            return 1;
+        }
         $output->line("Created {$file}");
         $class = '\\' . $namespace . '\\' . $name;
         $output->line(

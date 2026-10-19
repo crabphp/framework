@@ -45,10 +45,9 @@ trait AsyncDriverMatrix
         if ($driver !== 'mysql' || $this->matrixWorker === null) {
             return null;
         }
-        return function (\Closure $owner) use ($opened): Connection {
+        return function () use ($opened): Connection {
             $opened?->__invoke();
             $connection = new Connection(
-                $owner,
                 (string) getenv('CRAB_TEST_MYSQL_DSN'),
                 getenv('CRAB_TEST_MYSQL_USER') ?: 'root',
                 getenv('CRAB_TEST_MYSQL_PASSWORD') ?: '',

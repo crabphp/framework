@@ -176,8 +176,8 @@ final class Request extends Message implements RequestContract
 
     /**
      * The address at the other end of the connection, without its port.
-     * An IPv4 client of a listener on [::] arrives as "::ffff:192.0.2.7"
-     * and is given as the IPv4 address it is.
+     * An IPv4 client of a listener on [::] arrives as "::ffff:192.0.2.7",
+     * or another spelling of it, and is given as the IPv4 address it is.
      */
     private function peer(): string
     {
@@ -188,9 +188,10 @@ final class Request extends Message implements RequestContract
             $colon = strrpos($peer, ':');
             $address = trim($colon === false ? $peer : substr($peer, 0, $colon), '[]');
         }
-        $ipv4 = substr($address, 7);
-        return strncasecmp($address, '::ffff:', 7) === 0 && filter_var($ipv4, FILTER_VALIDATE_IP, FILTER_FLAG_IPV4)
-            ? $ipv4
+        // Every spelling of a mapped address has "ffff" in it; other addresses are not parsed.
+        $packed = stripos($address, 'ffff') !== false ? @inet_pton($address) : false;
+        return $packed !== false && strlen($packed) === 16 && str_starts_with($packed, "\0\0\0\0\0\0\0\0\0\0\xff\xff")
+            ? (string) inet_ntop(substr($packed, 12))
             : $address;
     }
 

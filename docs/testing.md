@@ -315,7 +315,9 @@ With `cache.store` set to `array`, entries live in the test's memory and are gon
 
 ## Code that waits
 
-Most tests never need the event loop. For a provider that starts a timer in each worker, or for code that sleeps or runs several things at once, `WorkerHarness` runs a body inside a real worker in the test's process:
+Most tests never need the event loop. For a provider that starts a timer in each worker, or for code that sleeps or runs several things at once, `WorkerHarness` runs a body inside a real worker in the test's process.
+
+Use the [MetricsProvider example](providers.md#work-in-each-worker) with a short interval and a counting `Metrics` test double: its public `int $flushes` starts at zero and `flush()` increments it. Wait until that count changes, with a deadline that names what failed, instead of assuming a sleep was long enough:
 
 ```php
 use Crab\Engine\Async\Async;
@@ -323,10 +325,17 @@ use Crab\Engine\Process\Worker;
 use Crab\Contracts\Container\Container;
 use Crab\Testing\WorkerHarness;
 
-$flushed = WorkerHarness::run([new MetricsProvider()], static function (Worker $worker, Container $container): int {
-    Async::sleep($worker->loop, 0.05);                  // long enough for the provider's timer
+$flushed = WorkerHarness::run([new MetricsProvider(interval: 0.01)], static function (Worker $worker, Container $container): int {
+    $metrics = $container->get(Metrics::class);
+    $deadline = hrtime(true) + 5_000_000_000;
+    while ($metrics->flushes === 0) {
+        if (hrtime(true) >= $deadline) {
+            throw new \RuntimeException('The metrics timer did not flush within 5 seconds.');
+        }
+        Async::sleep($worker->loop, 0.01);
+    }
 
-    return $container->get(Metrics::class)->flushes;
+    return $metrics->flushes;
 });
 
 self::assertGreaterThan(0, $flushed);

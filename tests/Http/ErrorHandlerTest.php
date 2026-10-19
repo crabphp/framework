@@ -86,13 +86,60 @@ final class ErrorHandlerTest extends TestCase
 
     public function testTheDebugPageShowsEachCallWithoutTheArgumentsItWasGiven(): void
     {
-        $login = static fn(string $email, string $typed): never => throw new \RuntimeException('database down');
-        $action = static fn() => $login('ann@example.com', 'hunter2');
+        $script = <<<'PHP'
+            require $argv[1];
+            $login = static fn(string $email, string $typed): never => throw new RuntimeException('database down');
+            $action = new Crab\Http\ClosureHandler(static fn() => $login('ann@example.com', 'hunter2'));
+            $handler = new Crab\Http\ErrorHandler(new Crab\Log\Logger('php://memory'), true);
+            $text = (string) $handler->process(new Crab\Http\Request('GET', '/fail'), $action)->getBody();
+            $request = new Crab\Http\Request('GET', '/fail', ['Accept' => 'application/json']);
+            $json = json_decode((string) $handler->process($request, $action)->getBody(), true, flags: JSON_THROW_ON_ERROR);
+            echo json_encode(['text' => $text, 'json' => $json], JSON_THROW_ON_ERROR);
+            PHP;
+        $process = proc_open(
+            [
+                PHP_BINARY,
+                '-d',
+                'zend.exception_ignore_args=0',
+                '-r',
+                $script,
+                dirname(__DIR__, 2) . '/vendor/autoload.php',
+            ],
+            [1 => ['pipe', 'w'], 2 => ['pipe', 'w']],
+            $pipes,
+        );
+        self::assertIsResource($process);
+        stream_set_blocking($pipes[1], false);
+        stream_set_blocking($pipes[2], false);
+        $output = '';
+        $errors = '';
+        $deadline = hrtime(true) + 5_000_000_000;
+        try {
+            while (true) {
+                $state = proc_get_status($process);
+                $output .= stream_get_contents($pipes[1]);
+                $errors .= stream_get_contents($pipes[2]);
+                if (!$state['running']) {
+                    $status = $state['exitcode'];
+                    break;
+                }
+                if (hrtime(true) >= $deadline) {
+                    proc_terminate($process, 9);
+                    self::fail('Timed out waiting for the debug-response probe to exit.');
+                }
+                usleep(1_000);
+            }
+        } finally {
+            fclose($pipes[1]);
+            fclose($pipes[2]);
+            proc_close($process);
+        }
+        self::assertSame(0, $status, $errors);
+        self::assertSame('', $errors);
+        $responses = json_decode($output, true, flags: JSON_THROW_ON_ERROR);
+        $text = $responses['text'];
+        $json = $responses['json'];
 
-        $text = (string) $this->handle($action, debug: true)->getBody();
-        $json = json_decode((string) $this->handle($action, debug: true, accept: 'application/json')->getBody(), true);
-
-        // PHP's own text of an exception shows the first 15 characters of every argument.
         self::assertStringContainsString("Stack trace:\n#0 ", $text);
         self::assertMatchesRegularExpression('/\{closure[^\n]*\}\(\)\n/', $text);
         self::assertMatchesRegularExpression('/^#0 [^\n]+\{closure[^\n]*\}\(\)$/', $json['error']['trace'][0]);

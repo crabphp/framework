@@ -80,7 +80,11 @@ final readonly class PruneUsers implements Command
 
     public function handle(Input $input, Output $output): int
     {
-        $before = date('Y-m-d H:i:s', time() - 86400 * (int) $input->option('days', '30'));
+        $days = $input->option('days', '30');
+        if ($days === true) {
+            throw new \InvalidArgumentException('--days needs a value; use --days=30.');
+        }
+        $before = date('Y-m-d H:i:s', time() - 86400 * (int) $days);
         $query = $this->db->table('users')->whereNull('confirmed_at')->where('created_at', '<', $before);
 
         if ($input->flag('dry-run')) {

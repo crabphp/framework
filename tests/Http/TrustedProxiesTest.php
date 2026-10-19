@@ -61,6 +61,45 @@ final class TrustedProxiesTest extends TestCase
         self::assertSame('2001:db8::7', Request::fromEngine($source)->ip());
     }
 
+    public function testEverySpellingOfAMappedAddressIsTheSameIpv4AddressWhereverItIsRead(): void
+    {
+        foreach ([
+            '::ffff:203.0.113.7',
+            '::ffff:cb00:7107',
+            '0:0:0:0:0:ffff:203.0.113.7',
+            '::FFFF:CB00:7107',
+        ] as $spelling) {
+            $source = new EngineRequest('GET', '/', '1.1', ['host' => ['localhost']]);
+            $source->peer = "[{$spelling}]:52930";
+            $fromEngine = Request::fromEngine($source);
+            $direct = new Request('GET', '/', serverParams: ['REMOTE_ADDR' => $spelling]);
+            $forwarded = new Request(
+                'GET',
+                '/',
+                ['X-Forwarded-For' => $spelling],
+                serverParams: ['REMOTE_ADDR' => '127.0.0.1'],
+            );
+            $handler = new ClosureHandler(static fn(Request $request): Response => Response::text($request->ip()));
+            self::assertSame(
+                ['203.0.113.7', '203.0.113.7', '203.0.113.7', '203.0.113.7'],
+                [
+                    $fromEngine->ip(),
+                    $fromEngine->getServerParams()['REMOTE_ADDR'],
+                    $direct->ip(),
+                    (string) new TrustedProxies(['127.0.0.1'])
+                        ->process($forwarded, $handler)
+                        ->getBody(),
+                ],
+                $spelling,
+            );
+        }
+
+        // Other IPv6 addresses are left as they are written, including the IPv4-compatible form, which is not mapped.
+        foreach (['2001:db8::7', '::1', '::cb00:7107'] as $address) {
+            self::assertSame($address, new Request('GET', '/', serverParams: ['REMOTE_ADDR' => $address])->ip());
+        }
+    }
+
     public function testAProxyIsBelievedWhetherItsAddressIsWrittenAsIpv4OrAsMappedIpv6(): void
     {
         $proxies = new TrustedProxies(['127.0.0.1']);

@@ -269,7 +269,6 @@ final class ConnectionTest extends TestCase
         WorkerHarness::run([], static function (Worker $worker): void {
             $token = new Cancellation();
             $connection = new Connection(
-                static fn() => null,
                 (string) getenv('CRAB_TEST_MYSQL_DSN'),
                 'root',
                 worker: $worker,

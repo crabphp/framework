@@ -18,6 +18,8 @@ use Crab\Contracts\Schedule\Schedule as ScheduleContract;
 use Crab\Contracts\Schedule\TaskRan;
 use Crab\Engine\Async\Async;
 use Crab\Engine\Async\Cancellation;
+use Crab\Engine\Crab;
+use Crab\Engine\EventLoop;
 use Crab\Engine\FailureReporter;
 use Crab\Engine\Process\Worker;
 use Crab\Events\Dispatcher;
@@ -401,32 +403,49 @@ final class ScheduleTest extends TestCase
         $schedule = new Schedule();
         $schedule->call(Beat::class)->everySeconds(0.02);
         $scheduler = new Scheduler($schedule, new Container(), $this->log);
+        $interval = null;
+        $pending = [];
+        $loop = $this->createStub(EventLoop::class);
+        $loop->method('repeat')->willReturnCallback(static function (float $seconds, \Closure $callback) use (
+            &$interval,
+        ): string {
+            $interval = $callback;
+            return 'interval';
+        });
+        $loop->method('defer')->willReturnCallback(static function (\Closure $callback) use (&$pending): string {
+            $pending[] = $callback;
+            return 'task-' . count($pending);
+        });
+        $loop->method('delay')->willReturn('drain');
+        $worker = new Worker($loop, new Crab('schedule'), 0, ['tcp' => [], 'udp' => []], 5.0);
         $reports = [];
         $previous = FailureReporter::handleWith(static function (string $what, ?\Throwable $error) use (
             &$reports,
         ): void {
             $reports[] = $what . ': ' . $error?->getMessage();
         });
-        $stopped = 0;
 
         try {
-            WorkerHarness::run([], static function (Worker $worker) use ($scheduler, &$stopped): void {
-                $scheduler->repeat($worker);
-                // Allow five timer intervals before checking that a task ran.
-                Async::sleep($worker->loop, 0.1);
-                // The worker stops while this task is still going, and the timers go on firing meanwhile.
-                $worker->stop();
-                $stopped = Beat::$count;
-                Async::sleep($worker->loop, 0.1);
-                self::assertSame(0, $scheduler->tick($worker, new \DateTimeImmutable('2026-03-10 07:00:00')));
-            });
+            $scheduler->repeat($worker);
+            self::assertInstanceOf(\Closure::class, $interval);
+            // Deliver the actual interval callback and its queued task before stopping.
+            $interval();
+            self::assertCount(1, $pending);
+            $run = array_shift($pending);
+            $run();
+            self::assertSame(1, Beat::$count);
+
+            $worker->stop();
+            self::assertTrue($worker->isDraining());
+            // A timer already ready for delivery may still fire during drain.
+            $interval();
+            self::assertSame([], $pending, 'An interval callback queued work after the worker stopped.');
+            self::assertSame(1, Beat::$count);
+            self::assertSame(0, $scheduler->tick($worker, new \DateTimeImmutable('2026-03-10 07:00:00')));
+            self::assertSame([], $reports);
         } finally {
             FailureReporter::handleWith($previous);
         }
-
-        self::assertGreaterThan(0, $stopped);
-        self::assertSame($stopped, Beat::$count);
-        self::assertSame([], $reports);
     }
 
     public function testIntervalTasksRunWithoutOverlapAndLeaveNoTimersAfterCancellation(): void

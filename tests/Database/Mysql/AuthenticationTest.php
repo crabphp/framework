@@ -40,7 +40,7 @@ final class AuthenticationTest extends TestCase
                 self::assertSame("\x17", $server->receive()[0]);
                 $server->ok();
             }, static function (string $dsn, Worker $worker): void {
-                $connection = new Connection(static fn() => null, $dsn, 'user', 'secret', worker: $worker);
+                $connection = new Connection($dsn, 'user', 'secret', worker: $worker);
                 try {
                     self::assertSame(0, $connection->execute('select 1'));
                 } finally {
@@ -64,7 +64,7 @@ final class AuthenticationTest extends TestCase
             $server->receive();
             $server->ok();
         }, static function (string $dsn): void {
-            $connection = new Connection(static fn() => null, $dsn, 'user', 'secret');
+            $connection = new Connection($dsn, 'user', 'secret');
             try {
                 self::assertSame(0, $connection->execute('select 1'));
             } finally {
@@ -84,7 +84,7 @@ final class AuthenticationTest extends TestCase
             $server->receive();
             $server->ok();
         }, static function (string $dsn): void {
-            $connection = new Connection(static fn() => null, str_replace('127.0.0.1', 'localhost', $dsn));
+            $connection = new Connection(str_replace('127.0.0.1', 'localhost', $dsn));
             try {
                 self::assertSame(0, $connection->execute('select 1'));
             } finally {
@@ -117,7 +117,7 @@ final class AuthenticationTest extends TestCase
             $server->receive();
             $server->ok();
         }, static function (string $dsn): void {
-            $connection = new Connection(static fn() => null, $dsn, 'user', 'secret');
+            $connection = new Connection($dsn, 'user', 'secret');
             try {
                 self::assertSame(0, $connection->execute('select 1'));
             } finally {
@@ -141,7 +141,7 @@ final class AuthenticationTest extends TestCase
                 $server->ok();
             },
             static function (string $dsn): void {
-                $connection = new Connection(static fn() => null, $dsn, 'user', 'secret');
+                $connection = new Connection($dsn, 'user', 'secret');
                 try {
                     self::assertSame(0, $connection->execute('select 1'));
                 } finally {
@@ -179,7 +179,7 @@ final class AuthenticationTest extends TestCase
                 $server->receive();
                 $server->ok();
             }, static function (string $dsn): void {
-                $connection = new Connection(static fn() => null, $dsn, 'user', 'secret', ['ssl' => [
+                $connection = new Connection($dsn, 'user', 'secret', ['ssl' => [
                     'verify_peer' => false,
                     'verify_peer_name' => false,
                 ]]);
@@ -201,7 +201,7 @@ final class AuthenticationTest extends TestCase
             $server->receive();
             $server->send("\xff" . pack('v', 1045) . '#28000Access denied');
         }, static function (string $dsn): void {
-            $connection = new Connection(static fn() => null, $dsn, 'user', 'secret');
+            $connection = new Connection($dsn, 'user', 'secret');
             try {
                 $connection->execute('select ?', ['private-value']);
                 self::fail('Authentication was accepted.');
@@ -275,7 +275,7 @@ final class AuthenticationTest extends TestCase
                 },
                 static function (string $dsn) use ($path, $trusted, $accepted): void {
                     $ssl = $trusted ? ['cafile' => $path] : true;
-                    $connection = new Connection(static fn() => null, $dsn, 'user', 'secret', ['ssl' => $ssl]);
+                    $connection = new Connection($dsn, 'user', 'secret', ['ssl' => $ssl]);
                     try {
                         if ($accepted) {
                             self::assertSame(0, $connection->execute('select 1'));
@@ -310,7 +310,7 @@ final class AuthenticationTest extends TestCase
                 $server->receive();
                 $server->close();
             }, static function (string $dsn): void {
-                $connection = new Connection(static fn() => null, $dsn, timeout: 0.05);
+                $connection = new Connection($dsn, timeout: 0.05);
                 $start = hrtime(true);
                 try {
                     $connection->execute('select 1');
@@ -345,7 +345,7 @@ final class AuthenticationTest extends TestCase
                 self::assertTrue($server->eof());
             },
             static function (string $dsn, Worker $worker) use ($token): void {
-                $connection = new Connection(static fn() => null, $dsn, cancellation: $token);
+                $connection = new Connection($dsn, cancellation: $token);
                 try {
                     $connection->select('select 42 as n');
                     self::fail('A result without its terminator completed.');

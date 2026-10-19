@@ -169,7 +169,7 @@ public function up(Schema $schema): void
 public function down(Schema $schema): void
 {
     $schema->table('users', function (Table $table) {
-        $table->dropIndex('phone');
+        $table->dropIndex(['phone']);
         $table->dropColumn('phone');
         $table->renameColumn('full_name', 'name');
         $table->string('legacy_code')->nullable();
@@ -184,6 +184,8 @@ public function down(Schema $schema): void
 | `drop($table)`, `dropIfExists($table)` | Remove a table |
 | `rename($from, $to)` | Rename a table |
 | `hasTable($table)`, `hasColumn($table, $column)` | Ask what is there |
+
+`dropIndex()` and `dropUnique()` take an array of column names, such as `['phone']`, or a string containing the exact index name, such as `'users_phone_index'`.
 
 > [!NOTE]
 > A column's type cannot be changed in `table()`, because SQLite has no statement for it. Add a column of the new type, copy the values, and drop the old one.

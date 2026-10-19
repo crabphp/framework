@@ -37,19 +37,29 @@ final class ValueOptionsTest extends TestCase
     }
 
     /**
-     * @return iterable<string, array{string, list<string>}>
+     * @return iterable<string, array{string, list<string>, string}>
      */
-    public static function missingTimeouts(): iterable
+    public static function invalidTimeouts(): iterable
     {
         foreach (['stop', 'restart'] as $command) {
-            yield $command . ' bare' => [$command, ['--timeout']];
-            yield $command . ' separated' => [$command, ['--timeout', '15']];
+            yield $command . ' bare' => [$command, ['--timeout'], '--timeout needs a value'];
+            yield $command . ' separated' => [$command, ['--timeout', '15'], '--timeout needs a value'];
+            foreach (['fifteen', '15seconds', '', '-1', '1e309', '-1e309', 'INF', 'NaN'] as $value) {
+                yield $command . ' value ' . $value => [
+                    $command,
+                    ['--timeout=' . $value],
+                    '--timeout must be a finite number of seconds at least zero',
+                ];
+            }
         }
     }
 
-    #[DataProvider('missingTimeouts')]
-    public function testAMissingTimeoutIsRefusedBeforeAccessingServerState(string $command, array $arguments): void
-    {
+    #[DataProvider('invalidTimeouts')]
+    public function testAnInvalidTimeoutIsRefusedBeforeAccessingServerState(
+        string $command,
+        array $arguments,
+        string $message,
+    ): void {
         // Stop at the server-state boundary, without ever inspecting or signalling a real process.
         $pid = new class implements \Stringable {
             public int $reads = 0;
@@ -65,14 +75,25 @@ final class ValueOptionsTest extends TestCase
 
         self::assertSame(0, $pid->reads, $output);
         self::assertSame(1, $status, $output);
-        self::assertStringContainsString('--timeout needs a value', $output);
-        self::assertStringContainsString('--timeout=value', $output);
+        self::assertStringContainsString($message, $output);
+        self::assertStringContainsString('--timeout=', $output);
     }
 
-    public function testAValuedStopTimeoutStillChecksTheConfiguredServer(): void
+    /**
+     * @return iterable<string, array{string}>
+     */
+    public static function validTimeouts(): iterable
+    {
+        foreach (['0', '0.01', '15', '1e1'] as $value) {
+            yield $value => [$value];
+        }
+    }
+
+    #[DataProvider('validTimeouts')]
+    public function testAValuedStopTimeoutStillChecksTheConfiguredServer(string $value): void
     {
         $app = new App(new Config(['server' => ['pid' => $this->directory . '/absent.pid']]));
-        [$status, $output] = $this->command($app, ['stop', '--timeout=15']);
+        [$status, $output] = $this->command($app, ['stop', '--timeout=' . $value]);
 
         self::assertSame(0, $status, $output);
         self::assertSame("No server is running in the background.\n", $output);
@@ -149,6 +170,22 @@ final class ValueOptionsTest extends TestCase
         self::assertSame(1, $status, $output);
         self::assertStringContainsString('--' . $name . ' needs a value', $output);
         self::assertStringContainsString('--' . $name . '=value', $output);
+    }
+
+    public function testAFailedMiddlewareWriteNamesThePathWithoutClaimingSuccess(): void
+    {
+        // A directory cannot be overwritten as a PHP file, even when this test runs as root.
+        $file = $this->directory . '/generated/RequireJson.php';
+        mkdir($file, recursive: true);
+        $app = new App(basePath: $this->directory);
+        [$status, $output] = $this->command($app, ['make:middleware', 'RequireJson', '--path=generated']);
+
+        self::assertSame(1, $status, $output);
+        self::assertStringContainsString($file, $output);
+        self::assertStringContainsString('permissions', $output);
+        self::assertStringNotContainsString('Created ', $output);
+        self::assertStringNotContainsString('Use it around', $output);
+        self::assertDirectoryExists($file);
     }
 
     public function testTheGeneratedMiddlewareCanBeUsedAsItsMessageInstructs(): void

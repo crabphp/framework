@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Crab;
 
+use Crab\Engine\FailureReporter;
 use Crab\Engine\Process\Daemon;
 use Crab\Engine\Process\FileWatcher;
 use Crab\Engine\Process\Generation;
@@ -163,7 +164,7 @@ final class Server
         } catch (\Throwable $error) {
             // Before it was ready this reaches the launcher; afterwards the log is all there is.
             $daemon->fail($error->getMessage());
-            echo date('c') . ' The server failed: ' . $error . "\n";
+            echo date('c') . ' The server failed: ' . FailureReporter::describe($error) . "\n";
         }
         exit($status);
     }
@@ -184,7 +185,7 @@ final class Server
             $runtime->run();
         } catch (\Throwable $error) {
             $generation?->fail($error->getMessage());
-            echo date('c') . ' The server failed: ' . $error . "\n";
+            echo date('c') . ' The server failed: ' . FailureReporter::describe($error) . "\n";
             $status = 1;
         }
         exit($status);
