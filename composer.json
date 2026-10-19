@@ -64,6 +64,6 @@
     ],
     "require-dev": {
         "phpunit/phpunit": "^13.4",
-        "carthage-software/mago": "^1.57.0"
+        "carthage-software/mago": "1.57.0"
     }
 }
