@@ -22,7 +22,7 @@ use Psr\SimpleCache\CacheInterface;
  * `cache:clear`, `cache:prune` and `cache:install` commands.
  *
  *     store       "file", "database" or "array"; file unless set
- *     directory   storage/cache in the application, or the system temp folder for an application with no base path
+ *     directory   storage/cache in the application; an application with no base path must set it
  *     table       the database store's table; "cache"
  *     database    the name of the database it is in; the default one when null
  *     prefix      put before every key, to keep two applications apart in one store
@@ -49,8 +49,14 @@ final class CacheProvider implements Provider
             if ($store === 'file') {
                 $directory = $config->get('cache.directory');
                 if ($directory === null) {
+                    // Never a shared temp folder: another account could make it first and fill it.
                     $base = $config->get('app.path');
-                    $directory = is_string($base) ? $base . '/storage/cache' : sys_get_temp_dir() . '/crab-cache';
+                    if (!is_string($base)) {
+                        throw new \LogicException(
+                            'A file cache needs a folder: set cache.directory, or build the application with App::configure($basePath).',
+                        );
+                    }
+                    $directory = $base . '/storage/cache';
                 }
                 return new FileStore((string) $directory);
             }

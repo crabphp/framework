@@ -38,7 +38,12 @@ final readonly class InstallTokens implements Command
             return 0;
         }
         $file = $this->migrator->make(self::NAME);
-        file_put_contents($file, self::migration());
+        if (@file_put_contents($file, self::migration()) === false) {
+            $output->error(
+                "Could not write {$file}. Check the destination and its permissions before running migrate.",
+            );
+            return 1;
+        }
         $output->line("Created {$file}");
         $output->line('Run `migrate` to create the table.');
         return 0;

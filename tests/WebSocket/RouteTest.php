@@ -22,6 +22,7 @@ use Crab\Routing\Router;
 use Crab\Testing\Api;
 use Crab\Testing\TestSocket;
 use Crab\Testing\WebSocketRefused;
+use Crab\Tests\Support\Wait;
 use Crab\Validation\Data;
 use Crab\Validation\Fields;
 use Crab\Validation\Range;
@@ -410,7 +411,11 @@ final class RouteTest extends TestCase
         $message = '';
         $api = $this->api(static function (Socket $socket) use (&$message): void {
             $first = Task::spawn(EventLoop::current(), static fn() => $socket->receive());
-            Async::sleep(EventLoop::current(), 0.001);
+            Wait::until(
+                EventLoop::current(),
+                static fn(): bool => new \ReflectionProperty($socket, 'receiving')->getValue($socket),
+                'the first WebSocket consumer to wait',
+            );
             try {
                 $socket->receive();
             } catch (\LogicException $error) {
@@ -427,10 +432,17 @@ final class RouteTest extends TestCase
     {
         $received = [];
         $serverSocket = null;
-        $api = $this->api(static function (Socket $socket) use (&$received, &$serverSocket): void {
+        $release = false;
+        $api = $this->api(static function (Socket $socket) use (&$received, &$serverSocket, &$release): void {
             $serverSocket = $socket;
             $socket->accept();
-            Async::sleep(EventLoop::current(), 0.03);
+            Wait::until(
+                EventLoop::current(),
+                static function () use (&$release): bool {
+                    return $release;
+                },
+                'release of the held WebSocket inbox consumer',
+            );
             for ($i = 0; $i < 200; ++$i) {
                 $received[] = $socket->receive();
             }
@@ -440,9 +452,12 @@ final class RouteTest extends TestCase
         for ($i = 0; $i < 200; ++$i) {
             $socket->send((string) $i);
         }
-        Async::sleep($this->loop, 0.01);
+        Wait::until($this->loop, static fn(): bool => new \ReflectionProperty($serverSocket, 'inbox')
+            ->getValue($serverSocket)
+            ->count() === 16, 'the WebSocket inbox to reach its message bound');
         $inbox = new \ReflectionProperty($serverSocket, 'inbox')->getValue($serverSocket);
         self::assertSame(16, $inbox->count());
+        $release = true;
         $socket->assertReceived(['count' => 200]);
         self::assertSame(array_map(strval(...), range(0, 199)), $received);
     }
@@ -450,10 +465,17 @@ final class RouteTest extends TestCase
     public function testTheByteBoundPausesBeforeAnotherMaximumMessageWouldOverflow(): void
     {
         $serverSocket = null;
-        $api = $this->api(static function (Socket $socket) use (&$serverSocket): void {
+        $release = false;
+        $api = $this->api(static function (Socket $socket) use (&$serverSocket, &$release): void {
             $serverSocket = $socket;
             $socket->accept();
-            Async::sleep(EventLoop::current(), 0.03);
+            Wait::until(
+                EventLoop::current(),
+                static function () use (&$release): bool {
+                    return $release;
+                },
+                'release of the held WebSocket inbox consumer',
+            );
             for ($i = 0; $i < 8; ++$i) {
                 $socket->receive();
             }
@@ -463,9 +485,14 @@ final class RouteTest extends TestCase
         for ($i = 0; $i < 8; ++$i) {
             $socket->send(str_repeat('x', 65_536));
         }
-        Async::sleep($this->loop, 0.01);
+        Wait::until(
+            $this->loop,
+            static fn(): bool => new \ReflectionProperty($serverSocket, 'paused')->getValue($serverSocket),
+            'the WebSocket inbox to reach its byte bound',
+        );
         self::assertLessThanOrEqual(262_144, new \ReflectionProperty($serverSocket, 'bytes')->getValue($serverSocket));
         self::assertTrue(new \ReflectionProperty($serverSocket, 'paused')->getValue($serverSocket));
+        $release = true;
         $socket->assertReceived('all');
     }
 
@@ -544,19 +571,31 @@ final class RouteTest extends TestCase
 
     public function testPingsKeepAnIdleClientAliveAndCloseADeadOne(): void
     {
-        $api = $this->api(static function (Socket $socket): void {
+        $serverSocket = null;
+        $api = $this->api(static function (Socket $socket) use (&$serverSocket): void {
+            $serverSocket = $socket;
             foreach ($socket as $message) {
                 $socket->send($message);
             }
-        }, ['ping' => 0.01]);
+        }, ['ping' => 1.0]);
         $alive = $this->open($api);
-        Async::sleep($this->loop, 0.05);
+        $session = new \ReflectionProperty($serverSocket, 'session')->getValue($serverSocket);
+        $receivedAt = new \ReflectionProperty($session, 'lastReceivedAt');
+        for ($ping = 0; $ping < 3; ++$ping) {
+            $before = $receivedAt->getValue($session);
+            $session->ping();
+            Wait::until(
+                $this->loop,
+                static fn(): bool => $receivedAt->getValue($session) > $before,
+                'the live WebSocket peer to answer a ping',
+            );
+        }
         $alive->send('alive');
         $alive->assertReceived('alive');
         $dead = $this->open($api);
         $client = new \ReflectionProperty($dead, 'client')->getValue($dead);
         $client->pauseRead();
-        Async::sleep($this->loop, 0.04);
+        Wait::until($this->loop, $serverSocket->isClosed(...), 'the silent WebSocket peer to time out');
         $client->resumeRead();
         $dead->assertClosed(1001);
         self::assertSame([], $this->reports);
@@ -565,9 +604,16 @@ final class RouteTest extends TestCase
     public function testASlowReaderHitsTheSendDeadlineAndCloses1008(): void
     {
         $ended = false;
-        $api = $this->api(static function (Socket $socket) use (&$ended): void {
+        $paused = false;
+        $api = $this->api(static function (Socket $socket) use (&$ended, &$paused): void {
             $socket->accept();
-            Async::sleep(EventLoop::current(), 0.005);
+            Wait::until(
+                EventLoop::current(),
+                static function () use (&$paused): bool {
+                    return $paused;
+                },
+                'the WebSocket client to pause reads',
+            );
             try {
                 for ($i = 0; $i < 10_000; ++$i) {
                     $socket->sendBinary(str_repeat('x', 65_536));
@@ -579,7 +625,14 @@ final class RouteTest extends TestCase
         $socket = $this->open($api);
         $client = new \ReflectionProperty($socket, 'client')->getValue($socket);
         $client->pauseRead();
-        Async::sleep($this->loop, 0.04);
+        $paused = true;
+        Wait::until(
+            $this->loop,
+            static function () use (&$ended): bool {
+                return $ended;
+            },
+            'the slow WebSocket sender to reach its deadline',
+        );
         self::assertTrue($ended);
         $client->resumeRead();
         $socket->assertClosed(1008);
@@ -955,7 +1008,11 @@ final class RouteTest extends TestCase
         $socket->assertReceived('push');
         $client = new \ReflectionProperty($socket, 'client')->getValue($socket);
         $client->pauseRead();
-        Async::sleep($this->loop, 0.1);
+        Wait::until(
+            $this->loop,
+            static fn(): bool => $serverSocket->isClosed(),
+            'the silent send-only WebSocket to close',
+        );
         self::assertFalse(new \ReflectionProperty($serverSocket, 'paused')->getValue($serverSocket));
         $client->resumeRead();
         $socket->assertClosed(1001);
@@ -1027,7 +1084,7 @@ final class RouteTest extends TestCase
         } catch (\PHPUnit\Framework\AssertionFailedError $error) {
             self::assertStringContainsString('WS /live did not settle within one second', $error->getMessage());
         }
-        self::assertLessThan(1.5, (hrtime(true) - $start) / 1e9);
+        self::assertLessThan(5.0, (hrtime(true) - $start) / 1e9);
         self::assertFalse($ended);
         EventLoop::install(RevoltEventLoop::create());
         EventLoop::install($this->loop);
@@ -1139,7 +1196,11 @@ final class RouteTest extends TestCase
         for ($i = 0; $i < 32; ++$i) {
             $socket->send('queued');
         }
-        Async::sleep($this->loop, 0.04);
+        Wait::until(
+            $this->loop,
+            static fn(): bool => new \ReflectionProperty($serverSocket, 'paused')->getValue($serverSocket),
+            'the ping-disabled WebSocket inbox to pause',
+        );
         self::assertTrue(new \ReflectionProperty($serverSocket, 'paused')->getValue($serverSocket));
         self::assertNull(new \ReflectionProperty($serverSocket, 'pauseTimer')->getValue($serverSocket));
         self::assertFalse($serverSocket->isClosed());

@@ -257,10 +257,13 @@ final class AppBuilderTest extends TestCase
 
     protected function tearDown(): void
     {
-        foreach (['/.env', '/config/app.php', '/web.php', '/api.php', '/console.php'] as $file) {
-            unlink($this->directory . $file);
+        $files = new \RecursiveIteratorIterator(
+            new \RecursiveDirectoryIterator($this->directory, \FilesystemIterator::SKIP_DOTS),
+            \RecursiveIteratorIterator::CHILD_FIRST,
+        );
+        foreach ($files as $file) {
+            $file->isDir() && !$file->isLink() ? rmdir($file->getPathname()) : unlink($file->getPathname());
         }
-        rmdir($this->directory . '/config');
         rmdir($this->directory);
     }
 
@@ -488,7 +491,11 @@ final class AppBuilderTest extends TestCase
         $router->get('/', static fn(): string => 'through')->middleware($made);
         self::assertSame('through', (string) $router->handle(new Request('GET', '/'))->getBody());
 
-        self::assertSame([1, "{$file} already exists.\n"], $run('RequireAdmin'));
+        [$status, $said] = $run('RequireAdmin');
+        self::assertSame(1, $status);
+        self::assertStringContainsString("{$file} already exists.", $said);
+        self::assertStringContainsString('Choose a different class name or destination', $said);
+        self::assertSame($source, file_get_contents($file));
         self::assertSame(1, $run()[0]);
         self::assertSame(1, $run('not a class')[0]);
         [$status] = $run('Cors', '--path=src/Http/Middleware', '--namespace=Shop\\Http\\Middleware');

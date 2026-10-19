@@ -117,7 +117,6 @@ final readonly class Work implements Command
                 throw new \InvalidArgumentException("--{$option} needs a value; use --{$option}=value.");
             }
         }
-        $declared = Supervisor::all($this->config);
         $described = array_filter(
             [
                 'queues' => $input->option('queue'),
@@ -126,6 +125,30 @@ final readonly class Work implements Command
             ],
             is_string(...),
         );
+        foreach (['workers', 'concurrency'] as $option) {
+            if (!isset($described[$option])) {
+                continue;
+            }
+            $value = $described[$option];
+            if (preg_match('/^[1-9][0-9]*$/D', $value) !== 1 || filter_var($value, FILTER_VALIDATE_INT, ['options' => [
+                'min_range' => 1,
+            ]]) === false) {
+                throw new \InvalidArgumentException(
+                    "--{$option} must be a positive whole number within PHP's integer range; use --{$option}=1.",
+                );
+            }
+        }
+        if (isset($described['queues'])) {
+            $described['queues'] = explode(',', $described['queues']);
+            foreach ($described['queues'] as $queue) {
+                if (trim($queue) === '' || preg_match('/[\x00-\x1f\x7f]/', $queue) === 1) {
+                    throw new \InvalidArgumentException(
+                        '--queue needs a nonempty name for every comma-separated queue; use --queue=mail,default.',
+                    );
+                }
+            }
+        }
+        $declared = Supervisor::all($this->config);
         $name = $input->option('supervisor');
         if (is_string($name)) {
             if ($described !== []) {
@@ -142,17 +165,16 @@ final readonly class Work implements Command
                     "There is no queue supervisor \"{$name}\". "
                     . (
                         $declared === []
-                            ? '"queue.supervisors" declares none.'
-                            : 'The supervisors are ' . implode(', ', array_keys($declared)) . '.'
+                            ? '"queue.supervisors" declares none; configure one before using --supervisor=name.'
+                            : 'The supervisors are '
+                            . implode(', ', array_keys($declared))
+                            . '. Use --supervisor=name to choose one.'
                     ),
                 ),
             ];
         }
         if ($described === [] && $declared !== []) {
             return array_values($declared);
-        }
-        if (isset($described['queues'])) {
-            $described['queues'] = array_values(array_filter(explode(',', $described['queues'])));
         }
         return [Supervisor::from($this->config, 'queue', $described)];
     }

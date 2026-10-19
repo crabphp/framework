@@ -38,6 +38,7 @@ final readonly class Serve implements Command
 
     public function handle(Input $input, Output $output): int
     {
+        self::requireValues($input, ['address', 'workers', 'watch']);
         $server = new Server($this->app);
         $address = self::address($this->app, $input);
         $single = $input->flag('single');
@@ -45,9 +46,7 @@ final readonly class Serve implements Command
         if ($single) {
             $workers = 1;
         }
-        if ($input->option('watch') === true) {
-            throw new \InvalidArgumentException('--watch needs a value; use --watch=value.');
-        }
+        $paths = $this->watched($input);
         $daemon = $input->flag('daemon') || $input->flag('d');
 
         if ($input->flag('generation')) {
@@ -81,7 +80,6 @@ final readonly class Serve implements Command
             self::announceBackground($output, $this->app, $address, $workers);
             return 0;
         }
-        $paths = $this->watched($input);
         if ($paths !== null) {
             // This process only watches; a child serves, and is started again when a file changes.
             return $server->watch(
@@ -198,19 +196,50 @@ final readonly class Serve implements Command
      */
     private function watched(Input $input): ?array
     {
+        $option = $input->option('watch');
+        if ($option === true) {
+            throw new \InvalidArgumentException('--watch needs a value; use --watch=value.');
+        }
+        if (is_string($option)) {
+            $paths = explode(',', $option);
+            foreach ($paths as $path) {
+                if (
+                    $path === ''
+                    || preg_match('/[\x00-\x1f\x7f]/', $path) === 1
+                    || str_contains($path, '://')
+                    || !is_file($this->app->path($path)) && !is_dir($this->app->path($path))
+                    || !is_readable($this->app->path($path))
+                ) {
+                    throw new \InvalidArgumentException(
+                        '--watch must name readable local files or folders, separated by commas; use --watch=app,config.',
+                    );
+                }
+            }
+            return $input->flag('no-watch') ? null : $paths;
+        }
         if ($input->flag('no-watch')) {
             return null;
-        }
-        $option = $input->option('watch');
-        if (is_string($option)) {
-            $paths = array_values(array_filter(explode(',', $option)));
-            return $paths === [] ? null : $paths;
         }
         $configured = $this->app->config->get('server.watch');
         if ($configured === false || $configured === null || $configured === []) {
             return null;
         }
         return $configured === true ? Server::WATCHED : array_values((array) $configured);
+    }
+
+    /**
+     * Diagnose omitted values before another option or argument can obscure them.
+     *
+     * @param list<string> $options
+     * @internal Shared by the server commands.
+     */
+    public static function requireValues(Input $input, array $options): void
+    {
+        foreach ($options as $option) {
+            if ($input->option($option) === true) {
+                throw new \InvalidArgumentException("--{$option} needs a value; use --{$option}=value.");
+            }
+        }
     }
 
     /**
@@ -222,7 +251,25 @@ final readonly class Serve implements Command
         if ($address === true) {
             throw new \InvalidArgumentException('--address needs a value; use --address=value.');
         }
-        return is_string($address) ? $address : (string) $app->config->get('server.address');
+        $address ??= $app->config->get('server.address');
+        $valid =
+            is_string($address) && preg_match('~^tcp://(\[[^\]]+\]|[^:/?#\s]+):([0-9]+)$~D', $address, $parts) === 1;
+        if ($valid) {
+            $host = $parts[1];
+            $valid =
+                (int) $parts[2] <= 65_535
+                && (
+                    str_starts_with($host, '[')
+                        ? filter_var(substr($host, 1, -1), FILTER_VALIDATE_IP, FILTER_FLAG_IPV6) !== false
+                        : filter_var($host, FILTER_VALIDATE_DOMAIN, FILTER_FLAG_HOSTNAME) !== false
+                );
+        }
+        if (!$valid) {
+            throw new \InvalidArgumentException(
+                '--address (server.address) must be tcp://host:port, with a port from 0 to 65535; use --address=tcp://127.0.0.1:8080.',
+            );
+        }
+        return $address;
     }
 
     /**
@@ -234,7 +281,16 @@ final readonly class Serve implements Command
         if ($workers === true) {
             throw new \InvalidArgumentException('--workers needs a value; use --workers=value.');
         }
-        return (int) ($workers ?? $app->config->get('server.workers'));
+        $workers ??= $app->config->get('server.workers');
+        if (
+            !is_int($workers) && (!is_string($workers) || preg_match('/^[1-9][0-9]*$/D', $workers) !== 1)
+            || filter_var($workers, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]) === false
+        ) {
+            throw new \InvalidArgumentException(
+                '--workers (server.workers) must be a positive whole number within PHP\'s integer range; use --workers=4.',
+            );
+        }
+        return (int) $workers;
     }
 
     /**

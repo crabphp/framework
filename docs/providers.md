@@ -257,6 +257,8 @@ public function register(Container $container): void
 }
 ```
 
+`prices:stream` is an application command. Validate `--exchange` against your configured exchange names before opening its feed; the console passes the value unchanged.
+
 A program is run through the shell, so a pipeline or `a && b` works. When the server stops or reloads, every process the line started is sent `SIGTERM` and given a few seconds to finish, so a program should stay in the foreground and clean up on that signal.
 
 Then switch each on where it should run:

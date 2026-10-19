@@ -59,19 +59,12 @@ final class MigratorTest extends TestCase
         foreach ($this->children as $pid) {
             $this->waitForChild($pid);
         }
-        foreach (['/migrations', '/package', '/new/folder', '/new'] as $folder) {
-            foreach (glob($this->directory . $folder . '/*.php') ?: [] as $file) {
-                unlink($file);
-            }
-            @rmdir($this->directory . $folder);
-        }
-        @unlink($this->directory . '/app.sqlite');
-        foreach (glob($this->directory . '/*') ?: [] as $file) {
-            if (!is_file($file)) {
-                continue;
-            }
-
-            unlink($file);
+        $files = new \RecursiveIteratorIterator(
+            new \RecursiveDirectoryIterator($this->directory, \FilesystemIterator::SKIP_DOTS),
+            \RecursiveIteratorIterator::CHILD_FIRST,
+        );
+        foreach ($files as $file) {
+            $file->isDir() && !$file->isLink() ? rmdir($file->getPathname()) : unlink($file->getPathname());
         }
         rmdir($this->directory);
         if (getenv('CRAB_TEST_MYSQL_DSN') !== false) {

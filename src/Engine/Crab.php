@@ -105,7 +105,7 @@ final class Crab
     /**
      * Receives (Throwable, Worker) when a task spawned on the worker fails,
      * a stop callback throws, or a timer or watcher callback lets a failure
-     * escape. Without one, the first two go to PHP's error log and the
+     * escape. Without one, the first two go to standard error and the
      * last ends the worker.
      */
     public function onFailure(callable $callback): self

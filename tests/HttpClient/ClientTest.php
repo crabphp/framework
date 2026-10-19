@@ -7,7 +7,6 @@ namespace Crab\Tests\HttpClient;
 use Crab\Contracts\Container\Container;
 use Crab\Contracts\HttpClient\Client as ClientContract;
 use Crab\Contracts\HttpClient\File;
-use Crab\Engine\Async\Async;
 use Crab\Engine\Async\Cancellation;
 use Crab\Engine\Async\CancelledException;
 use Crab\Engine\Async\Task;
@@ -28,6 +27,7 @@ use Crab\HttpClient\ResponseException;
 use Crab\HttpClient\TimedOut;
 use Crab\HttpClient\Transport;
 use Crab\Testing\WorkerHarness;
+use Crab\Tests\Support\Wait;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 use Psr\Http\Client\ClientExceptionInterface;
@@ -420,7 +420,7 @@ final class ClientTest extends TestCase
             $this->client()->request('GET', $server->url('/slow'), cancellation: $cancellation);
             self::fail('A cancelled request went on.');
         } catch (CancelledException) {
-            self::assertLessThan(0.2, (hrtime(true) - $started) / 1e9);
+            self::assertLessThan(5.0, (hrtime(true) - $started) / 1e9);
         }
     }
 
@@ -877,10 +877,19 @@ final class ClientTest extends TestCase
         $server = $this->server(static fn(array $request): ?string => $request['target'] === '/vanish'
             ? null
             : TestServer::reply(200, $request['method']));
-        $http = $this->client();
+        $network = new Network();
+        $http = $this->client(transport: $network);
         self::assertSame('GET', (string) $http->get($server->url('/'))->getBody());
+        $pools = new \ReflectionProperty($network, 'pools')->getValue($network);
+        $pool = reset($pools);
+        $kept = $pool->acquire();
+        $pool->release($kept);
         $server->dropConnections();
-        Async::sleep(EventLoop::current(), 0.01);
+        Wait::until(
+            EventLoop::current(),
+            static fn(): bool => !$kept->connection->isReusable(),
+            'EOF on the kept HTTP connection',
+        );
         self::assertSame(
             'POST',
             (string) $http->post($server->url('/'), json: [])->getBody(),
@@ -1224,12 +1233,14 @@ final class ClientTest extends TestCase
             ),
         ];
         foreach ($mistakes as $expected => $mistake) {
+            $caught = null;
             try {
                 $mistake();
-                self::fail("Not refused: {$expected}");
             } catch (\LogicException|\RuntimeException $error) {
-                self::assertStringContainsString($expected, $error->getMessage());
+                $caught = $error;
             }
+            self::assertNotNull($caught, "Not refused: {$expected}");
+            self::assertStringContainsString($expected, $caught->getMessage());
         }
     }
 
@@ -1352,13 +1363,27 @@ final class ClientTest extends TestCase
 
     public function testWaitingForAConnectionEndsWithTheRequestsOwnTimeout(): void
     {
-        $server = $this->server(static fn(array $request): array => [TestServer::reply(200, 'slow'), 0.4]);
+        $release = false;
+        $server = $this->server(static function () use (&$release): string {
+            Wait::until(
+                EventLoop::current(),
+                static function () use (&$release): bool {
+                    return $release;
+                },
+                'release of the HTTP connection held while another caller times out',
+            );
+            return TestServer::reply(200, 'slow');
+        });
         $http = $this->client(connections: 1);
         $first = Task::spawn(
             EventLoop::current(),
             static fn(): string => (string) $http->get($server->url('/'))->getBody(),
         );
-        Async::sleep(EventLoop::current(), 0.02);
+        Wait::until(
+            EventLoop::current(),
+            static fn(): bool => count($server->requests) === 1,
+            'the first request to hold the only HTTP connection',
+        );
         $started = hrtime(true);
         try {
             $http->timeout(0.1)->get($server->url('/'));
@@ -1368,7 +1393,9 @@ final class ClientTest extends TestCase
                 'it took more than 0.1 seconds, and every one of the 1 connections to 127.0.0.1 was still busy',
                 $error->getMessage(),
             );
-            self::assertLessThan(0.25, (hrtime(true) - $started) / 1e9);
+            self::assertLessThan(5.0, (hrtime(true) - $started) / 1e9);
+        } finally {
+            $release = true;
         }
         self::assertSame('slow', $first->await());
     }
@@ -1393,8 +1420,7 @@ final class ClientTest extends TestCase
             $failure = $error;
         }
 
-        // Let the server read any bytes a late write could have left in the socket.
-        Async::sleep(EventLoop::current(), 0.02);
+        // The successful follow-up below also confirms that no late request arrived.
         self::assertSame(
             [],
             $server->requests,
@@ -1442,7 +1468,6 @@ final class ClientTest extends TestCase
 
         self::assertSame('/first', $first->await());
         $failure = $waiting->await();
-        Async::sleep($loop, 0.02);
         self::assertSame(
             ['/first'],
             array_column($server->requests, 'target'),

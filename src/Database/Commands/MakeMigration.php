@@ -7,7 +7,6 @@ namespace Crab\Database\Commands;
 use Crab\Contracts\Console\Command;
 use Crab\Contracts\Console\Input;
 use Crab\Contracts\Console\Output;
-use Crab\Contracts\Database\Migrator;
 use Crab\Database\DatabaseManager;
 
 final readonly class MakeMigration implements Command
@@ -33,24 +32,32 @@ final readonly class MakeMigration implements Command
 
     public function handle(Input $input, Output $output): int
     {
-        if ($input->option('database') === true) {
-            throw new \InvalidArgumentException('--database needs a value; use --database=value.');
-        }
+        $database = $this->database($input);
         $name = implode(' ', $input->arguments());
-        if ($name === '') {
+        if (preg_match('/[a-z0-9]/i', $name) !== 1) {
             $output->error('Give the migration a name: make:migration create_users_table');
             return 1;
         }
-        $output->line('Created ' . $this->migrator($input)->make($name));
+        $output->line('Created ' . $this->databases->migrator($database)->make($name));
         return 0;
     }
 
     /**
-     * The migrator of the database named with --database, or of the default one.
+     * Validate the selector before the migration name, without resolving a connection.
      */
-    private function migrator(Input $input): Migrator
+    private function database(Input $input): ?string
     {
         $name = $input->option('database');
-        return $this->databases->migrator(is_string($name) ? $name : null);
+        if ($name === true) {
+            throw new \InvalidArgumentException('--database needs a value; use --database=value.');
+        }
+        if ($name !== null && ($name === '' || !in_array($name, $this->databases->names(), true))) {
+            throw new \InvalidArgumentException(
+                "There is no database named \"{$name}\"; the configured ones are: "
+                . implode(', ', $this->databases->names())
+                . '. Use --database=name to choose one.',
+            );
+        }
+        return $name;
     }
 }

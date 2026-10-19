@@ -16,7 +16,6 @@ use Crab\Contracts\Queue\Store;
 use Crab\Database\Database;
 use Crab\Database\DatabaseProvider;
 use Crab\Database\Schema;
-use Crab\Engine\Async\Async;
 use Crab\Engine\Async\Cancellation;
 use Crab\Engine\Process\Worker;
 use Crab\Events\Dispatcher;
@@ -29,6 +28,7 @@ use Crab\Queue\Retry;
 use Crab\Queue\Supervisor;
 use Crab\Testing\FrozenClock;
 use Crab\Testing\WorkerHarness;
+use Crab\Tests\Support\Wait;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 use Psr\Log\AbstractLogger;
@@ -1353,11 +1353,23 @@ final class QueueTest extends TestCase
         $ran = WorkerHarness::run([], static function (Worker $worker) use ($consumer, $queue): int {
             $cancellation = new Cancellation();
             $task = $worker->spawn(static fn(): int => $consumer->work($worker->loop, $cancellation, sleep: 0.005));
-            Async::sleep($worker->loop, 0.02);
-            // Pushed while it waits; it finds it on its next look.
-            $queue->push(GreetJob::class, name: 'three');
-            Async::sleep($worker->loop, 0.03);
-            $cancellation->cancel();
+            try {
+                Wait::until(
+                    $worker->loop,
+                    static fn(): bool => count(Ledger::$lines) === 2,
+                    'the first two queued jobs',
+                );
+                // Pushed after the initial jobs finish; the consumer must look again.
+                $queue->push(GreetJob::class, name: 'three');
+                Wait::until(
+                    $worker->loop,
+                    static fn(): bool => count(Ledger::$lines) === 3,
+                    'the job pushed into a running consumer',
+                );
+            } finally {
+                $cancellation->cancel();
+            }
+            Wait::until($worker->loop, $task->isComplete(...), 'the queue consumer to stop');
             return $task->await();
         });
 
@@ -1420,10 +1432,20 @@ final class QueueTest extends TestCase
             }
         };
         $consumer = new Consumer($broken, null, $this->log);
-        WorkerHarness::run([], static function (Worker $worker) use ($consumer): void {
+        WorkerHarness::run([], static function (Worker $worker) use ($consumer, $broken): void {
             $cancellation = new Cancellation();
-            $worker->loop->delay(0.03, static fn() => $cancellation->cancel());
-            $consumer->work($worker->loop, $cancellation, sleep: 0.005);
+            $task = $worker->spawn(static fn(): int => $consumer->work($worker->loop, $cancellation, sleep: 0.005));
+            try {
+                Wait::until(
+                    $worker->loop,
+                    static fn(): bool => $broken->asked >= 2,
+                    'a second attempt after the queue store fails',
+                );
+            } finally {
+                $cancellation->cancel();
+            }
+            Wait::until($worker->loop, $task->isComplete(...), 'the failing-store consumer to stop');
+            $task->await();
         });
 
         self::assertGreaterThan(1, $broken->asked);

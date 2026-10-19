@@ -57,6 +57,7 @@ Use a class when the command needs services. The container makes it when its des
 // app/Console/PruneUsers.php
 namespace App\Console;
 
+use Crab\Contracts\Clock\Clock;
 use Crab\Contracts\Console\Command;
 use Crab\Contracts\Console\Input;
 use Crab\Contracts\Console\Output;
@@ -64,7 +65,7 @@ use Crab\Contracts\Database\Database;
 
 final readonly class PruneUsers implements Command
 {
-    public function __construct(private Database $db)
+    public function __construct(private Database $db, private Clock $clock)
     {
     }
 
@@ -84,7 +85,19 @@ final readonly class PruneUsers implements Command
         if ($days === true) {
             throw new \InvalidArgumentException('--days needs a value; use --days=30.');
         }
-        $before = date('Y-m-d H:i:s', time() - 86400 * (int) $days);
+        $now = $this->clock->now();
+        $maximum = intdiv(PHP_INT_MAX, 86400);
+        if (
+            preg_match('/^(0|[1-9][0-9]*)$/D', $days) !== 1
+            || filter_var($days, FILTER_VALIDATE_INT, ['options' => ['min_range' => 0, 'max_range' => $maximum]]) === false
+        ) {
+            throw new \InvalidArgumentException('--days must be a nonnegative whole number that fits a timestamp; use --days=30.');
+        }
+        $seconds = (int) $days * 86400;
+        if ($now->getTimestamp() < PHP_INT_MIN + $seconds) {
+            throw new \InvalidArgumentException('--days is too large for this cutoff; use --days=30.');
+        }
+        $before = $now->setTimestamp($now->getTimestamp() - $seconds)->format('Y-m-d H:i:s');
         $query = $this->db->table('users')->whereNull('confirmed_at')->where('created_at', '<', $before);
 
         if ($input->flag('dry-run')) {
@@ -133,7 +146,24 @@ $input->flag('v');                   // true: each letter of -abc is a flag
 $input->options();                   // ["batch" => "500", "force" => true, "v" => true]
 ```
 
-- An option's value is text; write `--batch=500` and cast it, since `--batch 500` makes `batch` a flag and `500` an argument. Built-in commands reject a missing `=` value before doing any work, including server control, queue selection and file generation. Commands of your own should reject `true` for an option that needs a value.
+Before importing, check the batch size and source file:
+
+```php
+$batch = $input->option('batch', '100');
+if (
+    !is_string($batch) || preg_match('/^[1-9][0-9]*$/D', $batch) !== 1
+    || filter_var($batch, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]) === false
+) {
+    throw new \InvalidArgumentException('--batch must be a positive whole number; use --batch=500.');
+}
+$file = $input->argument(0);
+if ($file === null || str_contains($file, "\0") || str_contains($file, '://') || !is_file($file) || !is_readable($file)) {
+    throw new \InvalidArgumentException('Give a readable local CSV file: user:import users.csv --batch=500.');
+}
+$batch = (int) $batch;
+```
+
+- An option's value is text; write `--batch=500`, since `--batch 500` makes `batch` a flag and `500` an argument. Check every value-taking option for `true` first and name a missing value before checking other option values or positional arguments. Then validate each entire value before casting or doing any work. Check numeric form and range, configured names, and usable paths/classes. For a positive integer such as `batch`, require decimal digits and `FILTER_VALIDATE_INT` with `['options' => ['min_range' => 1]]`; reject empty, fractional, trailing-text and overflowing values. `user:prune` above also bounds its timestamp arithmetic and uses the injected clock; `--days=0` deliberately includes every older unconfirmed account.
 - `flag()` is true when the option is present and not `false`, `0`, `no` or an empty value, so `--force=false` and `--force=` switch it off.
 - Everything after `--` is an argument, even when it starts with a dash.
 - `--help` and `-h` are taken by the console; do not use `h` for an option of your own.

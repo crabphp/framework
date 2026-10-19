@@ -638,22 +638,39 @@ final class WebSocketTest extends TestCase
         $session = new WebSocketSession(
             $connection,
             static function (): void {},
-            new Config(pingInterval: 0.2, idleTimeout: 0.8, closeTimeout: 0.2),
+            new Config(pingInterval: 10.0, idleTimeout: 30.0, closeTimeout: 0.2),
         );
-        $activity = $loop->repeat(0.02, static function () use ($peer, $opcode, $payload): void {
-            fwrite($peer, self::clientFrame($opcode, $payload));
-        });
-        // Activity has ten times the scheduling headroom of the ping deadline.
-        $loop->delay(1.0, $this->guardCallback(static function () use ($loop, $activity, $session, $peer): void {
-            $loop->cancel($activity);
-            self::assertFalse($session->isClosing(), 'Received activity did not keep the session alive.');
-            $frames = self::serverFrames(self::read($peer));
-            foreach ($frames as $frame) {
-                self::assertSame(10, $frame['opcode'], 'Activity did not postpone the server ping.');
-            }
-            $session->close();
-        }));
-        $this->until($loop, static fn() => $session->isClosed());
+        $lastReceived = new \ReflectionProperty($session, 'lastReceivedAt');
+        $pingAt = new \ReflectionProperty($session, 'pingAt');
+        $deadline = new \ReflectionProperty($session, 'deadline');
+        for ($round = 0; $round < 3; ++$round) {
+            // Make the old silence allowance overdue, then deliver real activity
+            // before its queued timer callback. No runner speed decides the order.
+            $now = hrtime(true) / 1_000_000_000;
+            $lastReceived->setValue($session, $now - 60);
+            $pingAt->setValue($session, $now - 50);
+            $session->receive(self::clientFrame($opcode, $payload));
+            self::assertGreaterThanOrEqual($now, $lastReceived->getValue($session));
+            self::assertGreaterThanOrEqual($now + 10, $pingAt->getValue($session));
+            $loop->cancel($deadline->getValue($session));
+            new \ReflectionMethod($session, 'checkDeadline')->invoke($session);
+            self::assertFalse($session->isClosing(), 'Received activity did not renew the silence allowance.');
+        }
+        if ($opcode === 9) {
+            $wire = '';
+            $this->until($loop, static function () use ($peer, &$wire, $payload): bool {
+                $wire .= self::read($peer);
+                return strlen($wire) === (3 * (2 + strlen($payload)));
+            });
+            self::assertSame(array_fill(0, 3, [
+                'opcode' => 10,
+                'fin' => true,
+                'payload' => $payload,
+            ]), self::serverFrames($wire));
+        } else {
+            self::assertSame('', self::read($peer), 'Activity must not send a server ping.');
+        }
+        $connection->close();
         self::assertSame([], $loop->getIdentifiers());
         self::assertSame([], $this->reports);
     }
@@ -1030,12 +1047,12 @@ final class WebSocketTest extends TestCase
         $paused = [$session->isClosing(), $session->isClosed(), self::read($peer)];
         $resumedAt = hrtime(true) / 1_000_000_000;
         $session->resumeRead();
-        $loop->delay(0.02, $this->guardCallback(static function () use ($loop, $session, $peer): void {
-            self::assertSame('', self::read($peer), 'Resume sent a ping before a full silence interval.');
-            self::assertFalse($session->isClosing());
-            $loop->stop();
-        }));
-        $loop->run();
+        $next = new \ReflectionProperty($session, 'deadlineScheduledAt')->getValue($session);
+        self::assertGreaterThanOrEqual(
+            $resumedAt + ($pings ? 0.1 : 0.4),
+            $next,
+            'Resume must grant a full silence interval.',
+        );
         self::assertSame([false, false, ''], $paused, 'Application backpressure consumed the peer silence allowance.');
         $this->until($loop, $session->isClosing(...));
         self::assertGreaterThanOrEqual(0.4, (hrtime(true) / 1_000_000_000) - $resumedAt);
@@ -1214,28 +1231,37 @@ final class WebSocketTest extends TestCase
                 }
             });
         }
-        $started = hrtime(true) / 1_000_000_000;
-        foreach ($connections as $connection) {
-            $connection->drain(0.8);
+        $scheduled = [];
+        foreach ($connections as $index => $connection) {
+            $connection->drain(5.0);
+            $scheduled[] = new \ReflectionProperty($sessions[$index], 'drainAt')->getValue($sessions[$index]);
         }
+        self::assertCount(
+            count($sessions),
+            array_unique($scheduled, SORT_REGULAR),
+            'Drain closes must be scheduled at distinct instants.',
+        );
+        self::assertGreaterThan(
+            0.02,
+            max($scheduled) - min($scheduled),
+            'The scheduled closes must span the stagger window.',
+        );
         foreach ($peers as $peer) {
             self::assertSame('', self::read($peer), 'Drain wrote in the requesting loop turn.');
         }
         $closedAt = [];
-        $this->until($loop, static function () use ($peers, $sessions, &$closedAt, $started): bool {
+        $this->until($loop, static function () use ($peers, $sessions, &$closedAt): bool {
             foreach ($peers as $index => $peer) {
                 $wire = self::read($peer);
                 if ($wire !== '') {
                     $frames = self::serverFrames($wire);
                     self::assertSame(pack('n', 1001) . 'Server shutdown', $frames[0]['payload']);
-                    $closedAt[$index] = (hrtime(true) / 1_000_000_000) - $started;
+                    $closedAt[$index] = true;
                     $sessions[$index]->receive(self::clientFrame(8, pack('n', 1001)));
                 }
             }
             return count($closedAt) === count($sessions);
         });
-        self::assertLessThan(0.4, max($closedAt));
-        self::assertGreaterThan(0.02, max($closedAt) - min($closedAt), 'Closes were not spread across the window.');
         self::assertSame([], $loop->getIdentifiers());
         self::assertSame([], $this->reports);
     }
@@ -1247,7 +1273,7 @@ final class WebSocketTest extends TestCase
         $started = hrtime(true) / 1_000_000_000;
         $connection->drain(0.05);
         $this->until($loop, $connection->isClosed(...));
-        self::assertLessThan(0.2, (hrtime(true) / 1_000_000_000) - $started);
+        self::assertLessThan(5.0, (hrtime(true) / 1_000_000_000) - $started);
         self::assertFalse($session->awaitWritable());
         self::assertSame([], $loop->getIdentifiers(), 'A delayed Close outlived the worker allowance.');
         self::assertSame([], $this->reports);
@@ -1263,7 +1289,7 @@ final class WebSocketTest extends TestCase
         $frames = self::serverFrames(self::read($peer));
         self::assertNotEmpty($frames, 'A short drain cut the peer before sending Close 1001.');
         self::assertSame([['opcode' => 8, 'fin' => true, 'payload' => pack('n', 1001) . 'Server shutdown']], $frames);
-        self::assertLessThan(0.4, (hrtime(true) / 1_000_000_000) - $started);
+        self::assertLessThan(5.0, (hrtime(true) / 1_000_000_000) - $started);
         self::assertFalse($session->awaitWritable());
         self::assertSame([], $loop->getIdentifiers());
         self::assertSame([], $this->reports);

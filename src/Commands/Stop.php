@@ -30,6 +30,22 @@ final readonly class Stop implements Command
     public function handle(Input $input, Output $output): int
     {
         $server = new Server($this->app);
+        $seconds = self::timeout($input);
+        try {
+            $pid = $server->stop($seconds, $input->flag('force'));
+        } catch (\RuntimeException $error) {
+            $output->error($error->getMessage());
+            return 1;
+        }
+        $output->line($pid === null ? 'No server is running in the background.' : "Stopped the server, pid {$pid}.");
+        return 0;
+    }
+
+    /**
+     * Read the explicit graceful wait before either stop or restart contacts the server.
+     */
+    public static function timeout(Input $input): ?float
+    {
         $timeout = $input->option('timeout');
         if ($timeout === true) {
             throw new \InvalidArgumentException('--timeout needs a value; use --timeout=value.');
@@ -40,13 +56,6 @@ final readonly class Stop implements Command
                 '--timeout must be a finite number of seconds at least zero; use --timeout=15.',
             );
         }
-        try {
-            $pid = $server->stop($seconds, $input->flag('force'));
-        } catch (\RuntimeException $error) {
-            $output->error($error->getMessage());
-            return 1;
-        }
-        $output->line($pid === null ? 'No server is running in the background.' : "Stopped the server, pid {$pid}.");
-        return 0;
+        return $seconds;
     }
 }

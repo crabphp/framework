@@ -365,19 +365,35 @@ $this->broadcast->within($transaction)->to("orders.{$id}")->send(['status' => 's
 
 ## Requests and responses
 
-An action that asks for the request receives `Contracts\Http\Request`, a PSR-7 server request with four additions. A PSR-15 `RequestHandlerInterface` can be a route's action too; it receives the request, with the route parameters as attributes.
+An action that asks for the request receives `Contracts\Http\Request`, an extended PSR-7 server request. A PSR-15 `RequestHandlerInterface` can be a route's action too; it receives the request, with the route parameters as attributes.
 
 ~~~php
-Route::post('/users/{id}/avatar', static function (Request $request) {
-    $id = $request->getAttribute('id');          // route parameter
-    $page = $request->query('page', 1);           // query string
-    $name = $request->input('name');              // form field or JSON key
-    $file = $request->file('avatar');             // PSR-7 UploadedFileInterface, or null
-    $file?->moveTo("/var/uploads/{$id}.png");
+use Crab\Contracts\Clock\Clock;
+use Crab\Contracts\Http\Request;
+use Crab\Http\Cookie;
+use Crab\Http\Response;
+use Crab\Route;
 
-    return Response::json(['saved' => $file !== null])
-        ->withCookie(new Cookie('last_upload', (string) time(), maxAge: 3600));
-});
+final readonly class UploadAvatar
+{
+    public function __construct(private Clock $clock)
+    {
+    }
+
+    public function handle(Request $request): Response
+    {
+        $id = $request->getAttribute('id');          // route parameter
+        $page = $request->query('page', 1);           // query string
+        $name = $request->input('name');              // form field or JSON key
+        $file = $request->file('avatar');             // PSR-7 UploadedFileInterface, or null
+        $file?->moveTo("/var/uploads/{$id}.png");
+
+        return Response::json(['saved' => $file !== null])
+            ->withCookie(new Cookie('last_upload', (string) $this->clock->now()->getTimestamp(), maxAge: 3600));
+    }
+}
+
+Route::post('/users/{id}/avatar', UploadAvatar::class);
 ~~~
 
 - **Parsed body:** `input()` and `getParsedBody()` read urlencoded forms, `multipart/form-data` and JSON objects or arrays. A body that claims one of these and is malformed is answered with 400.
@@ -959,7 +975,7 @@ Providers add theirs:
 | `QueueProvider` | `queue:work`, `queue:failed`, `queue:retry`, `queue:forget`, `queue:install` |
 | `ScheduleProvider` | `schedule:work`, `schedule:list` |
 
-Add your own with `Command::add('mail:send', SendMail::class)`, which is `$app->console->add()` under a shorter name. A command is a class implementing `Contracts\Console\Command` (`description()` and `handle(Input $input, Output $output): int`), made by the container when its description or execution is first needed, or a closure taking the input and output. `Input` gives positional arguments and `--name=value` or `--flag` options. A provider adds commands through the container's `Contracts\Console\Console` entry.
+Add your own with `Command::add('mail:send', SendMail::class)`, which is `$app->console->add()` under a shorter name. A command is a class implementing `Contracts\Console\Command` (`description()` and `handle(Input $input, Output $output): int`), made by the container when its description or execution is first needed, or a closure taking the input and output. `Input` gives positional arguments and `--name=value` or `--flag` options. Validate a value's entire form and range before casting or doing work; see [Arguments and options](docs/console.md#arguments-and-options). A provider adds commands through the container's `Contracts\Console\Console` entry.
 
 ## Services, providers and middleware
 

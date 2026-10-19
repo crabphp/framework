@@ -272,7 +272,6 @@ final class SafetyTest extends TestCase
                                 }
                                 Async::sleep($worker->loop, 0.001);
                             }
-                            Async::sleep($worker->loop, 0.02);
                             $work = static function (ConnectionContract $inner) use ($table, &$attempts): void {
                                 ++$attempts;
                                 $inner->execute("UPDATE {$table} SET v=100 WHERE id=2");
@@ -405,7 +404,15 @@ final class LockLossConnection implements ManagedConnection
             $this->injected = true;
             $id = $this->delegate->first('SELECT CONNECTION_ID() AS id')['id'];
             $this->killer->exec('KILL CONNECTION ' . (int) $id);
-            Async::sleep($this->worker->loop, 0.01);
+            $free = $this->killer->prepare('SELECT IS_FREE_LOCK(?)');
+            \Crab\Tests\Support\Wait::until(
+                $this->worker->loop,
+                function () use ($free): bool {
+                    $free->execute([$this->lock]);
+                    return (int) $free->fetchColumn() === 1;
+                },
+                'the killed MySQL session to release its migration lock',
+            );
             $statement = $this->killer->prepare('SELECT GET_LOCK(?, 0)');
             $statement->execute([$this->lock]);
             $this->acquired = (int) $statement->fetchColumn();

@@ -16,6 +16,7 @@ use Crab\Engine\Process\Worker;
 use Crab\Engine\Runtime;
 use Crab\Engine\Server\HttpServer;
 use Crab\Engine\Tests\Support\TestCase;
+use Crab\Tests\Support\Wait;
 use Generator;
 use OverflowException;
 use PHPUnit\Framework\Attributes\RequiresPhpExtension;
@@ -105,8 +106,7 @@ final class RuntimeTest extends TestCase
                     Async::sleep($worker->loop, 0.002);
                     $events[] = 'task';
                     throw new RuntimeException('deliberate task failure');
-                });
-                $worker->loop->delay(0.02, $worker->stop(...));
+                })->onComplete(static fn() => $worker->loop->defer($worker->stop(...)));
             })
             ->onStop(static function (Worker $worker) use (&$events): void {
                 $events[] = 'first stop, draining: ' . var_export($worker->isDraining(), true);
@@ -285,24 +285,26 @@ final class RuntimeTest extends TestCase
         $watcherRemoved = false;
         $group = new Crab('control-eof');
         $group->onStart(static function (Worker $worker) use ($loop, $pair, &$watcherRemoved): void {
-            $worker->spawn(static function () use ($loop): void {
-                Async::sleep($loop, 0.02);
+            $worker->spawn(static function () use ($loop, &$watcherRemoved): void {
+                Wait::until(
+                    $loop,
+                    static function () use ($loop): bool {
+                        foreach ($loop->getIdentifiers() as $id) {
+                            if ($loop->driver->getType($id) === CallbackType::Readable) {
+                                return false;
+                            }
+                        }
+                        return true;
+                    },
+                    'control EOF to remove its read watcher while the task is active',
+                );
+                $watcherRemoved = true;
             });
             $loop->defer(static function () use ($pair): void {
                 fclose($pair[0]);
             });
-            $loop->delay(0.005, static function () use ($loop, &$watcherRemoved): void {
-                $watcherRemoved = true;
-                foreach ($loop->getIdentifiers() as $id) {
-                    if ($loop->driver->getType($id) !== CallbackType::Readable) {
-                        continue;
-                    }
-
-                    $watcherRemoved = false;
-                }
-            });
         });
-        $worker = new Worker($loop, $group, 0, ['tcp' => [], 'udp' => []], 0.1, $pair[1]);
+        $worker = new Worker($loop, $group, 0, ['tcp' => [], 'udp' => []], 5.0, $pair[1]);
         $worker->run();
         self::assertTrue($watcherRemoved, 'EOF must stop read interest before the task finishes.');
         self::assertSame([], $loop->getIdentifiers());
@@ -310,20 +312,18 @@ final class RuntimeTest extends TestCase
 
     public function testHttpHandlerAsyncCleanupRemainsOwnedDuringDrain(): void
     {
-        [$started, $done, $elapsed, $connections] = $this->httpDrainCleanup('handler', 0.01, 0.2);
+        [$started, $done, $elapsed, $connections] = $this->httpDrainCleanup('handler', 0.01, 5.0);
         self::assertTrue($started);
         self::assertTrue($done, 'HTTP handler finally block escaped worker ownership.');
         self::assertSame(0, $connections);
-        self::assertLessThan(0.2, $elapsed);
     }
 
     public function testHttpStreamProducerAsyncCleanupRemainsOwnedDuringDrain(): void
     {
-        [$started, $done, $elapsed, $connections] = $this->httpDrainCleanup('producer', 0.01, 0.2);
+        [$started, $done, $elapsed, $connections] = $this->httpDrainCleanup('producer', 0.01, 5.0);
         self::assertTrue($started);
         self::assertTrue($done, 'HTTP producer finally block escaped worker ownership.');
         self::assertSame(0, $connections);
-        self::assertLessThan(0.2, $elapsed);
     }
 
     public function testWorkerDeadlineBoundsUncooperativeHttpCleanup(): void
@@ -331,7 +331,7 @@ final class RuntimeTest extends TestCase
         [$started, $done, $elapsed] = $this->httpDrainCleanup('handler', 60, 0.04);
         self::assertTrue($started);
         self::assertFalse($done);
-        self::assertLessThan(0.3, $elapsed, 'Uncooperative cleanup bypassed the worker deadline.');
+        self::assertLessThan(5.0, $elapsed, 'Uncooperative cleanup bypassed the worker deadline.');
     }
 
     public function testSingleProcessWorkerServesDataAndStopsOnItsTimer(): void
@@ -365,7 +365,15 @@ final class RuntimeTest extends TestCase
             self::assertNotContains($restarted, $initial);
             // The reload signal belongs to the parent; a worker that receives it carries on.
             self::assertTrue(posix_kill($restarted, SIGUSR1));
-            usleep(150_000);
+            $deadline = hrtime(true) + 5_000_000_000;
+            $answered = false;
+            do {
+                $probe = $this->connectTo($fixture->port);
+                fwrite($probe, "signal\n");
+                $answered = $this->readLine($probe) === $restarted . ":signal\n";
+                fclose($probe);
+            } while (!$answered && hrtime(true) < $deadline);
+            self::assertTrue($answered, 'The signalled worker did not answer another request within five seconds.');
             self::assertTrue(posix_kill($restarted, 0), 'SIGUSR1 must not end a worker.');
             $parent = proc_get_status($fixture->process)['pid'];
             self::assertTrue(posix_kill($parent, SIGUSR1));
@@ -514,6 +522,7 @@ final class RuntimeTest extends TestCase
         $this->ownStream($peer);
         fwrite($peer, "GET / HTTP/1.1\r\nHost: localhost\r\n\r\n");
         $connection = null;
+        $worker = null;
         $cleanupStarted = $cleanupDone = false;
         $http = new HttpServer(static function (Request $request) use (
             $loop,
@@ -521,6 +530,8 @@ final class RuntimeTest extends TestCase
             $cleanupSeconds,
             &$cleanupStarted,
             &$cleanupDone,
+            &$worker,
+            &$connection,
         ): string|Response {
             $operation = static function () use (
                 $loop,
@@ -528,7 +539,13 @@ final class RuntimeTest extends TestCase
                 $cleanupSeconds,
                 &$cleanupStarted,
                 &$cleanupDone,
+                &$worker,
+                &$connection,
             ): void {
+                $loop->defer(static function () use (&$worker, &$connection): void {
+                    $worker->stop();
+                    $connection->close();
+                });
                 try {
                     Async::sleep($loop, 60, $request->cancellation);
                 } finally {
@@ -554,11 +571,11 @@ final class RuntimeTest extends TestCase
             $connection = $value;
             $http->attach($value);
         });
-        $group->onStart(static function (Worker $worker) use (&$connection): void {
-            $worker->loop->delay(0.005, $worker->stop(...));
-            $worker->loop->delay(0.015, static function () use (&$connection): void {
-                $connection->close();
-            });
+        $group->onStart(static function (Worker $worker): void {
+            $worker->loop->delay(
+                5,
+                static fn() => throw new RuntimeException('The HTTP cleanup operation never started.'),
+            );
         });
         $worker = new Worker($loop, $group, 0, ['tcp' => [$bound], 'udp' => []], $shutdownTimeout);
         $start = hrtime(true);

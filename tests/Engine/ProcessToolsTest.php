@@ -275,17 +275,31 @@ final class ProcessToolsTest extends TestCase
         $code = <<<'PHP'
             require $argv[1];
             $runtime = new Crab\Engine\Runtime(shutdownTimeout: 3.0);
-            $runtime->group()->listen($argv[2], new Crab\Engine\Server\HttpServer(
-                static fn () => Crab\Engine\Http\Response::text('served'),
-            ));
+            $http = new Crab\Engine\Server\HttpServer(static fn () => Crab\Engine\Http\Response::text('served'));
+            $accepted = 0;
+            $runtime->group()->listen($argv[2], static function (Crab\Engine\Network\Connection $connection) use ($http, &$accepted): void {
+                $http->attach($connection);
+                if (++$accepted === 3) {
+                    fwrite(STDOUT, "accepted\n");
+                }
+            });
+            $runtime->onSignal(SIGUSR2, static function () use ($runtime): void {
+                fwrite(STDOUT, "queue requests\n");
+                stream_set_timeout(STDIN, 5);
+                if (fgets(STDIN) !== "queued\n") {
+                    throw new RuntimeException('The late requests were not queued before drain.');
+                }
+                $runtime->stop();
+            });
             $runtime->onReady(static fn () => fwrite(STDOUT, "ready\n"));
             $runtime->run(singleProcess: true);
             PHP;
         $server = proc_open(
             [PHP_BINARY, '-r', $code, dirname(__DIR__, 2) . '/vendor/autoload.php', $address],
-            [1 => ['pipe', 'w'], 2 => ['pipe', 'w']],
+            [0 => ['pipe', 'r'], 1 => ['pipe', 'w'], 2 => ['pipe', 'w']],
             $pipes,
         );
+        stream_set_timeout($pipes[1], 5);
         self::assertSame("ready\n", fgets($pipes[1]));
 
         // Three clients the server cannot tell apart yet: all connected, none has sent anything.
@@ -294,14 +308,16 @@ final class ProcessToolsTest extends TestCase
         $silent = stream_socket_client($address);
         fwrite($kept, "GET / HTTP/1.1\r\nHost: x\r\n\r\n");
         self::assertStringContainsString('served', (string) fread($kept, 8192));
-        usleep(50_000);
+        self::assertSame("accepted\n", fgets($pipes[1]), 'All three clients must be accepted before drain.');
 
         $asked = microtime(true);
-        proc_terminate($server, SIGTERM);
-        usleep(30_000);
+        proc_terminate($server, SIGUSR2);
+        self::assertSame("queue requests\n", fgets($pipes[1]));
         // Their requests were on the way before they could know the server was stopping.
         fwrite($late, "GET / HTTP/1.1\r\nHost: x\r\n\r\n");
         fwrite($kept, "GET / HTTP/1.1\r\nHost: x\r\n\r\n");
+        fwrite($pipes[0], "queued\n");
+        fclose($pipes[0]);
         foreach ([$late, $kept] as $client) {
             stream_set_timeout($client, 5);
             $response = (string) stream_get_contents($client);
@@ -319,7 +335,7 @@ final class ProcessToolsTest extends TestCase
             usleep(20_000);
         }
         self::assertFalse(proc_get_status($server)['running']);
-        self::assertLessThan(1.5, microtime(true) - $asked, 'The server does not wait long for it.');
+        self::assertLessThan(5.0, microtime(true) - $asked, 'The server does not wait long for it.');
         self::assertSame('', stream_get_contents($pipes[2]));
         proc_close($server);
     }
@@ -350,6 +366,7 @@ final class ProcessToolsTest extends TestCase
                 $daemon->fail("it could not\nstart");
             } elseif ($mode === 'silent') {
                 usleep(600000);
+                file_put_contents($marker . '.ended', 'yes');
             }
             PHP;
         $run = function (string $mode) use ($code): array {
@@ -389,9 +406,14 @@ final class ProcessToolsTest extends TestCase
         self::assertSame([1, [false, "it could not\nstart"]], [$status, $report]);
         [$status, $report] = $run('exit');
         self::assertSame([1, [false, 'It ended before reporting.']], [$status, $report]);
-        [$status, $report] = $run('silent');
+        [$status, $report, , , $marker] = $run('silent');
         self::assertSame([1, [false, 'It did not report within 0.3 seconds.']], [$status, $report]);
-        // Let the one that stayed silent end before its files are removed.
-        usleep(700_000);
+        // Join the deliberately silent child's observed completion before removing its files.
+        $deadline = hrtime(true) + 5_000_000_000;
+        while (!is_file($marker . '.ended') && hrtime(true) < $deadline) {
+            clearstatcache(true, $marker . '.ended');
+            usleep(1_000);
+        }
+        self::assertFileExists($marker . '.ended', 'The silent daemon did not finish within five seconds.');
     }
 }

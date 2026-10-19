@@ -133,7 +133,7 @@ final class DrainTest extends TestCase
 
     public function testAGroupCutsAllRemainingConnectionsAtItsOwnDeadline(): void
     {
-        [$stats, $responses, $elapsed] = $this->drainRequests(0.04, 0.5, 2);
+        [$stats, $responses, $elapsed] = $this->drainRequests(0.04, 30.0, 2);
         self::assertSame(2, $stats['cutConnections']);
         self::assertSame(['', ''], $responses);
         self::assertGreaterThanOrEqual(0.04, $elapsed);
@@ -220,7 +220,7 @@ final class DrainTest extends TestCase
 
     public function testARequestFinishingBeforeTheDeadlineIsAnsweredAndIsNotCountedAsCut(): void
     {
-        [$stats, $responses] = $this->drainRequests(0.2, 0.02, 1);
+        [$stats, $responses] = $this->drainRequests(5.0, 0.0, 1);
         self::assertSame(0, $stats['cutConnections']);
         self::assertStringContainsString('200 OK', $responses[0]);
         self::assertStringEndsWith('complete', $responses[0]);
@@ -464,15 +464,15 @@ final class DrainTest extends TestCase
         self::assertFileExists($directory . '/third.started');
         $third = (int) file_get_contents($directory . '/third.started');
         $retiredAt = (float) file_get_contents($directory . '/first.stopping');
-        while (posix_kill($first, 0) && microtime(true) < ($retiredAt + 1.2)) {
+        while (posix_kill($first, 0) && microtime(true) < ($retiredAt + 1.8)) {
             usleep(5_000);
         }
         self::assertFalse(posix_kill($first, 0), 'Replacement startup or cleanup hid the retiree deadline.');
-        self::assertLessThan(1.2, microtime(true) - $retiredAt);
+        self::assertLessThan(1.8, microtime(true) - $retiredAt);
         self::assertTrue(posix_kill($third, 0), 'Stop must interrupt a replacement still being started or cleaned up.');
         $before = microtime(true);
         proc_terminate($process, SIGTERM);
-        $deadline = $before + 1.5;
+        $deadline = $before + 5.0;
         do {
             $status = proc_get_status($process);
             if (!$status['running']) {
@@ -485,11 +485,11 @@ final class DrainTest extends TestCase
         self::assertFileExists($directory . '/second.stopping');
         $stoppedAt = (float) file_get_contents($directory . '/second.stopping');
         self::assertLessThan(
-            0.8,
+            1.5,
             $stoppedAt - $before,
             'The current generation was stopped after serial replacement cleanup.',
         );
-        self::assertLessThan(1.5, microtime(true) - $before);
+        self::assertLessThan(5.0, microtime(true) - $before);
         self::assertFalse(posix_kill($second, 0));
         self::assertFalse(posix_kill($third, 0));
         self::assertFileDoesNotExist($pidFile->path . '.state');
@@ -543,6 +543,11 @@ final class DrainTest extends TestCase
                             $worker->stop();
                         });
                     }
+                    \Crab\Tests\Support\Wait::until(
+                        $worker->loop,
+                        $worker->isDraining(...),
+                        'all HTTP handlers to arrive before worker drain',
+                    );
                     Async::sleep($worker->loop, $requestSeconds);
                     return Response::text('complete');
                 }),

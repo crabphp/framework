@@ -901,7 +901,7 @@ final class CacheTest extends TestCase
         if (!function_exists('posix_geteuid') || posix_geteuid() === 0 || fileowner('/') === posix_geteuid()) {
             self::markTestSkipped('Needs a user other than root, and a root-owned /.');
         }
-        // As a /tmp/crab-cache another account made first, 0755, which only that account can fill.
+        // A folder another account made, 0755, which only that account can fill.
         $store = new FileStore('/');
         foreach ([
             static fn(): ?string => $store->get('ticket', 100),
@@ -1253,20 +1253,24 @@ final class CacheTest extends TestCase
         }
     }
 
-    public function testAnApplicationWithoutABasePathKeepsTheTemporaryCacheFallback(): void
+    public function testAFileCacheWithoutABasePathOrDirectoryAsksForOneInsteadOfUsingTheTempFolder(): void
     {
         $app = new App();
         $app->register(CacheProvider::class);
-        $cache = $app->container->get(CacheContract::class);
-        $temporary = new Cache(new FileStore(sys_get_temp_dir() . '/crab-cache'));
-        $key = 'no-base.' . bin2hex(random_bytes(6));
         try {
-            $cache->set($key, 'temporary');
-            self::assertSame('temporary', $temporary->get($key));
-            self::assertNull($app->config->get('app.path'));
-        } finally {
-            $cache->delete($key);
+            $app->container->get(CacheContract::class);
+            self::fail('A file cache without a folder was made.');
+        } catch (\LogicException $error) {
+            self::assertSame(
+                'A file cache needs a folder: set cache.directory, or build the application with App::configure($basePath).',
+                $error->getMessage(),
+            );
         }
+
+        $app = new App(new Config(['cache' => ['directory' => $this->directory . '/files']]));
+        $app->register(CacheProvider::class);
+        $app->container->get(CacheContract::class)->set('key', 'value');
+        self::assertFileExists($this->directory . '/files/' . substr(sha1('key'), 0, 2) . '/' . sha1('key'));
     }
 
     public function testTheDatabaseStoreIsInstalledByAMigrationTheApplicationOwns(): void

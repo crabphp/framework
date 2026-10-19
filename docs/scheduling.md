@@ -55,6 +55,8 @@ php cua schedule:list
 
 shows every task, its cron expression or interval, and when it runs next. Run it after changing the schedule to see that it says what you meant.
 
+`report:send` is an application command: its handler must accept only its documented `--month` forms (here, `last`) before reading or writing reports. `command()` passes these words to the same console handler used by hand.
+
 ### Scheduling a command
 
 `command()` runs one of your [console commands](console.md), with its words:

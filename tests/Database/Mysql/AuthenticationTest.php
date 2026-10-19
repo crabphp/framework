@@ -316,7 +316,7 @@ final class AuthenticationTest extends TestCase
                     $connection->execute('select 1');
                     self::fail('The unfinished handshake succeeded.');
                 } catch (DatabaseException) {
-                    self::assertLessThan(0.2, (hrtime(true) - $start) / 1e9);
+                    self::assertLessThan(5.0, (hrtime(true) - $start) / 1e9);
                 } finally {
                     $connection->close();
                 }

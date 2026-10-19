@@ -61,7 +61,7 @@ final class PoolTest extends TestCase
             $tasks[] = $this->spawn($loop, static function () use ($pool, $loop, $name, &$order): object {
                 $resource = $pool->acquire();
                 $order[] = $name;
-                Async::sleep($loop, 0.001);
+                Async::sleep($loop, 0.0);
                 $pool->release($resource);
                 return $resource;
             });

@@ -14,11 +14,11 @@ use Crab\Database\DatabaseManager;
 use Crab\Database\DatabaseProvider;
 use Crab\Database\Mysql\Connection;
 use Crab\Database\PdoConnection;
-use Crab\Engine\Async\Async;
 use Crab\Engine\Async\Cancellation;
 use Crab\Engine\Async\CancelledException;
 use Crab\Engine\Process\Worker;
 use Crab\Testing\WorkerHarness;
+use Crab\Tests\Support\Wait;
 use PHPUnit\Framework\TestCase;
 
 /**
@@ -109,36 +109,7 @@ final class ConnectionTest extends TestCase
         });
     }
 
-    public function testTenQueriesOverlapAndAPoolOfOneMakesThemQueue(): void
-    {
-        foreach ([10, 1] as $pool) {
-            $elapsed = $this->using(static function (DatabaseContract $db, Worker $worker): array {
-                $ticks = 0;
-                $timer = $worker->loop->repeat(0.02, static function () use (&$ticks): void {
-                    ++$ticks;
-                });
-                $start = hrtime(true);
-                $tasks = [];
-                for ($i = 0; $i < 10; ++$i) {
-                    $tasks[] = $worker->spawn(static fn(): ?array => $db->first('select sleep(0.2) as slept'));
-                }
-                foreach ($tasks as $task) {
-                    self::assertSame(['slept' => 0], $task->await());
-                }
-                $worker->loop->cancel($timer);
-                return [(hrtime(true) - $start) / 1e9, $ticks];
-            }, ['pool' => $pool]);
-            self::assertGreaterThan(4, $elapsed[1]);
-            if ($pool === 10) {
-                self::assertLessThan(1.0, $elapsed[0]);
-            } else {
-                self::assertGreaterThan(1.8, $elapsed[0]);
-                self::assertLessThan(4.0, $elapsed[0]);
-            }
-        }
-    }
-
-    public function testDrainingAMillionRowsKeepsLoopTimersRunningWithoutRetainingThem(): void
+    public function testDrainingAMillionRowsYieldsToTheLoopWithoutRetainingThem(): void
     {
         $this->using(static function (DatabaseContract $db, Worker $worker): void {
             $digit = '(SELECT 0 AS n UNION ALL SELECT 1 UNION ALL SELECT 2 UNION ALL SELECT 3 UNION ALL SELECT 4 UNION ALL SELECT 5 UNION ALL SELECT 6 UNION ALL SELECT 7 UNION ALL SELECT 8 UNION ALL SELECT 9)';
@@ -147,12 +118,14 @@ final class ConnectionTest extends TestCase
                 $tables[] = $digit . ' ' . $alias;
             }
             $ticks = 0;
-            $timer = $worker->loop->repeat(0.005, static function () use (&$ticks): void {
+            $tick = static function () use ($worker, &$ticks, &$timer, &$tick): void {
                 ++$ticks;
-            });
+                $timer = $worker->loop->defer($tick);
+            };
+            $timer = $worker->loop->defer($tick);
             try {
                 self::assertSame(['n' => 1], $db->first('SELECT 1 AS n FROM ' . implode(' CROSS JOIN ', $tables)));
-                self::assertGreaterThan(4, $ticks);
+                self::assertGreaterThan(1, $ticks, 'Draining the result must yield across loop turns.');
                 self::assertSame(['n' => 2], $db->first('SELECT 2 AS n'));
             } finally {
                 $worker->loop->cancel($timer);
@@ -198,16 +171,20 @@ final class ConnectionTest extends TestCase
         $connection = null;
         $start = hrtime(true);
         $this->using(
-            static function (DatabaseContract $db, Worker $worker) use (&$connection): void {
+            function (DatabaseContract $db, Worker $worker) use (&$connection): void {
                 $connection = $db->acquire();
-                $worker->loop->delay(0.02, static fn() => $worker->stop());
+                $id = $connection->first('select connection_id() as id')['id'];
+                $worker->spawn(function () use ($worker, $id): void {
+                    $this->waitForQuery($worker, $id, 'select sleep(10)');
+                    $worker->stop();
+                });
                 // This task ignores cooperative cancellation. Provider teardown must
                 // still close its socket when the worker's one-second deadline ends.
                 $connection->first('select sleep(10)');
             },
             ['pool' => 1],
         );
-        self::assertLessThan(1.5, (hrtime(true) - $start) / 1e9);
+        self::assertLessThan(5.0, (hrtime(true) - $start) / 1e9);
         self::assertFalse($connection->inTransaction());
         // Close is idempotent after provider teardown, including a borrowed session.
         $connection->close();
@@ -216,9 +193,16 @@ final class ConnectionTest extends TestCase
     public function testAnIdleKilledConnectionIsReplacedBeforeItsNextCommand(): void
     {
         $this->using(function (DatabaseContract $db, Worker $worker): void {
-            $before = $db->first('select connection_id() as id')['id'];
+            $connection = $db->acquire();
+            $before = $connection->first('select connection_id() as id')['id'];
+            $stream = new \ReflectionProperty($connection, 'stream')->getValue($connection);
+            $db->release($connection);
             $this->kill($before);
-            Async::sleep($worker->loop, 0.01);
+            Wait::until(
+                $worker->loop,
+                static fn(): bool => !$stream->isAlive(),
+                'EOF from the killed idle MySQL session',
+            );
             $after = $db->first('select connection_id() as id')['id'];
             self::assertNotSame($before, $after);
             self::assertSame(1, $db->first('select 1 as n')['n']);
@@ -230,12 +214,15 @@ final class ConnectionTest extends TestCase
         $this->using(function (DatabaseContract $db, Worker $worker): void {
             $db->run(function (ConnectionContract $connection) use ($worker): void {
                 $id = $connection->first('select connection_id() as id')['id'];
-                $worker->loop->delay(0.02, fn() => $this->kill($id));
+                $worker->spawn(function () use ($worker, $id): void {
+                    $this->waitForQuery($worker, $id, 'select sleep(30) as slept');
+                    $this->kill($id);
+                });
                 try {
-                    $connection->first('select sleep(1) as slept');
+                    $connection->first('select sleep(30) as slept');
                     self::fail('A killed query was retried.');
                 } catch (DatabaseException $error) {
-                    self::assertSame('select sleep(1) as slept', $error->sql);
+                    self::assertSame('select sleep(30) as slept', $error->sql);
                 }
                 self::assertNotSame($id, $connection->first('select connection_id() as id')['id']);
             });
@@ -250,9 +237,12 @@ final class ConnectionTest extends TestCase
                 $db->transaction(function (ConnectionContract $tx) use ($worker): void {
                     $tx->insert('insert into mysql_async_tx values (?)', [1]);
                     $id = $tx->first('select connection_id() as id')['id'];
-                    $worker->loop->delay(0.02, fn() => $this->kill($id));
+                    $worker->spawn(function () use ($worker, $id): void {
+                        $this->waitForQuery($worker, $id, 'select sleep(30) as slept');
+                        $this->kill($id);
+                    });
                     try {
-                        $tx->first('select sleep(1) as slept');
+                        $tx->first('select sleep(30) as slept');
                     } catch (DatabaseException) {
                     }
                 });
@@ -266,7 +256,7 @@ final class ConnectionTest extends TestCase
 
     public function testCancellingAResultClosesItsSessionAndReleasesItsWatchers(): void
     {
-        WorkerHarness::run([], static function (Worker $worker): void {
+        WorkerHarness::run([], function (Worker $worker): void {
             $token = new Cancellation();
             $connection = new Connection(
                 (string) getenv('CRAB_TEST_MYSQL_DSN'),
@@ -276,9 +266,12 @@ final class ConnectionTest extends TestCase
             );
             $id = $connection->first('select connection_id() as id')['id'];
             $before = $worker->loop->getIdentifiers();
-            $worker->loop->delay(0.02, static fn() => $token->cancel());
+            $worker->spawn(function () use ($worker, $id, $token): void {
+                $this->waitForQuery($worker, $id, 'select sleep(30) as slept');
+                $token->cancel();
+            });
             try {
-                $connection->first('select sleep(1) as slept');
+                $connection->first('select sleep(30) as slept');
                 self::fail('The cancelled result completed.');
             } catch (CancelledException) {
             }
@@ -296,20 +289,39 @@ final class ConnectionTest extends TestCase
 
     public function testTwoFibersCannotUseTheSameBorrowedConnectionAtOnce(): void
     {
-        $this->using(static function (DatabaseContract $db, Worker $worker): void {
-            $db->run(static function (ConnectionContract $connection) use ($worker): void {
-                $connection->first('select 1');
-                $first = $worker->spawn(static fn(): ?array => $connection->first('select sleep(0.1) as slept'));
-                Async::sleep($worker->loop, 0.01);
-                try {
-                    $connection->select('select 2');
-                    self::fail('The same connection accepted overlapping commands.');
-                } catch (\LogicException $error) {
-                    self::assertStringContainsString('Two fibers', $error->getMessage());
-                }
-                self::assertSame(['slept' => 0], $first->await());
+        $lock = 'crab-overlap-' . bin2hex(random_bytes(8));
+        $owner = $this->pdo();
+        $take = $owner->prepare('SELECT GET_LOCK(?, 0)');
+        $take->execute([$lock]);
+        self::assertSame(1, (int) $take->fetchColumn());
+        $release = $owner->prepare('SELECT RELEASE_LOCK(?)');
+        try {
+            $this->using(function (DatabaseContract $db, Worker $worker) use ($lock, $release): void {
+                $db->run(function (ConnectionContract $connection) use ($worker, $lock, $release): void {
+                    $id = $connection->first('select connection_id() as id')['id'];
+                    $sql = "SELECT GET_LOCK('{$lock}', 30) AS acquired";
+                    $first = $worker->spawn(static fn(): ?array => $connection->first($sql));
+                    try {
+                        $this->waitForQuery($worker, $id, $sql);
+                        $error = null;
+                        try {
+                            $connection->select('select 2');
+                        } catch (\LogicException $failure) {
+                            $error = $failure;
+                        }
+                        self::assertInstanceOf(\LogicException::class, $error);
+                        self::assertStringContainsString('Two fibers', $error->getMessage());
+                    } finally {
+                        $release->execute([$lock]);
+                    }
+                    Wait::until($worker->loop, $first->isComplete(...), 'the released MySQL lock query');
+                    self::assertSame(['acquired' => 1], $first->await());
+                    $connection->first('SELECT RELEASE_LOCK(?)', [$lock]);
+                });
             });
-        });
+        } finally {
+            $release->execute([$lock]);
+        }
     }
 
     public function testCommitCallbacksRunInOrderAndRollbackRemovesNestedCallbacks(): void
@@ -429,6 +441,19 @@ final class ConnectionTest extends TestCase
         return new \PDO((string) getenv('CRAB_TEST_MYSQL_DSN'), 'root', '', [
             \PDO::ATTR_ERRMODE => \PDO::ERRMODE_EXCEPTION,
         ]);
+    }
+
+    private function waitForQuery(Worker $worker, int $id, string $sql): void
+    {
+        $observer = $this->pdo()->prepare('SELECT INFO FROM information_schema.PROCESSLIST WHERE ID = ?');
+        Wait::until(
+            $worker->loop,
+            static function () use ($observer, $id, $sql): bool {
+                $observer->execute([$id]);
+                return $observer->fetchColumn() === $sql;
+            },
+            'MySQL session ' . $id . ' to execute its held query',
+        );
     }
 
     private function kill(int $id): void

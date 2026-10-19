@@ -231,12 +231,45 @@ final class DocumentationTest extends TestCase
     }
 
     /**
+     * @return iterable<string, array{list<string>}>
+     */
+    public static function malformedPruningDays(): iterable
+    {
+        foreach ([
+            'banana',
+            '',
+            '-2',
+            '1.5',
+            '30oops',
+            '1e309',
+            (string) PHP_INT_MAX,
+            '9223372036854775808',
+            "30\n",
+        ] as $value) {
+            yield 'days ' . $value => [['--days=' . $value]];
+            yield $value . ' dry run' => [['--days=' . $value, '--dry-run']];
+        }
+    }
+
+    #[DataProvider('malformedPruningDays')]
+    public function testThePruningExampleRejectsMalformedDaysBeforeQuerying(array $arguments): void
+    {
+        $db = $this->createMock(DatabaseContract::class);
+        $db->expects(self::never())->method('table');
+        [$status, $output] = $this->prune($db, $arguments);
+        self::assertSame(1, $status, $output);
+        self::assertStringContainsString('--days=30', $output);
+        self::assertStringNotContainsString('users deleted', $output);
+    }
+
+    /**
      * @return iterable<string, array{list<string>, list<string>, string}>
      */
     public static function validPruningDays(): iterable
     {
         yield 'default' => [[], ['recent'], '1 users deleted.'];
         yield 'explicit' => [['--days=30'], ['recent'], '1 users deleted.'];
+        yield 'zero' => [['--days=0'], [], '2 users deleted.'];
         yield 'dry run' => [['--days=30', '--dry-run'], ['recent', 'old'], '1 users would be deleted.'];
     }
 
@@ -252,7 +285,9 @@ final class DocumentationTest extends TestCase
             foreach (['recent' => 10, 'old' => 40] as $name => $days) {
                 $db->table('users')->insert([
                     'name' => $name,
-                    'created_at' => date('Y-m-d H:i:s', time() - (86_400 * $days)),
+                    'created_at' => new \DateTimeImmutable('2099-01-31 12:00:00')
+                        ->modify('-' . $days . ' days')
+                        ->format('Y-m-d H:i:s'),
                 ]);
             }
             [$status, $output] = $this->prune($db, $arguments);
@@ -296,6 +331,154 @@ final class DocumentationTest extends TestCase
     }
 
     /**
+     * @return iterable<string, array{string}>
+     */
+    public static function queueClockPages(): iterable
+    {
+        yield 'testing' => ['testing.md'];
+        yield 'queues' => ['queues.md'];
+    }
+
+    #[DataProvider('queueClockPages')]
+    public function testQueueAssertionsUseTheApplicationsClock(string $page): void
+    {
+        $app = new App(new Config(['queue' => ['store' => 'memory']]));
+        $app->register(\Crab\Queue\QueueProvider::class);
+        $clock = new \Crab\Testing\FrozenClock('2099-01-01');
+        $app->container->instance(\Crab\Contracts\Clock\Clock::class, $clock);
+        $app->container->get(\Crab\Contracts\Queue\Queue::class)->push(DocumentationQueuedJob::class, userId: 1);
+        $example = $this->example($page, 'php', "->jobs('default', 'pending'");
+        preg_match_all('/^\$(?:clock|waiting) = .*;$/m', $example, $lines);
+        $code = str_replace('$this->app', '$app', implode("\n", $lines[0]));
+        file_put_contents(
+            $this->directory . '/queue-clock.php',
+            "<?php\nuse Crab\\Contracts\\Queue\\Store;\nuse Crab\\Contracts\\Clock\\Clock;\n"
+            . $code
+            . "\nreturn \$waiting;",
+        );
+        $waiting = require $this->directory . '/queue-clock.php';
+        self::assertCount(1, $waiting);
+        self::assertSame(['userId' => 1], $waiting[0]->data);
+    }
+
+    /**
+     * @return iterable<string, array{list<string>}>
+     */
+    public static function invalidImportBatches(): iterable
+    {
+        yield 'bare' => [['--batch']];
+        yield 'separated' => [['--batch', '500']];
+        foreach (['', 'many', '-1', '0', '1.5', '500rows', '1e309', '9223372036854775808'] as $value) {
+            yield 'batch ' . $value => [['--batch=' . $value]];
+        }
+    }
+
+    #[DataProvider('invalidImportBatches')]
+    public function testTheImportExampleRejectsAnInvalidBatchBeforeReadingItsFile(array $arguments): void
+    {
+        $input = new \Crab\Console\Input($arguments);
+        $example = $this->example('console.md', 'php', '$batch =');
+        file_put_contents($this->directory . '/import.php', "<?php\n" . $example);
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('--batch=500');
+        require $this->directory . '/import.php';
+    }
+
+    public function testTheImportExampleAcceptsAReadableFileAndAWholeBatch(): void
+    {
+        $source = $this->directory . '/users.csv';
+        file_put_contents($source, "name\nAda\n");
+        $input = new \Crab\Console\Input([$source, '--batch=500']);
+        $example = $this->example('console.md', 'php', '$batch =');
+        file_put_contents($this->directory . '/import.php', "<?php\n" . $example . "\nreturn [\$file, \$batch];");
+        $result = require $this->directory . '/import.php';
+        self::assertSame([$source, 500], $result);
+    }
+
+    public function testTheImportExampleNamesTheFileItNeedsWhenNoneCanBeRead(): void
+    {
+        $input = new \Crab\Console\Input([$this->directory . '/missing.csv', '--batch=500']);
+        $example = $this->example('console.md', 'php', '$batch =');
+        file_put_contents($this->directory . '/import.php', "<?php\n" . $example);
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('readable local CSV file');
+        require $this->directory . '/import.php';
+    }
+
+    public function testTheReadmeUploadCookieUsesTheInjectedClock(): void
+    {
+        $app = new App(new Config(['log' => ['path' => 'php://memory']]));
+        $clock = new \Crab\Testing\FrozenClock('2099-01-01 12:34:56');
+        $app->container->instance(\Crab\Contracts\Clock\Clock::class, $clock);
+        $example = $this->example('../README.md', 'php', "'/users/{id}/avatar'", '~~~');
+        $imports = '';
+        foreach ([
+            'Crab\\Route',
+            'Crab\\Contracts\\Http\\Request',
+            'Crab\\Http\\Response',
+            'Crab\\Http\\Cookie',
+        ] as $type) {
+            if (str_contains($example, 'use ' . $type . ';')) {
+                continue;
+            }
+            $imports .= 'use ' . $type . ";\n";
+        }
+        file_put_contents($this->directory . '/upload-clock.php', "<?php\n" . $imports . $example);
+        require $this->directory . '/upload-clock.php';
+        $response = new \Crab\Testing\Api($app)
+            ->post('/users/1/avatar', [])
+            ->assertStatus(200);
+        self::assertStringContainsString(
+            'last_upload=' . $clock->now()->getTimestamp(),
+            $response->header('Set-Cookie'),
+        );
+    }
+
+    public function testTheTokenExpiryExampleUsesTheSuppliedClock(): void
+    {
+        $example = $this->example('authentication.md', 'php', "'ci'");
+        preg_match('/^\$token = .*\x27ci\x27.*;.*$/m', $example, $line);
+        $clock = new \Crab\Testing\FrozenClock('2099-01-01');
+        $user = 7;
+        $tokens = new class {
+            public ?\DateTimeImmutable $expiry = null;
+
+            public function issue(int $user, string $name, \DateTimeImmutable $expiry): string
+            {
+                $this->expiry = $expiry;
+                return 'token';
+            }
+        };
+        file_put_contents($this->directory . '/token-clock.php', "<?php\n" . $line[0]);
+        require $this->directory . '/token-clock.php';
+        self::assertSame('2099-01-31', $tokens->expiry?->format('Y-m-d'));
+    }
+
+    public function testTheReceiptExampleUsesTheInjectedClock(): void
+    {
+        $example = $this->example('queues.md', 'php', 'receipt_sent_at');
+        $source =
+            '<?php return new class($db, $mailer, $clock) { public function __construct(private $db, private $mailer, private $clock) {} '
+            . $example
+            . ' };';
+        $db = new Database(static fn(): \PDO => new \PDO('sqlite::memory:'), 1);
+        $db->execute('create table orders (id integer primary key, receipt_sent_at text)');
+        $db->table('orders')->insert(['id' => 1]);
+        $clock = new \Crab\Testing\FrozenClock('2099-01-01 12:34:56');
+        $mailer = new class {
+            public function sendReceipt(array $order, string $idempotencyKey): void {}
+        };
+        try {
+            file_put_contents($this->directory . '/receipt-clock.php', $source);
+            $action = require $this->directory . '/receipt-clock.php';
+            $action->handle(1);
+            self::assertSame('2099-01-01 12:34:56', $db->table('orders')->value('receipt_sent_at'));
+        } finally {
+            $db->close();
+        }
+    }
+
+    /**
      * @return iterable<string, array{int}>
      */
     public static function timerPauses(): iterable
@@ -333,7 +516,7 @@ final class DocumentationTest extends TestCase
         require $this->directory . '/prune.php';
         $class = 'App\\Console\\' . $name;
         /** @var Command $command */
-        $command = new $class($db);
+        $command = new $class($db, new \Crab\Testing\FrozenClock('2099-01-31 12:00:00'));
         $console = new Console();
         $console->add('user:prune', $command);
         $stream = fopen('php://memory', 'w+b');
@@ -400,4 +583,9 @@ final class DocumentationTest extends TestCase
         }
         self::fail('No ' . $language . ' example containing ' . $contains . ' in ' . $page);
     }
+}
+
+final readonly class DocumentationQueuedJob
+{
+    public function handle(int $userId): void {}
 }

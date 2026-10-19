@@ -37,6 +37,8 @@ php cua serve --daemon       # in the background, returning once it is up
 | `--no-watch` | Do not restart when a file changes |
 | `--daemon`, `-d` | Serve in the background |
 
+Value options are checked before server control: `--workers` and `SERVER_WORKERS` in the skeleton are positive whole numbers within PHP's integer range; `--address` is `tcp://host:port` (bracket IPv6 hosts); and `--watch` lists existing readable local files or folders without empty entries. Mistyped values fail before startup, reload or restart contacts the running server.
+
 ### While developing
 
 Plain `serve` is for your own machine. It starts the server again whenever a PHP file under `app`, `config` or `routes`, or `app.php` or `.env`, is added, changed or removed. When the code does not load, the error stays on the screen, and saving a fix starts the server again.

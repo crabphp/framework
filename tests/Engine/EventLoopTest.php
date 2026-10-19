@@ -17,6 +17,13 @@ final class EventLoopTest extends TestCase
         $loop = RevoltEventLoop::create();
         self::assertInstanceOf(EventLoop::class, $loop);
         $events = [];
+        $deadline = $loop->delay(
+            5,
+            static fn() => throw new RuntimeException(
+                'The repeating timer did not deliver three ticks within five seconds.',
+            ),
+        );
+        $loop->unreference($deadline);
         $loop->delay(0.05, static function () use (&$events): void {
             $events[] = 'delay';
         });
@@ -46,7 +53,10 @@ final class EventLoopTest extends TestCase
         self::assertContains($background, $loop->getIdentifiers());
 
         $loop->run();
-        self::assertSame(['defer with id', 'three ticks', 'delay'], $events);
+        self::assertSame('defer with id', array_shift($events));
+        self::assertEqualsCanonicalizing(['three ticks', 'delay'], $events);
+        self::assertSame(3, $ticks);
+        $loop->cancel($deadline);
 
         $loop->enable($paused);
         $loop->run();

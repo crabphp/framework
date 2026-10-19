@@ -15,6 +15,7 @@ use Crab\Engine\Http\ResponseEncoder;
 use Crab\Engine\Network\Connection;
 use Crab\Engine\Server\HttpServer;
 use Crab\Engine\Tests\Support\TestCase;
+use Crab\Tests\Support\Wait;
 use PHPUnit\Framework\Attributes\DataProvider;
 use ReflectionProperty;
 use RuntimeException;
@@ -696,26 +697,32 @@ final class HttpFastPathTest extends TestCase
             }
         });
         fwrite($client, 'first');
-        $loop->delay(0.01, static function () use ($client): void {
+        Wait::until(
+            $loop,
+            static function () use (&$suspension): bool {
+                return $suspension !== null;
+            },
+            'the first read callback to suspend',
+        );
+        try {
             fwrite($client, 'second');
-        });
-        $loop->delay(0.03, static function () use ($connection, $state, &$watching): void {
+            Wait::until(
+                $loop,
+                static fn(): bool => !$state->getValue($connection),
+                'read readiness to disable the watcher while its callback is suspended',
+            );
             $watching[] = $state->getValue($connection);
-        });
-        $loop->delay(0.04, static function () use (&$suspension): void {
+            self::assertSame(['first'], $received);
+        } finally {
             $suspension->resume();
-        });
-        $watchdog = $loop->delay(2, static function () use ($loop): void {
-            $loop->stop();
-        });
-        $poll = $loop->repeat(0.001, static function () use ($loop, &$received): void {
-            if (count($received) === 2) {
-                $loop->stop();
-            }
-        });
-        $loop->run();
-        $loop->cancel($watchdog);
-        $loop->cancel($poll);
+        }
+        Wait::until(
+            $loop,
+            static function () use (&$received): bool {
+                return count($received) === 2;
+            },
+            'bytes queued during the suspended read callback',
+        );
         self::assertSame([false], $watching, 'A suspended read turn kept polling a readable socket.');
         self::assertSame(['first', 'second'], $received, 'Bytes arriving during a suspended read turn were lost.');
         self::assertTrue($state->getValue($connection), 'Read interest was not restored after the turn.');
@@ -762,21 +769,23 @@ final class HttpFastPathTest extends TestCase
             fwrite($client, 'held');
         });
         fwrite($client, 'start');
-        $loop->delay(0.03, $this->guardCallback(static function () use ($connection, &$received): void {
-            self::assertSame(['start'], $received, 'A paused connection delivered bytes.');
-            $connection->resumeRead();
-        }));
-        $watchdog = $loop->delay(2, static function () use ($loop): void {
-            $loop->stop();
-        });
-        $poll = $loop->repeat(0.001, static function () use ($loop, &$received): void {
-            if (count($received) === 2) {
-                $loop->stop();
-            }
-        });
-        $loop->run();
-        $loop->cancel($watchdog);
-        $loop->cancel($poll);
+        Wait::until(
+            $loop,
+            static function () use (&$received): bool {
+                return count($received) === 1;
+            },
+            'the first read turn to pause',
+        );
+        self::assertFalse(new ReflectionProperty($connection, 'readWatching')->getValue($connection));
+        self::assertSame(['start'], $received, 'A paused connection delivered bytes.');
+        $connection->resumeRead();
+        Wait::until(
+            $loop,
+            static function () use (&$received): bool {
+                return count($received) === 2;
+            },
+            'the held bytes after resuming reads',
+        );
         self::assertSame(['start', 'held'], $received);
     }
 

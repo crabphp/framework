@@ -22,7 +22,8 @@ use Psr\Log\LoggerInterface;
  * as it may be; either way the failure is logged and the consumer goes on
  * to the next job.
  *
- * A job is made by the container, once per worker, and kept: its
+ * A job is resolved for each try: the container determines whether it
+ * is kept, and without a container it is constructed each time. Its
  * constructor takes services and it holds nothing of one run.
  */
 final readonly class Consumer

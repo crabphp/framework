@@ -49,11 +49,16 @@ try {
         throw new RuntimeException('this generation was told to fail');
     }
     $runtime = new Runtime(shutdownTimeout: 2.0);
-    $runtime->group('web', workers: 2)->listen(
-        'tcp://inherited',
-        new HttpServer(static fn(Request $request) => Response::text($text . ' from ' . posix_getppid())),
-        socket: $generation->socket,
-    );
+    $runtime
+        ->group('web', workers: 2)
+        ->listen(
+            'tcp://inherited',
+            new HttpServer(static fn(Request $request) => Response::text($text . ' from ' . posix_getppid())),
+            socket: $generation->socket,
+        )
+        ->onStart(static function (): void {
+            file_put_contents('workers', posix_getppid() . ' ' . getmypid() . "\n", FILE_APPEND | LOCK_EX);
+        });
     $generation->attach($runtime);
     $runtime->run();
 } catch (Throwable $error) {

@@ -27,7 +27,7 @@ There is one kind, PSR-15's, so middleware from any PSR-15 library works. There 
 php cua make:middleware RequireJson
 ```
 
-writes a pass-through stub at `app/Http/RequireJson.php`. Edit it to check JSON and add a response header:
+writes a pass-through stub at `app/Http/RequireJson.php`. The generator checks the class name, namespace and local destination before writing; PHP keywords and names imported by the stub are refused with a valid example. Failed writes name the path and exit nonzero. Edit the stub to check JSON and add a response header:
 
 ```php
 namespace App\Http;

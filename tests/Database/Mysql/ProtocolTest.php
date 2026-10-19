@@ -4,8 +4,12 @@ declare(strict_types=1);
 
 namespace Crab\Tests\Database\Mysql;
 
+use Crab\Database\Database;
 use Crab\Database\DatabaseException;
 use Crab\Database\Mysql\Connection;
+use Crab\Engine\EventLoop;
+use Crab\Engine\Process\Worker;
+use Crab\Tests\Support\Wait;
 use PHPUnit\Framework\TestCase;
 
 /**
@@ -14,6 +18,118 @@ use PHPUnit\Framework\TestCase;
  */
 final class ProtocolTest extends TestCase
 {
+    public function testTenQueriesOverlapAndAPoolOfOneMakesThemQueue(): void
+    {
+        foreach ([10, 1] as $capacity) {
+            $arrivals = [];
+            $released = 0;
+            $failure = null;
+            try {
+                ScriptedServer::run(
+                    static function (ScriptedServer $server, int $index) use ($capacity, &$arrivals, &$released): void {
+                        self::login($server);
+                        $server->prepare();
+                        for ($query = 0; $query < (10 / $capacity); ++$query) {
+                            $server->sequence = 0;
+                            self::assertSame("\x17", $server->receive()[0]);
+                            $arrivals[] = $index;
+                            $arrival = count($arrivals);
+                            Wait::until(
+                                EventLoop::current(),
+                                static function () use (&$released, $arrival): bool {
+                                    return $released >= $arrival;
+                                },
+                                'release of MySQL query ' . $arrival,
+                            );
+                            $server->ok();
+                        }
+                    },
+                    static function (string $dsn, Worker $worker) use (
+                        $capacity,
+                        &$arrivals,
+                        &$released,
+                        &$failure,
+                    ): void {
+                        $db = new Database(
+                            static fn(): \PDO => throw new \LogicException('The async test must not open PDO.'),
+                            max: $capacity,
+                            factory: static fn(): Connection => new Connection($dsn),
+                        );
+                        $tasks = [];
+                        $order = [];
+                        try {
+                            for ($index = 0; $index < 10; ++$index) {
+                                $tasks[] = $worker->spawn(static function () use ($db, $index, &$order): int {
+                                    return $db->run(static function (\Crab\Contracts\Database\Connection $connection) use (
+                                        $index,
+                                        &$order,
+                                    ): int {
+                                        $order[] = $index;
+                                        return $connection->execute('select 1');
+                                    });
+                                });
+                            }
+                            Wait::until(
+                                $worker->loop,
+                                static function () use (&$arrivals, $capacity): bool {
+                                    return count($arrivals) >= $capacity;
+                                },
+                                $capacity . ' MySQL commands to reach the peer before any response',
+                            );
+                            self::assertCount($capacity, $arrivals);
+                            $pool = new \ReflectionProperty($db, 'pool')->getValue($db);
+                            self::assertSame(
+                                ['max' => $capacity, 'idle' => 0, 'borrowed' => $capacity, 'waiting' => 10 - $capacity],
+                                $pool->stats(),
+                            );
+                            foreach ($tasks as $task) {
+                                self::assertFalse(
+                                    $task->isComplete(),
+                                    'No query may finish before the peer releases its answer.',
+                                );
+                            }
+                            if ($capacity === 10) {
+                                $released = 10;
+                            }
+                            foreach ($tasks as $index => $task) {
+                                if ($capacity === 1) {
+                                    Wait::until(
+                                        $worker->loop,
+                                        static function () use (&$arrivals, $index): bool {
+                                            return count($arrivals) >= ($index + 1);
+                                        },
+                                        'the next queued MySQL command',
+                                    );
+                                    self::assertCount($index + 1, $arrivals);
+                                    self::assertSame(range(0, $index), $order);
+                                    $released = $index + 1;
+                                }
+                                Wait::until(
+                                    $worker->loop,
+                                    $task->isComplete(...),
+                                    'MySQL command ' . $index . ' to finish',
+                                );
+                                self::assertSame(0, $task->await());
+                            }
+                            self::assertSame(range(0, 9), $order);
+                            self::assertCount(10, $arrivals);
+                        } catch (\Throwable $error) {
+                            $failure = $error;
+                            throw $error;
+                        } finally {
+                            $released = PHP_INT_MAX;
+                            $db->close();
+                        }
+                    },
+                    connections: $capacity,
+                );
+            } catch (\Throwable $error) {
+                // Closing held peers can fail too; keep the assertion that caused cleanup.
+                throw $failure ?? $error;
+            }
+        }
+    }
+
     public function testUnsupportedPreparesFallBackOnlyWhenThereAreNoBindings(): void
     {
         foreach ([[], ['secret']] as $bindings) {
@@ -88,12 +204,14 @@ final class ProtocolTest extends TestCase
         }, static function (string $dsn, \Crab\Engine\Process\Worker $worker): void {
             $connection = new Connection($dsn);
             $ticks = 0;
-            $timer = $worker->loop->repeat(0.001, static function () use (&$ticks): void {
+            $tick = static function () use ($worker, &$ticks, &$timer, &$tick): void {
                 ++$ticks;
-            });
+                $timer = $worker->loop->defer($tick);
+            };
+            $timer = $worker->loop->defer($tick);
             try {
                 self::assertSame(18_000_000, strlen($connection->first('select large_blob')['data']));
-                self::assertGreaterThan(1, $ticks);
+                self::assertGreaterThan(1, $ticks, 'The result must yield across loop turns.');
             } finally {
                 $worker->loop->cancel($timer);
                 $connection->close();

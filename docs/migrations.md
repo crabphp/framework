@@ -218,7 +218,7 @@ SQLite checks foreign keys on the connections the provider opens.
 
 ## Several databases and packages
 
-Each configured database has its own migrations folder and its own record of what ran. The commands take `--database=`:
+Each configured database has its own migrations folder and its own record of what ran. `--database` must name a configured connection exactly; missing, empty and unknown names are refused before opening a connection. The commands take `--database=`:
 
 ```sh
 php cua make:migration create_totals_table --database=reports

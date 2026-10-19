@@ -177,9 +177,11 @@ With the default `required: true`, a request without an existing `Identity` need
 
 ### Managing tokens
 
+Take `Crab\Contracts\Clock\Clock $clock` in the class's constructor and use it for expiry, so tests can supply the same clock as the token store.
+
 ```php
 $token = $tokens->issue($user, 'mobile app');                               // for a user or an id
-$token = $tokens->issue($user, 'ci', new \DateTimeImmutable('+30 days'));    // one that expires
+$token = $tokens->issue($user, 'ci', $clock->now()->modify('+30 days'));    // one that expires
 
 $tokens->revoke($token);                // log out: this token stops working at once
 $tokens->revokeAll($user);              // log out everywhere

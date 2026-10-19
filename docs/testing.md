@@ -292,11 +292,13 @@ A request no reply matches throws, so a test never reaches the network. See [HTT
 With `queue.store` set to `memory`, jobs are kept in the test's own process. Assert on what was pushed:
 
 ```php
+use Crab\Contracts\Clock\Clock;
 use Crab\Contracts\Queue\Store;
 
 $api->post('/users', ['email' => 'ada@example.com', 'name' => 'Ada']);
 
-$waiting = $this->app->container->get(Store::class)->jobs('default', 'pending', time());
+$clock = $this->app->container->get(Clock::class);
+$waiting = $this->app->container->get(Store::class)->jobs('default', 'pending', $clock->now()->getTimestamp());
 self::assertSame(SendWelcomeEmail::class, $waiting[0]->job);
 self::assertSame(['userId' => 1], $waiting[0]->data);
 ```

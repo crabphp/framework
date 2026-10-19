@@ -221,6 +221,8 @@ While you develop, start it in a second terminal when you are working on jobs. T
 > [!WARNING]
 > A worker runs the code it started with. When `serve` manages it, `php cua reload` replaces it after deployment. A separately started `queue:work` must be stopped and started again.
 
+Value options are checked before consuming jobs. Worker and concurrency counts must be positive whole numbers within PHP's integer range. A queue list must contain a nonempty name at every comma, and `--supervisor` must name a configured supervisor.
+
 ### Workers and concurrency
 
 Two settings decide how many jobs run at once, and they suit different work:
@@ -358,7 +360,7 @@ Fix the cause, deploy, then `queue:retry all`.
 
 ### Jobs run at least once
 
-A job is delivered at least once, and occasionally more: a worker may be killed after doing the work and before saying so. Write every job so that running it twice does no harm; this example needs a mail service that honors the order's idempotency key, since a sent flag alone cannot prevent duplicate mail.
+A job is delivered at least once, and occasionally more: a worker may be killed after doing the work and before saying so. Write every job so that running it twice does no harm; this example needs a mail service that honors the order's idempotency key, since a sent flag alone cannot prevent duplicate mail. Inject `Crab\Contracts\Clock\Clock` as `$clock` alongside the database and mailer to timestamp the receipt.
 
 ```php
 public function handle(int $orderId): void
@@ -369,7 +371,7 @@ public function handle(int $orderId): void
     }
 
     $this->mailer->sendReceipt($order, idempotencyKey: "receipt-{$orderId}");
-    $this->db->table('orders')->where('id', $orderId)->update(['receipt_sent_at' => date('Y-m-d H:i:s')]);
+    $this->db->table('orders')->where('id', $orderId)->update(['receipt_sent_at' => $this->clock->now()->format('Y-m-d H:i:s')]);
 }
 ```
 
@@ -399,6 +401,7 @@ A store keeps each job until a worker says it is done, and gives a job to one wo
 Set the store to `memory`, run the code, and look at what was pushed:
 
 ```php
+use Crab\Contracts\Clock\Clock;
 use Crab\Contracts\Queue\Store;
 use Crab\Http\Request;
 
@@ -406,7 +409,8 @@ $app = require dirname(__DIR__) . '/app.php';          // with 'queue' => ['stor
 
 $app->handle(new Request('POST', '/users', ['Content-Type' => 'application/json'], '{"email":"ada@example.com","name":"Ada"}'));
 
-$waiting = $app->container->get(Store::class)->jobs('default', 'pending', time());
+$clock = $app->container->get(Clock::class);
+$waiting = $app->container->get(Store::class)->jobs('default', 'pending', $clock->now()->getTimestamp());
 self::assertSame(SendWelcomeEmail::class, $waiting[0]->job);
 self::assertSame(['userId' => 1], $waiting[0]->data);
 ```

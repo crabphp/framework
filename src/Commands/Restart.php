@@ -34,19 +34,11 @@ final readonly class Restart implements Command
 
     public function handle(Input $input, Output $output): int
     {
+        Serve::requireValues($input, ['address', 'workers', 'timeout']);
         $server = new Server($this->app);
         $address = Serve::address($this->app, $input);
         $workers = Serve::workers($this->app, $input);
-        $timeout = $input->option('timeout');
-        if ($timeout === true) {
-            throw new \InvalidArgumentException('--timeout needs a value; use --timeout=value.');
-        }
-        $seconds = is_numeric($timeout) ? (float) $timeout : null;
-        if ($timeout !== null && ($seconds === null || !is_finite($seconds) || $seconds < 0)) {
-            throw new \InvalidArgumentException(
-                '--timeout must be a finite number of seconds at least zero; use --timeout=15.',
-            );
-        }
+        $seconds = Stop::timeout($input);
         try {
             $old = $server->stop($seconds, $input->flag('force'));
             if ($old !== null) {

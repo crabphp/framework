@@ -218,11 +218,11 @@ final class TransportTest extends TestCase
             $cutoff = $connection->drainDeadline();
         });
         $before = hrtime(true) / 1_000_000_000;
-        $connection->drain(0.1);
+        $connection->drain(1.0);
         $after = hrtime(true) / 1_000_000_000;
         self::assertNotNull($cutoff);
-        self::assertGreaterThanOrEqual($before + 0.1, $cutoff);
-        self::assertLessThanOrEqual($after + 0.1, $cutoff);
+        self::assertGreaterThanOrEqual($before + 1.0, $cutoff);
+        self::assertLessThanOrEqual($after + 1.0, $cutoff);
         $loop->delay(0.03, $loop->stop(...));
         $loop->run();
         self::assertFalse($connection->isClosed(), 'An older close timer shortened the worker allowance.');
@@ -367,7 +367,7 @@ final class TransportTest extends TestCase
         [$loop, $connection] = $this->connectedPair(closeTimeout: 0.01);
         $connection->onDrainRequest(static function (): void {});
         $connection->shutdownWrite();
-        $connection->drain(0.1);
+        $connection->drain(1.0);
         $checked = false;
         $loop->delay(0.04, $this->guardCallback(static function () use ($connection, &$checked): void {
             self::assertFalse($connection->isClosed(), 'The transport retained its earlier deadline.');

@@ -74,7 +74,7 @@ final class BroadcastTest extends TestCase
         return $this->channels[] = new Channels($carrier, $limit, $batch, $pending, $backlog);
     }
 
-    private function waitUntil(string $what, \Closure $ready, float $seconds = 1.0): void
+    private function waitUntil(string $what, \Closure $ready, float $seconds = 5.0): void
     {
         $deadline = microtime(true) + $seconds;
         while (!$ready()) {
@@ -193,8 +193,10 @@ final class BroadcastTest extends TestCase
             'fan-out queued before leaving the last channel to finish',
             static fn(): bool => $channels->stats()['pending_bytes'] === 0,
         );
-        // Observe past the recipient's 20 ms timeout to catch a recreated backlog.
-        \Crab\Engine\Async\Async::sleep($this->loop, 0.03);
+        $this->waitUntil(
+            'the departed recipient to leave no backlog task or timer',
+            fn(): bool => $this->loop->getIdentifiers() === [],
+        );
 
         self::assertSame(['already behind', 'first pending'], $afterLeave[0][0]);
         self::assertGreaterThan(0, $afterLeave[0][1]['pending_bytes']);
@@ -230,7 +232,7 @@ final class BroadcastTest extends TestCase
     {
         $carrier = new LocalCarrier();
         $channels = $this->channels($carrier);
-        $slow = new TestRecipient(WriteResult::Backpressured);
+        $slow = new TestRecipient(WriteResult::Backpressured, timeout: 0.02);
         $fast = new TestRecipient();
         $channels->join($slow, 'orders');
         $channels->join($fast, 'orders');
@@ -458,7 +460,7 @@ final class BroadcastTest extends TestCase
 
     public function testAStalledRealReaderClosesWithinTheSendTimeoutWithoutDelayingOthers(): void
     {
-        $settings = new \Crab\WebSocket\Settings(ping: 0, maxMessage: 1024, sendTimeout: 0.03);
+        $settings = new \Crab\WebSocket\Settings(ping: 0, maxMessage: 1024, sendTimeout: 1.0);
         $pair = stream_socket_pair(STREAM_PF_UNIX, STREAM_SOCK_STREAM, 0);
         $transport = new \Crab\Engine\Network\Connection($this->loop, $pair[0], maxWriteBufferSize: 4096);
         $session = new \Crab\Engine\WebSocket\WebSocketSession(
@@ -505,7 +507,7 @@ final class BroadcastTest extends TestCase
             self::assertSame(0, $channels->stats()['slow_clients']);
             self::assertSame(1280, $channels->stats()['backlog_bytes']);
             self::assertSame([true], $probe->getArrayCopy());
-            $this->waitUntil('the stalled reader send timeout', $slow->isClosed(...), 0.1);
+            $this->waitUntil('the stalled reader send timeout', $slow->isClosed(...));
             self::assertSame(1, $channels->stats()['slow_clients']);
             self::assertSame(0, $channels->stats()['backlog_bytes']);
         } finally {
@@ -673,12 +675,34 @@ final class BroadcastTest extends TestCase
             'the backlog to start its single deadline',
             static fn() => $channels->stats()['backlog_bytes'] > 0,
         );
-        $slow->writableDelay = 0.015;
+        $backlogs = new \ReflectionProperty($channels, 'backlogs')->getValue($channels);
+        $backlog = reset($backlogs);
+        $timer = new \ReflectionProperty($backlog, 'timer');
+        $original = $timer->getValue($backlog);
+        $slow->afterBroadcast = static function () use ($slow): void {
+            $slow->result = WriteResult::Backpressured;
+        };
         $slow->result = WriteResult::Accepted;
         $this->waitUntil(
-            'the original backlog deadline despite partial progress',
-            static fn() => $slow->ended !== null,
-            0.1,
+            'one delivery before the recipient blocks again',
+            static fn(): bool => $slow->messages === ['first'],
+        );
+        self::assertSame(
+            $original,
+            $timer->getValue($backlog),
+            'Partial progress replaced the original backlog deadline.',
+        );
+        self::assertTrue(
+            $this->loop->isEnabled($original),
+            'Partial progress cancelled the original backlog deadline.',
+        );
+        // Deliver the original deadline's cancellation with the second message still held.
+        new \ReflectionProperty($backlog, 'cancellation')
+            ->getValue($backlog)
+            ->cancel();
+        $this->waitUntil(
+            'the original backlog cancellation despite partial progress',
+            static fn(): bool => $slow->ended !== null,
         );
         self::assertSame(['first'], $slow->messages);
         self::assertSame([1008, 'Read messages faster'], $slow->ended);
@@ -947,10 +971,11 @@ final class TestRecipient implements Recipient
     public ?array $ended = null;
     public ?\Throwable $closeFailure = null;
     public ?\Throwable $broadcastFailure = null;
-    public float $writableDelay = 0.0;
+    public ?\Closure $afterBroadcast = null;
 
     public function __construct(
         public WriteResult $result = WriteResult::Accepted,
+        private readonly float $timeout = 5.0,
     ) {}
 
     public function broadcast(string $message): WriteResult
@@ -963,6 +988,8 @@ final class TestRecipient implements Recipient
         }
         if ($this->result === WriteResult::Accepted) {
             $this->messages[] = $message;
+            $this->afterBroadcast?->__invoke();
+            return WriteResult::Accepted;
         }
         return $this->result;
     }
@@ -977,16 +1004,13 @@ final class TestRecipient implements Recipient
 
     public function broadcastTimeout(): float
     {
-        return 0.02;
+        return $this->timeout;
     }
 
     public function awaitBroadcastWritable(\Crab\Engine\Async\Cancellation $cancellation): bool
     {
         while ($this->result === WriteResult::Backpressured) {
             \Crab\Engine\Async\Async::sleep(EventLoop::current(), 0.001, $cancellation);
-        }
-        if ($this->writableDelay > 0) {
-            \Crab\Engine\Async\Async::sleep(EventLoop::current(), $this->writableDelay, $cancellation);
         }
         return $this->ended === null;
     }

@@ -34,6 +34,7 @@ final readonly class Reload implements Command
 
     public function handle(Input $input, Output $output): int
     {
+        Serve::requireValues($input, ['address', 'workers']);
         $server = new Server($this->app);
         $address = Serve::address($this->app, $input);
         $workers = Serve::workers($this->app, $input);

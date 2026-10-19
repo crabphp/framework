@@ -85,7 +85,7 @@ final class ValueOptionsTest extends TestCase
     public static function validTimeouts(): iterable
     {
         foreach (['0', '0.01', '15', '1e1'] as $value) {
-            yield $value => [$value];
+            yield 'value ' . $value => [$value];
         }
     }
 
@@ -216,6 +216,299 @@ final class ValueOptionsTest extends TestCase
         [$status, $routes] = $this->command($app, ['route:list']);
         self::assertSame(0, $status, $routes);
         self::assertStringContainsString('Example\\Http\\' . $name, $routes);
+    }
+
+    /**
+     * @return iterable<string, array{string, list<string>, string}>
+     */
+    public static function invalidServerValues(): iterable
+    {
+        foreach (['serve', 'restart', 'reload'] as $command) {
+            foreach ([
+                '',
+                'four',
+                '2workers',
+                '1.5',
+                '0',
+                '-1',
+                '1e2',
+                '1e309',
+                '9223372036854775808',
+                "2\n",
+            ] as $value) {
+                yield $command . ' workers ' . $value => [$command, ['--workers=' . $value], '--workers='];
+            }
+            foreach ([
+                '',
+                'not-an-address',
+                'http://localhost:8080',
+                'tcp://localhost',
+                'tcp://localhost:65536',
+                'tcp://user@localhost:8080',
+                'tcp://localhost:8080/path',
+                'tcp://localhost:8080?x=1',
+                'tcp://localhost:8080#fragment',
+                'tcp://[not-ip]:8080',
+                "tcp://local\nhost:8080",
+            ] as $value) {
+                yield $command . ' address ' . $value => [$command, ['--address=' . $value], '--address='];
+            }
+        }
+    }
+
+    #[DataProvider('invalidServerValues')]
+    public function testInvalidServerValuesNeverReachTheRunningServer(
+        string $command,
+        array $arguments,
+        string $usage,
+    ): void {
+        $pid = new class implements \Stringable {
+            public int $reads = 0;
+
+            public function __toString(): string
+            {
+                ++$this->reads;
+                throw new \RuntimeException('The command reached the server pid setting.');
+            }
+        };
+        $app = new App(new Config(['server' => ['pid' => $pid]]));
+        [$status, $output] = $this->command($app, [
+            $command,
+            ...($command === 'serve' ? ['--daemon'] : []),
+            ...$arguments,
+        ]);
+
+        self::assertSame(0, $pid->reads, $output);
+        self::assertSame(1, $status, $output);
+        self::assertStringContainsString($usage, $output);
+    }
+
+    public function testValidListenerFormsAndWholeWorkerCountsArePreserved(): void
+    {
+        $app = new App();
+        foreach (['tcp://127.0.0.1:8080', 'tcp://localhost:8080', 'tcp://[::1]:8080', 'tcp://[::]:0'] as $address) {
+            self::assertSame($address, \Crab\Commands\Serve::address(
+                $app,
+                new \Crab\Console\Input(['--address=' . $address]),
+            ));
+        }
+        foreach (['1', '4', (string) PHP_INT_MAX] as $value) {
+            self::assertSame((int) $value, \Crab\Commands\Serve::workers(
+                $app,
+                new \Crab\Console\Input(['--workers=' . $value]),
+            ));
+        }
+    }
+
+    /**
+     * @return iterable<string, array{string, string}>
+     */
+    public static function invalidQueueValues(): iterable
+    {
+        foreach (['workers', 'concurrency'] as $name) {
+            foreach (['', 'two', '2workers', '1.5', '0', '-1', '1e309', '9223372036854775808', "2\n"] as $value) {
+                yield $name . ' ' . $value => [$name, $value];
+            }
+        }
+        foreach (['', ',', 'mail,', ',mail', 'mail,,default', "mail,\n"] as $value) {
+            yield 'queue ' . $value => ['queue', $value];
+        }
+        foreach (['', 'missing', "mail\0"] as $value) {
+            yield 'supervisor ' . $value => ['supervisor', $value];
+        }
+    }
+
+    #[DataProvider('invalidQueueValues')]
+    public function testMalformedQueueSelectionsAndLimitsLeaveEveryJobPending(string $name, string $value): void
+    {
+        $app = $this->queuedApplication();
+        [$status, $output] = $this->command($app, ['queue:work', '--stop-when-empty', '--' . $name . '=' . $value]);
+        $store = $app->container->get(Store::class);
+
+        self::assertSame([1, 1], [$store->size('default'), $store->size('mail')], $output);
+        self::assertSame(1, $status, $output);
+        self::assertStringContainsString('--' . $name . '=', $output);
+    }
+
+    public function testAQueueNamedZeroIsNotDiscardedFromTheSelection(): void
+    {
+        $app = $this->queuedApplication();
+        $app->container->get(Queue::class)->on('0')->push(EchoQueueValue::class, value: 'zero');
+        [$status, $output] = $this->command($app, ['queue:work', '--stop-when-empty', '--queue=0']);
+        self::assertSame(0, $status, $output);
+        self::assertSame(0, $app->container->get(Store::class)->size('0'));
+        self::assertSame(1, $app->container->get(Store::class)->size('default'));
+    }
+
+    /**
+     * @return iterable<string, array{string, string}>
+     */
+    public static function invalidMiddlewareDeclarations(): iterable
+    {
+        foreach ([
+            'Class',
+            'Readonly',
+            'String',
+            'Int',
+            'Object',
+            'Self',
+            'Parent',
+            'Never',
+            'Mixed',
+            'Middleware',
+            'ResponseInterface',
+            'ServerRequestInterface',
+            'RequestHandlerInterface',
+        ] as $name) {
+            yield $name => [$name, 'App\\Http'];
+        }
+        foreach ([
+            '',
+            'Bad-Name',
+            'App/Http',
+            'App\\\\Http',
+            'App\\3Http',
+            '\\App\\Http',
+            'App\\Http\\',
+            "App\\Http\0",
+        ] as $namespace) {
+            yield 'namespace ' . $namespace => ['RequireJson', $namespace];
+        }
+    }
+
+    #[DataProvider('invalidMiddlewareDeclarations')]
+    public function testAnInvalidMiddlewareDeclarationWritesNothing(string $name, string $namespace): void
+    {
+        $app = new App(basePath: $this->directory);
+        [$status, $output] = $this->command($app, [
+            'make:middleware',
+            $name,
+            '--path=generated',
+            '--namespace=' . $namespace,
+        ]);
+        self::assertSame([], glob($this->directory . '/*'), $output);
+        self::assertSame(1, $status, $output);
+        self::assertStringContainsString('make:middleware RequireAdmin', $output);
+        self::assertStringNotContainsString('Created ', $output);
+    }
+
+    /**
+     * @return iterable<string, array{string}>
+     */
+    public static function invalidPaths(): iterable
+    {
+        foreach (['', "bad\0path", 'php://memory'] as $path) {
+            yield 'path ' . $path => [$path];
+        }
+    }
+
+    #[DataProvider('invalidPaths')]
+    public function testAnInvalidGeneratorPathWritesNothing(string $path): void
+    {
+        $app = new App(basePath: $this->directory);
+        [$status, $output] = $this->command($app, ['make:middleware', 'RequireJson', '--path=' . $path]);
+        self::assertSame([], glob($this->directory . '/*'), $output);
+        self::assertSame(1, $status, $output);
+        self::assertStringContainsString('--path=app/Http', $output);
+    }
+
+    public function testAFileCannotBeUsedAsTheGeneratorDirectory(): void
+    {
+        file_put_contents($this->directory . '/occupied', 'keep');
+        $app = new App(basePath: $this->directory);
+        [$status, $output] = $this->command($app, ['make:middleware', 'RequireJson', '--path=occupied/child']);
+        self::assertSame(1, $status, $output);
+        self::assertStringContainsString('--path=app/Http', $output);
+        self::assertSame('keep', file_get_contents($this->directory . '/occupied'));
+    }
+
+    /**
+     * @return iterable<string, array{string}>
+     */
+    public static function invalidWatchPaths(): iterable
+    {
+        foreach (['', ',', 'missing', 'missing,', 'php://memory', "bad\0path"] as $value) {
+            yield 'value ' . $value => [$value];
+        }
+    }
+
+    #[DataProvider('invalidWatchPaths')]
+    public function testWatchPathsAreCheckedEvenWhenWatchingWouldBeDisabled(string $value): void
+    {
+        $app = new App(basePath: $this->directory);
+        // The incompatible flags also prevent startup on the old implementation.
+        [$status, $output] = $this->command($app, ['serve', '--single', '--daemon', '--no-watch', '--watch=' . $value]);
+        self::assertSame(1, $status, $output);
+        self::assertStringContainsString('--watch=app,config', $output);
+    }
+
+    public function testAnAlreadyDeclaredMiddlewareClassCannotBeGeneratedElsewhere(): void
+    {
+        $app = new App(basePath: $this->directory);
+        [$status, $output] = $this->command($app, [
+            'make:middleware',
+            'ValueOptionsTest',
+            '--namespace=' . __NAMESPACE__,
+            '--path=generated',
+        ]);
+        self::assertSame(1, $status, $output);
+        self::assertSame([], glob($this->directory . '/*'));
+        self::assertStringContainsString('already', $output);
+    }
+
+    /**
+     * @return iterable<string, array{string, list<string>}>
+     */
+    public static function malformedJobIds(): iterable
+    {
+        foreach (['queue:retry', 'queue:forget'] as $command) {
+            foreach ([[], [''], [' '], ["bad\n"], ['all', 'extra']] as $i => $arguments) {
+                yield $command . ' ' . $i => [$command, $arguments];
+            }
+        }
+    }
+
+    #[DataProvider('malformedJobIds')]
+    public function testAnInvalidJobSelectionDoesNotTouchTheStore(string $name, array $arguments): void
+    {
+        $store = $this->createMock(Store::class);
+        $store->expects(self::never())->method($name === 'queue:retry' ? 'retry' : 'forget');
+        $command = $name === 'queue:retry'
+            ? new \Crab\Queue\Commands\RetryJobs($store)
+            : new \Crab\Queue\Commands\ForgetJobs($store);
+        $app = new App();
+        $app->console->add($name, $command);
+        [$status, $output] = $this->command($app, [$name, ...$arguments]);
+        self::assertSame(1, $status, $output);
+        self::assertStringContainsString($name . ' 12', $output);
+    }
+
+    /**
+     * @return iterable<string, array{string, list<string>, string}>
+     */
+    public static function missingValuesBeforeOtherErrors(): iterable
+    {
+        foreach (['serve', 'restart', 'reload'] as $command) {
+            yield $command . ' workers' => [$command, ['--address=bad', '--workers'], 'workers'];
+        }
+        yield 'serve watch' => ['serve', ['--workers=bad', '--watch'], 'watch'];
+        yield 'restart timeout' => ['restart', ['--workers=bad', '--timeout'], 'timeout'];
+        yield 'migration without name' => ['make:migration', ['--database'], 'database'];
+        yield 'migration invalid name' => ['make:migration', ['???', '--database'], 'database'];
+    }
+
+    #[DataProvider('missingValuesBeforeOtherErrors')]
+    public function testAMissingValueIsNamedBeforeAnyOtherInputError(
+        string $name,
+        array $arguments,
+        string $option,
+    ): void {
+        $app = new App();
+        $app->register(\Crab\Database\DatabaseProvider::class);
+        [$status, $output] = $this->command($app, [$name, ...$arguments]);
+        self::assertSame(1, $status, $output);
+        self::assertStringContainsString('--' . $option . ' needs a value', $output);
+        self::assertStringContainsString('--' . $option . '=value', $output);
     }
 
     private function queuedApplication(): App

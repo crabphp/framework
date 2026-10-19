@@ -25,7 +25,7 @@ use Psr\Log\LoggerInterface;
  * commands. Register it before the providers that declare tasks, which
  * they do in register():
  *
- *     $container->get(Schedule::class)->command('reports:send')->daily('07:00');
+ *     $container->get(Schedule::class)->command('report:send')->daily('07:00');
  *
  * "schedule.timezone" is the zone the tasks' times are in, such as
  * "Europe/Paris"; PHP's own when null.

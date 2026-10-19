@@ -16,6 +16,7 @@ use Crab\Database\PdoConnection;
 use Crab\Engine\Async\Async;
 use Crab\Engine\Process\Worker;
 use Crab\Testing\WorkerHarness;
+use Crab\Tests\Support\Wait;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 
@@ -258,18 +259,42 @@ final class DatabaseTest extends TestCase
         $peak = 0;
         $finished = WorkerHarness::run([], static function (Worker $worker) use ($db, &$peak): int {
             $held = 0;
+            $release = false;
             $tasks = [];
             for ($i = 0; $i < 6; ++$i) {
-                $tasks[] = $worker->spawn(static function () use ($db, $worker, &$held, &$peak, $i): int {
+                $tasks[] = $worker->spawn(static function () use ($db, $worker, &$held, &$peak, &$release, $i): int {
                     // Reads only: two SQLite connections cannot both hold a write while one waits.
-                    return $db->run(static function (Connection $connection) use ($worker, &$held, &$peak, $i): int {
+                    return $db->run(static function (Connection $connection) use (
+                        $worker,
+                        &$held,
+                        &$peak,
+                        &$release,
+                        $i,
+                    ): int {
                         $peak = max($peak, ++$held);
                         $seen = $connection->first('select ? as task', [$i])['task'];
-                        Async::sleep($worker->loop, 0.002);
+                        Wait::until(
+                            $worker->loop,
+                            static function () use (&$release): bool {
+                                return $release;
+                            },
+                            'both database pool slots to be held',
+                        );
                         --$held;
                         return $seen === $i ? 1 : 0;
                     });
                 });
+            }
+            try {
+                Wait::until(
+                    $worker->loop,
+                    static function () use (&$held): bool {
+                        return $held === 2;
+                    },
+                    'two concurrent database borrowers',
+                );
+            } finally {
+                $release = true;
             }
             return array_sum(array_map(static fn($task): int => $task->await(), $tasks));
         });
@@ -459,7 +484,7 @@ final class DatabaseTest extends TestCase
                     $db->transaction(static function (Connection $tx) use ($worker, $name, &$order): void {
                         $order[] = "{$name} begins";
                         $tx->insert('insert into users (name) values (?)', [$name]);
-                        Async::sleep($worker->loop, 0.002);
+                        Async::sleep($worker->loop, 0.0);
                         $order[] = "{$name} ends";
                     });
                 });

@@ -45,6 +45,13 @@ final readonly class Status implements Command
         if ($name === true) {
             throw new \InvalidArgumentException('--database needs a value; use --database=value.');
         }
-        return $this->databases->migrator(is_string($name) ? $name : null);
+        if ($name !== null && ($name === '' || !in_array($name, $this->databases->names(), true))) {
+            throw new \InvalidArgumentException(
+                "There is no database named \"{$name}\"; the configured ones are: "
+                . implode(', ', $this->databases->names())
+                . '. Use --database=name to choose one.',
+            );
+        }
+        return $this->databases->migrator($name);
     }
 }

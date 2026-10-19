@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Crab\Engine\Tests;
 
+use Crab\Engine\Async\Async;
 use Crab\Engine\Async\Cancellation;
 use Crab\Engine\Async\CancelledException;
 use Crab\Engine\Async\Task;
@@ -198,6 +199,21 @@ final class DnsResolverTest extends TestCase
         self::assertSame(['shared.test A'], $asked);
     }
 
+    public function testCancelledFollowersAreReleasedBeforeTheirLeaderAnswers(): void
+    {
+        $this->assertCancelledFollowersAreReleased('answer');
+    }
+
+    public function testCancelledFollowersAreReleasedWhileTheirLeaderCanStillBeCancelled(): void
+    {
+        $this->assertCancelledFollowersAreReleased('cancel');
+    }
+
+    public function testCancelledFollowersAreReleasedBeforeTheirLeaderFails(): void
+    {
+        $this->assertCancelledFollowersAreReleased('failure');
+    }
+
     public function testExpiredAnswersAreReclaimedWhileLiveAnswersStayCached(): void
     {
         $loop = $this->loop = $this->newLoop();
@@ -252,6 +268,126 @@ final class DnsResolverTest extends TestCase
     }
 
     /**
+     * Hold one real DNS question while completed cancellations accumulate.
+     * A late follower must still join it after all earlier followers left.
+     */
+    private function assertCancelledFollowersAreReleased(string $ending): void
+    {
+        $loop = $this->loop = $this->newLoop();
+        $asked = [];
+        $answer = null;
+        $server = $this->nameServer(
+            $loop,
+            $asked,
+            [
+                'shared.test' => $ending === 'failure' ? 'failure' : [[1, 60, "\x0A\x00\x00\x04"]],
+                'fresh.test' => [[1, 60, "\x0A\x00\x00\x05"]],
+            ],
+            hold: static function (\Closure $send) use (&$answer): void {
+                if ($answer === null) {
+                    $answer = $send;
+                } else {
+                    $send();
+                }
+            },
+        );
+        $dns = new DnsResolver([$server], 10.0, 1, false, $this->hosts);
+        $watchers = $loop->getIdentifiers();
+        $this->within(
+            $loop,
+            function () use ($loop, $dns, $ending, &$answer, &$asked): void {
+                $leader = Task::spawn($loop, static fn(Cancellation $cancellation): array => $dns->resolve(
+                    $loop,
+                    'shared.test',
+                    $cancellation,
+                ));
+                $this->deferCleanup($leader->cancel(...));
+                while ($answer === null) {
+                    Async::sleep($loop, 0);
+                }
+                $asking = new \ReflectionProperty($dns, 'asking');
+                $retained = [];
+                for ($wave = 0; $wave < 3; ++$wave) {
+                    for ($i = 0; $i < 10; ++$i) {
+                        $follower = Task::spawn($loop, static fn(Cancellation $cancellation): array => $dns->resolve(
+                            $loop,
+                            'shared.test',
+                            $cancellation,
+                        ));
+                        $this->deferCleanup($follower->cancel(...));
+                        $loop->defer(static function () use ($dns, $asking, $follower): void {
+                            self::assertFalse($follower->isComplete());
+                            self::assertNotEmpty($asking->getValue($dns)['shared.test']);
+                            $follower->cancel();
+                        });
+                        $error = null;
+                        try {
+                            $follower->await();
+                        } catch (CancelledException $cancelled) {
+                            $error = $cancelled;
+                        }
+                        self::assertInstanceOf(CancelledException::class, $error);
+                    }
+                    self::assertArrayHasKey(
+                        'shared.test',
+                        $asking->getValue($dns),
+                        'The leader still owns the lookup.',
+                    );
+                    $retained[] = count($asking->getValue($dns)['shared.test']);
+                    self::assertFalse($leader->isComplete());
+                }
+                $before = count($asking->getValue($dns)['shared.test']);
+                $live = Task::spawn($loop, static fn(): array => $dns->resolve($loop, 'SHARED.TEST.'));
+                $this->deferCleanup($live->cancel(...));
+                while (count($asking->getValue($dns)['shared.test']) === $before) {
+                    Async::sleep($loop, 0);
+                }
+                self::assertFalse($live->isComplete());
+                self::assertSame(['shared.test A'], $asked, 'A later caller must join the original question.');
+                if ($ending === 'cancel') {
+                    $leader->cancel();
+                } else {
+                    $answer();
+                }
+                foreach ([$leader, $live] as $task) {
+                    $result = null;
+                    $error = null;
+                    try {
+                        $result = $task->await();
+                    } catch (\Throwable $failure) {
+                        $error = $failure;
+                    }
+                    if ($ending === 'answer') {
+                        self::assertNull($error);
+                        self::assertSame(['10.0.0.4'], $result);
+                    } elseif ($ending === 'cancel' && $task === $leader) {
+                        self::assertInstanceOf(CancelledException::class, $error);
+                    } else {
+                        self::assertInstanceOf(RuntimeException::class, $error);
+                        self::assertSame('no address was found for the name shared.test', $error->getMessage());
+                    }
+                }
+                self::assertSame([], $asking->getValue($dns));
+                if ($ending === 'answer') {
+                    self::assertSame(['10.0.0.4'], $dns->resolve($loop, 'shared.test'));
+                    self::assertSame(['shared.test A'], $asked, 'The answer remains cached.');
+                }
+                self::assertSame(['10.0.0.5'], $dns->resolve($loop, 'fresh.test'));
+                self::assertSame(['shared.test A', 'fresh.test A'], $asked);
+                self::assertSame([], $asking->getValue($dns));
+                self::assertSame(
+                    [0, 0, 0],
+                    $retained,
+                    'Completed cancellations must not accumulate while DNS is pending.',
+                );
+            },
+            'The held DNS lookup or its followers did not settle within five seconds.',
+        );
+        self::assertSame($watchers, $loop->getIdentifiers(), 'Every lookup watcher and timer was released.');
+        self::assertSame([], $this->reports);
+    }
+
+    /**
      * Move stored deadlines into the past without sleeping through real TTLs.
      * The optional sweep deadline is rewound too, so maintenance is due now.
      */
@@ -274,11 +410,11 @@ final class DnsResolverTest extends TestCase
     /**
      * Runs code that waits on the loop, in a task, and returns what it returned.
      */
-    private function within(EventLoop $loop, \Closure $body): mixed
+    private function within(EventLoop $loop, \Closure $body, string $failure = 'The test exceeded its deadline.'): mixed
     {
         $task = Task::spawn($loop, static fn(): mixed => $body());
         $this->deferCleanup($task->cancel(...));
-        $deadline = $loop->delay(5, static fn() => throw new RuntimeException('The test exceeded its deadline.'));
+        $deadline = $loop->delay(5, static fn() => throw new RuntimeException($failure));
         try {
             return $task->await();
         } finally {
@@ -302,10 +438,16 @@ final class DnsResolverTest extends TestCase
      *
      * @param list<string> $asked Filled with each question: "name A" or "name AAAA".
      * @param array<string, list<array{int, int, string}>|string> $records By name: records as type, seconds they hold and data; or "truncated" or "failure".
+     * @param (\Closure(\Closure): void)|null $hold Holds a prepared reply until the test's callers have joined.
      * @return string Its address and port.
      */
-    private function nameServer(EventLoop $loop, array &$asked, array $records, float $delay = 0.0): string
-    {
+    private function nameServer(
+        EventLoop $loop,
+        array &$asked,
+        array $records,
+        float $delay = 0.0,
+        ?\Closure $hold = null,
+    ): string {
         $socket = stream_socket_server('udp://127.0.0.1:0', $code, $reason, STREAM_SERVER_BIND);
         stream_set_blocking($socket, false);
         $this->sockets[] = $socket;
@@ -314,6 +456,7 @@ final class DnsResolverTest extends TestCase
             $socket,
             $records,
             $delay,
+            $hold,
             &$asked,
         ): void {
             $query = stream_socket_recvfrom($socket, 4096, 0, $from);
@@ -354,7 +497,11 @@ final class DnsResolverTest extends TestCase
             };
             // A reply to another question arrives first and must not be taken for this one's.
             @stream_socket_sendto($socket, "\x00\x00" . substr($reply, 2), 0, $from);
-            $delay > 0 ? $loop->delay($delay, $send) : $send();
+            if ($hold !== null) {
+                $hold($send);
+            } else {
+                $delay > 0 ? $loop->delay($delay, $send) : $send();
+            }
         });
         return (string) stream_socket_get_name($socket, false);
     }

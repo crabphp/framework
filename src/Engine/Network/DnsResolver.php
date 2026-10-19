@@ -56,7 +56,7 @@ final class DnsResolver
     /**
      * Callers waiting for a name another caller is already asking for; each takes (?list<string>, ?Throwable).
      *
-     * @var array<string, list<\Closure>>
+     * @var array<string, array<int, \Closure>>
      */
     private array $asking = [];
     private int $next = 0;
@@ -298,12 +298,15 @@ final class DnsResolver
                 $suspension->resume($found);
             }
         };
-        $this->asking[$name][] = $finish;
+        $id = $this->next++;
+        $this->asking[$name][$id] = $finish;
         $unsubscribe = $cancellation?->subscribe(static fn(CancelledException $error) => $finish(null, $error));
         try {
             return $suspension->suspend();
         } finally {
             $settled = true;
+            // Keep the leader's empty map so later callers still join it.
+            unset($this->asking[$name][$id]);
             $unsubscribe?->__invoke();
         }
     }

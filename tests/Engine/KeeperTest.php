@@ -109,8 +109,25 @@ final class KeeperTest extends TestCase
         self::assertNotContains($third, [1, $second]);
 
         // SIGUSR1 reaches the generation, which replaces its workers.
+        $workers = function () use ($third): array {
+            return array_values(array_filter(
+                file($this->directory . '/workers', FILE_IGNORE_NEW_LINES) ?: [],
+                static fn(string $line): bool => str_starts_with($line, $third . ' '),
+            ));
+        };
+        $deadline = hrtime(true) + 5_000_000_000;
+        while (count($workers()) < 2 && hrtime(true) < $deadline) {
+            usleep(1_000);
+        }
+        self::assertCount(2, $workers(), 'The replacement generation did not start both workers.');
+        $before = $workers();
         posix_kill($keeper, SIGUSR1);
-        usleep(600_000);
+        $deadline = hrtime(true) + 5_000_000_000;
+        while (count($workers()) < 4 && hrtime(true) < $deadline) {
+            usleep(1_000);
+        }
+        self::assertCount(4, $workers(), 'SIGUSR1 did not replace both workers within five seconds.');
+        self::assertSame([], array_intersect($before, array_slice($workers(), 2)));
         self::assertSame(['two', $third], $this->get());
 
         posix_kill($keeper, SIGTERM);

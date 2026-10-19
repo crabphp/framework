@@ -442,7 +442,7 @@ final class Network implements Transport
             }
             $pool = $this->pools[$origin] ?? null;
             unset($this->idleSince[$origin]);
-            if ($pool === null || isset($this->sessions[$origin]) || isset($this->waiting[$origin])) {
+            if ($pool === null || isset($this->waiting[$origin])) {
                 continue;
             }
             $stats = $pool->stats();

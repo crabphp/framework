@@ -14,7 +14,7 @@
 
 Most actions never touch the request: they declare the fields they take and receive them checked; see [Actions](actions.md). Take the request itself when you need what a signature cannot say, such as a header, a cookie, an uploaded file or the raw body.
 
-The request is a PSR-7 server request with four additions. It is immutable: a method starting with `with` returns a changed copy.
+The request extends the PSR-7 server request. It is immutable: a method starting with `with` returns a changed copy.
 
 ## Getting the request
 

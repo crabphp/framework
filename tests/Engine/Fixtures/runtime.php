@@ -17,9 +17,12 @@ $port = (int) $argv[2];
 $runtime = new Runtime(shutdownTimeout: 0.3);
 $runtime
     ->group('echo', workers: $mode === 'single' ? 1 : 2, maxConnections: 8)
-    ->listen("tcp://127.0.0.1:{$port}", static function (Connection $connection): void {
-        $connection->onData(static function (Connection $connection, string $bytes): void {
+    ->listen("tcp://127.0.0.1:{$port}", static function (Connection $connection) use ($mode, $runtime): void {
+        $connection->onData(static function (Connection $connection, string $bytes) use ($mode, $runtime): void {
             $connection->tryWrite(getmypid() . ':' . $bytes);
+            if ($mode === 'single') {
+                $connection->loop()->delay(0.0, $runtime->stop(...));
+            }
             if ($bytes === "block\n") {
                 while (true) {
                     usleep(100_000);
@@ -37,7 +40,10 @@ $runtime
         fwrite(STDOUT, json_encode(['pid' => getmypid(), 'index' => $worker->index]) . "\n");
         fflush(STDOUT);
         if ($mode === 'single') {
-            $worker->loop->delay(0.15, $worker->stop(...));
+            $worker->loop->delay(
+                5.0,
+                static fn() => throw new RuntimeException('The single-process fixture received no request.'),
+            );
         }
     });
 $runtime->run(singleProcess: $mode === 'single');

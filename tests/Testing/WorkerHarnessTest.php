@@ -7,9 +7,9 @@ namespace Crab\Tests\Testing;
 use Crab\Contracts\Container\Container;
 use Crab\Contracts\Provider;
 use Crab\Contracts\WorkerProvider;
-use Crab\Engine\Async\Async;
 use Crab\Engine\Process\Worker;
 use Crab\Testing\WorkerHarness;
+use Crab\Tests\Support\Wait;
 use PHPUnit\Framework\TestCase;
 
 final class Ticker implements WorkerProvider
@@ -18,6 +18,7 @@ final class Ticker implements WorkerProvider
      * @var list<string>
      */
     public array $events = [];
+    public int $attempts = 0;
     private string $timer = '';
 
     public function __construct(
@@ -34,6 +35,7 @@ final class Ticker implements WorkerProvider
     {
         $this->events[] = 'start';
         $this->timer = $worker->loop->repeat(0.002, function () use ($container): void {
+            ++$this->attempts;
             if ($this->timerFails) {
                 throw new \RuntimeException('tick failed');
             }
@@ -62,7 +64,11 @@ final class WorkerHarnessTest extends TestCase
         $result = WorkerHarness::run([$ticker, $plain], static function (Worker $worker, Container $container) use (
             $ticker,
         ): array {
-            Async::sleep($worker->loop, 0.02);
+            Wait::until(
+                $worker->loop,
+                static fn(): bool => count($container->get('ticks')) >= 3,
+                'three provider ticks',
+            );
             return [$ticker->events, count($container->get('ticks')) > 2, $container->get('plain')];
         });
 
@@ -82,8 +88,9 @@ final class WorkerHarnessTest extends TestCase
         self::assertSame(['register', 'start', 'stop'], $ticker->events);
 
         $this->expectExceptionMessage('tick failed');
-        WorkerHarness::run([new Ticker(timerFails: true)], static function (Worker $worker): void {
-            Async::sleep($worker->loop, 0.01);
+        $failing = new Ticker(timerFails: true);
+        WorkerHarness::run([$failing], static function (Worker $worker) use ($failing): void {
+            Wait::until($worker->loop, static fn(): bool => $failing->attempts > 0, 'the failing provider tick');
         });
     }
 

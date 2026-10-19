@@ -27,7 +27,12 @@ final readonly class ForgetJobs implements Command
     public function handle(Input $input, Output $output): int
     {
         $id = $input->argument(0);
-        if ($id === null) {
+        if (
+            count($input->arguments()) !== 1
+            || $id === null
+            || trim($id) === ''
+            || preg_match('/[\x00-\x1f\x7f]/', $id) === 1
+        ) {
             $output->error('Say which failed job to delete: queue:forget 12, or queue:forget all');
             return 1;
         }

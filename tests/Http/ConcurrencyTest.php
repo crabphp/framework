@@ -4,12 +4,12 @@ declare(strict_types=1);
 
 namespace Crab\Tests\Http;
 
-use Crab\Engine\Async\Async;
 use Crab\Engine\Async\Task;
 use Crab\Engine\EventLoop;
 use Crab\Http\Concurrency;
 use Crab\Http\Request;
 use Crab\Http\Response;
+use Crab\Tests\Support\Wait;
 use PHPUnit\Framework\TestCase;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface;
@@ -24,15 +24,24 @@ final class ConcurrencyTest extends TestCase
         $running = 0;
         $most = 0;
         $order = [];
+        $released = 0;
         $handler = self::handler(static function (ServerRequestInterface $request) use (
             $loop,
             &$running,
             &$most,
             &$order,
+            &$released,
         ): ResponseInterface {
             $order[] = $request->getUri()->getPath();
             $most = max($most, ++$running);
-            Async::sleep($loop, 0.01);
+            $number = (int) substr($request->getUri()->getPath(), 1);
+            Wait::until(
+                $loop,
+                static function () use (&$released, $number): bool {
+                    return $released >= $number;
+                },
+                'release of concurrency request ' . $number,
+            );
             --$running;
             return Response::json(['ok' => true]);
         });
@@ -44,11 +53,23 @@ final class ConcurrencyTest extends TestCase
                 $handler,
             ));
         }
-        $loop->delay(0.005, static function () use ($limit): void {
+        try {
+            Wait::until(
+                $loop,
+                static fn(): bool => $limit->stats()['waiting'] === 3,
+                'three requests queued behind the two admitted requests',
+            );
             self::assertSame(['limit' => 2, 'running' => 2, 'waiting' => 3], $limit->stats());
-        });
-        foreach ($tasks as $task) {
-            self::assertSame(200, $task->await()->getStatusCode());
+            foreach ($tasks as $index => $task) {
+                $released = $index + 1;
+                Wait::until($loop, $task->isComplete(...), 'concurrency request ' . $released . ' to finish');
+                self::assertSame(200, $task->await()->getStatusCode());
+            }
+        } finally {
+            $released = count($tasks);
+            foreach ($tasks as $task) {
+                $task->cancel();
+            }
         }
         // Awaiting from main pauses the driver to return the result. Finish
         // its turn before another test installs its worker's loop.
@@ -64,19 +85,32 @@ final class ConcurrencyTest extends TestCase
         $loop = EventLoop::current();
         $limit = new Concurrency(1, wait: 0.02);
         $reached = [];
+        $release = false;
         $handler = self::handler(static function (ServerRequestInterface $request) use (
             $loop,
             &$reached,
+            &$release,
         ): ResponseInterface {
             $reached[] = $request->getUri()->getPath();
-            Async::sleep($loop, 0.1);
+            Wait::until(
+                $loop,
+                static function () use (&$release): bool {
+                    return $release;
+                },
+                'release of the admitted request after its waiter times out',
+            );
             return Response::json(['ok' => true]);
         });
 
         $slow = Task::spawn($loop, static fn(): ResponseInterface => $limit->process(self::request('/slow'), $handler));
         $late = Task::spawn($loop, static fn(): ResponseInterface => $limit->process(self::request('/late'), $handler));
 
-        $refused = $late->await();
+        try {
+            Wait::until($loop, $late->isComplete(...), 'the queued request to time out');
+            $refused = $late->await();
+        } finally {
+            $release = true;
+        }
         self::assertSame(503, $refused->getStatusCode());
         self::assertSame('1', $refused->getHeaderLine('Retry-After'));
         self::assertSame(

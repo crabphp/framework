@@ -243,10 +243,11 @@ final readonly class FileStore implements Store
 
     /**
      * Refuses a folder that already exists and that another user can write
-     * to, as one left 0775 or 0777 would be, or that another user owns, as
-     * one made first in a shared temp folder would be: they could put an
-     * entry there for Cache to unserialize. A folder this store makes is
-     * 0700. Root may use any user's folder, as it can write to it anyway.
+     * to, as one left 0775 or 0777 would be, or that another user owns:
+     * they could put an entry there for Cache to unserialize. A folder this
+     * store makes is 0700. Root may use the server user's folder, as an
+     * administrator running `php cua` as root does; the folder is always
+     * one the application was configured with, never a shared one.
      */
     private static function private(string $folder): void
     {

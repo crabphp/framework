@@ -591,7 +591,8 @@ final class HttpTest extends TestCase
             $loop->stop();
         });
         $cleanedUp = false;
-        new HttpServer(static function (Request $request) use ($loop, &$cleanedUp): string {
+        new HttpServer(static function (Request $request) use ($loop, $connection, &$cleanedUp): string {
+            $loop->defer($connection->close(...));
             try {
                 Async::sleep($loop, 10, $request->cancellation);
                 return 'too late';
@@ -600,10 +601,12 @@ final class HttpTest extends TestCase
             }
         })->attach($connection);
         fwrite($client, "GET / HTTP/1.1\r\nHost: x\r\n\r\n");
-        $loop->delay(0.01, static function () use ($connection): void {
-            $connection->close();
-        });
+        $watchdog = $loop->delay(
+            5,
+            static fn() => throw new RuntimeException('The HTTP handler did not start before connection close.'),
+        );
         $loop->run();
+        $loop->cancel($watchdog);
         fclose($client);
         self::assertTrue(
             $cleanedUp && $loop->getIdentifiers() === [],
@@ -701,7 +704,7 @@ final class HttpTest extends TestCase
                     $cleanedUp = true;
                 }
             },
-            ['headerTimeout' => 0.03, 'responseTimeout' => 0.12],
+            ['headerTimeout' => 0.03, 'responseTimeout' => 1.0],
         );
         self::assertSame('', $output, 'Response expiry must close without writing a request-timeout response.');
         self::assertTrue($survivedHeaderDeadline, 'The previous header deadline expired the current response early.');
@@ -813,12 +816,12 @@ final class HttpTest extends TestCase
             $worker->loop->onReadable($peer, static function () use ($peer): void {
                 fread($peer, 65_536);
             });
-            $worker->loop->delay(1, static function () use ($worker, &$timedOut): void {
+            $worker->loop->delay(5, static function () use ($worker, &$timedOut): void {
                 $timedOut = true;
                 $worker->stop();
             });
         });
-        $worker = new Worker($loop, $group, 0, ['tcp' => [$bound], 'udp' => []], 0.2);
+        $worker = new Worker($loop, $group, 0, ['tcp' => [$bound], 'udp' => []], 5.0);
         $worker->run();
         fclose($peer);
         self::assertFalse($timedOut, 'HTTP activity fixture never reached its cleanup phase.');

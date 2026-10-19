@@ -42,7 +42,12 @@ final readonly class InstallCache implements Command
             return 0;
         }
         $file = $migrator->make($name);
-        file_put_contents($file, self::migration($table));
+        if (@file_put_contents($file, self::migration($table)) === false) {
+            $output->error(
+                "Could not write {$file}. Check the destination and its permissions before running migrate.",
+            );
+            return 1;
+        }
         $output->line("Created {$file}");
         $output->line('Run `migrate` to create the table, and set "cache.store" to "database".');
         return 0;

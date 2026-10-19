@@ -31,6 +31,7 @@ use Crab\Schedule\ScheduleProvider;
 use Crab\Schedule\Scheduler;
 use Crab\Testing\FrozenClock;
 use Crab\Testing\WorkerHarness;
+use Crab\Tests\Support\Wait;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 use Psr\Clock\ClockInterface;
@@ -64,26 +65,6 @@ final class Records extends AbstractLogger
             (string) $level,
             strtr((string) $message, ['{task}' => $context['task'] ?? '', '{message}' => $context['message'] ?? '']),
         ];
-    }
-}
-
-/**
- * A clock that runs, from a time of the test's choosing.
- */
-final class RunningClock implements ClockInterface
-{
-    private float $started;
-
-    public function __construct(
-        private readonly \DateTimeImmutable $from,
-    ) {
-        $this->started = microtime(true);
-    }
-
-    public function now(): \DateTimeImmutable
-    {
-        $elapsed = (int) round((microtime(true) - $this->started) * 1_000_000);
-        return $this->from->modify("+{$elapsed} microseconds");
     }
 }
 
@@ -312,9 +293,16 @@ final class ScheduleTest extends TestCase
         $scheduler = new Scheduler($schedule, new Container(), $this->log);
 
         WorkerHarness::run([], static function (Worker $worker) use ($schedule, $scheduler, &$started, &$order): void {
-            $schedule->call(static function () use ($worker, &$started, &$order): void {
+            $release = false;
+            $schedule->call(static function () use ($worker, &$started, &$order, &$release): void {
                 ++$started;
-                Async::sleep($worker->loop, 0.03);
+                Wait::until(
+                    $worker->loop,
+                    static function () use (&$release): bool {
+                        return $release;
+                    },
+                    'release of the slow scheduled task',
+                );
                 $order[] = 'slow';
             })->name('slow');
             $schedule->call(static function () use (&$order): void {
@@ -322,10 +310,33 @@ final class ScheduleTest extends TestCase
             })->name('quick');
 
             self::assertSame(2, $scheduler->tick($worker, new \DateTimeImmutable('2026-03-10 07:00:00')));
-            Async::sleep($worker->loop, 0.005);
-            // The next minute comes while the slow one is still at it.
-            $scheduler->tick($worker, new \DateTimeImmutable('2026-03-10 07:01:00'));
-            Async::sleep($worker->loop, 0.06);
+            try {
+                Wait::until(
+                    $worker->loop,
+                    static function () use (&$started, &$order): bool {
+                        return $started === 1 && $order === ['quick'];
+                    },
+                    'the first minute to start both scheduled tasks',
+                );
+                // The next minute comes while the slow one is held at its barrier.
+                $scheduler->tick($worker, new \DateTimeImmutable('2026-03-10 07:01:00'));
+                Wait::until(
+                    $worker->loop,
+                    static function () use (&$order): bool {
+                        return $order === ['quick', 'quick'];
+                    },
+                    'the next quick task while the slow task remains held',
+                );
+            } finally {
+                $release = true;
+            }
+            Wait::until(
+                $worker->loop,
+                static function () use (&$order): bool {
+                    return count($order) === 3;
+                },
+                'the released slow scheduled task',
+            );
         });
 
         self::assertSame(1, $started);
@@ -360,15 +371,38 @@ final class ScheduleTest extends TestCase
         $schedule = new Schedule();
         $schedule->call(Beat::class)->cron('1 7 * * *');
         $schedule->call(static fn() => throw new \LogicException('not due'))->cron('0 7 * * *');
-        // Fifty milliseconds before 07:01.
-        $clock = new RunningClock(new \DateTimeImmutable('2026-03-10 07:00:59.950'));
+        $clock = new class implements ClockInterface {
+            public int $reads = 0;
+            public FrozenClock $time;
+
+            public function __construct()
+            {
+                $this->time = new FrozenClock('2026-03-10 07:00:59.950');
+            }
+
+            public function now(): \DateTimeImmutable
+            {
+                ++$this->reads;
+                return $this->time->now();
+            }
+        };
         $scheduler = new Scheduler($schedule, new Container(), $this->log, $clock);
 
-        WorkerHarness::run([], static function (Worker $worker) use ($scheduler): void {
+        WorkerHarness::run([], static function (Worker $worker) use ($scheduler, $clock): void {
             $cancellation = new Cancellation();
             $task = $worker->spawn(static fn() => $scheduler->work($worker, $cancellation));
-            Async::sleep($worker->loop, 0.15);
-            $cancellation->cancel();
+            try {
+                Wait::until(
+                    $worker->loop,
+                    static fn(): bool => $clock->reads >= 2,
+                    'the scheduler to arm its minute wakeup',
+                );
+                $clock->time->set('2026-03-10 07:01:00');
+                Wait::until($worker->loop, static fn(): bool => Beat::$count === 1, 'the scheduled minute task');
+            } finally {
+                $cancellation->cancel();
+            }
+            Wait::until($worker->loop, $task->isComplete(...), 'the scheduler to stop after cancellation');
             $task->await();
         });
 

@@ -14,6 +14,7 @@ use Crab\Engine\EventLoop;
 use Crab\Engine\EventLoop\RevoltEventLoop;
 use Crab\Engine\Network\Connection;
 use Crab\Engine\Tests\Support\TestCase;
+use Crab\Tests\Support\Wait;
 use LogicException;
 use RuntimeException;
 
@@ -23,20 +24,30 @@ final class AsyncTest extends TestCase
     {
         $loop = $this->newLoop();
         $order = [];
+        $release = false;
         $one = $this->spawn($loop, static function (#[\SensitiveParameter] Cancellation $token) use (
             $loop,
             &$order,
+            &$release,
         ): int {
-            Async::sleep($loop, 0.03, $token);
+            Wait::until(
+                $loop,
+                static function () use (&$release): bool {
+                    return $release;
+                },
+                'the other task to finish its concurrent sleep',
+            );
             $order[] = 'slow';
             return 41;
         });
         $two = $this->spawn($loop, static function (#[\SensitiveParameter] Cancellation $token) use (
             $loop,
             &$order,
+            &$release,
         ): int {
             Async::sleep($loop, 0.001, $token);
             $order[] = 'fast';
+            $release = true;
             return 1;
         });
         $completions = [];
@@ -102,16 +113,26 @@ final class AsyncTest extends TestCase
     public function testCancelledAwaitLeavesIndependentlyOwnedTargetRunning(): void
     {
         $loop = $this->newLoop();
-        $target = $this->spawn($loop, static function () use ($loop): int {
-            Async::sleep($loop, 0.02);
+        $held = null;
+        $target = $this->spawn($loop, static function () use ($loop, &$held): int {
+            $held = $loop->getSuspension();
+            $held->suspend();
             return 7;
         });
         $waiter = $this->spawn($loop, static fn(#[\SensitiveParameter] Cancellation $token): int => $target->await(
             $token,
         ));
-        $loop->delay(0.001, static fn() => $waiter->cancel());
+        Wait::until(
+            $loop,
+            static function () use (&$held): bool {
+                return $held !== null;
+            },
+            'the independently owned task to reach its barrier',
+        );
+        $waiter->cancel();
         $this->assertTaskCancelled($loop, $waiter);
         self::assertFalse($target->isComplete(), 'Cancelling await cancelled its target.');
+        $held->resume();
         self::assertSame(7, $this->awaitTask($loop, $target));
         self::assertSame([], $loop->getIdentifiers());
     }

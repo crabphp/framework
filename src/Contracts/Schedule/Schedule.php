@@ -9,7 +9,7 @@ namespace Crab\Contracts\Schedule;
  * application is defined, in a provider's register(), and `schedule:work`
  * runs each when it is due:
  *
- *     $schedule->command('reports:send')->daily('07:00');
+ *     $schedule->command('report:send')->daily('07:00');
  *     $schedule->job(PruneTokens::class, olderThanDays: 30)->hourly();
  *     $schedule->call(Heartbeat::class)->everyMinutes(5);
  *
@@ -27,7 +27,7 @@ interface Schedule
 
     /**
      * Runs one of the application's console commands, with its words:
-     * command('reports:send', '--month=last'). An exit status other than
+     * command('report:send', '--month=last'). An exit status other than
      * 0 is logged as a failure.
      */
     public function command(string $name, string ...$arguments): Task;
