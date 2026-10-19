@@ -55,7 +55,7 @@ final class CacheTest extends TestCase
             \RecursiveIteratorIterator::CHILD_FIRST,
         );
         foreach ($files as $file) {
-            $file->isDir() ? rmdir($file->getPathname()) : unlink($file->getPathname());
+            !$file->isLink() && $file->isDir() ? rmdir($file->getPathname()) : unlink($file->getPathname());
         }
         rmdir($this->directory);
     }
@@ -644,6 +644,117 @@ final class CacheTest extends TestCase
         }
         self::assertGreaterThan(0, $total);
         self::assertNull(new FileStore($this->directory . '/files')->get('lock', 100));
+    }
+
+    /**
+     * @return iterable<string, array{string, mixed}>
+     */
+    public static function removalsAfterAnOpenRace(): iterable
+    {
+        yield 'conditional release' => ['deleteIf', true];
+        yield 'take once' => ['take', 'token'];
+        yield 'ordinary deletion' => ['delete', null];
+        yield 'expired entry' => ['prune', 1];
+    }
+
+    #[DataProvider('removalsAfterAnOpenRace')]
+    public function testAnEntryThatDisappearsDuringOpenCanReturnWithTheSameInode(
+        string $operation,
+        mixed $expected,
+    ): void {
+        if (!function_exists('pcntl_alarm')) {
+            self::markTestSkipped('Needs pcntl to bound the isolated file-open race.');
+        }
+        // Ext4 can reuse an unlinked inode immediately. Hiding and restoring
+        // an entry around a real failed open reproduces that observation on
+        // every filesystem; the function override stays in this child only.
+        $code = <<<'PHP'
+            namespace Crab\Cache {
+                final class OpenRace {
+                    public static bool $pending = true;
+                    public static bool $missed = false;
+                    public static bool $sameInode = false;
+                }
+
+                function fopen(string $file, string $mode): mixed {
+                    if ($mode !== 'r+' || !OpenRace::$pending) {
+                        return \fopen($file, $mode);
+                    }
+                    OpenRace::$pending = false;
+                    \clearstatcache(true, $file);
+                    $inode = \lstat($file)['ino'];
+                    $aside = $file . '.parked';
+                    if (!\rename($file, $aside)) {
+                        throw new \RuntimeException('The file-open fixture could not hide its entry.');
+                    }
+                    try {
+                        // A real missing-path failure, before the same inode is visible again.
+                        $handle = @\fopen($file, $mode);
+                        OpenRace::$missed = $handle === false;
+                    } finally {
+                        if (!\rename($aside, $file)) {
+                            throw new \RuntimeException('The file-open fixture could not restore its entry.');
+                        }
+                    }
+                    \clearstatcache(true, $file);
+                    OpenRace::$sameInode = \lstat($file)['ino'] === $inode;
+                    return $handle;
+                }
+            }
+            namespace {
+                pcntl_signal(SIGALRM, SIG_DFL);
+                pcntl_alarm(10);
+                require $argv[1];
+                $store = new \Crab\Cache\FileStore($argv[2]);
+                $store->set('entry', 'token', 110);
+                $result = match ($argv[3]) {
+                    'deleteIf' => $store->deleteIf('entry', 'token', 100),
+                    'take' => $store->take('entry', 100),
+                    'delete' => $store->delete('entry'),
+                    'prune' => $store->prune(110),
+                };
+                echo json_encode([
+                    'missed' => \Crab\Cache\OpenRace::$missed,
+                    'same_inode' => \Crab\Cache\OpenRace::$sameInode,
+                    'result' => $result,
+                    'remaining' => $store->get('entry', 100),
+                ], JSON_THROW_ON_ERROR);
+            }
+            PHP;
+        $process = proc_open(
+            [
+                PHP_BINARY,
+                '-r',
+                $code,
+                dirname(__DIR__, 2) . '/vendor/autoload.php',
+                $this->directory . '/files',
+                $operation,
+            ],
+            [['file', '/dev/null', 'r'], ['pipe', 'w'], ['pipe', 'w']],
+            $pipes,
+        );
+        self::assertIsResource($process);
+        try {
+            $output = stream_get_contents($pipes[1]);
+            $error = stream_get_contents($pipes[2]);
+            $status = proc_close($process);
+        } finally {
+            foreach ($pipes as $pipe) {
+                if (!is_resource($pipe)) {
+                    continue;
+                }
+                fclose($pipe);
+            }
+            if (is_resource($process)) {
+                proc_terminate($process, SIGKILL);
+                proc_close($process);
+            }
+        }
+        self::assertSame(0, $status, 'The isolated file-open race failed or exceeded ten seconds: ' . $error . $output);
+        self::assertSame(
+            ['missed' => true, 'same_inode' => true, 'result' => $expected, 'remaining' => null],
+            json_decode($output, true, flags: JSON_THROW_ON_ERROR),
+        );
     }
 
     public function testPruningTheFileStoreLeavesForeignFilesAlone(): void

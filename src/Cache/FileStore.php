@@ -302,6 +302,9 @@ final readonly class FileStore implements Store
                     if ($after === false || $after['ino'] !== $before['ino']) {
                         return null;
                     }
+                    // An unlinked inode number may already have been reused.
+                    // Retry the open before treating this as a persistent I/O failure.
+                    continue;
                 }
                 break;
             }
