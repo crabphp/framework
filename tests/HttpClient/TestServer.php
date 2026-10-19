@@ -43,14 +43,14 @@ final class TestServer
     private string $accepting;
 
     /**
-     * @param \Closure(array, self): (string|array{string, float}|null) $reply The bytes to write back, with a number of seconds to wait first when given as a pair; null to close without a word. A reply holding "Connection: close" closes after it.
+     * @param \Closure(array, self): ?string $reply The bytes to write back; null closes without a word. A reply holding "Connection: close" closes after it. The callback may suspend to hold a reply.
      * @param string|null $certificate A PEM file holding a certificate and its key, to serve over TLS.
-     * @param float $handshakeDelay Seconds to wait before starting TLS, to test deadlines while a connection is being opened.
+     * @param (\Closure(): void)|null $beforeHandshake May hold each connection before its first TLS handshake attempt.
      */
     public function __construct(
         private readonly \Closure $reply,
         ?string $certificate = null,
-        float $handshakeDelay = 0.0,
+        ?\Closure $beforeHandshake = null,
     ) {
         $context = stream_context_create($certificate === null ? [] : ['ssl' => ['local_cert' => $certificate]]);
         $this->socket = stream_socket_server(
@@ -66,7 +66,7 @@ final class TestServer
         $this->accepting = $loop->onReadable($this->socket, function () use (
             $loop,
             $certificate,
-            $handshakeDelay,
+            $beforeHandshake,
         ): void {
             $connection = @stream_socket_accept($this->socket, 0);
             if ($connection === false) {
@@ -77,14 +77,32 @@ final class TestServer
             $this->open[$number] = $connection;
             $buffer = '';
             $encrypted = $certificate === null;
+            $handshake = $beforeHandshake;
             $reader = $loop->onReadable($connection, function (string $watcher) use (
                 $loop,
                 $connection,
                 $number,
                 &$buffer,
                 &$encrypted,
+                &$handshake,
             ): void {
                 if (!$encrypted) {
+                    if ($handshake !== null) {
+                        $hold = $handshake;
+                        $handshake = null;
+                        // Unread ClientHello bytes must not start another callback past the barrier.
+                        $loop->disable($watcher);
+                        try {
+                            $hold();
+                        } finally {
+                            if (isset($this->open[$number])) {
+                                $loop->enable($watcher);
+                            }
+                        }
+                        if (!isset($this->open[$number])) {
+                            return;
+                        }
+                    }
                     $done = @stream_socket_enable_crypto($connection, true, STREAM_CRYPTO_METHOD_TLS_SERVER);
                     if ($done === false) {
                         $this->drop($number);
@@ -112,7 +130,7 @@ final class TestServer
                         $this->drop($number);
                         return;
                     }
-                    [$bytes, $after] = is_array($reply) ? $reply : [$reply, 0.0];
+                    $bytes = $reply;
                     $write = function () use ($loop, $connection, $number, $bytes): void {
                         if (!isset($this->open[$number])) {
                             return;
@@ -137,22 +155,10 @@ final class TestServer
                             }
                         });
                     };
-                    $after > 0 ? $loop->delay($after, $write) : $write();
+                    $write();
                 }
             });
             $this->watching[$number][] = $reader;
-            if ($certificate !== null && $handshakeDelay > 0) {
-                $loop->disable($reader);
-                $this->watching[$number][] = $loop->delay($handshakeDelay, function () use (
-                    $loop,
-                    $number,
-                    $reader,
-                ): void {
-                    if (isset($this->open[$number])) {
-                        $loop->enable($reader);
-                    }
-                });
-            }
         });
     }
 

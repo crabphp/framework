@@ -13,6 +13,7 @@ use Crab\Engine\Async\Task;
 use Crab\Engine\EventLoop;
 use Crab\Engine\Network\DnsResolver;
 use Crab\Engine\Process\Worker;
+use Crab\Engine\Suspension;
 use Crab\Http\Request;
 use Crab\Http\Stream;
 use Crab\HttpClient\Client;
@@ -70,6 +71,41 @@ final class DeadlineTransport implements Transport
     public function close(): void
     {
         $this->network->close();
+    }
+}
+
+/**
+ * Holds a reply or handshake until the test has observed the caller's
+ * deadline or cancellation. Cleanup releases every held callback too.
+ */
+final class DeadlineBarrier
+{
+    public bool $entered = false;
+    private bool $released = false;
+    /**
+     * @var list<Suspension>
+     */
+    private array $waiting = [];
+
+    public function hold(): void
+    {
+        $this->entered = true;
+        if ($this->released) {
+            return;
+        }
+        $suspension = EventLoop::current()->getSuspension();
+        $this->waiting[] = $suspension;
+        $suspension->suspend();
+    }
+
+    public function release(): void
+    {
+        $this->released = true;
+        $waiting = $this->waiting;
+        $this->waiting = [];
+        foreach ($waiting as $suspension) {
+            $suspension->resume();
+        }
     }
 }
 
@@ -365,21 +401,27 @@ final class ClientTest extends TestCase
 
     public function testARequestThatGetsNoAnswerSaysWhy(): void
     {
-        $server = $this->server(static fn(array $request): array => [TestServer::reply(200, 'late'), 0.5]);
-        $http = $this->client(timeout: 0.1, connectTimeout: 0.5);
-        try {
-            $http->get($server->url('/slow'));
-            self::fail('A request that took too long was waited for.');
-        } catch (NetworkException $error) {
-            self::assertSame(
-                "GET http://127.0.0.1:{$server->port}/slow failed: it took more than 0.1 seconds, and was waiting for the answer when given up.",
-                $error->getMessage(),
-            );
-        }
+        $answer = new DeadlineBarrier();
+        $cancelled = new DeadlineBarrier();
+        $server = $this->server(static function (array $request) use ($answer, $cancelled): string {
+            $barrier = $request['target'] === '/cancel' ? $cancelled : $answer;
+            $barrier->hold();
+            return TestServer::reply(200, 'late');
+        });
+        $http = $this->client(timeout: 2.0, connectTimeout: 5.0);
+        $failure = $this->awaitTimeout(
+            $this->requestTask($http, $server->url('/slow')),
+            $answer,
+            'the unanswered HTTP request',
+        );
+        self::assertSame(
+            "GET http://127.0.0.1:{$server->port}/slow failed: it took more than 2 seconds, and was waiting for the answer when given up.",
+            $failure->getMessage(),
+        );
         self::assertSame(
             'late',
-            (string) $http->timeout(2.0)->get($server->url('/slow'))->getBody(),
-            'One request may be given longer.',
+            (string) $http->timeout(5.0)->get($server->url('/slow'))->getBody(),
+            'A timeout copy can still use the transport after the failed call.',
         );
         self::assertSame(
             2,
@@ -413,14 +455,21 @@ final class ClientTest extends TestCase
         }
 
         // Cancelling gives a request up at once, with the cancellation and not as a failure of the network.
-        $cancellation = new Cancellation();
-        EventLoop::current()->delay(0.02, static fn() => $cancellation->cancel());
-        $started = hrtime(true);
+        $loop = EventLoop::current();
+        $call = $this->requestTask($this->client(timeout: 10.0), $server->url('/cancel'));
         try {
-            $this->client()->request('GET', $server->url('/slow'), cancellation: $cancellation);
-            self::fail('A cancelled request went on.');
-        } catch (CancelledException) {
-            self::assertLessThan(5.0, (hrtime(true) - $started) / 1e9);
+            Wait::until(
+                $loop,
+                static fn(): bool => $cancelled->entered || $call->isComplete(),
+                'the request before cancellation',
+            );
+            self::assertTrue($cancelled->entered);
+            $call->cancel();
+            Wait::until($loop, $call->isComplete(...), 'cancellation to finish the held HTTP request');
+            self::assertInstanceOf(CancelledException::class, $call->result());
+        } finally {
+            $call->cancel();
+            $cancelled->release();
         }
     }
 
@@ -434,12 +483,12 @@ final class ClientTest extends TestCase
             &$pauseElapsed,
             &$timer,
         ): string {
-            $timer = $loop->delay(0.075, static function () use (&$pauseElapsed): void {
+            $timer = $loop->delay(5.0, static function () use (&$pauseElapsed): void {
                 $pauseElapsed = true;
             });
             return TestServer::reply(count($server->requests) === 1 ? 503 : 200, 'busy');
         });
-        $http = $this->client()->timeout(0.05)->retry(1, 0.2);
+        $http = $this->client()->timeout(2.0)->retry(1, 10.0);
         $completedBeforePause = false;
         $call = Task::spawn($loop, static function () use (
             $http,
@@ -519,12 +568,12 @@ final class ClientTest extends TestCase
         });
         $unsent = $prefix === '';
         try {
-            $http->timeout(0.05)->sendRequest(
+            $http->timeout(2.0)->sendRequest(
                 new Request('POST', $server->url('/late?token=secret#fragment-secret'), [], $body),
             );
             self::fail('The expired body was sent.');
         } catch (NetworkException $error) {
-            self::assertStringContainsString('it took more than 0.05 seconds, and was sending', $error->getMessage());
+            self::assertStringContainsString('it took more than 2 seconds, and was sending', $error->getMessage());
             self::assertStringNotContainsString('secret', $error->getMessage());
             self::assertInstanceOf(TimedOut::class, $error->getPrevious());
             self::assertSame($unsent, $error->unsent);
@@ -587,90 +636,76 @@ final class ClientTest extends TestCase
 
     public function testRetriesDoNotMultiplyTheWaitForAServerThatNeverAnswers(): void
     {
-        // Empty bytes keep the accepted socket open without answering the request.
-        $server = $this->server(static fn(array $request): string => '');
-        $http = $this->client()->timeout(0.3)->retry(3);
-        $started = hrtime(true);
-        $call = Task::spawn(EventLoop::current(), static function () use ($http, $server): ?NetworkException {
-            try {
-                $http->get($server->url('/silent'));
-                return null;
-            } catch (NetworkException $error) {
-                return $error;
-            }
+        $barrier = new DeadlineBarrier();
+        $server = $this->server(static function () use ($barrier): string {
+            $barrier->hold();
+            return TestServer::reply(200, 'late');
         });
+        $transport = new DeadlineTransport();
+        $http = $this->client(transport: $transport)->timeout(2.0)->retry(3);
+        $call = $this->requestTask($http, $server->url('/silent'));
 
-        $failure = $call->await();
-        self::assertInstanceOf(NetworkException::class, $failure);
+        $failure = $this->awaitTimeout($call, $barrier, 'the silent server receiving its request');
         self::assertStringContainsString(
-            'it took more than 0.3 seconds, and was waiting for the answer',
+            'it took more than 2 seconds, and was waiting for the answer',
             $failure->getMessage(),
         );
         self::assertSame(['/silent'], array_column($server->requests, 'target'));
-        self::assertLessThan(1.5, (hrtime(true) - $started) / 1e9);
+        self::assertCount(1, $transport->deadlines, 'The expired call does not start a fresh retry.');
+        self::assertGreaterThanOrEqual($transport->deadlines[0], hrtime(true) / 1e9);
     }
 
     public function testARedirectChainAndItsSlowFinalHopShareTheCallDeadline(): void
     {
-        $server = $this->server(static fn(array $request): array => match ($request['target']) {
-            '/first' => [TestServer::reply(302, '', ['Location' => '/second']), 0.1],
-            '/second' => [TestServer::reply(302, '', ['Location' => '/final']), 0.1],
-            default => [TestServer::reply(200, 'late'), 0.5],
+        $barrier = new DeadlineBarrier();
+        $server = $this->server(static function (array $request) use ($barrier): string {
+            if ($request['target'] === '/final') {
+                $barrier->hold();
+                return TestServer::reply(200, 'late');
+            }
+            return TestServer::reply(302, '', [
+                'Location' => $request['target'] === '/first' ? '/second' : '/final',
+            ]);
         });
         $transport = new DeadlineTransport();
-        $http = $this->client(transport: $transport)->timeout(0.3)->retry(3, 0.0);
-        $started = hrtime(true);
-        $call = Task::spawn(EventLoop::current(), static function () use ($http, $server): ?NetworkException {
-            try {
-                $http->get($server->url('/first'));
-                return null;
-            } catch (NetworkException $error) {
-                return $error;
-            }
-        });
+        $http = $this->client(transport: $transport)->timeout(2.0)->retry(3, 0.0);
+        $call = $this->requestTask($http, $server->url('/first'));
 
-        $failure = $call->await();
-        self::assertInstanceOf(NetworkException::class, $failure);
-        self::assertStringContainsString('/final failed: it took more than 0.3 seconds', $failure->getMessage());
+        $failure = $this->awaitTimeout($call, $barrier, 'the final redirect hop receiving its request');
+        self::assertStringContainsString('/final failed: it took more than 2 seconds', $failure->getMessage());
         self::assertSame(['/first', '/second', '/final'], array_column($server->requests, 'target'));
         self::assertSame(array_fill(0, 3, $transport->deadlines[0]), $transport->deadlines);
-        self::assertLessThan(1.5, (hrtime(true) - $started) / 1e9);
+        self::assertGreaterThanOrEqual($transport->deadlines[0], hrtime(true) / 1e9);
     }
 
     public function testALaterTryGetsOnlyTheTimeLeftByTheFirstTry(): void
     {
-        $server = $this->server(static fn(array $request, TestServer $server): array => (
-            count($server->requests) === 1
-                ? [TestServer::reply(503, 'busy'), 0.2]
-                : [TestServer::reply(200, 'late'), 0.5]
-        ));
-        $transport = new DeadlineTransport();
-        $http = $this->client(transport: $transport)->timeout(0.3)->retry(1, 0.0);
-        $started = hrtime(true);
-        $call = Task::spawn(EventLoop::current(), static function () use ($http, $server): ?NetworkException {
-            try {
-                $http->get($server->url('/busy'));
-                return null;
-            } catch (NetworkException $error) {
-                return $error;
+        $barrier = new DeadlineBarrier();
+        $server = $this->server(static function (array $request, TestServer $server) use ($barrier): string {
+            if (count($server->requests) === 1) {
+                return TestServer::reply(503, 'busy');
             }
+            $barrier->hold();
+            return TestServer::reply(200, 'late');
         });
+        $transport = new DeadlineTransport();
+        $http = $this->client(transport: $transport)->timeout(2.0)->retry(1, 0.0);
+        $call = $this->requestTask($http, $server->url('/busy'));
 
-        $failure = $call->await();
-        self::assertInstanceOf(NetworkException::class, $failure);
+        $failure = $this->awaitTimeout($call, $barrier, 'the retry receiving its request');
         self::assertStringContainsString(
-            'it took more than 0.3 seconds, and was waiting for the answer',
+            'it took more than 2 seconds, and was waiting for the answer',
             $failure->getMessage(),
         );
         self::assertCount(2, $server->requests);
         self::assertSame([$transport->deadlines[0], $transport->deadlines[0]], $transport->deadlines);
         self::assertGreaterThan(0.0, $transport->remaining[1]);
         self::assertLessThan(
-            0.15,
+            $transport->remaining[0],
             $transport->remaining[1],
-            'The second try gets what remains, without a minimum or a fresh allowance.',
+            'The second try gets less time, while keeping the first try\'s absolute deadline.',
         );
-        self::assertLessThan(1.5, (hrtime(true) - $started) / 1e9);
+        self::assertGreaterThanOrEqual($transport->deadlines[0], hrtime(true) / 1e9);
     }
 
     public function testTheCallDeadlineAlsoBoundsAnUnfinishedTlsConnection(): void
@@ -679,24 +714,21 @@ final class ClientTest extends TestCase
             self::markTestSkipped('The openssl extension is needed to delay a TLS handshake.');
         }
         $certificate = $this->certificate('localhost');
+        $barrier = new DeadlineBarrier();
         $server =
             $this->servers[] = new TestServer(
                 static fn(array $request): string => TestServer::reply(200, 'late'),
                 $certificate,
-                handshakeDelay: 2.0,
+                beforeHandshake: $barrier->hold(...),
             );
-        $http = $this->client(connectTimeout: 2.0, tls: ['cafile' => $certificate])->timeout(0.3)->retry(3);
-        $started = hrtime(true);
-        try {
-            $http->get($server->url('/slow', 'https', 'localhost'));
-            self::fail('The connection outlasted the call budget.');
-        } catch (NetworkException $error) {
-            self::assertStringContainsString('it took more than 0.3 seconds', $error->getMessage());
-            self::assertTrue($error->unsent);
-        }
+        $http = $this->client(connectTimeout: 10.0, tls: ['cafile' => $certificate])->timeout(2.0)->retry(3);
+        $call = $this->requestTask($http, $server->url('/slow', 'https', 'localhost'));
+        $failure = $this->awaitTimeout($call, $barrier, 'the unfinished TLS handshake');
+
+        self::assertStringContainsString('it took more than 2 seconds', $failure->getMessage());
+        self::assertTrue($failure->unsent);
         self::assertSame([], $server->requests);
         self::assertSame(1, $server->connections);
-        self::assertLessThan(1.5, (hrtime(true) - $started) / 1e9);
     }
 
     public function testTheConnectTimeoutStillAppliesWhenTheCallHasMoreTime(): void
@@ -705,26 +737,21 @@ final class ClientTest extends TestCase
             self::markTestSkipped('The openssl extension is needed to delay a TLS handshake.');
         }
         $certificate = $this->certificate('localhost');
+        $barrier = new DeadlineBarrier();
         $server =
             $this->servers[] = new TestServer(
                 static fn(array $request): string => TestServer::reply(200, 'late'),
                 $certificate,
-                handshakeDelay: 2.0,
+                beforeHandshake: $barrier->hold(...),
             );
-        $http = $this->client(timeout: 2.0, connectTimeout: 0.3, tls: ['cafile' => $certificate]);
-        $started = hrtime(true);
-        try {
-            $http->get($server->url('/slow', 'https', 'localhost'));
-            self::fail('The connection ignored its shorter timeout.');
-        } catch (NetworkException $error) {
-            self::assertStringContainsString(
-                'connecting to localhost took more than 0.3 seconds',
-                $error->getMessage(),
-            );
-            self::assertTrue($error->unsent);
-        }
+        $http = $this->client(timeout: 10.0, connectTimeout: 2.0, tls: ['cafile' => $certificate]);
+        $call = $this->requestTask($http, $server->url('/slow', 'https', 'localhost'));
+        $failure = $this->awaitTimeout($call, $barrier, 'the TLS handshake with a shorter connection budget');
+
+        self::assertStringContainsString('connecting to localhost took more than 2 seconds', $failure->getMessage());
+        self::assertTrue($failure->unsent);
         self::assertSame([], $server->requests);
-        self::assertLessThan(1.5, (hrtime(true) - $started) / 1e9);
+        self::assertSame(1, $server->connections);
     }
 
     public function testWaitingForAProxyTunnelAlsoUsesTheCallDeadline(): void
@@ -732,20 +759,21 @@ final class ClientTest extends TestCase
         if (!extension_loaded('openssl')) {
             self::markTestSkipped('The openssl extension is needed for an HTTPS request through a proxy.');
         }
-        $proxy = $this->server(static fn(array $request): string => '');
+        $barrier = new DeadlineBarrier();
+        $proxy = $this->server(static function () use ($barrier): string {
+            $barrier->hold();
+            return '';
+        });
         $server = $this->server(static fn(array $request): string => TestServer::reply(200, 'never reached'));
-        $http = $this->client(connectTimeout: 2.0, proxy: $proxy->url())->timeout(0.3)->retry(3);
-        $started = hrtime(true);
-        try {
-            $http->get($server->url('/private', 'https'));
-            self::fail('The proxy tunnel outlasted the call budget.');
-        } catch (NetworkException $error) {
-            self::assertStringContainsString('it took more than 0.3 seconds', $error->getMessage());
-            self::assertTrue($error->unsent);
-        }
+        $http = $this->client(connectTimeout: 10.0, proxy: $proxy->url())->timeout(2.0)->retry(3);
+        $call = $this->requestTask($http, $server->url('/private', 'https'));
+        $failure = $this->awaitTimeout($call, $barrier, 'the proxy receiving CONNECT');
+
+        self::assertStringContainsString('it took more than 2 seconds', $failure->getMessage());
+        self::assertTrue($failure->unsent);
         self::assertSame(['CONNECT'], array_column($proxy->requests, 'method'));
         self::assertSame([], $server->requests);
-        self::assertLessThan(1.5, (hrtime(true) - $started) / 1e9);
+        self::assertSame(0, $server->connections);
     }
 
     public function testAWaitingCallerOpensAReplacementWithItsOwnDeadline(): void
@@ -754,30 +782,46 @@ final class ClientTest extends TestCase
             self::markTestSkipped('The openssl extension is needed to delay a TLS handshake.');
         }
         $certificate = $this->certificate('localhost');
+        $barrier = new DeadlineBarrier();
         $server =
             $this->servers[] = new TestServer(
                 static fn(array $request): string => TestServer::reply(200, $request['target']),
                 $certificate,
-                handshakeDelay: 0.2,
+                beforeHandshake: $barrier->hold(...),
             );
-        $http = $this->client(timeout: 2.0, connections: 1, tls: ['cafile' => $certificate]);
+        $transport = new DeadlineTransport(new Network(connections: 1, tls: ['cafile' => $certificate]));
+        $http = $this->client(timeout: 10.0, transport: $transport);
         $loop = EventLoop::current();
-        $first = Task::spawn($loop, static function () use ($http, $server): ?NetworkException {
-            try {
-                $http->timeout(0.05)->get($server->url('/expired', 'https', 'localhost'));
-                return null;
-            } catch (NetworkException $error) {
-                return $error;
-            }
-        });
-        $waiting = Task::spawn($loop, static fn(): Response => $http->get($server->url(
-            '/waiting',
-            'https',
-            'localhost',
-        )));
+        $first = $this->requestTask($http->timeout(2.0), $server->url('/expired', 'https', 'localhost'));
+        $waiting = null;
+        try {
+            Wait::until(
+                $loop,
+                static fn(): bool => $barrier->entered || $first->isComplete(),
+                'the first TLS handshake',
+            );
+            self::assertTrue($barrier->entered);
+            $waiting = $this->requestTask($http, $server->url('/waiting', 'https', 'localhost'));
+            Wait::until(
+                $loop,
+                static fn(): bool => count($transport->deadlines) === 2,
+                'the waiting call entering the occupied pool',
+            );
+            self::assertFalse($waiting->isComplete());
+            self::assertSame(1, $server->connections);
 
-        self::assertInstanceOf(NetworkException::class, $first->await());
-        self::assertSame('/waiting', (string) $waiting->await()->getBody());
+            $failure = $this->awaitTimeout($first, $barrier, 'the first TLS handshake');
+            self::assertStringContainsString('it took more than 2 seconds', $failure->getMessage());
+            Wait::until($loop, $waiting->isComplete(...), 'the waiting call to open its replacement connection');
+            $response = $waiting->result();
+            self::assertInstanceOf(Response::class, $response);
+            self::assertSame('/waiting', (string) $response->getBody());
+        } finally {
+            $first->cancel();
+            $waiting?->cancel();
+            $barrier->release();
+        }
+
         self::assertSame(['/waiting'], array_column($server->requests, 'target'));
         self::assertSame(
             2,
@@ -794,11 +838,11 @@ final class ClientTest extends TestCase
     public static function addressDeadlines(): iterable
     {
         yield 'the whole call ends first' => [
-            0.3,
             2.0,
-            'it took more than 0.3 seconds, and was finding the server address',
+            10.0,
+            'it took more than 2 seconds, and was finding the server address',
         ];
-        yield 'the connection ends first' => [2.0, 0.3, 'connecting to deadline.invalid took more than 0.3 seconds'];
+        yield 'the connection ends first' => [10.0, 2.0, 'connecting to deadline.invalid took more than 2 seconds'];
     }
 
     #[DataProvider('addressDeadlines')]
@@ -813,22 +857,22 @@ final class ClientTest extends TestCase
         stream_set_blocking($nameserver, false);
         $address = stream_socket_get_name($nameserver, false);
         $queries = [];
-        $reader = $loop->onReadable($nameserver, static function () use ($nameserver, &$queries): void {
+        $barrier = new DeadlineBarrier();
+        $reader = $loop->onReadable($nameserver, static function () use ($nameserver, $barrier, &$queries): void {
             $queries[] = stream_socket_recvfrom($nameserver, 65_535);
+            $barrier->hold();
         });
         $server = $this->server(static fn(array $request): string => TestServer::reply(200, 'never reached'));
-        $resolver = new DnsResolver(servers: [$address], patience: 2.0, rounds: 1, fallback: false);
+        $resolver = new DnsResolver(servers: [$address], patience: 20.0, rounds: 1, fallback: false);
         $http = $this->client(
             timeout: $timeout,
             transport: new Network(connectTimeout: $connectTimeout, resolver: $resolver),
         );
-        $started = hrtime(true);
+        $call = $this->requestTask($http, $server->url('/', host: 'deadline.invalid'));
         try {
-            $http->get($server->url('/', host: 'deadline.invalid'));
-            self::fail('The unanswered name lookup ignored its deadline.');
-        } catch (NetworkException $error) {
-            self::assertStringContainsString($message, $error->getMessage());
-            self::assertTrue($error->unsent);
+            $failure = $this->awaitTimeout($call, $barrier, 'the local name server receiving its question');
+            self::assertStringContainsString($message, $failure->getMessage());
+            self::assertTrue($failure->unsent);
         } finally {
             $loop->cancel($reader);
             fclose($nameserver);
@@ -836,7 +880,6 @@ final class ClientTest extends TestCase
         self::assertCount(1, $queries, 'The request reached the local name server and no retry lookup was sent.');
         self::assertSame([], $server->requests);
         self::assertSame(0, $server->connections);
-        self::assertLessThan(1.5, (hrtime(true) - $started) / 1e9);
     }
 
     public function testCancellationDuringConnectionSetupIsStillTheCallersCancellation(): void
@@ -845,31 +888,33 @@ final class ClientTest extends TestCase
             self::markTestSkipped('The openssl extension is needed to delay a TLS handshake.');
         }
         $certificate = $this->certificate('localhost');
+        $barrier = new DeadlineBarrier();
         $server =
             $this->servers[] = new TestServer(
                 static fn(array $request): string => TestServer::reply(200, 'never reached'),
                 $certificate,
-                handshakeDelay: 2.0,
+                beforeHandshake: $barrier->hold(...),
             );
         $loop = EventLoop::current();
-        $cancellation = new Cancellation();
-        $http = $this->client(timeout: 2.0, tls: ['cafile' => $certificate]);
-        $started = hrtime(true);
-        $call = Task::spawn($loop, static function () use ($http, $server, $cancellation): ?\Throwable {
-            try {
-                $http->request('GET', $server->url('/', 'https', 'localhost'), cancellation: $cancellation);
-                return null;
-            } catch (\Throwable $error) {
-                return $error;
-            }
-        });
-        // The first task suspends opening its socket before the next task cancels it.
-        $cancel = Task::spawn($loop, static fn() => $cancellation->cancel());
-        $cancel->await();
+        $http = $this->client(timeout: 10.0, connectTimeout: 10.0, tls: ['cafile' => $certificate]);
+        $call = $this->requestTask($http, $server->url('/', 'https', 'localhost'));
+        try {
+            Wait::until(
+                $loop,
+                static fn(): bool => $barrier->entered || $call->isComplete(),
+                'the TLS handshake before cancellation',
+            );
+            self::assertTrue($barrier->entered);
+            $call->cancel();
+            Wait::until($loop, $call->isComplete(...), 'cancellation to end the held TLS handshake');
 
-        self::assertInstanceOf(CancelledException::class, $call->await());
+            self::assertInstanceOf(CancelledException::class, $call->result());
+        } finally {
+            $call->cancel();
+            $barrier->release();
+        }
         self::assertSame([], $server->requests);
-        self::assertLessThan(1.5, (hrtime(true) - $started) / 1e9);
+        self::assertSame(1, $server->connections);
     }
 
     public function testAKeptConnectionTheServerClosedIsReplacedAndOnlyASafeRequestIsSentAgain(): void
@@ -1363,41 +1408,36 @@ final class ClientTest extends TestCase
 
     public function testWaitingForAConnectionEndsWithTheRequestsOwnTimeout(): void
     {
-        $release = false;
-        $server = $this->server(static function () use (&$release): string {
-            Wait::until(
-                EventLoop::current(),
-                static function () use (&$release): bool {
-                    return $release;
-                },
-                'release of the HTTP connection held while another caller times out',
-            );
+        $barrier = new DeadlineBarrier();
+        $server = $this->server(static function () use ($barrier): string {
+            $barrier->hold();
             return TestServer::reply(200, 'slow');
         });
         $http = $this->client(connections: 1);
-        $first = Task::spawn(
-            EventLoop::current(),
-            static fn(): string => (string) $http->get($server->url('/'))->getBody(),
-        );
-        Wait::until(
-            EventLoop::current(),
-            static fn(): bool => count($server->requests) === 1,
-            'the first request to hold the only HTTP connection',
-        );
-        $started = hrtime(true);
+        $loop = EventLoop::current();
+        $first = $this->requestTask($http, $server->url('/'));
         try {
-            $http->timeout(0.1)->get($server->url('/'));
-            self::fail('A request waited past its own timeout for a connection.');
-        } catch (NetworkException $error) {
-            self::assertStringContainsString(
-                'it took more than 0.1 seconds, and every one of the 1 connections to 127.0.0.1 was still busy',
-                $error->getMessage(),
+            Wait::until(
+                $loop,
+                static fn(): bool => $barrier->entered || $first->isComplete(),
+                'the first request holding the only HTTP connection',
             );
-            self::assertLessThan(5.0, (hrtime(true) - $started) / 1e9);
+            self::assertTrue($barrier->entered);
+            $waiting = $this->requestTask($http->timeout(2.0), $server->url('/'));
+            $failure = $this->awaitTimeout($waiting, $barrier, 'the occupied HTTP connection');
+            self::assertStringContainsString(
+                'it took more than 2 seconds, and every one of the 1 connections to 127.0.0.1 was still busy',
+                $failure->getMessage(),
+            );
+            self::assertCount(1, $server->requests);
+            Wait::until($loop, $first->isComplete(...), 'the released first HTTP request to finish');
+            $response = $first->result();
+            self::assertInstanceOf(Response::class, $response);
+            self::assertSame('slow', (string) $response->getBody());
         } finally {
-            $release = true;
+            $first->cancel();
+            $barrier->release();
         }
-        self::assertSame('slow', $first->await());
     }
 
     public function testARequestWhoseDeadlinePassesWhileConnectingIsNeverSent(): void
@@ -1406,19 +1446,16 @@ final class ClientTest extends TestCase
             self::markTestSkipped('The openssl extension is needed to delay a TLS handshake.');
         }
         $certificate = $this->certificate('localhost');
+        $barrier = new DeadlineBarrier();
         $server =
             $this->servers[] = new TestServer(
                 static fn(array $request): string => TestServer::reply(200, $request['target']),
                 $certificate,
-                handshakeDelay: 0.2,
+                beforeHandshake: $barrier->hold(...),
             );
-        $http = $this->client(timeout: 0.05, connectTimeout: 2.0, connections: 1, tls: ['cafile' => $certificate]);
-        $failure = null;
-        try {
-            $http->post($server->url('/expired', 'https', 'localhost'), json: ['amount' => 500]);
-        } catch (NetworkException $error) {
-            $failure = $error;
-        }
+        $http = $this->client(timeout: 2.0, connectTimeout: 10.0, connections: 1, tls: ['cafile' => $certificate]);
+        $call = $this->requestTask($http, $server->url('/expired', 'https', 'localhost'), 'POST', ['amount' => 500]);
+        $failure = $this->awaitTimeout($call, $barrier, 'the POST connection before any request bytes are sent');
 
         // The successful follow-up below also confirms that no late request arrived.
         self::assertSame(
@@ -1426,14 +1463,13 @@ final class ClientTest extends TestCase
             $server->requests,
             'Finishing a connection after the request deadline must not send the request.',
         );
-        self::assertInstanceOf(NetworkException::class, $failure);
-        self::assertStringContainsString('it took more than 0.05 seconds', $failure->getMessage());
+        self::assertStringContainsString('it took more than 2 seconds', $failure->getMessage());
         self::assertTrue($failure->unsent);
 
         self::assertSame(
             '/after',
             (string) $http
-                ->timeout(2.0)
+                ->timeout(10.0)
                 ->get($server->url('/after', 'https', 'localhost'))
                 ->getBody(),
             'Giving up the expired request must leave the connection pool usable.',
@@ -1448,33 +1484,62 @@ final class ClientTest extends TestCase
 
     public function testARequestWhoseDeadlinePassesAfterAPoolSlotIsHandedOverIsNeverSent(): void
     {
-        $server = $this->server(static fn(array $request): string => TestServer::reply(200, $request['target']));
-        $http = $this->client(connections: 1, timeout: 2.0);
-        $loop = EventLoop::current();
-        $first = Task::spawn($loop, static fn(): string => (string) $http->get($server->url('/first'))->getBody());
-        $waiting = Task::spawn($loop, static function () use ($http, $server): ?NetworkException {
-            try {
-                $http->timeout(0.05)->post($server->url('/expired'), json: ['amount' => 500]);
-                return null;
-            } catch (NetworkException $error) {
-                return $error;
+        $barrier = new DeadlineBarrier();
+        $server = $this->server(static function (array $request) use ($barrier): string {
+            if ($request['target'] === '/first') {
+                $barrier->hold();
             }
+            return TestServer::reply(200, $request['target']);
         });
-        // Pool release queues the waiter before this callback runs. Hold the
-        // worker until its deadline passes, before its fiber can use the slot.
-        $first->onComplete(static function (): void {
-            usleep(200_000);
-        });
+        $transport = new DeadlineTransport(new Network(connections: 1));
+        $http = $this->client(transport: $transport, timeout: 10.0);
+        $loop = EventLoop::current();
+        $first = $this->requestTask($http, $server->url('/first'));
+        $waiting = null;
+        $heldAfterHandoff = false;
+        try {
+            Wait::until(
+                $loop,
+                static fn(): bool => $barrier->entered || $first->isComplete(),
+                'the first request holding the pool slot',
+            );
+            self::assertTrue($barrier->entered);
+            $waiting = $this->requestTask($http->timeout(2.0), $server->url('/expired'), 'POST', ['amount' => 500]);
+            Wait::until(
+                $loop,
+                static fn(): bool => count($transport->deadlines) === 2,
+                'the POST waiting for the occupied pool slot',
+            );
+            self::assertFalse($waiting->isComplete());
+            // Pool release queues the waiter before this callback runs. Hold the
+            // worker past that caller's recorded deadline before its fiber resumes.
+            $first->onComplete(static function () use ($transport, &$heldAfterHandoff): void {
+                $heldAfterHandoff = true;
+                while ((hrtime(true) / 1e9) <= $transport->deadlines[1]) {
+                    usleep(1000);
+                }
+            });
+            $barrier->release();
 
-        self::assertSame('/first', $first->await());
-        $failure = $waiting->await();
+            $response = $first->await();
+            self::assertInstanceOf(Response::class, $response);
+            self::assertSame('/first', (string) $response->getBody());
+            Wait::until($loop, $waiting->isComplete(...), 'the handed-over POST to finish');
+            $failure = $waiting->result();
+        } finally {
+            $first->cancel();
+            $waiting?->cancel();
+            $barrier->release();
+        }
+
+        self::assertTrue($heldAfterHandoff);
         self::assertSame(
             ['/first'],
             array_column($server->requests, 'target'),
             'A queued fiber must recheck its deadline after receiving the pooled connection.',
         );
         self::assertInstanceOf(NetworkException::class, $failure);
-        self::assertStringContainsString('it took more than 0.05 seconds', $failure->getMessage());
+        self::assertStringContainsString('it took more than 2 seconds', $failure->getMessage());
         self::assertTrue($failure->unsent);
         self::assertSame('/after', (string) $http->get($server->url('/after'))->getBody());
         self::assertSame(['/first', '/after'], array_column($server->requests, 'target'));
@@ -1516,7 +1581,7 @@ final class ClientTest extends TestCase
     public function testTheProviderUsesTheApplicationClockForRetryDates(): void
     {
         $app = new \Crab\App(new \Crab\Config\Config([
-            'http_client' => ['timeout' => 1.0, 'retries' => 1],
+            'http_client' => ['timeout' => 2.0, 'retries' => 1],
         ]));
         $app->container->instance(
             \Crab\Contracts\Clock\Clock::class,
@@ -1524,7 +1589,7 @@ final class ClientTest extends TestCase
         );
         $app->register(HttpClientProvider::class);
         $server = $this->server(static fn(): string => TestServer::reply(429, 'slow down', [
-            'Retry-After' => 'Sat, 03 Feb 2001 04:05:08 GMT',
+            'Retry-After' => 'Sat, 03 Feb 2001 04:05:16 GMT',
         ]));
         $http = $this->clients[] = $app->container->get(ClientContract::class);
 
@@ -1534,8 +1599,47 @@ final class ClientTest extends TestCase
         self::assertCount(
             1,
             $server->requests,
-            'The provider passes the frozen clock, so the two-second wait cannot fit.',
+            'The provider passes the frozen clock, so the ten-second wait cannot fit.',
         );
+    }
+
+    /**
+     * Keeps cancellation available for cleanup if an expected stage never arrives.
+     */
+    private function requestTask(Client $http, string $url, string $method = 'GET', mixed $json = null): Task
+    {
+        return Task::spawn(EventLoop::current(), static function (Cancellation $cancellation) use (
+            $http,
+            $url,
+            $method,
+            $json,
+        ): Response|\Throwable {
+            try {
+                return $http->request($method, $url, json: $json, cancellation: $cancellation);
+            } catch (\Throwable $error) {
+                return $error;
+            }
+        });
+    }
+
+    /**
+     * Checks that a call reached the held stage before its deadline expired.
+     * A separate five-second wait diagnoses a missing timeout, without measuring throughput.
+     */
+    private function awaitTimeout(Task $call, DeadlineBarrier $barrier, string $stage): NetworkException
+    {
+        $loop = EventLoop::current();
+        try {
+            Wait::until($loop, static fn(): bool => $barrier->entered || $call->isComplete(), $stage);
+            self::assertTrue($barrier->entered, 'The call must reach ' . $stage . ' before its deadline.');
+            Wait::until($loop, $call->isComplete(...), 'the call deadline while holding ' . $stage);
+            $failure = $call->result();
+            self::assertInstanceOf(NetworkException::class, $failure);
+            return $failure;
+        } finally {
+            $call->cancel();
+            $barrier->release();
+        }
     }
 
     private function server(\Closure $reply, ?string $certificate = null): TestServer
