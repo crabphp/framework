@@ -38,6 +38,9 @@ final readonly class Restart implements Command
         $address = Serve::address($this->app, $input);
         $workers = Serve::workers($this->app, $input);
         $timeout = $input->option('timeout');
+        if ($timeout === true) {
+            throw new \InvalidArgumentException('--timeout needs a value; use --timeout=value.');
+        }
         try {
             $old = $server->stop($timeout === null ? null : (float) $timeout, $input->flag('force'));
             if ($old !== null) {

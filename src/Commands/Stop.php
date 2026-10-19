@@ -31,6 +31,9 @@ final readonly class Stop implements Command
     {
         $server = new Server($this->app);
         $timeout = $input->option('timeout');
+        if ($timeout === true) {
+            throw new \InvalidArgumentException('--timeout needs a value; use --timeout=value.');
+        }
         try {
             $pid = $server->stop($timeout === null ? null : (float) $timeout, $input->flag('force'));
         } catch (\RuntimeException $error) {

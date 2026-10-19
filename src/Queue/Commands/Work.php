@@ -112,6 +112,11 @@ final readonly class Work implements Command
      */
     private function supervisors(Input $input): array
     {
+        foreach (['queue', 'workers', 'concurrency', 'supervisor'] as $option) {
+            if ($input->option($option) === true) {
+                throw new \InvalidArgumentException("--{$option} needs a value; use --{$option}=value.");
+            }
+        }
         $declared = Supervisor::all($this->config);
         $described = array_filter(
             [

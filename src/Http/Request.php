@@ -176,15 +176,22 @@ final class Request extends Message implements RequestContract
 
     /**
      * The address at the other end of the connection, without its port.
+     * An IPv4 client of a listener on [::] arrives as "::ffff:192.0.2.7"
+     * and is given as the IPv4 address it is.
      */
     private function peer(): string
     {
         $peer = $this->source->peer ?? '';
         if ($peer === '') {
-            return (string) ($this->serverParams['REMOTE_ADDR'] ?? '');
+            $address = (string) ($this->serverParams['REMOTE_ADDR'] ?? '');
+        } else {
+            $colon = strrpos($peer, ':');
+            $address = trim($colon === false ? $peer : substr($peer, 0, $colon), '[]');
         }
-        $colon = strrpos($peer, ':');
-        return trim($colon === false ? $peer : substr($peer, 0, $colon), '[]');
+        $ipv4 = substr($address, 7);
+        return strncasecmp($address, '::ffff:', 7) === 0 && filter_var($ipv4, FILTER_VALIDATE_IP, FILTER_FLAG_IPV4)
+            ? $ipv4
+            : $address;
     }
 
     public function getCookieParams(): array

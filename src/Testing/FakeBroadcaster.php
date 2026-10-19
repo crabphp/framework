@@ -52,9 +52,9 @@ final readonly class FakeBroadcaster implements Broadcaster
         if (!mb_check_encoding($encoded, 'UTF-8')) {
             throw new \InvalidArgumentException('Broadcast text must be UTF-8; binary broadcasting is not supported.');
         }
-        $record = function () use ($message): void {
+        $record = function () use ($encoded): void {
             foreach ($this->channels as $channel) {
-                $this->sent[] = [$channel, $message];
+                $this->sent[] = [$channel, $encoded];
             }
         };
         if ($this->transaction === null) {
@@ -66,9 +66,10 @@ final readonly class FakeBroadcaster implements Broadcaster
 
     public function assertSent(string $channel, array|string $message): void
     {
+        $encoded = is_array($message) ? json_encode($message, JSON_THROW_ON_ERROR) : $message;
         $found = false;
         foreach ($this->sent as $sent) {
-            if ($sent !== [$channel, $message]) {
+            if ($sent !== [$channel, $encoded]) {
                 continue;
             }
 

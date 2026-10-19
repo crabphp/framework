@@ -34,7 +34,7 @@ use Crab\Validation\Length;
 // A few fields: take them as parameters.
 Route::get('/users', static fn (int $page = 1, ?string $search = null): array => $users->page($page, $search));
 
-Route::post('/users', static function (#[Email] string $email, #[Length(min: 2, max: 50)] string $name): Response {
+Route::post('/users', static function (#[Email] string $email, #[Length(min: 2, max: 50)] string $name) use ($users): Response {
     $user = $users->create($email, $name);
 
     return Response::created($user, "/users/{$user->id}");
@@ -131,7 +131,7 @@ The type of a parameter says what is accepted, and attributes add rules. This ho
 | `int`, `float`, `string`, `bool` | That value. JSON is not converted: `"36"` is not a whole number. A query string is text, so there `page=3` is read as `3`. |
 | `?type`, or a default value | May be left out |
 | A backed enum | One of its values |
-| `DateTimeImmutable` | A date and time as text, such as `2026-01-31T12:00:00Z` |
+| `DateTimeImmutable` | A date, or a date and time with an offset, such as `2026-01-31` or `2026-01-31T12:00:00Z`; not a phrase such as `now` |
 | Another class | An object, checked the same way |
 | `#[ListOf(Tag::class)] array` | A list of those; `ListOf('int')` for plain values |
 | `#[Email]`, `#[Url]`, `#[Length(min:, max:)]`, `#[Range(min:, max:)]`, `#[Pattern('^[a-z]+$')]`, `#[OneOf('a', 'b')]` | The rule |
@@ -300,10 +300,11 @@ final readonly class AuthController
     /**
      * @return array{token: string}
      */
-    public function login(#[Email] string $email, string $password): array
+    public function login(#[Email] string $email, #[\SensitiveParameter] string $password): array
     {
         $row = $this->db->table('users')->where('email', $email)->first();
-        if ($row === null || !$this->passwords->verify($password, $row['password'])) {
+        $hash = $row['password'] ?? '$2y$12$.....................................................';
+        if (!$this->passwords->verify($password, $hash) || $row === null) {
             throw new HttpException(401, 'These credentials do not match.');
         }
 
@@ -311,6 +312,8 @@ final readonly class AuthController
     }
 }
 ~~~
+
+The fixed dummy hash makes a missing account perform password verification too. Keep its algorithm and cost aligned with stored passwords; this example uses PHP 8.4's default bcrypt cost of 12. Do not generate the dummy hash during login. See [Logging in](docs/authentication.md#logging-in).
 
 The client then sends `Authorization: Bearer <token>`, and `TokenAuth` is the middleware that reads it.
 
@@ -344,7 +347,7 @@ Route::websocket('/orders/{id}/live', static function (Socket $socket, int $id):
 });
 ~~~
 
-Arrays travel as JSON text; `WebSocket\Binary` preserves binary frames through the echo loop, and `sendBinary()` sends bytes. Returning closes with 1000, and stop or reload sends 1001. Use `accept()` to upgrade without sending and `cancellation()` to stop awaited work on socket closure. Header-based authentication and typed query fields use the same HTTP checks before upgrading. Browser authentication tickets come in a later release; delivery is at most once.
+Arrays travel as JSON text; `WebSocket\Binary` preserves binary frames through the echo loop, and `sendBinary()` sends bytes. Returning closes with 1000, and stop or reload sends 1001. Use `accept()` to upgrade without sending and `cancellation()` to stop awaited work on socket closure. Header-based authentication and typed query fields use the same HTTP checks before upgrading. Browser clients exchange their authentication for a short-lived, single-use ticket; see [Authenticating a browser](docs/websockets.md#authenticating-a-browser). Delivery is at most once.
 
 Defaults are `websocket.ping = 25`, `websocket.max_message = 65536`, `websocket.send_timeout = 5.0`, and `websocket.max_connections = 256` per worker. `server.max_connections = 512` bounds all connections, and `server.loop = 'select'` can be changed to an installed `ev`, `uv` or `event` backend. `Testing\Api::websocket()` exercises the real action and protocol over a socket pair. See [WebSockets](docs/websockets.md) for limits, authentication, proxies and tests.
 
@@ -421,7 +424,7 @@ $http->request('PUT', $url, body: $csv, headers: ['Content-Type' => 'text/csv'])
 - **An error status is an answer.** A 404 or a 500 is returned like any other, unless you ask otherwise: `$http->get($url)->throw()->json()` throws `HttpClient\ResponseException`, which names the request and the status and holds the answer in `$error->response`.
 - **No answer always throws:** `HttpClient\NetworkException` when the server could not be reached or took too long, `HttpClient\RequestException` when the request itself cannot be sent. All three are a `Psr\Http\Client\ClientExceptionInterface`, and no message holds the query string or a header.
 - **HTTP/2 is spoken with every server that offers it** over `https`, which is most: all the requests to one server then share one connection and run at once, as many as the server allows. With the others it is HTTP/1.1, on connections that are kept and used again, up to 8 to one server; a request beyond that waits its turn.
-- **Redirects are followed,** up to 5, as a browser follows them, and what proves who is asking is not sent on to another server.
+- **Redirects are followed,** up to 5. A cross-origin redirect drops only `Authorization` and `Cookie`; other credential headers remain. Use `redirects: 0` for those credentials, or follow redirects only from a base URL you trust. See [A client for one API](docs/http-client.md#a-client-for-one-api).
 - **An answer compressed with gzip or deflate** is handed over as what it says. Brotli is not asked for.
 - **It is PSR-18's client** under the contract `Contracts\HttpClient\Client`; `sendRequest()` takes any PSR-7 request, and a library that asks for `Psr\Http\Client\ClientInterface` is given the same object.
 
@@ -481,7 +484,7 @@ $session->post('https://shop.example/login', form: [...]);
 $session->get('https://shop.example/orders');            // sent with the cookie the login set
 ~~~
 
-A client keeps no cookies unless it is given a jar, because one jar on a client every request shares would hand one caller's cookies to the next. Make a jar for each caller. A cookie goes back only where a browser would send it: to the host that set it or the hosts under the domain it named, on its paths, over an encrypted connection when it said so, and until it expires.
+A client keeps no cookies unless it is given a jar, because one jar on a client every request shares would hand one caller's cookies to the next. Give each caller a separate jar for each site. A jar accepts parent-domain cookies and has no public suffix check, so sharing it across unrelated sites can send one site's cookie to another. Host/domain, path, `Secure` and expiry still limit where a cookie is sent. See [Cookies](docs/http-client.md#cookies).
 
 ### A proxy
 

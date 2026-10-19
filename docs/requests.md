@@ -76,7 +76,7 @@ Attributes are how middleware hands something to what runs after it; see [Middle
 $request->ip();          // "203.0.113.7"
 ```
 
-It is the address at the other end of the connection. Behind a load balancer or a reverse proxy that is the proxy's, for every request. Say which proxies stand in front of the application, and the address becomes the client's:
+It is the address at the other end of the connection. An IPv4 client of a server listening on `[::]` is given as its IPv4 address, not as `::ffff:203.0.113.7`. Behind a load balancer or a reverse proxy that is the proxy's, for every request. Say which proxies stand in front of the application, and the address becomes the client's:
 
 ```php
 // app.php
@@ -93,16 +93,20 @@ A proxy passes the client's address on in `X-Forwarded-For`, a header anyone can
 ## Uploaded files
 
 ```php
-Route::post('/users/{id}/avatar', static function (int $id, Request $request): array {
+use Crab\Auth\TokenAuth;
+
+Route::post('/me/avatar', static function (User $user, Request $request): array {
     $file = $request->file('avatar');                   // a PSR-7 UploadedFileInterface, or null
     if ($file === null || $file->getError() !== UPLOAD_ERR_OK) {
         throw new HttpException(422, 'Send the picture as "avatar".');
     }
-    $file->moveTo("/var/uploads/{$id}.png");
+    $file->moveTo("/var/uploads/{$user->id}.png");
 
     return ['size' => $file->getSize(), 'name' => $file->getClientFilename()];
-});
+})->middleware(TokenAuth::class);
 ```
+
+The file is named after the logged-in [user](authentication.md), not an id in the URL, so no one can replace someone else's picture.
 
 `getUploadedFiles()` returns the whole tree; fields named `photos[]` nest as they do in PHP. A form may have at most 1,000 parts, and its fields together 1 MiB.
 

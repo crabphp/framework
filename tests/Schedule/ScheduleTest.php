@@ -429,39 +429,87 @@ final class ScheduleTest extends TestCase
         self::assertSame([], $reports);
     }
 
-    public function testTheSchedulerRunsATaskSeveralTimesASecondUntilCancelled(): void
+    public function testIntervalTasksRunWithoutOverlapAndLeaveNoTimersAfterCancellation(): void
     {
         $schedule = new Schedule();
         $schedule->call(Beat::class)->everySeconds(0.02);
-        $slow = 0;
         $scheduler = new Scheduler($schedule, new Container(), $this->log);
-        $after = 0;
 
-        WorkerHarness::run([], static function (Worker $worker) use ($schedule, $scheduler, &$slow, &$after): void {
+        WorkerHarness::run([], static function (Worker $worker) use ($schedule, $scheduler): void {
+            $waiting = [];
+            $runs = 0;
+            $active = 0;
+            $peak = 0;
+            $wait = static function (string $what, \Closure $ready) use ($worker): void {
+                $deadline = hrtime(true) + 5_000_000_000;
+                while (!$ready()) {
+                    if (hrtime(true) >= $deadline) {
+                        self::fail('Timed out waiting for ' . $what . '.');
+                    }
+                    Async::sleep($worker->loop, 0.001);
+                }
+            };
+            $release = static function () use (&$waiting): void {
+                $pending = $waiting;
+                $waiting = [];
+                foreach ($pending as $suspension) {
+                    $suspension->resume();
+                }
+            };
             $schedule
-                ->call(static function () use ($worker, &$slow): void {
-                    ++$slow;
-                    Async::sleep($worker->loop, 0.1);
+                ->call(static function () use ($worker, &$waiting, &$runs, &$active, &$peak): void {
+                    ++$runs;
+                    $peak = max($peak, ++$active);
+                    $suspension = $worker->loop->getSuspension();
+                    $waiting[] = $suspension;
+                    try {
+                        $suspension->suspend();
+                    } finally {
+                        --$active;
+                    }
                 })
                 ->everySeconds(0.02)
                 ->name('slow');
+            $baseline = $worker->loop->getIdentifiers();
             $cancellation = new Cancellation();
             $task = $worker->spawn(static fn() => $scheduler->work($worker, $cancellation));
-            Async::sleep($worker->loop, 0.17);
-            $cancellation->cancel();
-            $task->await();
-            // A run the timer had already started may still be on its way.
-            Async::sleep($worker->loop, 0.005);
-            $after = Beat::$count;
-            // The timers went with the scheduler.
-            Async::sleep($worker->loop, 0.06);
+            try {
+                $wait('the slow interval task to reach its barrier', static function () use (&$active): bool {
+                    return $active > 0;
+                });
+                $before = Beat::$count;
+                $wait(
+                    'five fast executions while the slow task is held',
+                    static fn(): bool => Beat::$count >= ($before + 5),
+                );
+                self::assertSame(1, $runs);
+                self::assertSame(1, $peak, 'The slow task must not overlap itself.');
+
+                $cancellation->cancel();
+                $wait('the scheduler to finish after cancellation', $task->isComplete(...));
+                $task->result();
+                $release();
+                $wait('the held task to finish', static function () use (&$active): bool {
+                    return $active === 0;
+                });
+                self::assertSame(
+                    $baseline,
+                    $worker->loop->getIdentifiers(),
+                    'The scheduler left a timer or task registered.',
+                );
+                $stopped = Beat::$count;
+                Async::sleep($worker->loop, 0.0);
+                self::assertSame($stopped, Beat::$count);
+            } finally {
+                $cancellation->cancel();
+                foreach (array_diff($worker->loop->getIdentifiers(), $baseline) as $id) {
+                    $worker->loop->cancel($id);
+                }
+                $release();
+            }
         });
 
-        self::assertGreaterThanOrEqual(5, $after);
-        self::assertLessThanOrEqual(9, $after);
-        self::assertSame($after, Beat::$count);
-        // A run still going is passed over, and at this rate without a warning.
-        self::assertLessThanOrEqual(2, $slow);
+        // Skipping an overlapping interval task does not fill the log with warnings.
         self::assertSame([], $this->log->records);
     }
 

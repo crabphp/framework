@@ -56,9 +56,48 @@ final class FailureReporter
         return $previous;
     }
 
+    /**
+     * A failure and those before it, as PHP writes them, but with each call
+     * named without its arguments: PHP's own text includes them unless
+     * zend.exception_ignore_args is on, and an argument can be a password.
+     */
+    public static function describe(\Throwable $error): string
+    {
+        $chain = [];
+        for ($each = $error; $each !== null; $each = $each->getPrevious()) {
+            $chain[] = $each;
+        }
+        $parts = [];
+        foreach (array_reverse($chain) as $each) {
+            $parts[] =
+                $each::class
+                . ": {$each->getMessage()} in {$each->getFile()}:{$each->getLine()}\nStack trace:\n"
+                . implode("\n", self::frames($each));
+        }
+        return implode("\n\nNext ", $parts);
+    }
+
+    /**
+     * A failure's trace, one line per call as in PHP's own, without the
+     * arguments, ending with "{main}".
+     *
+     * @return non-empty-list<string>
+     */
+    public static function frames(\Throwable $error): array
+    {
+        $lines = [];
+        foreach ($error->getTrace() as $number => $frame) {
+            $where = isset($frame['file']) ? "{$frame['file']}(" . ($frame['line'] ?? 0) . ')' : '[internal function]';
+            $lines[] =
+                "#{$number} {$where}: " . ($frame['class'] ?? '') . ($frame['type'] ?? '') . $frame['function'] . '()';
+        }
+        $lines[] = '#' . count($lines) . ' {main}';
+        return $lines;
+    }
+
     private static function write(string $what, ?\Throwable $error): void
     {
-        $line = '[Crab] ' . $what . ($error === null ? '' : ': ' . $error) . "\n";
+        $line = '[Crab] ' . $what . ($error === null ? '' : ': ' . self::describe($error)) . "\n";
         // Opened each time, not kept: a process that went into the background has
         // pointed standard error at its log, and the STDERR constant is closed with it.
         $stream = @fopen('php://stderr', 'ab');

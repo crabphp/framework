@@ -38,7 +38,9 @@ final class Factory implements FactoryContract
         }
         $resource = @fopen($filename, $mode);
         if ($resource === false) {
-            throw new \RuntimeException('The file cannot be opened.');
+            throw new \RuntimeException(
+                "Cannot open \"{$filename}\" in mode \"{$mode}\". Check that the file or its directory exists and permits the requested access.",
+            );
         }
         return new Stream($resource);
     }

@@ -26,6 +26,8 @@ use Crab\Engine\Network\WriteResult;
 use Crab\Testing\Api;
 use Crab\Testing\FakeBroadcaster;
 use Crab\Testing\WebSocketRefused;
+use PHPUnit\Framework\AssertionFailedError;
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 
 /**
@@ -723,6 +725,82 @@ final class BroadcastTest extends TestCase
         } catch (\DomainException) {
         }
         $discarded->assertNothingSent();
+    }
+
+    /**
+     * @return iterable<string, array{string, string}>
+     */
+    public static function mutableMessages(): iterable
+    {
+        foreach (['reference', 'object'] as $kind) {
+            foreach (['immediate', 'commit', 'rollback'] as $when) {
+                yield $kind . ' ' . $when => [$kind, $when];
+            }
+        }
+    }
+
+    #[DataProvider('mutableMessages')]
+    public function testTheFakeKeepsTheSameMessageSnapshotAsTheCarrier(string $kind, string $when): void
+    {
+        $carrier = new SpyCarrier();
+        $real = new Broadcaster($carrier);
+        $fake = new FakeBroadcaster();
+        $text = 'before';
+        $object = (object) ['text' => 'before'];
+        $message = ['nested' => $kind === 'reference' ? ['text' => &$text] : $object];
+        $send = static function (?Connection $transaction = null) use (
+            $real,
+            $fake,
+            $carrier,
+            $message,
+            $object,
+            &$text,
+        ): void {
+            foreach ([$real, $fake] as $broadcaster) {
+                $selected = $transaction === null ? $broadcaster : $broadcaster->within($transaction);
+                $selected->to('orders')->send($message);
+            }
+            $text = 'after';
+            $object->text = 'after';
+            if ($transaction !== null) {
+                self::assertSame([], $carrier->sent);
+                $fake->assertNothingSent();
+            }
+        };
+
+        if ($when === 'immediate') {
+            $send();
+        } else {
+            $database = $this->database();
+            try {
+                $database->transaction(static function (Connection $transaction) use ($send, $when): void {
+                    $send($transaction);
+                    if ($when === 'rollback') {
+                        throw new \DomainException('undo');
+                    }
+                });
+            } catch (\DomainException $error) {
+                self::assertSame('rollback', $when);
+                self::assertSame('undo', $error->getMessage());
+            } finally {
+                $database->close();
+            }
+        }
+
+        if ($when === 'rollback') {
+            self::assertSame([], $carrier->sent);
+            $fake->assertNothingSent();
+            return;
+        }
+        self::assertSame([[['orders'], '{"nested":{"text":"before"}}']], $carrier->sent);
+        $fake->assertSent('orders', ['nested' => ['text' => 'before']]);
+        $failure = null;
+        try {
+            $fake->assertSent('orders', ['nested' => ['text' => 'after']]);
+        } catch (AssertionFailedError $error) {
+            $failure = $error;
+        }
+        self::assertInstanceOf(AssertionFailedError::class, $failure, 'The mutated value was never sent.');
     }
 
     public function testTheProviderCostsNoWatcherWhenUnusedAndWorksWithoutApp(): void

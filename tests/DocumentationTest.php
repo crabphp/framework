@@ -49,6 +49,81 @@ final class DocumentationTest extends TestCase
         self::assertSame(422, $invalid->getStatusCode());
     }
 
+    public function testTheReadmePostExampleUsesItsServiceOnlyAfterValidation(): void
+    {
+        $app = new App(new Config(['log' => ['path' => 'php://memory']]));
+        $users = new class {
+            public int $created = 0;
+
+            public function create(string $email, string $name): object
+            {
+                ++$this->created;
+                return (object) ['id' => 7, 'email' => $email, 'name' => $name];
+            }
+        };
+        $example = $this->example('../README.md', 'php', '// A few fields:', '~~~');
+        $routes = explode('// Several routes', $example)[0];
+        file_put_contents($this->directory . '/readme-routes.php', "<?php\nuse Crab\\Route;\n" . $routes);
+        require $this->directory . '/readme-routes.php';
+
+        $api = new \Crab\Testing\Api($app);
+        $api
+            ->post('/users', ['email' => 'ada@example.com', 'name' => 'Ada'])
+            ->assertStatus(201)
+            ->assertJson('email', 'ada@example.com')
+            ->assertHeader('Location', '/users/7');
+        $api->post('/users', ['email' => 'invalid', 'name' => 'x'])->assertStatus(422);
+        self::assertSame(1, $users->created);
+    }
+
+    public function testTheReadmeLoginVerifiesPasswordsForKnownAndMissingUsers(): void
+    {
+        $example = $this->example('../README.md', 'php', 'final readonly class AuthController', '~~~');
+        $name = 'ReadmeLogin' . bin2hex(random_bytes(6));
+        file_put_contents(
+            $this->directory . '/readme-login.php',
+            "<?php\nuse Crab\\Contracts\\Database\\Database;\nuse Crab\\Contracts\\Auth\\PasswordHasher;\n"
+                . "use Crab\\Contracts\\Auth\\TokenStore;\nuse Crab\\Http\\HttpException;\nuse Crab\\Validation\\Email;\n"
+                . str_replace('class AuthController', 'class ' . $name, $example),
+        );
+        require $this->directory . '/readme-login.php';
+        $db = new Database(static fn(): \PDO => new \PDO('sqlite::memory:'), 1);
+        try {
+            $db->execute('create table users (id integer primary key, email text, password text)');
+            $db->table('users')->insert(['email' => 'known@example.com', 'password' => 'stored-hash']);
+            $checked = [];
+            $passwords = $this->createStub(\Crab\Contracts\Auth\PasswordHasher::class);
+            $passwords
+                ->method('verify')
+                ->willReturnCallback(static function (#[\SensitiveParameter] string $password, string $hash) use (
+                    &$checked,
+                ): bool {
+                    $checked[] = $hash;
+                    return false;
+                });
+            $tokens = $this->createMock(\Crab\Contracts\Auth\TokenStore::class);
+            $tokens->expects(self::never())->method('issue');
+            $controller = new $name($db, $passwords, $tokens);
+            foreach (['known@example.com', 'missing@example.com'] as $email) {
+                $error = null;
+                try {
+                    $controller->login($email, 'incorrect');
+                } catch (\Crab\Http\HttpException $failure) {
+                    $error = $failure;
+                }
+                self::assertNotNull($error);
+                self::assertSame(401, $error->status);
+                self::assertSame('These credentials do not match.', $error->getMessage());
+            }
+            self::assertCount(2, $checked, 'Both account paths must reach password verification.');
+            self::assertSame('stored-hash', $checked[0]);
+            self::assertSame('bcrypt', password_get_info($checked[1])['algoName']);
+            self::assertSame(12, password_get_info($checked[1])['options']['cost']);
+        } finally {
+            $db->close();
+        }
+    }
+
     public function testThePartialUpdateExampleAcceptsAnEmptyChangeSet(): void
     {
         $db = new Database(static fn(): \PDO => new \PDO('sqlite::memory:'), 1);
@@ -124,10 +199,10 @@ final class DocumentationTest extends TestCase
         self::assertStringNotContainsString('systemctl', $invoked);
     }
 
-    private function example(string $page, string $language, string $contains): string
+    private function example(string $page, string $language, string $contains, string $fence = '```'): string
     {
         $markdown = file_get_contents(dirname(__DIR__) . '/docs/' . $page);
-        preg_match_all('/```' . $language . '\n(.*?)```/s', $markdown, $matches);
+        preg_match_all('/' . $fence . $language . '\n(.*?)' . $fence . '/s', $markdown, $matches);
         foreach ($matches[1] as $code) {
             if (str_contains($code, $contains)) {
                 return $code;

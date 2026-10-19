@@ -14,6 +14,10 @@ use Psr\Log\LogLevel;
  * A PSR-3 logger that writes one line per record to a stream or file:
  * time, level, message, then the remaining context as JSON. An exception in
  * the context follows on its own lines with its trace.
+ *
+ * The trace is written without the arguments of each call, which PHP's own
+ * text of an exception includes unless zend.exception_ignore_args is on: a
+ * failed login would otherwise leave its password in the log.
  */
 final class Logger extends AbstractLogger implements LoggerContract
 {
@@ -91,9 +95,33 @@ final class Logger extends AbstractLogger implements LoggerContract
                 );
         }
         if ($exception !== null) {
-            $line .= "\n" . $exception;
+            $line .= "\n" . self::describe($exception);
         }
         fwrite($this->stream ??= $this->open(), $line . "\n");
+    }
+
+    /**
+     * An exception and those before it, as PHP writes them, but each call
+     * named without its arguments.
+     */
+    private static function describe(\Throwable $exception): string
+    {
+        $chain = [];
+        for ($error = $exception; $error !== null; $error = $error->getPrevious()) {
+            $chain[] = $error;
+        }
+        $parts = [];
+        foreach (array_reverse($chain) as $error) {
+            $text = $error::class . ": {$error->getMessage()} in {$error->getFile()}:{$error->getLine()}\nStack trace:";
+            $frames = $error->getTrace();
+            foreach ($frames as $number => $frame) {
+                $where = isset($frame['file']) ? "{$frame['file']}({$frame['line']})" : '[internal function]';
+                $call = ($frame['class'] ?? '') . ($frame['type'] ?? '') . $frame['function'];
+                $text .= "\n#{$number} {$where}: {$call}()";
+            }
+            $parts[] = $text . "\n#" . count($frames) . ' {main}';
+        }
+        return implode("\n\nNext ", $parts);
     }
 
     /**

@@ -35,6 +35,7 @@ final readonly class FileStore implements Store
         if (is_link($file) || is_link(dirname($file))) {
             return null;
         }
+        self::private(dirname($file));
         $handle = @fopen($file, 'r');
         if ($handle === false) {
             return null;
@@ -236,7 +237,23 @@ final readonly class FileStore implements Store
                 "The cache directory {$this->directory} is a link. Set cache.directory to the folder it points to.",
             );
         }
+        self::private($this->directory);
         return $this->directory;
+    }
+
+    /**
+     * Refuses a folder that already exists and that another user can write
+     * to, as one left 0775 or 0777 would be: they could put an entry there
+     * for Cache to unserialize. A folder this store makes is 0700.
+     */
+    private static function private(string $folder): void
+    {
+        $mode = PHP_OS_FAMILY === 'Windows' ? false : @fileperms($folder);
+        if ($mode !== false && ($mode & 0o022) !== 0) {
+            throw new \RuntimeException(
+                "The cache directory {$folder} can be written by other users. Run chmod 700 on it.",
+            );
+        }
     }
 
     /**
@@ -263,6 +280,7 @@ final readonly class FileStore implements Store
             if ($create) {
                 $this->prepare($file);
             }
+            self::private(dirname($file));
             $handle = @fopen($file, $create ? 'c+' : 'r+');
             if ($handle === false) {
                 if (!$create) {

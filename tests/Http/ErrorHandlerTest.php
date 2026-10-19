@@ -84,6 +84,28 @@ final class ErrorHandlerTest extends TestCase
         self::assertNotEmpty($error['trace']);
     }
 
+    public function testTheDebugPageShowsEachCallWithoutTheArgumentsItWasGiven(): void
+    {
+        $login = static fn(string $email, string $typed): never => throw new \RuntimeException('database down');
+        $action = static fn() => $login('ann@example.com', 'hunter2');
+
+        $text = (string) $this->handle($action, debug: true)->getBody();
+        $json = json_decode((string) $this->handle($action, debug: true, accept: 'application/json')->getBody(), true);
+
+        // PHP's own text of an exception shows the first 15 characters of every argument.
+        self::assertStringContainsString("Stack trace:\n#0 ", $text);
+        self::assertMatchesRegularExpression('/\{closure[^\n]*\}\(\)\n/', $text);
+        self::assertMatchesRegularExpression('/^#0 [^\n]+\{closure[^\n]*\}\(\)$/', $json['error']['trace'][0]);
+        self::assertMatchesRegularExpression(
+            '/^#\d+ \{main\}$/',
+            $json['error']['trace'][array_key_last($json['error']['trace'])],
+        );
+        foreach (['hunter2', 'ann@example.com'] as $argument) {
+            self::assertStringNotContainsString($argument, $text);
+            self::assertStringNotContainsString($argument, implode("\n", $json['error']['trace']));
+        }
+    }
+
     public function testFailureTextThatIsNotUtf8StillAnswersAsJson(): void
     {
         $response = $this->handle(

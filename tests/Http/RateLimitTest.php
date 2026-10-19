@@ -13,6 +13,7 @@ use Crab\Contracts\Auth\Identity;
 use Crab\Contracts\Clock\Clock;
 use Crab\Http\RateLimit;
 use Crab\Http\Request;
+use Crab\Http\TrustedProxies;
 use Crab\Testing\Api;
 use Crab\Testing\FrozenClock;
 use PHPUnit\Framework\TestCase;
@@ -85,6 +86,24 @@ final class RateLimitTest extends TestCase
             $from('2001:db8:1:2::1'),
             $from('2001:db8:1:2:ffff::9'),
             $from('2001:db8:1:3::1'),
+        ]);
+
+        // An IPv4 client of a listener on [::] arrives as a mapped IPv6 address and is counted as its IPv4 address.
+        self::assertSame([200, 429, 200, 429], [
+            $from('::ffff:192.0.2.10'),
+            $from('::ffff:192.0.2.10'),
+            $from('::ffff:192.0.2.11'),
+            $from('192.0.2.11'),
+        ]);
+        // So is one a proxy passed on.
+        $passedOn = static fn(string $address): int => $app->handle(new Request('GET', '/a')->withAttribute(
+            TrustedProxies::ATTRIBUTE,
+            $address,
+        ))->getStatusCode();
+        self::assertSame([200, 200, 429], [
+            $passedOn('::ffff:192.0.2.20'),
+            $passedOn('::ffff:192.0.2.21'),
+            $passedOn('192.0.2.21'),
         ]);
 
         // A user is counted as the user, whatever address they come from.

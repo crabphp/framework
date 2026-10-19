@@ -124,13 +124,19 @@ final readonly class RateLimit implements Middleware, UsesContainer
 
     /**
      * An IPv6 client is counted by its /64: one machine is usually given
-     * that many addresses and may take a new one for every request.
+     * that many addresses and may take a new one for every request. An
+     * IPv4-mapped address is the IPv4 client it stands for, not part of
+     * the one /64 that every such address shares.
      */
     private static function network(string $address): string
     {
         $packed = str_contains($address, ':') ? @inet_pton($address) : false;
-        return $packed === false || strlen($packed) !== 16
-            ? $address
-            : (string) inet_ntop(substr($packed, 0, 8) . str_repeat("\0", 8)) . '/64';
+        if ($packed === false || strlen($packed) !== 16) {
+            return $address;
+        }
+        if (str_starts_with($packed, "\0\0\0\0\0\0\0\0\0\0\xff\xff")) {
+            return (string) inet_ntop(substr($packed, 12));
+        }
+        return (string) inet_ntop(substr($packed, 0, 8) . str_repeat("\0", 8)) . '/64';
     }
 }

@@ -200,7 +200,7 @@ $fake->assertNothingSent();
 $fake->assertSent('orders.42', ['type' => 'status', 'id' => 42, 'status' => 'shipped', 'version' => 2]);
 ```
 
-The fake shares records across selections and respects commit and rollback when used with `within()`.
+The fake shares records across selections and respects commit and rollback when used with `within()`. It records the message as encoded when `send()` is called, as the real broadcaster would send it, so changing an object afterwards does not change what `assertSent()` sees.
 
 ## Standalone use
 

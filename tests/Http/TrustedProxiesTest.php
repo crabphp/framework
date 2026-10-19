@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Crab\Tests\Http;
 
+use Crab\Engine\Http\Request as EngineRequest;
 use Crab\Http\ClosureHandler;
 use Crab\Http\Request;
 use Crab\Http\Response;
@@ -46,6 +47,27 @@ final class TrustedProxiesTest extends TestCase
         self::assertSame('198.51.100.9', self::client($proxies, 'fd12::1'));
         self::assertSame('198.51.100.9', self::client($proxies, '127.0.0.1'));
         self::assertSame('203.0.113.7', self::client($proxies, '203.0.113.7'));
+    }
+
+    public function testAnIpv4ClientOfADualStackListenerIsKnownByItsIpv4Address(): void
+    {
+        // A listener on [::] sees IPv4 peers as IPv4-mapped IPv6 addresses.
+        $source = new EngineRequest('GET', '/', '1.1', ['host' => ['localhost']]);
+        $source->peer = '[::ffff:203.0.113.7]:52930';
+        self::assertSame('203.0.113.7', Request::fromEngine($source)->ip());
+        self::assertSame('203.0.113.7', Request::fromEngine($source)->getServerParams()['REMOTE_ADDR']);
+
+        $source->peer = '[2001:db8::7]:52930';
+        self::assertSame('2001:db8::7', Request::fromEngine($source)->ip());
+    }
+
+    public function testAProxyIsBelievedWhetherItsAddressIsWrittenAsIpv4OrAsMappedIpv6(): void
+    {
+        $proxies = new TrustedProxies(['127.0.0.1']);
+
+        self::assertSame('198.51.100.9', self::client($proxies, '::ffff:127.0.0.1'));
+        self::assertSame('127.0.0.2', self::client($proxies, '::ffff:127.0.0.2'));
+        self::assertSame('198.51.100.9', self::client(new TrustedProxies(['::ffff:10.0.0.0/104']), '10.1.2.3'));
     }
 
     private static function client(TrustedProxies $proxies, string $peer): string

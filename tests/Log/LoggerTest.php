@@ -131,6 +131,46 @@ final class LoggerTest extends TestCase
         self::assertStringContainsString('#0 ', $written);
     }
 
+    public function testATraceNamesEachCallWithoutTheArgumentsItWasGiven(): void
+    {
+        $login = static function (string $email, string $typed): never {
+            try {
+                (static function (string $word): never {
+                    throw new \LogicException('inner');
+                })('swordfish');
+            } catch (\LogicException $error) {
+                throw new \RuntimeException('SQLSTATE[HY000] [2002] Connection refused', 0, $error);
+            }
+        };
+        try {
+            $login('ann@example.com', 'hunter2');
+        } catch (\RuntimeException $error) {
+        }
+
+        $stream = fopen('php://memory', 'w+b');
+        new Logger($stream)->error('POST /login failed', ['exception' => $error]);
+        $written = self::contents($stream);
+
+        // PHP's own text of an exception shows the first 15 characters of every argument, a password among them.
+        self::assertStringContainsString("'hunter2'", (string) $error);
+        self::assertStringNotContainsString('hunter2', $written);
+        self::assertStringNotContainsString('ann@example.com', $written);
+        self::assertStringNotContainsString('swordfish', $written);
+        // Still each exception, where it was thrown and every call that led there, as PHP writes them.
+        self::assertStringContainsString("\nLogicException: inner in " . __FILE__, $written);
+        self::assertStringContainsString(
+            "\n\nNext RuntimeException: SQLSTATE[HY000] [2002] Connection refused in " . __FILE__,
+            $written,
+        );
+        self::assertMatchesRegularExpression(
+            '/\n#0 [^\n]+LoggerTest\.php\(\d+\): [^\n]*\{closure[^\n]*\}\(\)\n/',
+            $written,
+        );
+        self::assertStringContainsString('->testATraceNamesEachCallWithoutTheArgumentsItWasGiven()', $written);
+        self::assertStringContainsString("Stack trace:\n#0 ", $written);
+        self::assertMatchesRegularExpression('/\n#\d+ \{main\}\n/', $written);
+    }
+
     public function testMinimumLevel(): void
     {
         $stream = fopen('php://memory', 'w+b');

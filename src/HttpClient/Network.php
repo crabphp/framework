@@ -40,6 +40,16 @@ final class Network implements Transport
      */
     private array $pools = [];
     /**
+     * When each HTTP/1.1 pool became wholly idle; borrowing ends that period.
+     *
+     * @var array<string, float>
+     */
+    private array $idleSince = [];
+    /**
+     * The next sweep of idle origins, on the connections' monotonic clock.
+     */
+    private float $pruneAt = 0.0;
+    /**
      * The HTTP/2 connection to each server that speaks it, which carries every request to that server at once.
      *
      * @var array<string, Http2Session>
@@ -107,6 +117,7 @@ final class Network implements Transport
         }
         $port = $uri->getPort() ?? ($scheme === 'https' ? 443 : 80);
         $origin = "{$scheme}://{$host}:{$port}";
+        $this->pruneIdlePools();
         $body = $request->getBody();
         $resendable = $body->getSize() === 0 || $body->isSeekable();
         $repeatable = in_array($request->getMethod(), self::REPEATABLE, true) && $resendable;
@@ -234,6 +245,8 @@ final class Network implements Transport
         }
         $pools = $this->pools;
         $this->pools = [];
+        $this->idleSince = [];
+        $this->pruneAt = 0.0;
         foreach ($pools as $pool) {
             $pool->close();
         }
@@ -311,6 +324,7 @@ final class Network implements Transport
             while (true) {
                 /** @var PooledConnection $slot */
                 $slot = $pool->acquire($limit);
+                unset($this->idleSince[$origin]);
                 $connection = $slot->connection;
                 // A handed-over slot may resume after its caller's deadline.
                 if ((hrtime(true) / 1_000_000_000) >= $deadline || $cancellation?->isCancelled() === true) {
@@ -361,8 +375,8 @@ final class Network implements Transport
     }
 
     /**
-     * A finished origin owns nothing once its last connection and waiter are
-     * gone. Never remove a replacement pool or another caller's live session.
+     * Remove an empty origin, or remember when its whole pool became idle.
+     * Never change a replacement pool or another caller's live resources.
      */
     private function forgetEmptyPool(string $origin, Pool $pool): void
     {
@@ -374,8 +388,43 @@ final class Network implements Transport
             return;
         }
         $stats = $pool->stats();
-        if ($stats['idle'] === 0 && $stats['borrowed'] === 0 && $stats['waiting'] === 0) {
+        if ($stats['borrowed'] !== 0 || $stats['waiting'] !== 0) {
+            return;
+        }
+        if ($stats['idle'] === 0) {
+            unset($this->pools[$origin], $this->idleSince[$origin]);
+        } else {
+            // An attempt that never borrowed must not renew this idle period.
+            $this->idleSince[$origin] ??= hrtime(true) / 1_000_000_000;
+        }
+    }
+
+    /**
+     * Reclaim expired pools even when their origins are never visited again.
+     * Only wholly idle HTTP/1.1 pools can be retired without ending a request.
+     */
+    private function pruneIdlePools(): void
+    {
+        $now = hrtime(true) / 1_000_000_000;
+        if ($now < $this->pruneAt) {
+            return;
+        }
+        $this->pruneAt = $now + self::IDLE;
+        foreach ($this->idleSince as $origin => $since) {
+            if (($now - $since) < self::IDLE) {
+                continue;
+            }
+            $pool = $this->pools[$origin] ?? null;
+            unset($this->idleSince[$origin]);
+            if ($pool === null || isset($this->sessions[$origin]) || isset($this->waiting[$origin])) {
+                continue;
+            }
+            $stats = $pool->stats();
+            if ($stats['borrowed'] !== 0 || $stats['waiting'] !== 0) {
+                continue;
+            }
             unset($this->pools[$origin]);
+            $pool->close();
         }
     }
 

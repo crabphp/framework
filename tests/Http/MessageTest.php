@@ -147,9 +147,13 @@ final class MessageTest extends TestCase
 
     public function testOpeningAMissingStreamReportsAnError(): void
     {
+        $filename = __DIR__ . '/missing';
         $this->expectException(\RuntimeException::class);
+        $this->expectExceptionMessage(
+            "Cannot open \"{$filename}\" in mode \"rb\". Check that the file or its directory exists and permits the requested access.",
+        );
 
-        new Factory()->createStreamFromFile(__DIR__ . '/missing');
+        new Factory()->createStreamFromFile($filename, 'rb');
     }
 
     public function testAStreamNeedsTextOrAResource(): void

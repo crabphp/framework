@@ -138,7 +138,7 @@ final readonly class AuthController
     /**
      * @return array{token: string}
      */
-    public function login(#[Email] string $email, string $password): array
+    public function login(#[Email] string $email, #[\SensitiveParameter] string $password): array
     {
         $row = $this->db->table('users')->where('email', $email)->first();
         $hash = $row['password'] ?? '$2y$12$.....................................................';
@@ -151,7 +151,7 @@ final readonly class AuthController
 }
 ```
 
-The fixed dummy hash makes a missing account perform password verification too. Keep its algorithm and cost aligned with stored passwords; this example uses PHP 8.4's default bcrypt cost of 12. Do not generate the dummy hash during login.
+The fixed dummy hash makes a missing account perform password verification too. Keep its algorithm and cost aligned with stored passwords; this example uses PHP 8.4's default bcrypt cost of 12. Do not generate the dummy hash during login. `#[\SensitiveParameter]` keeps the password out of a stack trace, such as the one the debug page shows; the log writes traces without arguments.
 
 The client then sends the token with every request:
 

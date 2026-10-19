@@ -173,10 +173,10 @@ final class App implements RequestHandlerInterface, Runner
         $container->instance(Runner::class, $this);
         $this->servers = new Servers();
         $container->instance(ServersContract::class, $this->servers);
-        $container->instance(Servers::class, $this->servers);
+        $container->singleton(Servers::class, ServersContract::class);
         $container->instance(ConfigContract::class, $config);
         // Asking by class must not autowire a second, empty one.
-        $container->instance($config::class, $config);
+        $container->singleton($config::class, ConfigContract::class);
         $container->singleton(
             LoggerContract::class,
             fn(): Logger => new Logger(
@@ -213,7 +213,7 @@ final class App implements RequestHandlerInterface, Runner
         // Made here because routes are declared, and their inputs read, before any worker starts.
         $validator = new Validator();
         $container->instance(ValidatorContract::class, $validator);
-        $container->instance(Validator::class, $validator);
+        $container->singleton(Validator::class, ValidatorContract::class);
         $router = new Router(
             $container,
             $validator,
@@ -236,7 +236,7 @@ final class App implements RequestHandlerInterface, Runner
         $this->router = $router;
         $this->routes = $router;
         $container->instance(RouterContract::class, $this->router);
-        $container->instance(Router::class, $this->router);
+        $container->singleton(Router::class, RouterContract::class);
         $container->singleton(UrlsContract::class, fn(): Urls => new Urls($this->router, $config->get('app.url')));
         $container->singleton(Urls::class, UrlsContract::class);
         // The error handler is the entry bound as ErrorHandler; rebinding it to
@@ -244,7 +244,7 @@ final class App implements RequestHandlerInterface, Runner
         $this->stack = new MiddlewareStack($this->router, $container);
         $this->stack->add(...$middleware);
         $container->instance(MiddlewareStackContract::class, $this->stack);
-        $container->instance(MiddlewareStack::class, $this->stack);
+        $container->singleton(MiddlewareStack::class, MiddlewareStackContract::class);
         $this->console = new Console($container, (string) $config->get('app.name'));
         $this->console->add('serve', Serve::class);
         $this->console->add('stop', Stop::class);
@@ -254,7 +254,7 @@ final class App implements RequestHandlerInterface, Runner
         $this->console->add('route:list', Routes::class);
         $this->console->add('make:middleware', MakeMiddleware::class);
         $container->instance(ConsoleContract::class, $this->console);
-        $container->instance(Console::class, $this->console);
+        $container->singleton(Console::class, ConsoleContract::class);
     }
 
     /**

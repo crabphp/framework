@@ -7,7 +7,7 @@ namespace Crab\Database;
 use Crab\Contracts\Database\Connection;
 
 /**
- * Pool ownership and physical-session scopes used inside the database component.
+ * Driver identity and physical-session scopes used inside the database component.
  * These operations do not widen the contract that application packages use.
  *
  * @internal
@@ -15,7 +15,8 @@ use Crab\Contracts\Database\Connection;
 interface ManagedConnection extends Connection
 {
     /**
-     * Closure identity is the ownership token shared with the creating pool.
+     * Whether this driver was given the same connection factory.
+     * Database tracks pool ownership separately for each connection.
      */
     public function opensWith(\Closure $connect): bool;
 

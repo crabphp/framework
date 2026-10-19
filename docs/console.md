@@ -129,7 +129,7 @@ $input->flag('v');                   // true: each letter of -abc is a flag
 $input->options();                   // ["batch" => "500", "force" => true, "v" => true]
 ```
 
-- An option's value is text; write `--batch=500` and cast it, since `--batch 500` makes `batch` a flag and `500` an argument. The server’s `--address`, `--workers` and `--watch`, and the migration commands’ `--database`, reject a missing `=` value before doing any work. Commands of your own should reject `true` for an option that needs a value.
+- An option's value is text; write `--batch=500` and cast it, since `--batch 500` makes `batch` a flag and `500` an argument. Built-in commands reject a missing `=` value before doing any work, including server control, queue selection and file generation. Commands of your own should reject `true` for an option that needs a value.
 - `flag()` is true when the option is present and not `false`, `0`, `no` or an empty value, so `--force=false` and `--force=` switch it off.
 - Everything after `--` is an argument, even when it starts with a dash.
 - `--help` and `-h` are taken by the console; do not use `h` for an option of your own.

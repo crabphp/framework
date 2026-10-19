@@ -38,7 +38,8 @@ final class Connection implements ManagedConnection
     private readonly Settings $settings;
 
     /**
-     * The connect closure is an ownership token shared with its database pool.
+     * The connect closure identifies the factory this driver was given;
+     * Database tracks the ownership of the connection itself.
      * Cancellation may be supplied by a standalone coroutine consumer.
      *
      * @param array<int|string, mixed> $options

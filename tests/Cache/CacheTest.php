@@ -847,6 +847,55 @@ final class CacheTest extends TestCase
         );
     }
 
+    public function testAFileStoreRefusesFoldersThatOtherUsersCanWriteTo(): void
+    {
+        $root = $this->directory . '/shared';
+        mkdir($root);
+        chmod($root, 0o777);
+        $store = new FileStore($root);
+        foreach ([
+            static fn(): ?string => $store->get('ticket', 100),
+            static function () use ($store): void {
+                $store->set('ticket', 'i:1;', null);
+            },
+        ] as $operation) {
+            try {
+                $operation();
+                self::fail('A cache directory anyone can write to was used.');
+            } catch (\RuntimeException $error) {
+                self::assertSame(
+                    "The cache directory {$root} can be written by other users. Run chmod 700 on it.",
+                    $error->getMessage(),
+                );
+            }
+        }
+
+        // A folder of entries made writable by others, with an entry planted in it, is refused too.
+        chmod($root, 0o700);
+        $hash = sha1('ticket');
+        $folder = $root . '/' . substr($hash, 0, 2);
+        mkdir($folder);
+        chmod($folder, 0o777);
+        file_put_contents($folder . '/' . $hash, "0\n" . serialize(1));
+        foreach ([
+            static fn(): ?string => $store->get('ticket', 100),
+            static fn(): ?string => $store->take('ticket', 100),
+        ] as $operation) {
+            try {
+                $operation();
+                self::fail('A planted entry was read from a folder anyone can write to.');
+            } catch (\RuntimeException $error) {
+                self::assertSame(
+                    "The cache directory {$folder} can be written by other users. Run chmod 700 on it.",
+                    $error->getMessage(),
+                );
+            }
+        }
+
+        chmod($folder, 0o700);
+        self::assertSame('i:1;', $store->get('ticket', 100));
+    }
+
     public function testAFailedFileRemovalLeavesTheEntryWholeAndCanBePrunedAfterPermissionsRecover(): void
     {
         if (!function_exists('posix_geteuid') || posix_geteuid() === 0) {
@@ -878,7 +927,7 @@ final class CacheTest extends TestCase
                 self::assertSame("100\nexpired", file_get_contents($file));
             }
         } finally {
-            chmod($folder, 0o775);
+            chmod($folder, 0o700);
         }
         self::assertSame(1, $store->prune(100));
         self::assertFileDoesNotExist($file);

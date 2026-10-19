@@ -428,7 +428,10 @@ final class ActionHandler implements RequestHandlerInterface
             return (int) $value;
         }
         if ($type === 'float' && is_numeric($value)) {
-            return (float) $value;
+            $number = (float) $value;
+            if (is_finite($number)) {
+                return $number;
+            }
         }
         if ($type === 'bool' && in_array($value, ['true', '1', 'false', '0'], true)) {
             return $value === 'true' || $value === '1';

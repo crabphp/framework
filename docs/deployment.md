@@ -195,6 +195,7 @@ The skeleton switches each on through `server.with`, reading its value from `.en
 ```text
 # .env, in production
 APP_DEBUG=false
+APP_URL=https://api.example.com
 LOG_LEVEL=info
 SERVER_QUEUE=true
 SERVER_SCHEDULE=true
@@ -244,11 +245,14 @@ For one machine running HTTP, queue and scheduler together, set these production
 
 ```text
 APP_DEBUG=false
+APP_URL=https://api.example.com
 LOG_LEVEL=info
 SERVER_WORKERS=4
 SERVER_QUEUE=true
 SERVER_SCHEDULE=true
 ```
+
+Set `APP_URL` to the public application URL: [named links](routing.md#named-routes) use it in actions, jobs and commands alike.
 
 When using the database queue, generate its migration once with `php cua queue:install` and ship it with the application. Then run this deploy script from the application directory:
 
@@ -267,6 +271,7 @@ Run the migrations before the reload, and write them so that the old code still 
 ## Before going live
 
 - `APP_DEBUG=false`. Debug mode shows traces to clients.
+- `APP_URL` set to the externally reachable HTTPS URL, so [named links](routing.md#named-routes) point to production.
 - `LOG_LEVEL=info` or `warning`, and a `log.path` you collect or rotate.
 - Choose `SERVER_WORKERS` explicitly; the skeleton starts with one for development.
 - Set `SERVER_QUEUE=true` and `SERVER_SCHEDULE=true` for the work this machine must run, and apply the database queue migration before starting its workers. Run the scheduler in one place, or use `onOneServer()`.

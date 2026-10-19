@@ -43,32 +43,60 @@ final class ValueTest extends TestCase
         new Validator()->validate(AmountInput::class, ['amount' => $value], coerce: $coerce);
     }
 
-    public function testOverflowFromJsonOrQueryTextIsAnsweredBeforeTheActionRuns(): void
+    /**
+     * @return iterable<string, array{string, string, float|null}>
+     */
+    public static function floatInputs(): iterable
     {
+        foreach (['route', 'query', 'json'] as $source) {
+            foreach ([
+                '1e999' => null,
+                '-1e999' => null,
+                '0' => 0.0,
+                '-1.25' => -1.25,
+                '1e308' => 1e308,
+            ] as $text => $expected) {
+                yield $source . ' ' . $text => [$source, (string) $text, $expected];
+            }
+        }
+    }
+
+    #[DataProvider('floatInputs')]
+    public function testFloatInputsAgreeAcrossRoutesQueryStringsAndJson(
+        string $source,
+        string $text,
+        ?float $expected,
+    ): void {
         $app = new App();
-        $ran = false;
-        $action = static function (float $amount) use (&$ran): array {
-            $ran = true;
+        $seen = [];
+        $action = static function (float $amount) use (&$seen): array {
+            $seen[] = $amount;
             return ['accepted' => true];
         };
+        $app->router->get('/amount/{amount}', $action);
         $app->router->get('/amount', $action);
         $app->router->post('/amount', $action);
-        foreach ([
-            new Request('GET', '/amount?amount=1e999', ['Accept' => 'application/json']),
-            new Request(
+        $request = match ($source) {
+            'route' => new Request('GET', '/amount/' . $text, ['Accept' => 'application/json']),
+            'query' => new Request('GET', '/amount?amount=' . $text, ['Accept' => 'application/json']),
+            'json' => new Request(
                 'POST',
                 '/amount',
                 ['Accept' => 'application/json', 'Content-Type' => 'application/json'],
-                '{"amount":1e999}',
+                '{"amount":' . $text . '}',
             ),
-        ] as $request) {
-            $response = $app->handle($request);
+        };
+        $response = $app->handle($request);
+        if ($expected === null) {
             self::assertSame(422, $response->getStatusCode());
             self::assertSame(
                 ['must be a number'],
                 json_decode((string) $response->getBody(), true)['error']['fields']['amount'],
             );
-            self::assertFalse($ran);
+            self::assertSame([], $seen);
+        } else {
+            self::assertSame(200, $response->getStatusCode());
+            self::assertSame([$expected], $seen);
         }
     }
 

@@ -24,9 +24,10 @@ final class Database implements DatabaseContract
     private ?EventLoop $loop = null;
     private ?string $driver = null;
     /**
-     * Weak ownership lets worker shutdown close borrowed connections too.
+     * Each connection returns to the pool that lent it, even after that
+     * pool closes. Weak keys let shutdown find outstanding sessions too.
      *
-     * @var \WeakMap<ManagedConnection, bool>|null
+     * @var \WeakMap<ManagedConnection, Pool>|null
      */
     private ?\WeakMap $connections = null;
 
@@ -35,7 +36,7 @@ final class Database implements DatabaseContract
      * @param int $max The most connections this pool opens.
      * @param float $timeout Seconds to wait for a connection when all are in use.
      * @param DatabaseManager|null $manager The databases this one is among, which connection() chooses from.
-     * @param (\Closure(\Closure): ManagedConnection)|null $factory Selects a driver with the connect closure as its pool ownership token.
+     * @param (\Closure(\Closure): ManagedConnection)|null $factory Selects a driver, given the PDO connection factory.
      */
     public function __construct(
         private readonly \Closure $connect,
@@ -66,7 +67,7 @@ final class Database implements DatabaseContract
         return (
             $connection === $this
             || $connection instanceof ManagedConnection
-            && $connection->opensWith($this->connect)
+            && isset($this->connections[$connection])
         );
     }
 
@@ -78,14 +79,18 @@ final class Database implements DatabaseContract
 
     public function acquire(): Connection
     {
+        $pool = $this->pool();
         try {
-            return $this->pool()->acquire();
+            $connection = $pool->acquire();
         } catch (PoolExhaustedException $error) {
             throw new DatabaseException(
                 "No database connection became free within {$this->timeout} seconds; the pool holds {$this->max}.",
                 previous: $error,
             );
         }
+        $this->connections ??= new \WeakMap();
+        $this->connections[$connection] = $pool;
+        return $connection;
     }
 
     public function release(Connection $connection): void
@@ -95,20 +100,15 @@ final class Database implements DatabaseContract
                 'This connection was not borrowed from this database. Release it through the database that lent it.',
             );
         }
+        $pool = $this->connections[$connection];
         if ($connection->inTransaction()) {
-            // The next borrower must not inherit it.
-            $connection->close();
-            $this->pool()->release($connection);
+            // Validate the loan before closing it; the next borrower must not inherit the transaction.
+            $pool->discard($connection);
             throw new \LogicException(
                 'A connection was released inside a transaction; the transaction was rolled back.',
             );
         }
-        try {
-            $this->pool()->release($connection);
-        } catch (\LogicException) {
-            // Its pool was closed while it was out: there is nowhere to put it back, so it is closed.
-            $connection->close();
-        }
+        $pool->release($connection);
     }
 
     public function run(\Closure $callback): mixed
@@ -183,10 +183,7 @@ final class Database implements DatabaseContract
 
     private function make(): ManagedConnection
     {
-        $connection = $this->factory !== null ? ($this->factory)($this->connect) : new PdoConnection($this->connect);
-        $this->connections ??= new \WeakMap();
-        $this->connections[$connection] = true;
-        return $connection;
+        return $this->factory !== null ? ($this->factory)($this->connect) : new PdoConnection($this->connect);
     }
 
     /**

@@ -157,8 +157,7 @@ final class PdoConnection implements ManagedConnection
     }
 
     /**
-     * Whether this connection is opened by the given function, which is
-     * how a pool knows its own.
+     * Whether this connection is opened by the given function.
      */
     public function opensWith(\Closure $connect): bool
     {

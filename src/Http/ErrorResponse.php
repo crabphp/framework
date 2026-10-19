@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Crab\Http;
 
+use Crab\Engine\FailureReporter;
 use Crab\Engine\Http\Response as EngineResponse;
 use Psr\Http\Message\ServerRequestInterface;
 
@@ -16,7 +17,7 @@ final class ErrorResponse
     /**
      * @param string $message Shown to the client; the status's reason phrase when empty.
      * @param array<string, string|list<string>> $headers
-     * @param \Throwable|null $detail A failure to describe in full, for debugging only.
+     * @param \Throwable|null $detail A failure to describe in full, but without its calls' arguments, for debugging only.
      * @param array<string, list<string>> $fields What is wrong with the request's data, by field.
      */
     public static function make(
@@ -40,7 +41,8 @@ final class ErrorResponse
                     'exception' => $detail::class,
                     'file' => $detail->getFile(),
                     'line' => $detail->getLine(),
-                    'trace' => explode("\n", $detail->getTraceAsString()),
+                    // Without the arguments of each call, which may be a password.
+                    'trace' => FailureReporter::frames($detail),
                 ];
             }
             // A failure's own text may not be valid UTF-8.
@@ -51,7 +53,7 @@ final class ErrorResponse
             $body .= "{$field} " . implode(', ', $problems) . "\n";
         }
         if ($detail !== null) {
-            $body .= "\n" . $detail . "\n";
+            $body .= "\n" . FailureReporter::describe($detail) . "\n";
         }
         return Response::text($body, $status, $headers);
     }

@@ -31,6 +31,11 @@ final readonly class MakeMiddleware implements Command
 
     public function handle(Input $input, Output $output): int
     {
+        foreach (['path', 'namespace'] as $option) {
+            if ($input->option($option) === true) {
+                throw new \InvalidArgumentException("--{$option} needs a value; use --{$option}=value.");
+            }
+        }
         $name = (string) $input->argument(0, '');
         if (preg_match('/^[A-Z][A-Za-z0-9]*$/D', $name) !== 1) {
             $output->error('Give the middleware a class name: make:middleware RequireAdmin');
@@ -49,8 +54,9 @@ final readonly class MakeMiddleware implements Command
         }
         file_put_contents($file, self::source($namespace, $name));
         $output->line("Created {$file}");
+        $class = '\\' . $namespace . '\\' . $name;
         $output->line(
-            "Use it around every request with ->withMiddleware([{$name}::class]) in app.php, or around some routes with middleware: [{$name}::class].",
+            "Use it around every request with ->withMiddleware([{$class}::class]) in app.php, or around some routes with ->middleware({$class}::class).",
         );
         return 0;
     }

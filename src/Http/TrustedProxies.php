@@ -29,6 +29,11 @@ final readonly class TrustedProxies implements Middleware
     public const ATTRIBUTE = 'crab.client_ip';
 
     /**
+     * The first twelve bytes of an IPv4-mapped IPv6 address, ::ffff:0:0/96.
+     */
+    private const MAPPED = "\0\0\0\0\0\0\0\0\0\0\xff\xff";
+
+    /**
      * @param list<string> $proxies Addresses, or ranges such as "10.0.0.0/8" and "fd00::/8".
      */
     public function __construct(
@@ -61,10 +66,11 @@ final readonly class TrustedProxies implements Middleware
             static fn(string $hop): bool => $hop !== '',
         );
         foreach (array_reverse($hops) as $hop) {
-            if (@inet_pton($hop) === false) {
+            $packed = self::packed($hop);
+            if ($packed === false) {
                 break;
             }
-            $client = $hop;
+            $client = (string) inet_ntop($packed);
             if (!$this->trusts($hop)) {
                 break;
             }
@@ -74,13 +80,18 @@ final readonly class TrustedProxies implements Middleware
 
     private function trusts(string $address): bool
     {
-        $packed = @inet_pton($address);
+        $packed = self::packed($address);
         if ($packed === false) {
             return false;
         }
         foreach ($this->proxies as $proxy) {
             [$network, $bits] = [...explode('/', $proxy), null];
             $range = (string) inet_pton($network);
+            if (strlen($range) === 16 && strlen($packed) === 4 && str_starts_with($range, self::MAPPED)) {
+                // A range written as mapped IPv6, such as ::ffff:10.0.0.0/104, is the IPv4 range it maps.
+                $range = substr($range, 12);
+                $bits = $bits === null ? null : (string) max(0, (int) $bits - 96);
+            }
             if (strlen($range) !== strlen($packed)) {
                 continue;
             }
@@ -95,5 +106,17 @@ final readonly class TrustedProxies implements Middleware
             }
         }
         return false;
+    }
+
+    /**
+     * An address as bytes, with an IPv4-mapped IPv6 address, as a listener
+     * on [::] or a proxy may give one, read as the IPv4 address it is.
+     */
+    private static function packed(string $address): string|false
+    {
+        $packed = @inet_pton($address);
+        return $packed !== false && strlen($packed) === 16 && str_starts_with($packed, self::MAPPED)
+            ? substr($packed, 12)
+            : $packed;
     }
 }
