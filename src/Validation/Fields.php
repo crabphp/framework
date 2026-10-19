@@ -29,8 +29,10 @@ namespace Crab\Validation;
  *     [[...], new Length(min: 1)]    a list, then rules for the list
  *
  * A name ending in "?", 'address?' => [...], is a field that may be left
- * out, whatever it is. What is described arrives as Data objects, read
- * as $order->address->street.
+ * out or sent as null, whether it describes a scalar, an object or a list.
+ * Rules and nested fields are checked only for non-null values. A supplied
+ * null stays in Data::toArray(); an omitted field does not. What is described
+ * arrives as Data objects, read as $order->address->street.
  */
 #[\Attribute(\Attribute::TARGET_PARAMETER | \Attribute::TARGET_PROPERTY)]
 final readonly class Fields

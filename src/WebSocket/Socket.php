@@ -403,6 +403,11 @@ final class Socket implements SocketContract, Recipient
             return new Binary($message);
         }
         if ($type === MessageType::Text) {
+            // Only a JSON object or array changes the text delivered to the action.
+            $first = $message[strspn($message, " \t\r\n")] ?? '';
+            if ($first !== '{' && $first !== '[') {
+                return $message;
+            }
             try {
                 $decoded = HttpRequest::decodeJson($message);
             } catch (\LengthException) {

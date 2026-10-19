@@ -28,15 +28,17 @@ final readonly class Length implements Rule
             $length = count($value);
             $unit = 'item(s)';
             $verb = 'have';
-        } else {
+        } elseif (is_string($value)) {
             // Characters, not bytes, without needing the mbstring extension.
-            $length = preg_match_all('/./su', (string) $value);
+            $length = preg_match_all('/./su', $value);
             if ($length === false) {
                 // Not text at all: it has no length in characters to compare.
                 return 'must be valid UTF-8 text';
             }
             $unit = 'character(s)';
             $verb = 'be';
+        } else {
+            return 'must be text or a list';
         }
         if ($this->min !== null && $length < $this->min) {
             return "must {$verb} at least {$this->min} {$unit}";

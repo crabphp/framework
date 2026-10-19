@@ -96,14 +96,15 @@ final class QueueProvider implements Provider
         $container->singleton(Queue::class, QueueContract::class);
         $container->singleton(Consumer::class, static function (Container $container): Consumer {
             $config = $container->get(Config::class);
+            $retry = Supervisor::retrySettings($config);
             return new Consumer(
                 $container->get(Store::class),
                 $container,
                 $container->has(LoggerInterface::class) ? $container->get(LoggerInterface::class) : null,
                 $container->has(ClockInterface::class) ? $container->get(ClockInterface::class) : null,
-                (int) $config->get('queue.tries'),
-                array_map(intval(...), array_values((array) $config->get('queue.backoff'))),
-                (int) $config->get('queue.retry_after'),
+                $retry['tries'],
+                $retry['backoff'],
+                $retry['retry_after'],
                 $container->has(EventDispatcherInterface::class)
                     ? $container->get(EventDispatcherInterface::class)
                     : null,

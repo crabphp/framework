@@ -355,6 +355,63 @@ final class RouteTest extends TestCase
         $socket->assertReceived(new Binary('{"a":1}'));
     }
 
+    public function testTextAndJsonScalarsReachTheActionWithoutChangingTheirBytes(): void
+    {
+        $socket = $this->open($this->api(static function (Socket $socket): void {
+            foreach ($socket as $message) {
+                $socket->send(['type' => get_debug_type($message), 'message' => $message]);
+            }
+        }));
+        foreach ([
+            '',
+            " \t\r\n",
+            'ordinary text',
+            '0',
+            '1e4',
+            'true',
+            'null',
+            "\tfalse\r\n",
+            '"a JSON scalar"',
+            json_encode(str_repeat(':{}[]"\\', 1001), JSON_THROW_ON_ERROR),
+            "\v{}",
+            "\f[]",
+            "\xEF\xBB\xBF{}",
+            ' {broken',
+            "\n[broken",
+        ] as $message) {
+            $socket->send($message);
+            $socket->assertReceived(['type' => 'string', 'message' => $message]);
+        }
+        self::assertSame([], $this->reports);
+    }
+
+    public function testJsonContainersFollowingWhitespaceAreDecodedAndStillBounded(): void
+    {
+        $received = [];
+        $socket = $this->open($this->api(static function (Socket $socket) use (&$received): void {
+            foreach ($socket as $message) {
+                $received[] = $message;
+                $socket->send(['received' => $message]);
+            }
+        }));
+        $cases = [
+            [" \t\r\n{\"id\":7}", ['id' => 7]],
+            ["\n[1,{\"id\":7}]", [1, ['id' => 7]]],
+            [" \t{}", []],
+            ["\r[]", []],
+        ];
+        foreach ($cases as [$message, $decoded]) {
+            $socket->send($message);
+            $socket->assertReceived(['received' => $decoded]);
+        }
+        $body = "\t\r\n[{" . implode(',', array_fill(0, 1001, '"member":0')) . '}]';
+        $socket->send($body);
+        $socket->assertClosed(1009);
+
+        self::assertSame(array_column($cases, 1), $received);
+        self::assertSame([], $this->reports);
+    }
+
     public function testAnOverlyWideJsonObjectCloses1009WithoutReachingTheAction(): void
     {
         $received = [];

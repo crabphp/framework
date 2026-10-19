@@ -160,7 +160,7 @@ final readonly class Slug implements Rule
 {
     public function check(mixed $value): ?string
     {
-        return preg_match('/^[a-z0-9]+(-[a-z0-9]+)*$/', (string) $value) === 1
+        return is_string($value) && preg_match('/^[a-z0-9]+(-[a-z0-9]+)*$/D', $value) === 1
             ? null
             : 'must be lower-case words joined by dashes';
     }

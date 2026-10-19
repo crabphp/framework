@@ -243,7 +243,7 @@ public function register(Container $container): void
     $servers = $container->get(Servers::class);
 
     // One of your commands, run in a process of its own.
-    $servers->command('prices', 'prices:stream --exchange=nyse');
+    $servers->command('prices', 'price:stream --exchange=nyse');
 
     // Any program.
     $servers->process('vite', 'npm run dev');
@@ -257,7 +257,7 @@ public function register(Container $container): void
 }
 ```
 
-`prices:stream` is an application command. Validate `--exchange` against your configured exchange names before opening its feed; the console passes the value unchanged.
+`price:stream` is an application command. Validate `--exchange` against your configured exchange names before opening its feed; the console passes the value unchanged.
 
 A program is run through the shell, so a pipeline or `a && b` works. When the server stops or reloads, every process the line started is sent `SIGTERM` and given a few seconds to finish, so a program should stay in the foreground and clean up on that signal.
 
@@ -274,7 +274,7 @@ Then switch each on where it should run:
 
 | Method | Runs | When the server stops or reloads |
 | --- | --- | --- |
-| `command($id, 'prices:stream --exchange=nyse')` | That command of yours, as if typed after `php cua`, in a process of its own | It is sent SIGTERM, given time to finish, and started afresh |
+| `command($id, 'price:stream --exchange=nyse')` | That command of yours, as if typed after `php cua`, in a process of its own | It is sent SIGTERM, given time to finish, and started afresh |
 | `process($id, 'any program')` | The program, through the shell | The same |
 | `add($id, fn () => [new Workers(...)])` | Groups of workers inside the server itself | They finish what they have and are replaced, as the HTTP workers are |
 

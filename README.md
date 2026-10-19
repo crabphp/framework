@@ -155,13 +155,17 @@ Middleware is code that runs around a request: before it reaches the route, afte
 
 ~~~php
 use Crab\Contracts\Http\Middleware;
+use Crab\Http\ErrorResponse;
+use Psr\Http\Message\ResponseInterface;
+use Psr\Http\Message\ServerRequestInterface;
+use Psr\Http\Server\RequestHandlerInterface;
 
 final readonly class RequireJson implements Middleware
 {
     public function process(ServerRequestInterface $request, RequestHandlerInterface $handler): ResponseInterface
     {
         if (!str_contains($request->getHeaderLine('Content-Type'), 'json')) {
-            return ErrorResponse::make($request, 415);          // answer here, and the route is never reached
+            return ErrorResponse::make($request, 415, 'Send Content-Type: application/json.');
         }
 
         $response = $handler->handle($request);                 // let it through
@@ -171,7 +175,7 @@ final readonly class RequireJson implements Middleware
 }
 ~~~
 
-`php cua make:middleware RequireJson` writes that class for you, in `app/Http/`. `Middleware` is PSR-15's `MiddlewareInterface` under Crab's name, so middleware from any PSR-15 library works too. A middleware class is made by the container, once per worker, so its constructor can ask for services; like them, it must not keep anything about one request.
+`php cua make:middleware RequireJson` writes a pass-through stub in `app/Http/`. Edit it into the implementation above to check JSON and add the response header. `Middleware` is PSR-15's `MiddlewareInterface` under Crab's name, so middleware from any PSR-15 library works too. A middleware class is made by the container, once per worker, so its constructor can ask for services; like them, it must not keep anything about one request.
 
 There are two places to use one, and the same class works in both.
 
@@ -241,7 +245,7 @@ return App::configure(__DIR__)
 | `maxAge` | Seconds a browser remembers the permission | `600` |
 
 - **Put it first, with `prepend:`,** outside the error handler, so that a page can read an error's body too.
-- **It answers the browser's question itself.** Before most requests a browser sends an `OPTIONS` request asking permission; that is answered with 204 and never reaches a route.
+- **It answers the browser's question itself.** A preflight `OPTIONS` request from an allowed origin receives 204; a refused origin receives 403. Neither reaches a route.
 - **It protects nothing.** A request from an origin that is not listed is still handled, without the headers a browser needs; anything that is not a browser ignores them. Authentication is what keeps callers out.
 - **It costs about 0.1 µs** for a request that names no origin and about 0.9 µs for one that does, measured in process.
 
@@ -486,7 +490,7 @@ The body is a form with files (`multipart/form-data`). A file is read from disk 
 ### A client for one API
 
 ~~~php
-$stripe = new Client('https://api.stripe.com/v1', headers: ['Authorization' => "Bearer {$key}"]);
+$stripe = new \Crab\HttpClient\Client('https://api.stripe.com/v1', headers: ['Authorization' => "Bearer {$key}"]);
 $stripe->post('/charges', json: ['amount' => 500])->throw();
 ~~~
 

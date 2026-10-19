@@ -361,10 +361,13 @@ server {
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection $connection_upgrade;
         proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-For $remote_addr;
         proxy_read_timeout 90s;
     }
 }
 ```
+
+This location overwrites `X-Forwarded-For` with the proxy's peer address. Configure [TrustedProxies](deployment.md#behind-a-proxy) to trust that proxy, so `ip()` and address-based rate limits use the forwarded address.
 
 Caddy handles the Upgrade and Connection headers automatically. Its HTTP transport accepts a backend read timeout. See [Caddy reverse proxy](https://caddyserver.com/docs/caddyfile/directives/reverse_proxy).
 

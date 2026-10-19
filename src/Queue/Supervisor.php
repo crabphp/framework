@@ -164,18 +164,18 @@ final readonly class Supervisor
         $counts = [];
         foreach (['workers', 'concurrency'] as $setting) {
             $value = array_key_exists($setting, $settings) ? $settings[$setting] : $config->get('queue.' . $setting);
-            if (
-                !is_int($value) && (!is_string($value) || preg_match('/^[1-9][0-9]*$/D', $value) !== 1)
-                || filter_var($value, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]) === false
-            ) {
-                $shown = is_scalar($value) || $value === null ? var_export($value, true) : get_debug_type($value);
-                throw new \InvalidArgumentException(
-                    "The queue supervisor \"{$name}\" has \"{$setting}\" set to {$shown}; "
-                    . "set queue.{$setting} or its supervisor override to a positive whole number within PHP's integer range. "
-                    . "On the command line, use --{$setting}=1.",
-                );
-            }
-            $counts[$setting] = (int) $value;
+            $counts[$setting] = self::integer($value, $setting, $name);
+        }
+        $retry = self::retrySettings($config, $name, $settings);
+        $sleep = array_key_exists('sleep', $settings) ? $settings['sleep'] : $config->get('queue.sleep');
+        if (
+            !is_int($sleep) && !is_float($sleep) && (!is_string($sleep) || !is_numeric($sleep))
+            || !is_finite((float) $sleep)
+            || (float) $sleep < 0
+        ) {
+            throw new \InvalidArgumentException(
+                "The queue supervisor \"{$name}\" needs a finite nonnegative number of seconds for \"sleep\"; set queue.sleep or its supervisor override to a value such as 0 or 1.0.",
+            );
         }
         $queues = $settings['queues'] ?? [(string) $config->get('queue.queue')];
         return new self(
@@ -183,10 +183,63 @@ final readonly class Supervisor
             array_values(array_map(strval(...), (array) $queues)),
             $counts['workers'],
             $counts['concurrency'],
-            (int) ($settings['tries'] ?? $config->get('queue.tries')),
-            array_map(intval(...), array_values((array) ($settings['backoff'] ?? $config->get('queue.backoff')))),
-            (int) ($settings['retry_after'] ?? $config->get('queue.retry_after')),
-            (float) ($settings['sleep'] ?? $config->get('queue.sleep')),
+            $retry['tries'],
+            $retry['backoff'],
+            $retry['retry_after'],
+            (float) $sleep,
         );
+    }
+
+    /**
+     * Reads the retry settings shared by supervisors and standalone
+     * consumers, without requiring the worker settings a consumer never uses.
+     * An explicit null override is invalid, not a request for the default.
+     *
+     * @internal
+     * @param array<string, mixed> $settings Supervisor overrides.
+     * @return array{tries: int, backoff: list<int>, retry_after: int}
+     */
+    public static function retrySettings(Config $config, string $name = 'queue', array $settings = []): array
+    {
+        $counts = [];
+        foreach (['tries', 'retry_after'] as $setting) {
+            $value = array_key_exists($setting, $settings) ? $settings[$setting] : $config->get('queue.' . $setting);
+            $counts[$setting] = self::integer($value, $setting, $name);
+        }
+        $backoff = array_key_exists('backoff', $settings) ? $settings['backoff'] : $config->get('queue.backoff');
+        if (!is_array($backoff) || !array_is_list($backoff)) {
+            throw new \InvalidArgumentException(
+                "The queue supervisor \"{$name}\" needs \"backoff\" to be a list of nonnegative whole seconds; set queue.backoff or its supervisor override to a list such as [0, 10].",
+            );
+        }
+        $pauses = [];
+        foreach ($backoff as $index => $value) {
+            $pauses[] = self::integer($value, 'backoff.' . $index, $name, 0);
+        }
+        return ['tries' => $counts['tries'], 'backoff' => $pauses, 'retry_after' => $counts['retry_after']];
+    }
+
+    /**
+     * Whole settings keep their raw form until both their spelling and
+     * integer range have been checked, including each configured retry pause.
+     */
+    private static function integer(mixed $value, string $setting, string $name, int $minimum = 1): int
+    {
+        if (
+            !is_int($value) && (!is_string($value) || preg_match('/^(0|[1-9][0-9]*)$/D', $value) !== 1)
+            || filter_var($value, FILTER_VALIDATE_INT, ['options' => ['min_range' => $minimum]]) === false
+        ) {
+            $shown = is_scalar($value) || $value === null ? var_export($value, true) : get_debug_type($value);
+            $range = $minimum === 0 ? 'nonnegative' : 'positive';
+            $hint = in_array($setting, ['workers', 'concurrency'], true)
+                ? " On the command line, use --{$setting}=1."
+                : " Use {$minimum}.";
+            throw new \InvalidArgumentException(
+                "The queue supervisor \"{$name}\" has \"{$setting}\" set to {$shown}; "
+                . "set queue.{$setting} or its supervisor override to a {$range} whole number within PHP's integer range."
+                . $hint,
+            );
+        }
+        return (int) $value;
     }
 }

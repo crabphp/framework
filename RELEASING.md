@@ -2,8 +2,8 @@
 
 ## Once, before the first release
 
-- [ ] Make the five repositories public: `framework`, `crab`, `sample`, `clockwerk`, `redis`.
-- [ ] Remove the `CRAB_REPOS_TOKEN` lines from the sibling workflows; public checkouts need no token.
+- [x] Make the five repositories public: `framework`, `crab`, `sample`, `clockwerk`, `redis`.
+- [x] Remove the `CRAB_REPOS_TOKEN` lines from the sibling workflows; public checkouts need no token. (`sample` is the owner's local app and keeps its workflow as it is.)
 - [ ] In each repository: protect `main` so the CI checks must pass, and turn on private vulnerability reporting (Settings, Security).
 - [ ] Register `crabphp/framework`, `crabphp/redis`, `crabphp/clockwerk` and `crabphp/crab` on Packagist, with the GitHub hook so tags appear on their own.
 - [ ] Decide whether `crabphp/engine` is published now (a split repository fed from `src/Engine/`) or later. Until it is, keep `replace` in `composer.json`.

@@ -183,6 +183,211 @@ final class DocumentationTest extends TestCase
         self::assertSame($canonical[1], $summary[1], $setting . ' must describe the same limit in both places.');
     }
 
+    public function testTheReadmeConstructsAClientWithoutReplacingItsContractImport(): void
+    {
+        $service = $this->example('../README.md', 'php', 'class ShowWeather', '~~~');
+        preg_match_all('/^use [^;]+;/m', $service, $imports);
+        $imports = implode("\n", $imports[0]);
+        $example = $this->example('../README.md', 'php', '$stripe = new ', '~~~');
+        $constructor = explode("\n", $example)[0];
+        $key = 'test-key';
+        file_put_contents(
+            $this->directory . '/client.php',
+            "<?php\n" . $imports . "\n" . $constructor . "\nreturn \$stripe;\n",
+        );
+        $client = require $this->directory . '/client.php';
+        self::assertInstanceOf(\Crab\HttpClient\Client::class, $client);
+
+        $app = App::configure()->create();
+        $example = $this->example('../README.md', 'php', '$http = new FakeClient', '~~~');
+        $binding = explode('// ... run the code under test ...', $example)[0];
+        file_put_contents(
+            $this->directory . '/fake-client.php',
+            "<?php\n"
+            . $imports
+            . "\nuse Crab\\HttpClient\\FakeClient;\n"
+            . "use Psr\\Http\\Message\\RequestInterface;\n"
+            . $binding
+            . "\nreturn \$http;\n",
+        );
+        $fake = require $this->directory . '/fake-client.php';
+        self::assertSame($fake, $app->container->get(\Crab\Contracts\HttpClient\Client::class));
+        self::assertSame($fake, $app->container->get(\Crab\HttpClient\Client::class));
+    }
+
+    /**
+     * @return iterable<string, array{string, string}>
+     */
+    public static function middlewareExamples(): iterable
+    {
+        yield 'guide' => ['middleware.md', '```'];
+        yield 'README' => ['../README.md', '~~~'];
+    }
+
+    #[DataProvider('middlewareExamples')]
+    public function testTheJsonMiddlewareExampleExplainsItsRefusal(string $page, string $fence): void
+    {
+        $example = $this->example($page, 'php', 'class RequireJson', $fence);
+        $imports = '';
+        foreach ([
+            'Crab\\Http\\ErrorResponse',
+            'Psr\\Http\\Message\\ResponseInterface',
+            'Psr\\Http\\Message\\ServerRequestInterface',
+            'Psr\\Http\\Server\\RequestHandlerInterface',
+        ] as $type) {
+            if (str_contains($example, 'use ' . $type . ';')) {
+                continue;
+            }
+            $imports .= 'use ' . $type . ";\n";
+        }
+        $name = 'RequireJson' . bin2hex(random_bytes(6));
+        file_put_contents(
+            $this->directory . '/middleware.php',
+            "<?php\n" . $imports . str_replace('class RequireJson', 'class ' . $name, $example),
+        );
+        require $this->directory . '/middleware.php';
+        $class = $page === 'middleware.md' ? 'App\\Http\\' . $name : $name;
+        $app = App::configure()->withProviders(only: [])->withMiddleware([new $class()])->create();
+        $calls = 0;
+        $app->router->post('/json', static function () use (&$calls): array {
+            ++$calls;
+            return ['ok' => true];
+        });
+        foreach (['application/json', 'text/plain'] as $accept) {
+            $response = $app->handle(
+                new Request('POST', '/json', ['Content-Type' => 'text/plain', 'Accept' => $accept], 'text'),
+            );
+            self::assertSame(415, $response->getStatusCode());
+            $body = (string) $response->getBody();
+            self::assertSame(
+                'Send Content-Type: application/json.',
+                $accept === 'application/json'
+                    ? json_decode($body, true, flags: JSON_THROW_ON_ERROR)['error']['message']
+                    : trim(substr($body, 4)),
+            );
+        }
+        self::assertSame(0, $calls);
+        $response = $app->handle(new Request('POST', '/json', ['Content-Type' => 'application/json'], '{}'));
+        self::assertSame(200, $response->getStatusCode());
+        self::assertSame('2', $response->getHeaderLine('X-Api-Version'));
+        self::assertSame(1, $calls);
+    }
+
+    /**
+     * @return iterable<string, array{string, int|null, string, int}>
+     */
+    public static function errorHandlerFailures(): iterable
+    {
+        yield 'cancellation' => ['cancelled', null, '', 0];
+        yield 'client answer' => ['client', 404, 'No such item.', 0];
+        yield 'server answer' => ['server', 503, 'Not ready.', 1];
+        yield 'unexpected failure' => ['unexpected', 500, 'Something went wrong.', 1];
+    }
+
+    #[DataProvider('errorHandlerFailures')]
+    public function testTheReplacementErrorHandlerPreservesFailurePolicy(
+        string $kind,
+        ?int $status,
+        string $title,
+        int $logged,
+    ): void {
+        $example = $this->example('errors.md', 'php', 'class ProblemJson');
+        $name = 'ProblemJson' . bin2hex(random_bytes(6));
+        file_put_contents(
+            $this->directory . '/errors.php',
+            "<?php\n" . str_replace('class ProblemJson', 'class ' . $name, $example),
+        );
+        require $this->directory . '/errors.php';
+        $error = match ($kind) {
+            'cancelled' => new \Crab\Engine\Async\CancelledException('Request ended.'),
+            'client' => new \Crab\Http\HttpException(404, 'No such item.'),
+            'server' => new \Crab\Http\HttpException(503, 'Not ready.', ['Retry-After' => '5']),
+            default => new \RuntimeException('Private failure detail.'),
+        };
+        $logger = $this->createMock(\Psr\Log\LoggerInterface::class);
+        $logger
+            ->expects(self::exactly($logged))
+            ->method('error')
+            ->with('Request failed: {message}', ['message' => $error->getMessage(), 'exception' => $error]);
+        $handler = $this->createStub(\Psr\Http\Server\RequestHandlerInterface::class);
+        $handler->method('handle')->willThrowException($error);
+        $middleware = new $name($logger);
+        $response = null;
+        $cancelled = null;
+        try {
+            $response = $middleware->process(new Request('GET', '/items'), $handler);
+        } catch (\Crab\Engine\Async\CancelledException $failure) {
+            $cancelled = $failure;
+        }
+        if ($status === null) {
+            self::assertSame($error, $cancelled);
+            self::assertNull($response);
+            return;
+        }
+        self::assertNull($cancelled);
+        self::assertInstanceOf(\Psr\Http\Message\ResponseInterface::class, $response);
+        self::assertSame($status, $response->getStatusCode());
+        self::assertSame(['title' => $title], json_decode((string) $response->getBody(), true));
+        if ($kind === 'server') {
+            self::assertSame('5', $response->getHeaderLine('Retry-After'));
+        }
+    }
+
+    /**
+     * @return iterable<string, array{mixed, bool}>
+     */
+    public static function slugValues(): iterable
+    {
+        yield 'words and dashes' => ['post-title', true];
+        yield 'final line break' => ["post\n", false];
+        yield 'embedded line break' => ["post\ntitle", false];
+        yield 'uppercase' => ['Post', false];
+        yield 'array' => [[], false];
+        yield 'unreadable object' => [new \stdClass(), false];
+        yield 'number' => [42, false];
+    }
+
+    #[DataProvider('slugValues')]
+    public function testTheCustomSlugExampleChecksTheWholeStringWithoutCasting(mixed $value, bool $valid): void
+    {
+        $example = $this->example('validation.md', 'php', 'class Slug');
+        $name = 'Slug' . bin2hex(random_bytes(6));
+        file_put_contents(
+            $this->directory . '/slug.php',
+            "<?php\n" . str_replace('class Slug', 'class ' . $name, $example),
+        );
+        require $this->directory . '/slug.php';
+        $class = 'App\\Rules\\' . $name;
+        $problem = 'must be lower-case words joined by dashes';
+        self::assertSame($valid ? null : $problem, new $class()->check($value));
+        if (!is_string($value)) {
+            return;
+        }
+        $app = new App(new Config(['log' => ['path' => 'php://memory']]));
+        $route = $this->example('validation.md', 'php', "Route::post('/posts'");
+        file_put_contents(
+            $this->directory . '/slug-route.php',
+            "<?php\nuse Crab\\Route;\n" . str_replace('use App\\Rules\\Slug;', 'use ' . $class . ' as Slug;', $route),
+        );
+        require $this->directory . '/slug-route.php';
+        $response = new \Crab\Testing\Api($app)->post('/posts', ['slug' => $value, 'title' => 'Post']);
+        $response->assertStatus($valid ? 200 : 422);
+        $response->assertJson($valid ? 'slug' : 'error.fields.slug', $valid ? $value : [$problem]);
+    }
+
+    public function testTheWebSocketProxyOverwritesForwardedAddressesInItsUpgradeLocation(): void
+    {
+        $example = $this->example('websockets.md', 'nginx', 'proxy_set_header Upgrade');
+        preg_match('/location\s+\/\s*\{([^{}]*)\}/s', $example, $location);
+        self::assertArrayHasKey(1, $location);
+        self::assertStringContainsString('proxy_set_header Upgrade $http_upgrade;', $location[1]);
+        self::assertMatchesRegularExpression(
+            '/^\s*proxy_set_header\s+X-Forwarded-For\s+\$remote_addr\s*;/m',
+            $location[1],
+            'The upgrade location must overwrite client-supplied addresses, even when outer headers are not inherited.',
+        );
+    }
+
     public function testThePartialUpdateExampleAcceptsAnEmptyChangeSet(): void
     {
         $db = new Database(static fn(): \PDO => new \PDO('sqlite::memory:'), 1);

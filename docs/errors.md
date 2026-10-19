@@ -95,10 +95,11 @@ Inside a worker, a PHP warning or notice is thrown as an `ErrorException`. Readi
 
 ## Replacing the error handler
 
-The error handler is the middleware `Crab\Http\ErrorHandler`. To answer in a format of your own, write a middleware that catches, and put it in its place:
+The error handler is the middleware `Crab\Http\ErrorHandler`. To answer in a format of your own, write a middleware that catches, and put it in its place. Keep cancellation passing through, log server failures, and leave answers below 500 unlogged:
 
 ```php
 use Crab\Contracts\Http\Middleware;
+use Crab\Engine\Async\CancelledException;
 use Crab\Http\HttpException;
 use Crab\Http\Response;
 use Psr\Http\Message\ResponseInterface;
@@ -116,12 +117,17 @@ final readonly class ProblemJson implements Middleware
     {
         try {
             return $handler->handle($request);
-        } catch (HttpException $error) {
-            return Response::json(['title' => $error->getMessage()], $error->status, $error->headers);
+        } catch (CancelledException $cancelled) {
+            throw $cancelled;
         } catch (\Throwable $error) {
-            $this->logger->error('Request failed: {message}', ['message' => $error->getMessage(), 'exception' => $error]);
+            $status = $error instanceof HttpException ? $error->status : 500;
+            if ($status >= 500) {
+                $this->logger->error('Request failed: {message}', ['message' => $error->getMessage(), 'exception' => $error]);
+            }
+            $title = $error instanceof HttpException ? $error->getMessage() : 'Something went wrong.';
+            $headers = $error instanceof HttpException ? $error->headers : [];
 
-            return Response::json(['title' => 'Something went wrong.'], 500);
+            return Response::json(['title' => $title], $status, $headers);
         }
     }
 }

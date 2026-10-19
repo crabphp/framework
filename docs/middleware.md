@@ -43,7 +43,7 @@ final readonly class RequireJson implements Middleware
     public function process(ServerRequestInterface $request, RequestHandlerInterface $handler): ResponseInterface
     {
         if (!str_contains($request->getHeaderLine('Content-Type'), 'json')) {
-            return ErrorResponse::make($request, 415);          // answer here; the route is never reached
+            return ErrorResponse::make($request, 415, 'Send Content-Type: application/json.');
         }
 
         $response = $handler->handle($request);                 // let it through

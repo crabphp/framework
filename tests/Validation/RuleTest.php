@@ -4,6 +4,9 @@ declare(strict_types=1);
 
 namespace Crab\Tests\Validation;
 
+use Crab\App;
+use Crab\Config\Config;
+use Crab\Http\Request;
 use Crab\Validation\Length;
 use Crab\Validation\Pattern;
 use PHPUnit\Framework\TestCase;
@@ -34,5 +37,44 @@ final class RuleTest extends TestCase
     {
         self::assertNull(new Length(max: 4)->check('héé!'));
         self::assertSame('must be at most 3 character(s)', new Length(max: 3)->check('héé!'));
+    }
+
+    public function testALengthRefusesValuesThatAreNeitherTextNorAnArray(): void
+    {
+        $length = new Length(max: 30);
+        foreach ([new \DateTimeImmutable('2026-01-31'), new \stdClass(), 123, 1.5, true] as $value) {
+            self::assertSame('must be text or a list', $length->check($value));
+        }
+        self::assertNull($length->check('text'));
+        self::assertNull($length->check(['one', 'two']));
+        self::assertSame('must have at most 1 item(s)', new Length(max: 1)->check(['one', 'two']));
+    }
+
+    public function testALengthOnADateReturnsAFieldProblemBeforeCallingTheAction(): void
+    {
+        $app = new App(new Config(['log' => ['path' => 'php://memory']]));
+        $called = false;
+        $app->router->post('/date', static function (#[Length(max: 30)] \DateTimeImmutable $day) use (&$called): void {
+            $called = true;
+        });
+
+        $response = $app->handle(
+            new Request(
+                'POST',
+                '/date',
+                [
+                    'Content-Type' => 'application/json',
+                    'Accept' => 'application/json',
+                ],
+                '{"day":"2026-01-31"}',
+            ),
+        );
+
+        self::assertSame(422, $response->getStatusCode());
+        self::assertSame(
+            ['day' => ['must be text or a list']],
+            json_decode((string) $response->getBody(), true, flags: JSON_THROW_ON_ERROR)['error']['fields'],
+        );
+        self::assertFalse($called);
     }
 }
