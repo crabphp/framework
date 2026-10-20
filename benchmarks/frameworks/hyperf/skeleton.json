@@ -1,0 +1,86 @@
+{
+  "name": "hyperf/hyperf-skeleton",
+  "description": "A coroutine framework that focuses on hyperspeed and flexible, specifically use for build microservices and middlewares.",
+  "keywords": [
+    "framework",
+    "php",
+    "middleware",
+    "Microservice",
+    "swoole",
+    "hyperf"
+  ],
+  "homepage": "",
+  "version": "3.2.0",
+  "version_normalized": "3.2.0.0",
+  "license": [
+    "Apache-2.0"
+  ],
+  "authors": [],
+  "source": {
+    "url": "https://github.com/hyperf/hyperf-skeleton.git",
+    "type": "git",
+    "reference": "855dd7ef145d9e1e3d0500d958ac55d51cbf6ef0"
+  },
+  "dist": {
+    "url": "https://api.github.com/repos/hyperf/hyperf-skeleton/zipball/855dd7ef145d9e1e3d0500d958ac55d51cbf6ef0",
+    "type": "zip",
+    "shasum": "",
+    "reference": "855dd7ef145d9e1e3d0500d958ac55d51cbf6ef0"
+  },
+  "type": "project",
+  "support": {
+    "issues": "https://github.com/hyperf/hyperf-skeleton/issues",
+    "source": "https://github.com/hyperf/hyperf-skeleton/tree/3.2.0"
+  },
+  "funding": [
+    {
+      "url": "https://hyperf.wiki/#/zh-cn/donate",
+      "type": "custom"
+    },
+    {
+      "url": "https://opencollective.com/hyperf",
+      "type": "open_collective"
+    }
+  ],
+  "time": "2026-06-09T02:03:21+00:00",
+  "published-time": "2026-06-09T02:04:11+00:00",
+  "autoload": {
+    "files": [],
+    "psr-4": {
+      "App\\": "app/",
+      "Installer\\": "installer/"
+    }
+  },
+  "require": {
+    "php": ">=8.2",
+    "hyperf/cache": "~3.2.0",
+    "hyperf/command": "~3.2.0",
+    "hyperf/config": "~3.2.0",
+    "hyperf/db-connection": "~3.2.0",
+    "hyperf/engine": "^2.10",
+    "hyperf/framework": "~3.2.0",
+    "hyperf/guzzle": "~3.2.0",
+    "hyperf/http-server": "~3.2.0",
+    "hyperf/logger": "~3.2.0",
+    "hyperf/memory": "~3.2.0",
+    "hyperf/process": "~3.2.0",
+    "hyperf/laminas-mime": "^3.0"
+  },
+  "require-dev": {
+    "friendsofphp/php-cs-fixer": "^3.0",
+    "hyperf/devtool": "~3.2.0",
+    "hyperf/testing": "~3.2.0",
+    "mockery/mockery": "^1.0",
+    "phpstan/phpstan": "^2.0",
+    "swoole/ide-helper": "^6.0"
+  },
+  "suggest": {
+    "ext-openssl": "Required to use HTTPS.",
+    "ext-json": "Required to use JSON.",
+    "ext-pdo": "Required to use MySQL Client.",
+    "ext-pdo_mysql": "Required to use MySQL Client.",
+    "ext-redis": "Required to use Redis Client."
+  },
+  "archive_url": "https://codeload.github.com/hyperf/hyperf-skeleton/tar.gz/855dd7ef145d9e1e3d0500d958ac55d51cbf6ef0",
+  "sha256": "514c6880516db17d091aeef30d3617d1b8c219db037ad4949a90b28dde910d27"
+}

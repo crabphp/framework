@@ -1,0 +1,182 @@
+[
+  {
+    "case": "hello-64",
+    "service": "crab-off",
+    "ready_seconds": 0.4591684589977376
+  },
+  {
+    "case": "hello-64",
+    "service": "crab-jit",
+    "ready_seconds": 0.30116474999522325
+  },
+  {
+    "case": "hello-64",
+    "service": "octane",
+    "ready_seconds": 0.7617038329917705
+  },
+  {
+    "case": "hello-64",
+    "service": "symfony",
+    "ready_seconds": 0.3969466249982361
+  },
+  {
+    "case": "hello-64",
+    "service": "fpm",
+    "ready_seconds": 0.7534405830083415
+  },
+  {
+    "case": "hello-64",
+    "service": "elysia",
+    "ready_seconds": 0.5762348330026725
+  },
+  {
+    "case": "hello-64",
+    "service": "webman",
+    "ready_seconds": 0.32850950000283774
+  },
+  {
+    "case": "hello-64",
+    "service": "hyperf",
+    "ready_seconds": 0.5617357080045622
+  },
+  {
+    "case": "hello-64",
+    "service": "spiral",
+    "ready_seconds": 0.8341411250003148
+  },
+  {
+    "case": "hello-256",
+    "service": "crab-off",
+    "ready_seconds": 0.4363817499979632
+  },
+  {
+    "case": "hello-256",
+    "service": "crab-jit",
+    "ready_seconds": 0.32698895799694583
+  },
+  {
+    "case": "hello-256",
+    "service": "octane",
+    "ready_seconds": 0.998486459007836
+  },
+  {
+    "case": "hello-256",
+    "service": "symfony",
+    "ready_seconds": 0.5505888339976082
+  },
+  {
+    "case": "hello-256",
+    "service": "fpm",
+    "ready_seconds": 0.7802338330075145
+  },
+  {
+    "case": "hello-256",
+    "service": "elysia",
+    "ready_seconds": 0.5917611250042683
+  },
+  {
+    "case": "hello-256",
+    "service": "webman",
+    "ready_seconds": 0.3909792920021573
+  },
+  {
+    "case": "hello-256",
+    "service": "hyperf",
+    "ready_seconds": 0.5644451250118436
+  },
+  {
+    "case": "hello-256",
+    "service": "spiral",
+    "ready_seconds": 0.6355606669967528
+  },
+  {
+    "case": "db-64",
+    "service": "crab-off",
+    "ready_seconds": 0.423387457994977
+  },
+  {
+    "case": "db-64",
+    "service": "crab-jit",
+    "ready_seconds": 0.3877512500039302
+  },
+  {
+    "case": "db-64",
+    "service": "octane",
+    "ready_seconds": 1.0614037909981562
+  },
+  {
+    "case": "db-64",
+    "service": "symfony",
+    "ready_seconds": 0.5745910000114236
+  },
+  {
+    "case": "db-64",
+    "service": "fpm",
+    "ready_seconds": 0.807147083003656
+  },
+  {
+    "case": "db-64",
+    "service": "elysia",
+    "ready_seconds": 0.5540347920032218
+  },
+  {
+    "case": "db-64",
+    "service": "webman",
+    "ready_seconds": 0.3834234160021879
+  },
+  {
+    "case": "db-64",
+    "service": "hyperf",
+    "ready_seconds": 0.5727700420102337
+  },
+  {
+    "case": "db-64",
+    "service": "spiral",
+    "ready_seconds": 0.6561539160029497
+  },
+  {
+    "case": "validate-64",
+    "service": "crab-off",
+    "ready_seconds": 0.5798291249957401
+  },
+  {
+    "case": "validate-64",
+    "service": "crab-jit",
+    "ready_seconds": 0.33087420799711253
+  },
+  {
+    "case": "validate-64",
+    "service": "octane",
+    "ready_seconds": 1.001957541986485
+  },
+  {
+    "case": "validate-64",
+    "service": "symfony",
+    "ready_seconds": 0.4505088750011055
+  },
+  {
+    "case": "validate-64",
+    "service": "fpm",
+    "ready_seconds": 0.7900448750006035
+  },
+  {
+    "case": "validate-64",
+    "service": "elysia",
+    "ready_seconds": 0.5534255829988979
+  },
+  {
+    "case": "validate-64",
+    "service": "webman",
+    "ready_seconds": 0.3304846660030307
+  },
+  {
+    "case": "validate-64",
+    "service": "hyperf",
+    "ready_seconds": 0.5744497919949936
+  },
+  {
+    "case": "validate-64",
+    "service": "spiral",
+    "ready_seconds": 0.6147689589997754
+  }
+]

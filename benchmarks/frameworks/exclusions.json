@@ -1,0 +1,8 @@
+{
+  "tempest": {
+    "skeleton": "tempest/app v3.1.0",
+    "framework": "tempest/framework v3.19.2",
+    "reason": "The current release requires PHP ^8.5; the benchmark requires PHP 8.4. Composer refuses it on PHP 8.4.26.",
+    "evidence": "tempest/php84-attempt.log"
+  }
+}

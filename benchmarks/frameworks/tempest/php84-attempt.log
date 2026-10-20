@@ -1,0 +1,18 @@
+PHP 8.4.26 (cli) (built: Oct  6 2026 01:29:56) (ZTS)
+Copyright (c) The PHP Group
+Built by https://github.com/docker-library/php
+Zend Engine v4.4.26, Copyright (c) Zend Technologies
+    with Zend OPcache v8.4.26, Copyright (c), by Zend Technologies
+./composer.json has been updated
+Running composer update tempest/framework
+Loading composer repositories with package information
+Updating dependencies
+Your requirements could not be resolved to an installable set of packages.
+
+  Problem 1
+    - Root composer.json requires tempest/framework 3.19.2 -> satisfiable by tempest/framework[v3.19.2].
+    - tempest/framework v3.19.2 requires php ^8.5 -> your php version (8.4.26) does not satisfy that requirement.
+
+Running update with --no-dev does not mean require-dev is ignored, it just means the packages will not be installed. If dev requirements are blocking the update you have to resolve those problems.
+
+Installation failed, reverting ./composer.json to its original content.

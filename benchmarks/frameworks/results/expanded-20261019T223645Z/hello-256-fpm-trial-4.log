@@ -1,0 +1,14 @@
+Running 30s test @ http://fpm:8080
+  4 threads and 256 connections
+  Thread Stats   Avg      Stdev     Max   +/- Stdev
+    Latency   136.16ms   10.68ms 202.98ms   69.96%
+    Req/Sec   472.45    197.73   646.00     79.56%
+  Latency Distribution
+     50%  134.79ms
+     75%  142.47ms
+     90%  149.92ms
+     99%  165.14ms
+  56308 requests in 30.05s, 12.51MB read
+Requests/sec:   1873.86
+Transfer/sec:    426.38KB
+BENCH_JSON {"workload":"hello","bad_body":0,"bad_response":0,"requests":56308,"duration_us":30049228,"rps":1873.858457,"p50_us":134793.000000,"p99_us":165142.000000,"bad_status":0,"errors":{"connect":0,"read":0,"write":0,"timeout":0,"status":0}}

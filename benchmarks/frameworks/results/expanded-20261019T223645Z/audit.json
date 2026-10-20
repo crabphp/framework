@@ -1,0 +1,11 @@
+{
+  "checked_utc": "2026-10-20T00:19:25.823663+00:00",
+  "trials": 180,
+  "warmups": 36,
+  "preflight_checks": 36,
+  "rows": 36,
+  "measured_responses": 383770262,
+  "errors": 0,
+  "summary_recomputed": true,
+  "jit_flags_verified": true
+}

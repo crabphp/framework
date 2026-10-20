@@ -1,0 +1,329 @@
+name: crab-fw-bench-20261019223645-91848
+services:
+  crab-jit:
+    build:
+      context: /tmp/benchmark-frameworks/final-expanded/context
+      dockerfile: crab/Dockerfile
+      args:
+        BASE: php@sha256:836ac6c672d1372a47c8fd61b625015bd07760f493fb2eaab2087636498a2b4b
+    cpus: 2
+    cpuset: 0,1
+    depends_on:
+      mysql:
+        condition: service_healthy
+        required: true
+    environment:
+      APP_DEBUG: "false"
+      APP_ENV: production
+      BENCH_JIT: "1"
+      DB_DSN: mysql:host=mysql;port=23306;dbname=benchmark;charset=utf8mb4
+      DB_PASSWORD: bench
+      DB_USERNAME: bench
+      LOG_LEVEL: error
+      SERVER_QUEUE: "false"
+      SERVER_SCHEDULE: "false"
+      SERVER_WORKERS: "2"
+    healthcheck:
+      disable: true
+    mem_limit: "2147483648"
+    memswap_limit: "2147483648"
+    networks:
+      default: null
+    ports:
+      - mode: ingress
+        host_ip: 127.0.0.1
+        target: 8080
+        published: "23102"
+        protocol: tcp
+    stop_grace_period: 15s
+  crab-off:
+    build:
+      context: /tmp/benchmark-frameworks/final-expanded/context
+      dockerfile: crab/Dockerfile
+      args:
+        BASE: php@sha256:836ac6c672d1372a47c8fd61b625015bd07760f493fb2eaab2087636498a2b4b
+    cpus: 2
+    cpuset: 0,1
+    depends_on:
+      mysql:
+        condition: service_healthy
+        required: true
+    environment:
+      APP_DEBUG: "false"
+      APP_ENV: production
+      BENCH_JIT: "0"
+      DB_DSN: mysql:host=mysql;port=23306;dbname=benchmark;charset=utf8mb4
+      DB_PASSWORD: bench
+      DB_USERNAME: bench
+      LOG_LEVEL: error
+      SERVER_QUEUE: "false"
+      SERVER_SCHEDULE: "false"
+      SERVER_WORKERS: "2"
+    healthcheck:
+      disable: true
+    mem_limit: "2147483648"
+    memswap_limit: "2147483648"
+    networks:
+      default: null
+    ports:
+      - mode: ingress
+        host_ip: 127.0.0.1
+        target: 8080
+        published: "23101"
+        protocol: tcp
+    stop_grace_period: 15s
+  elysia:
+    build:
+      context: /tmp/benchmark-frameworks/final-expanded/context
+      dockerfile: elysia/Dockerfile
+      args:
+        BASE: oven/bun@sha256:9114c058aeae42162ee16dd5084b95fe9473970bb6bcb5b232ab1630f0546895
+    cpus: 2
+    cpuset: 0,1
+    depends_on:
+      mysql:
+        condition: service_healthy
+        required: true
+    healthcheck:
+      disable: true
+    mem_limit: "2147483648"
+    memswap_limit: "2147483648"
+    networks:
+      default: null
+    ports:
+      - mode: ingress
+        host_ip: 127.0.0.1
+        target: 8080
+        published: "23106"
+        protocol: tcp
+    stop_grace_period: 15s
+  fpm:
+    build:
+      context: /tmp/benchmark-frameworks/final-expanded/context
+      dockerfile: laravel-fpm/Dockerfile
+      args:
+        BASE: php@sha256:6bfef8e416977aa41f48e3e42a40c1e08050d24e4a938c6edb421400bff24601
+    cpus: 2
+    cpuset: 0,1
+    depends_on:
+      mysql:
+        condition: service_healthy
+        required: true
+    healthcheck:
+      disable: true
+    mem_limit: "2147483648"
+    memswap_limit: "2147483648"
+    networks:
+      default: null
+    ports:
+      - mode: ingress
+        host_ip: 127.0.0.1
+        target: 8080
+        published: "23105"
+        protocol: tcp
+    stop_grace_period: 15s
+  hyperf:
+    build:
+      context: /tmp/benchmark-frameworks/final-expanded/context
+      dockerfile: hyperf/Dockerfile
+      args:
+        BASE: php@sha256:836ac6c672d1372a47c8fd61b625015bd07760f493fb2eaab2087636498a2b4b
+    cpus: 2
+    cpuset: 0,1
+    depends_on:
+      mysql:
+        condition: service_healthy
+        required: true
+    healthcheck:
+      disable: true
+    mem_limit: "2147483648"
+    memswap_limit: "2147483648"
+    networks:
+      default: null
+    ports:
+      - mode: ingress
+        host_ip: 127.0.0.1
+        target: 8080
+        published: "23108"
+        protocol: tcp
+    stop_grace_period: 15s
+  loadgen:
+    build:
+      context: /tmp/benchmark-frameworks/final-expanded/context
+      dockerfile: loadgen/Dockerfile
+      args:
+        BASE: debian@sha256:7c7b2c966bc9ee8cedfeef67e0e279108992c77681fa595db4a9d65c06ccc587
+    cpus: 4
+    cpuset: 4,5,6,7
+    mem_limit: "536870912"
+    memswap_limit: "536870912"
+    networks:
+      default: null
+  mysql:
+    cpus: 2
+    cpuset: 2,3
+    command:
+      - --port=23306
+      - --mysqlx=OFF
+      - --innodb-buffer-pool-size=512M
+      - --max-connections=100
+    environment:
+      MYSQL_DATABASE: benchmark
+      MYSQL_PASSWORD: bench
+      MYSQL_ROOT_PASSWORD: benchroot
+      MYSQL_USER: bench
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - mysqladmin ping -h 127.0.0.1 -P 23306 -uroot -pbenchroot --silent
+      timeout: 2s
+      interval: 2s
+      retries: 90
+    image: mysql@sha256:6ea90827b1100f8f2ae306a539f86d2c264a26ed435a2a9f75551dd5c3aeb242
+    mem_limit: "2147483648"
+    memswap_limit: "2147483648"
+    networks:
+      default: null
+    ports:
+      - mode: ingress
+        host_ip: 127.0.0.1
+        target: 23306
+        published: "23306"
+        protocol: tcp
+    volumes:
+      - type: volume
+        source: mysql-data
+        target: /var/lib/mysql
+        volume: {}
+      - type: bind
+        source: /tmp/benchmark-frameworks/final-expanded/context/mysql/init.sql
+        target: /docker-entrypoint-initdb.d/init.sql
+        read_only: true
+        bind: {}
+  octane:
+    build:
+      context: /tmp/benchmark-frameworks/final-expanded/context
+      dockerfile: laravel-octane/Dockerfile
+      args:
+        BASE: dunglas/frankenphp@sha256:14007e6207a57651cb402970a44e5f2df15bfeffcbdeb5bbb322271949878b07
+    cpus: 2
+    cpuset: 0,1
+    depends_on:
+      mysql:
+        condition: service_healthy
+        required: true
+    healthcheck:
+      disable: true
+    mem_limit: "2147483648"
+    memswap_limit: "2147483648"
+    networks:
+      default: null
+    ports:
+      - mode: ingress
+        host_ip: 127.0.0.1
+        target: 8080
+        published: "23103"
+        protocol: tcp
+    stop_grace_period: 15s
+  spiral:
+    build:
+      context: /tmp/benchmark-frameworks/final-expanded/context
+      dockerfile: spiral/Dockerfile
+      args:
+        BASE: php@sha256:836ac6c672d1372a47c8fd61b625015bd07760f493fb2eaab2087636498a2b4b
+    cpus: 2
+    cpuset: 0,1
+    depends_on:
+      mysql:
+        condition: service_healthy
+        required: true
+    healthcheck:
+      disable: true
+    mem_limit: "2147483648"
+    memswap_limit: "2147483648"
+    networks:
+      default: null
+    ports:
+      - mode: ingress
+        host_ip: 127.0.0.1
+        target: 8080
+        published: "23109"
+        protocol: tcp
+    stop_grace_period: 15s
+  symfony:
+    build:
+      context: /tmp/benchmark-frameworks/final-expanded/context
+      dockerfile: symfony/Dockerfile
+      args:
+        BASE: dunglas/frankenphp@sha256:14007e6207a57651cb402970a44e5f2df15bfeffcbdeb5bbb322271949878b07
+    cpus: 2
+    cpuset: 0,1
+    depends_on:
+      mysql:
+        condition: service_healthy
+        required: true
+    healthcheck:
+      disable: true
+    mem_limit: "2147483648"
+    memswap_limit: "2147483648"
+    networks:
+      default: null
+    ports:
+      - mode: ingress
+        host_ip: 127.0.0.1
+        target: 8080
+        published: "23104"
+        protocol: tcp
+    stop_grace_period: 15s
+  webman:
+    build:
+      context: /tmp/benchmark-frameworks/final-expanded/context
+      dockerfile: webman/Dockerfile
+      args:
+        BASE: php@sha256:836ac6c672d1372a47c8fd61b625015bd07760f493fb2eaab2087636498a2b4b
+    cpus: 2
+    cpuset: 0,1
+    depends_on:
+      mysql:
+        condition: service_healthy
+        required: true
+    healthcheck:
+      disable: true
+    mem_limit: "2147483648"
+    memswap_limit: "2147483648"
+    networks:
+      default: null
+    ports:
+      - mode: ingress
+        host_ip: 127.0.0.1
+        target: 8080
+        published: "23107"
+        protocol: tcp
+    stop_grace_period: 15s
+networks:
+  default:
+    name: crab-fw-bench-20261019223645-91848_default
+volumes:
+  mysql-data:
+    name: crab-fw-bench-20261019223645-91848_mysql-data
+x-app:
+  cpus: 2
+  cpuset: 0,1
+  depends_on:
+    mysql:
+      condition: service_healthy
+  environment:
+    APP_DEBUG: "false"
+    APP_ENV: production
+    DB_DSN: mysql:host=mysql;port=23306;dbname=benchmark;charset=utf8mb4
+    DB_PASSWORD: bench
+    DB_USERNAME: bench
+    LOG_LEVEL: error
+    SERVER_QUEUE: "false"
+    SERVER_SCHEDULE: "false"
+    SERVER_WORKERS: "2"
+  healthcheck:
+    disable: true
+  mem_limit: 2g
+  memswap_limit: 2g
+  stop_grace_period: 15s

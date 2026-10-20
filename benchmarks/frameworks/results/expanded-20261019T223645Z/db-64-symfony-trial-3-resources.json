@@ -1,0 +1,1064 @@
+[
+  {
+    "time": 86990.046907625,
+    "symfony": {
+      "cpu_ns": 102240905000,
+      "memory_bytes": 63143936,
+      "memory_limit": 2147483648
+    },
+    "mysql": {
+      "cpu_ns": 498082431000,
+      "memory_bytes": 589180928,
+      "memory_limit": 2147483648
+    },
+    "loadgen": {
+      "cpu_ns": 2675690810000,
+      "memory_bytes": 6135808,
+      "memory_limit": 536870912
+    }
+  },
+  {
+    "time": 86990.556765625,
+    "symfony": {
+      "cpu_ns": 102854870000,
+      "memory_bytes": 63094784,
+      "memory_limit": 2147483648
+    },
+    "mysql": {
+      "cpu_ns": 498232761000,
+      "memory_bytes": 590888960,
+      "memory_limit": 2147483648
+    },
+    "loadgen": {
+      "cpu_ns": 2675795256000,
+      "memory_bytes": 20430848,
+      "memory_limit": 536870912
+    }
+  },
+  {
+    "time": 86991.06957475,
+    "symfony": {
+      "cpu_ns": 103549980000,
+      "memory_bytes": 63356928,
+      "memory_limit": 2147483648
+    },
+    "mysql": {
+      "cpu_ns": 498399548000,
+      "memory_bytes": 590888960,
+      "memory_limit": 2147483648
+    },
+    "loadgen": {
+      "cpu_ns": 2675861074000,
+      "memory_bytes": 20430848,
+      "memory_limit": 536870912
+    }
+  },
+  {
+    "time": 86991.583944791,
+    "symfony": {
+      "cpu_ns": 104243343000,
+      "memory_bytes": 63619072,
+      "memory_limit": 2147483648
+    },
+    "mysql": {
+      "cpu_ns": 498584752000,
+      "memory_bytes": 590684160,
+      "memory_limit": 2147483648
+    },
+    "loadgen": {
+      "cpu_ns": 2675928382000,
+      "memory_bytes": 20430848,
+      "memory_limit": 536870912
+    }
+  },
+  {
+    "time": 86992.099783291,
+    "symfony": {
+      "cpu_ns": 104961010000,
+      "memory_bytes": 63619072,
+      "memory_limit": 2147483648
+    },
+    "mysql": {
+      "cpu_ns": 498749632000,
+      "memory_bytes": 590684160,
+      "memory_limit": 2147483648
+    },
+    "loadgen": {
+      "cpu_ns": 2675993112000,
+      "memory_bytes": 21135360,
+      "memory_limit": 536870912
+    }
+  },
+  {
+    "time": 86992.612494041,
+    "symfony": {
+      "cpu_ns": 105671334000,
+      "memory_bytes": 63619072,
+      "memory_limit": 2147483648
+    },
+    "mysql": {
+      "cpu_ns": 498916246000,
+      "memory_bytes": 590684160,
+      "memory_limit": 2147483648
+    },
+    "loadgen": {
+      "cpu_ns": 2676054750000,
+      "memory_bytes": 22134784,
+      "memory_limit": 536870912
+    }
+  },
+  {
+    "time": 86993.119319208,
+    "symfony": {
+      "cpu_ns": 106366518000,
+      "memory_bytes": 63619072,
+      "memory_limit": 2147483648
+    },
+    "mysql": {
+      "cpu_ns": 499085105000,
+      "memory_bytes": 590680064,
+      "memory_limit": 2147483648
+    },
+    "loadgen": {
+      "cpu_ns": 2676122023000,
+      "memory_bytes": 23461888,
+      "memory_limit": 536870912
+    }
+  },
+  {
+    "time": 86993.635023041,
+    "symfony": {
+      "cpu_ns": 107052071000,
+      "memory_bytes": 63619072,
+      "memory_limit": 2147483648
+    },
+    "mysql": {
+      "cpu_ns": 499262846000,
+      "memory_bytes": 590647296,
+      "memory_limit": 2147483648
+    },
+    "loadgen": {
+      "cpu_ns": 2676186711000,
+      "memory_bytes": 23527424,
+      "memory_limit": 536870912
+    }
+  },
+  {
+    "time": 86994.153456791,
+    "symfony": {
+      "cpu_ns": 107767557000,
+      "memory_bytes": 63619072,
+      "memory_limit": 2147483648
+    },
+    "mysql": {
+      "cpu_ns": 499439576000,
+      "memory_bytes": 590647296,
+      "memory_limit": 2147483648
+    },
+    "loadgen": {
+      "cpu_ns": 2676248933000,
+      "memory_bytes": 23527424,
+      "memory_limit": 536870912
+    }
+  },
+  {
+    "time": 86994.668409125,
+    "symfony": {
+      "cpu_ns": 108455619000,
+      "memory_bytes": 63234048,
+      "memory_limit": 2147483648
+    },
+    "mysql": {
+      "cpu_ns": 499610369000,
+      "memory_bytes": 590647296,
+      "memory_limit": 2147483648
+    },
+    "loadgen": {
+      "cpu_ns": 2676304889000,
+      "memory_bytes": 23527424,
+      "memory_limit": 536870912
+    }
+  },
+  {
+    "time": 86995.179434875,
+    "symfony": {
+      "cpu_ns": 109120428000,
+      "memory_bytes": 63234048,
+      "memory_limit": 2147483648
+    },
+    "mysql": {
+      "cpu_ns": 499773765000,
+      "memory_bytes": 590647296,
+      "memory_limit": 2147483648
+    },
+    "loadgen": {
+      "cpu_ns": 2676365075000,
+      "memory_bytes": 23527424,
+      "memory_limit": 536870912
+    }
+  },
+  {
+    "time": 86995.693982375,
+    "symfony": {
+      "cpu_ns": 109787575000,
+      "memory_bytes": 62808064,
+      "memory_limit": 2147483648
+    },
+    "mysql": {
+      "cpu_ns": 499951369000,
+      "memory_bytes": 590622720,
+      "memory_limit": 2147483648
+    },
+    "loadgen": {
+      "cpu_ns": 2676420633000,
+      "memory_bytes": 23822336,
+      "memory_limit": 536870912
+    }
+  },
+  {
+    "time": 86996.208089708,
+    "symfony": {
+      "cpu_ns": 110462790000,
+      "memory_bytes": 62808064,
+      "memory_limit": 2147483648
+    },
+    "mysql": {
+      "cpu_ns": 500115094000,
+      "memory_bytes": 590622720,
+      "memory_limit": 2147483648
+    },
+    "loadgen": {
+      "cpu_ns": 2676488359000,
+      "memory_bytes": 24084480,
+      "memory_limit": 536870912
+    }
+  },
+  {
+    "time": 86996.729014833,
+    "symfony": {
+      "cpu_ns": 111154998000,
+      "memory_bytes": 62808064,
+      "memory_limit": 2147483648
+    },
+    "mysql": {
+      "cpu_ns": 500285026000,
+      "memory_bytes": 590618624,
+      "memory_limit": 2147483648
+    },
+    "loadgen": {
+      "cpu_ns": 2676544732000,
+      "memory_bytes": 24084480,
+      "memory_limit": 536870912
+    }
+  },
+  {
+    "time": 86997.251879208,
+    "symfony": {
+      "cpu_ns": 111820560000,
+      "memory_bytes": 62808064,
+      "memory_limit": 2147483648
+    },
+    "mysql": {
+      "cpu_ns": 500443464000,
+      "memory_bytes": 590618624,
+      "memory_limit": 2147483648
+    },
+    "loadgen": {
+      "cpu_ns": 2676598836000,
+      "memory_bytes": 24084480,
+      "memory_limit": 536870912
+    }
+  },
+  {
+    "time": 86997.768663666,
+    "symfony": {
+      "cpu_ns": 112483210000,
+      "memory_bytes": 62808064,
+      "memory_limit": 2147483648
+    },
+    "mysql": {
+      "cpu_ns": 500621390000,
+      "memory_bytes": 590532608,
+      "memory_limit": 2147483648
+    },
+    "loadgen": {
+      "cpu_ns": 2676652411000,
+      "memory_bytes": 24084480,
+      "memory_limit": 536870912
+    }
+  },
+  {
+    "time": 86998.28475175,
+    "symfony": {
+      "cpu_ns": 113192107000,
+      "memory_bytes": 62808064,
+      "memory_limit": 2147483648
+    },
+    "mysql": {
+      "cpu_ns": 500788478000,
+      "memory_bytes": 590532608,
+      "memory_limit": 2147483648
+    },
+    "loadgen": {
+      "cpu_ns": 2676717813000,
+      "memory_bytes": 24084480,
+      "memory_limit": 536870912
+    }
+  },
+  {
+    "time": 86998.80144325,
+    "symfony": {
+      "cpu_ns": 113887864000,
+      "memory_bytes": 63234048,
+      "memory_limit": 2147483648
+    },
+    "mysql": {
+      "cpu_ns": 500959771000,
+      "memory_bytes": 590532608,
+      "memory_limit": 2147483648
+    },
+    "loadgen": {
+      "cpu_ns": 2676794323000,
+      "memory_bytes": 24346624,
+      "memory_limit": 536870912
+    }
+  },
+  {
+    "time": 86999.317341583,
+    "symfony": {
+      "cpu_ns": 114598624000,
+      "memory_bytes": 63234048,
+      "memory_limit": 2147483648
+    },
+    "mysql": {
+      "cpu_ns": 501128847000,
+      "memory_bytes": 590532608,
+      "memory_limit": 2147483648
+    },
+    "loadgen": {
+      "cpu_ns": 2676857409000,
+      "memory_bytes": 24346624,
+      "memory_limit": 536870912
+    }
+  },
+  {
+    "time": 86999.834952666,
+    "symfony": {
+      "cpu_ns": 115298116000,
+      "memory_bytes": 64217088,
+      "memory_limit": 2147483648
+    },
+    "mysql": {
+      "cpu_ns": 501318245000,
+      "memory_bytes": 569520128,
+      "memory_limit": 2147483648
+    },
+    "loadgen": {
+      "cpu_ns": 2676919401000,
+      "memory_bytes": 21405696,
+      "memory_limit": 536870912
+    }
+  },
+  {
+    "time": 87000.349480958,
+    "symfony": {
+      "cpu_ns": 116013724000,
+      "memory_bytes": 64086016,
+      "memory_limit": 2147483648
+    },
+    "mysql": {
+      "cpu_ns": 501489409000,
+      "memory_bytes": 569520128,
+      "memory_limit": 2147483648
+    },
+    "loadgen": {
+      "cpu_ns": 2676981412000,
+      "memory_bytes": 21405696,
+      "memory_limit": 536870912
+    }
+  },
+  {
+    "time": 87000.863447708,
+    "symfony": {
+      "cpu_ns": 116721960000,
+      "memory_bytes": 64446464,
+      "memory_limit": 2147483648
+    },
+    "mysql": {
+      "cpu_ns": 501655362000,
+      "memory_bytes": 569520128,
+      "memory_limit": 2147483648
+    },
+    "loadgen": {
+      "cpu_ns": 2677037746000,
+      "memory_bytes": 21405696,
+      "memory_limit": 536870912
+    }
+  },
+  {
+    "time": 87001.372636458,
+    "symfony": {
+      "cpu_ns": 117425356000,
+      "memory_bytes": 64446464,
+      "memory_limit": 2147483648
+    },
+    "mysql": {
+      "cpu_ns": 501820390000,
+      "memory_bytes": 569520128,
+      "memory_limit": 2147483648
+    },
+    "loadgen": {
+      "cpu_ns": 2677108732000,
+      "memory_bytes": 21405696,
+      "memory_limit": 536870912
+    }
+  },
+  {
+    "time": 87001.887482708,
+    "symfony": {
+      "cpu_ns": 118123214000,
+      "memory_bytes": 68313088,
+      "memory_limit": 2147483648
+    },
+    "mysql": {
+      "cpu_ns": 502014008000,
+      "memory_bytes": 578682880,
+      "memory_limit": 2147483648
+    },
+    "loadgen": {
+      "cpu_ns": 2677172704000,
+      "memory_bytes": 21405696,
+      "memory_limit": 536870912
+    }
+  },
+  {
+    "time": 87002.40359,
+    "symfony": {
+      "cpu_ns": 118824060000,
+      "memory_bytes": 68313088,
+      "memory_limit": 2147483648
+    },
+    "mysql": {
+      "cpu_ns": 502179365000,
+      "memory_bytes": 578682880,
+      "memory_limit": 2147483648
+    },
+    "loadgen": {
+      "cpu_ns": 2677235204000,
+      "memory_bytes": 21405696,
+      "memory_limit": 536870912
+    }
+  },
+  {
+    "time": 87002.917438625,
+    "symfony": {
+      "cpu_ns": 119516459000,
+      "memory_bytes": 68313088,
+      "memory_limit": 2147483648
+    },
+    "mysql": {
+      "cpu_ns": 502341859000,
+      "memory_bytes": 578682880,
+      "memory_limit": 2147483648
+    },
+    "loadgen": {
+      "cpu_ns": 2677290298000,
+      "memory_bytes": 21405696,
+      "memory_limit": 536870912
+    }
+  },
+  {
+    "time": 87003.43215125,
+    "symfony": {
+      "cpu_ns": 120214245000,
+      "memory_bytes": 68313088,
+      "memory_limit": 2147483648
+    },
+    "mysql": {
+      "cpu_ns": 502506385000,
+      "memory_bytes": 578678784,
+      "memory_limit": 2147483648
+    },
+    "loadgen": {
+      "cpu_ns": 2677349643000,
+      "memory_bytes": 21405696,
+      "memory_limit": 536870912
+    }
+  },
+  {
+    "time": 87003.942591791,
+    "symfony": {
+      "cpu_ns": 120924516000,
+      "memory_bytes": 67338240,
+      "memory_limit": 2147483648
+    },
+    "mysql": {
+      "cpu_ns": 502694065000,
+      "memory_bytes": 578605056,
+      "memory_limit": 2147483648
+    },
+    "loadgen": {
+      "cpu_ns": 2677416453000,
+      "memory_bytes": 21405696,
+      "memory_limit": 536870912
+    }
+  },
+  {
+    "time": 87004.463167125,
+    "symfony": {
+      "cpu_ns": 121599276000,
+      "memory_bytes": 68042752,
+      "memory_limit": 2147483648
+    },
+    "mysql": {
+      "cpu_ns": 502861086000,
+      "memory_bytes": 578605056,
+      "memory_limit": 2147483648
+    },
+    "loadgen": {
+      "cpu_ns": 2677476051000,
+      "memory_bytes": 21405696,
+      "memory_limit": 536870912
+    }
+  },
+  {
+    "time": 87004.972506583,
+    "symfony": {
+      "cpu_ns": 122305455000,
+      "memory_bytes": 68042752,
+      "memory_limit": 2147483648
+    },
+    "mysql": {
+      "cpu_ns": 503028730000,
+      "memory_bytes": 578605056,
+      "memory_limit": 2147483648
+    },
+    "loadgen": {
+      "cpu_ns": 2677537048000,
+      "memory_bytes": 21405696,
+      "memory_limit": 536870912
+    }
+  },
+  {
+    "time": 87005.485774125,
+    "symfony": {
+      "cpu_ns": 123003441000,
+      "memory_bytes": 71352320,
+      "memory_limit": 2147483648
+    },
+    "mysql": {
+      "cpu_ns": 503194456000,
+      "memory_bytes": 578605056,
+      "memory_limit": 2147483648
+    },
+    "loadgen": {
+      "cpu_ns": 2677598060000,
+      "memory_bytes": 21405696,
+      "memory_limit": 536870912
+    }
+  },
+  {
+    "time": 87005.991473083,
+    "symfony": {
+      "cpu_ns": 123695385000,
+      "memory_bytes": 71352320,
+      "memory_limit": 2147483648
+    },
+    "mysql": {
+      "cpu_ns": 503378253000,
+      "memory_bytes": 578797568,
+      "memory_limit": 2147483648
+    },
+    "loadgen": {
+      "cpu_ns": 2677663617000,
+      "memory_bytes": 21405696,
+      "memory_limit": 536870912
+    }
+  },
+  {
+    "time": 87006.500804375,
+    "symfony": {
+      "cpu_ns": 124415662000,
+      "memory_bytes": 71352320,
+      "memory_limit": 2147483648
+    },
+    "mysql": {
+      "cpu_ns": 503551420000,
+      "memory_bytes": 578797568,
+      "memory_limit": 2147483648
+    },
+    "loadgen": {
+      "cpu_ns": 2677737414000,
+      "memory_bytes": 21405696,
+      "memory_limit": 536870912
+    }
+  },
+  {
+    "time": 87007.018997208,
+    "symfony": {
+      "cpu_ns": 125128602000,
+      "memory_bytes": 71352320,
+      "memory_limit": 2147483648
+    },
+    "mysql": {
+      "cpu_ns": 503716407000,
+      "memory_bytes": 578797568,
+      "memory_limit": 2147483648
+    },
+    "loadgen": {
+      "cpu_ns": 2677802653000,
+      "memory_bytes": 21405696,
+      "memory_limit": 536870912
+    }
+  },
+  {
+    "time": 87007.535135958,
+    "symfony": {
+      "cpu_ns": 125843739000,
+      "memory_bytes": 71352320,
+      "memory_limit": 2147483648
+    },
+    "mysql": {
+      "cpu_ns": 503884342000,
+      "memory_bytes": 578797568,
+      "memory_limit": 2147483648
+    },
+    "loadgen": {
+      "cpu_ns": 2677863199000,
+      "memory_bytes": 21405696,
+      "memory_limit": 536870912
+    }
+  },
+  {
+    "time": 87008.051744166,
+    "symfony": {
+      "cpu_ns": 126566068000,
+      "memory_bytes": 71352320,
+      "memory_limit": 2147483648
+    },
+    "mysql": {
+      "cpu_ns": 504074685000,
+      "memory_bytes": 579055616,
+      "memory_limit": 2147483648
+    },
+    "loadgen": {
+      "cpu_ns": 2677924463000,
+      "memory_bytes": 21405696,
+      "memory_limit": 536870912
+    }
+  },
+  {
+    "time": 87008.5684155,
+    "symfony": {
+      "cpu_ns": 127290566000,
+      "memory_bytes": 71122944,
+      "memory_limit": 2147483648
+    },
+    "mysql": {
+      "cpu_ns": 504251671000,
+      "memory_bytes": 579055616,
+      "memory_limit": 2147483648
+    },
+    "loadgen": {
+      "cpu_ns": 2677987220000,
+      "memory_bytes": 21405696,
+      "memory_limit": 536870912
+    }
+  },
+  {
+    "time": 87009.080134416,
+    "symfony": {
+      "cpu_ns": 127984778000,
+      "memory_bytes": 71122944,
+      "memory_limit": 2147483648
+    },
+    "mysql": {
+      "cpu_ns": 504420457000,
+      "memory_bytes": 579055616,
+      "memory_limit": 2147483648
+    },
+    "loadgen": {
+      "cpu_ns": 2678053253000,
+      "memory_bytes": 21405696,
+      "memory_limit": 536870912
+    }
+  },
+  {
+    "time": 87009.595022,
+    "symfony": {
+      "cpu_ns": 128682565000,
+      "memory_bytes": 71122944,
+      "memory_limit": 2147483648
+    },
+    "mysql": {
+      "cpu_ns": 504585453000,
+      "memory_bytes": 579055616,
+      "memory_limit": 2147483648
+    },
+    "loadgen": {
+      "cpu_ns": 2678112813000,
+      "memory_bytes": 21405696,
+      "memory_limit": 536870912
+    }
+  },
+  {
+    "time": 87010.110715125,
+    "symfony": {
+      "cpu_ns": 129387948000,
+      "memory_bytes": 73908224,
+      "memory_limit": 2147483648
+    },
+    "mysql": {
+      "cpu_ns": 504774304000,
+      "memory_bytes": 578572288,
+      "memory_limit": 2147483648
+    },
+    "loadgen": {
+      "cpu_ns": 2678172371000,
+      "memory_bytes": 21405696,
+      "memory_limit": 536870912
+    }
+  },
+  {
+    "time": 87010.624987,
+    "symfony": {
+      "cpu_ns": 130072397000,
+      "memory_bytes": 72671232,
+      "memory_limit": 2147483648
+    },
+    "mysql": {
+      "cpu_ns": 504944688000,
+      "memory_bytes": 578572288,
+      "memory_limit": 2147483648
+    },
+    "loadgen": {
+      "cpu_ns": 2678229474000,
+      "memory_bytes": 21405696,
+      "memory_limit": 536870912
+    }
+  },
+  {
+    "time": 87011.137118666,
+    "symfony": {
+      "cpu_ns": 130746172000,
+      "memory_bytes": 73392128,
+      "memory_limit": 2147483648
+    },
+    "mysql": {
+      "cpu_ns": 505114203000,
+      "memory_bytes": 578572288,
+      "memory_limit": 2147483648
+    },
+    "loadgen": {
+      "cpu_ns": 2678274496000,
+      "memory_bytes": 21405696,
+      "memory_limit": 536870912
+    }
+  },
+  {
+    "time": 87011.653025416,
+    "symfony": {
+      "cpu_ns": 131427955000,
+      "memory_bytes": 73392128,
+      "memory_limit": 2147483648
+    },
+    "mysql": {
+      "cpu_ns": 505287590000,
+      "memory_bytes": 578572288,
+      "memory_limit": 2147483648
+    },
+    "loadgen": {
+      "cpu_ns": 2678337529000,
+      "memory_bytes": 21405696,
+      "memory_limit": 536870912
+    }
+  },
+  {
+    "time": 87012.167940041,
+    "symfony": {
+      "cpu_ns": 132100402000,
+      "memory_bytes": 72744960,
+      "memory_limit": 2147483648
+    },
+    "mysql": {
+      "cpu_ns": 505465023000,
+      "memory_bytes": 578756608,
+      "memory_limit": 2147483648
+    },
+    "loadgen": {
+      "cpu_ns": 2678394398000,
+      "memory_bytes": 21405696,
+      "memory_limit": 536870912
+    }
+  },
+  {
+    "time": 87012.67973575,
+    "symfony": {
+      "cpu_ns": 132789353000,
+      "memory_bytes": 73400320,
+      "memory_limit": 2147483648
+    },
+    "mysql": {
+      "cpu_ns": 505632910000,
+      "memory_bytes": 578756608,
+      "memory_limit": 2147483648
+    },
+    "loadgen": {
+      "cpu_ns": 2678452209000,
+      "memory_bytes": 21405696,
+      "memory_limit": 536870912
+    }
+  },
+  {
+    "time": 87013.189109208,
+    "symfony": {
+      "cpu_ns": 133501233000,
+      "memory_bytes": 73400320,
+      "memory_limit": 2147483648
+    },
+    "mysql": {
+      "cpu_ns": 505798582000,
+      "memory_bytes": 578756608,
+      "memory_limit": 2147483648
+    },
+    "loadgen": {
+      "cpu_ns": 2678515796000,
+      "memory_bytes": 21405696,
+      "memory_limit": 536870912
+    }
+  },
+  {
+    "time": 87013.707764583,
+    "symfony": {
+      "cpu_ns": 134190113000,
+      "memory_bytes": 73400320,
+      "memory_limit": 2147483648
+    },
+    "mysql": {
+      "cpu_ns": 505961587000,
+      "memory_bytes": 578756608,
+      "memory_limit": 2147483648
+    },
+    "loadgen": {
+      "cpu_ns": 2678577002000,
+      "memory_bytes": 21405696,
+      "memory_limit": 536870912
+    }
+  },
+  {
+    "time": 87014.221662791,
+    "symfony": {
+      "cpu_ns": 134904883000,
+      "memory_bytes": 73400320,
+      "memory_limit": 2147483648
+    },
+    "mysql": {
+      "cpu_ns": 506148238000,
+      "memory_bytes": 578813952,
+      "memory_limit": 2147483648
+    },
+    "loadgen": {
+      "cpu_ns": 2678648307000,
+      "memory_bytes": 21405696,
+      "memory_limit": 536870912
+    }
+  },
+  {
+    "time": 87014.73735125,
+    "symfony": {
+      "cpu_ns": 135601863000,
+      "memory_bytes": 73400320,
+      "memory_limit": 2147483648
+    },
+    "mysql": {
+      "cpu_ns": 506309224000,
+      "memory_bytes": 578813952,
+      "memory_limit": 2147483648
+    },
+    "loadgen": {
+      "cpu_ns": 2678711348000,
+      "memory_bytes": 21405696,
+      "memory_limit": 536870912
+    }
+  },
+  {
+    "time": 87015.250331125,
+    "symfony": {
+      "cpu_ns": 136248664000,
+      "memory_bytes": 73940992,
+      "memory_limit": 2147483648
+    },
+    "mysql": {
+      "cpu_ns": 506472752000,
+      "memory_bytes": 578813952,
+      "memory_limit": 2147483648
+    },
+    "loadgen": {
+      "cpu_ns": 2678771556000,
+      "memory_bytes": 21405696,
+      "memory_limit": 536870912
+    }
+  },
+  {
+    "time": 87015.767264625,
+    "symfony": {
+      "cpu_ns": 136968701000,
+      "memory_bytes": 73236480,
+      "memory_limit": 2147483648
+    },
+    "mysql": {
+      "cpu_ns": 506647735000,
+      "memory_bytes": 578813952,
+      "memory_limit": 2147483648
+    },
+    "loadgen": {
+      "cpu_ns": 2678829895000,
+      "memory_bytes": 21405696,
+      "memory_limit": 536870912
+    }
+  },
+  {
+    "time": 87016.284431833,
+    "symfony": {
+      "cpu_ns": 137688983000,
+      "memory_bytes": 73564160,
+      "memory_limit": 2147483648
+    },
+    "mysql": {
+      "cpu_ns": 506841393000,
+      "memory_bytes": 578510848,
+      "memory_limit": 2147483648
+    },
+    "loadgen": {
+      "cpu_ns": 2678892763000,
+      "memory_bytes": 21405696,
+      "memory_limit": 536870912
+    }
+  },
+  {
+    "time": 87016.797659833,
+    "symfony": {
+      "cpu_ns": 138393623000,
+      "memory_bytes": 73564160,
+      "memory_limit": 2147483648
+    },
+    "mysql": {
+      "cpu_ns": 507010098000,
+      "memory_bytes": 578510848,
+      "memory_limit": 2147483648
+    },
+    "loadgen": {
+      "cpu_ns": 2678960005000,
+      "memory_bytes": 21405696,
+      "memory_limit": 536870912
+    }
+  },
+  {
+    "time": 87017.306053666,
+    "symfony": {
+      "cpu_ns": 139079207000,
+      "memory_bytes": 73564160,
+      "memory_limit": 2147483648
+    },
+    "mysql": {
+      "cpu_ns": 507177556000,
+      "memory_bytes": 578510848,
+      "memory_limit": 2147483648
+    },
+    "loadgen": {
+      "cpu_ns": 2679027297000,
+      "memory_bytes": 21405696,
+      "memory_limit": 536870912
+    }
+  },
+  {
+    "time": 87017.817244166,
+    "symfony": {
+      "cpu_ns": 139768832000,
+      "memory_bytes": 73580544,
+      "memory_limit": 2147483648
+    },
+    "mysql": {
+      "cpu_ns": 507343352000,
+      "memory_bytes": 578510848,
+      "memory_limit": 2147483648
+    },
+    "loadgen": {
+      "cpu_ns": 2679090531000,
+      "memory_bytes": 21405696,
+      "memory_limit": 536870912
+    }
+  },
+  {
+    "time": 87018.335322083,
+    "symfony": {
+      "cpu_ns": 140466205000,
+      "memory_bytes": 73580544,
+      "memory_limit": 2147483648
+    },
+    "mysql": {
+      "cpu_ns": 507525763000,
+      "memory_bytes": 578777088,
+      "memory_limit": 2147483648
+    },
+    "loadgen": {
+      "cpu_ns": 2679152592000,
+      "memory_bytes": 21405696,
+      "memory_limit": 536870912
+    }
+  },
+  {
+    "time": 87018.851613833,
+    "symfony": {
+      "cpu_ns": 141169097000,
+      "memory_bytes": 73580544,
+      "memory_limit": 2147483648
+    },
+    "mysql": {
+      "cpu_ns": 507692156000,
+      "memory_bytes": 578777088,
+      "memory_limit": 2147483648
+    },
+    "loadgen": {
+      "cpu_ns": 2679210038000,
+      "memory_bytes": 21405696,
+      "memory_limit": 536870912
+    }
+  },
+  {
+    "time": 87019.367541791,
+    "symfony": {
+      "cpu_ns": 141872687000,
+      "memory_bytes": 73580544,
+      "memory_limit": 2147483648
+    },
+    "mysql": {
+      "cpu_ns": 507858969000,
+      "memory_bytes": 578777088,
+      "memory_limit": 2147483648
+    },
+    "loadgen": {
+      "cpu_ns": 2679276726000,
+      "memory_bytes": 21405696,
+      "memory_limit": 536870912
+    }
+  },
+  {
+    "time": 87019.883534625,
+    "symfony": {
+      "cpu_ns": 142568531000,
+      "memory_bytes": 73580544,
+      "memory_limit": 2147483648
+    },
+    "mysql": {
+      "cpu_ns": 508023993000,
+      "memory_bytes": 578777088,
+      "memory_limit": 2147483648
+    },
+    "loadgen": {
+      "cpu_ns": 2679339356000,
+      "memory_bytes": 21405696,
+      "memory_limit": 536870912
+    }
+  }
+]

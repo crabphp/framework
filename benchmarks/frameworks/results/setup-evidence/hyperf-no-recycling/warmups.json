@@ -1,0 +1,80 @@
+[
+  {
+    "workload": "hello",
+    "bad_body": 0,
+    "bad_response": 0,
+    "requests": 1417817,
+    "duration_us": 15095081,
+    "rps": 93925.762969,
+    "p50_us": 660.0,
+    "p99_us": 2188.0,
+    "bad_status": 0,
+    "errors": {
+      "connect": 0,
+      "read": 0,
+      "write": 0,
+      "timeout": 0,
+      "status": 0
+    },
+    "command": [
+      "docker",
+      "exec",
+      "786203b7f224bfe0fa1019a2912bd44d3e3c0cffe3c1d70256582f7c05f544f2",
+      "wrk",
+      "-t4",
+      "-c64",
+      "-d15s",
+      "--timeout",
+      "5s",
+      "--latency",
+      "-s",
+      "/bench/workload.lua",
+      "http://hyperf:8080",
+      "--",
+      "hello"
+    ],
+    "kind": "hello",
+    "connections": 64,
+    "service": "hyperf",
+    "error_count": 0
+  },
+  {
+    "workload": "hello",
+    "bad_body": 0,
+    "bad_response": 0,
+    "requests": 1444494,
+    "duration_us": 15103105,
+    "rps": 95642.187484,
+    "p50_us": 2713.0,
+    "p99_us": 4646.0,
+    "bad_status": 0,
+    "errors": {
+      "connect": 0,
+      "read": 0,
+      "write": 0,
+      "timeout": 0,
+      "status": 0
+    },
+    "command": [
+      "docker",
+      "exec",
+      "786203b7f224bfe0fa1019a2912bd44d3e3c0cffe3c1d70256582f7c05f544f2",
+      "wrk",
+      "-t4",
+      "-c256",
+      "-d15s",
+      "--timeout",
+      "5s",
+      "--latency",
+      "-s",
+      "/bench/workload.lua",
+      "http://hyperf:8080",
+      "--",
+      "hello"
+    ],
+    "kind": "hello",
+    "connections": 256,
+    "service": "hyperf",
+    "error_count": 0
+  }
+]

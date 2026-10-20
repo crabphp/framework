@@ -1,0 +1,52 @@
+{
+  "name": "spiral/app",
+  "description": "Spiral Application installer",
+  "keywords": [],
+  "homepage": "https://spiral.dev",
+  "version": "3.9.0",
+  "version_normalized": "3.9.0.0",
+  "license": [
+    "MIT"
+  ],
+  "authors": [],
+  "source": {
+    "url": "https://github.com/spiral/app.git",
+    "type": "git",
+    "reference": "b3ebe0a5e089f0012482c808e90c614d9cfd9e51"
+  },
+  "dist": {
+    "url": "https://api.github.com/repos/spiral/app/zipball/b3ebe0a5e089f0012482c808e90c614d9cfd9e51",
+    "type": "zip",
+    "shasum": "",
+    "reference": "b3ebe0a5e089f0012482c808e90c614d9cfd9e51"
+  },
+  "type": "project",
+  "support": {
+    "issues": "https://github.com/spiral/app/issues",
+    "source": "https://github.com/spiral/app"
+  },
+  "funding": [],
+  "time": "2026-05-08T14:26:21+00:00",
+  "published-time": "2026-05-08T14:28:06+00:00",
+  "autoload": {
+    "psr-4": {
+      "Installer\\": "installer"
+    }
+  },
+  "extra": {
+    "publish-cmd": "php app.php publish"
+  },
+  "require": {
+    "php": ">=8.4",
+    "spiral/framework": "^3.15.7",
+    "spiral/roadrunner-cli": "^2.5"
+  },
+  "require-dev": {
+    "composer/composer": "^2.4",
+    "spiral/code-style": "^2.2",
+    "spiral/testing": "^3.0",
+    "vimeo/psalm": "^6.10"
+  },
+  "archive_url": "https://codeload.github.com/spiral/app/tar.gz/b3ebe0a5e089f0012482c808e90c614d9cfd9e51",
+  "sha256": "1be27377af5a27f963f438a1359c06ab4f10fe0c6ebc22d1276da5c9416c8b65"
+}

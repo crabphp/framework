@@ -1,0 +1,14 @@
+Running 30s test @ http://elysia:8080
+  4 threads and 64 connections
+  Thread Stats   Avg      Stdev     Max   +/- Stdev
+    Latency   199.88us  212.98us  11.03ms   97.16%
+    Req/Sec    80.45k     8.22k  112.74k    71.43%
+  Latency Distribution
+     50%  165.00us
+     75%  228.00us
+     90%  307.00us
+     99%  714.00us
+  9637366 requests in 30.10s, 1.33GB read
+Requests/sec: 320177.13
+Transfer/sec:     45.19MB
+BENCH_JSON {"workload":"hello","bad_body":0,"bad_response":0,"requests":9637366,"duration_us":30100107,"rps":320177.134254,"p50_us":165.000000,"p99_us":714.000000,"bad_status":0,"errors":{"connect":0,"read":0,"write":0,"timeout":0,"status":0}}

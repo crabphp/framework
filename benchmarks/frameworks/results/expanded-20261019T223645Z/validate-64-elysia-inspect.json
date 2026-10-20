@@ -1,0 +1,241 @@
+{
+  "Id": "7da703d81adddcafbbe10f09b9496ccef9b63c90ed7680491939aea7cd93142c",
+  "Created": "2026-10-19T23:53:23.811536286Z",
+  "Path": "bun",
+  "Args": [
+    "cluster.ts"
+  ],
+  "State": {
+    "Status": "running",
+    "Running": true,
+    "Paused": false,
+    "Restarting": false,
+    "OOMKilled": false,
+    "Dead": false,
+    "Pid": 328602,
+    "ExitCode": 0,
+    "Error": "",
+    "StartedAt": "2026-10-19T23:53:23.861122494Z",
+    "FinishedAt": "0001-01-01T00:00:00Z"
+  },
+  "Image": "sha256:2475fab50bdcc1688f70920eca561d302a991aa9c727da06426b6a2e96459280",
+  "ResolvConfPath": "/var/lib/docker/containers/7da703d81adddcafbbe10f09b9496ccef9b63c90ed7680491939aea7cd93142c/resolv.conf",
+  "HostnamePath": "/var/lib/docker/containers/7da703d81adddcafbbe10f09b9496ccef9b63c90ed7680491939aea7cd93142c/hostname",
+  "HostsPath": "/var/lib/docker/containers/7da703d81adddcafbbe10f09b9496ccef9b63c90ed7680491939aea7cd93142c/hosts",
+  "LogPath": "/var/lib/docker/containers/7da703d81adddcafbbe10f09b9496ccef9b63c90ed7680491939aea7cd93142c/7da703d81adddcafbbe10f09b9496ccef9b63c90ed7680491939aea7cd93142c-json.log",
+  "Name": "/crab-fw-bench-20261019223645-91848-elysia-1",
+  "RestartCount": 0,
+  "Driver": "overlay2",
+  "Platform": "linux",
+  "MountLabel": "",
+  "ProcessLabel": "",
+  "AppArmorProfile": "",
+  "ExecIDs": null,
+  "HostConfig": {
+    "Binds": null,
+    "ContainerIDFile": "",
+    "LogConfig": {
+      "Type": "json-file",
+      "Config": {
+        "max-file": "5",
+        "max-size": "20m"
+      }
+    },
+    "NetworkMode": "crab-fw-bench-20261019223645-91848_default",
+    "PortBindings": {
+      "8080/tcp": [
+        {
+          "HostIp": "127.0.0.1",
+          "HostPort": "23106"
+        }
+      ]
+    },
+    "RestartPolicy": {
+      "Name": "no",
+      "MaximumRetryCount": 0
+    },
+    "AutoRemove": false,
+    "VolumeDriver": "",
+    "VolumesFrom": null,
+    "ConsoleSize": [
+      0,
+      0
+    ],
+    "CapAdd": null,
+    "CapDrop": null,
+    "CgroupnsMode": "private",
+    "Dns": null,
+    "DnsOptions": null,
+    "DnsSearch": null,
+    "ExtraHosts": [],
+    "GroupAdd": null,
+    "IpcMode": "private",
+    "Cgroup": "",
+    "Links": null,
+    "OomScoreAdj": 0,
+    "PidMode": "",
+    "Privileged": false,
+    "PublishAllPorts": false,
+    "ReadonlyRootfs": false,
+    "SecurityOpt": null,
+    "UTSMode": "",
+    "UsernsMode": "",
+    "ShmSize": 4196401152,
+    "Runtime": "runc",
+    "Isolation": "",
+    "CpuShares": 0,
+    "Memory": 2147483648,
+    "NanoCpus": 2000000000,
+    "CgroupParent": "",
+    "BlkioWeight": 0,
+    "BlkioWeightDevice": null,
+    "BlkioDeviceReadBps": null,
+    "BlkioDeviceWriteBps": null,
+    "BlkioDeviceReadIOps": null,
+    "BlkioDeviceWriteIOps": null,
+    "CpuPeriod": 0,
+    "CpuQuota": 0,
+    "CpuRealtimePeriod": 0,
+    "CpuRealtimeRuntime": 0,
+    "CpusetCpus": "0,1",
+    "CpusetMems": "",
+    "Devices": null,
+    "DeviceCgroupRules": null,
+    "DeviceRequests": null,
+    "MemoryReservation": 0,
+    "MemorySwap": 2147483648,
+    "MemorySwappiness": null,
+    "OomKillDisable": null,
+    "PidsLimit": null,
+    "Ulimits": null,
+    "CpuCount": 0,
+    "CpuPercent": 0,
+    "IOMaximumIOps": 0,
+    "IOMaximumBandwidth": 0,
+    "MaskedPaths": [
+      "/proc/acpi",
+      "/proc/asound",
+      "/proc/interrupts",
+      "/proc/kcore",
+      "/proc/keys",
+      "/proc/latency_stats",
+      "/proc/sched_debug",
+      "/proc/scsi",
+      "/proc/timer_list",
+      "/proc/timer_stats",
+      "/sys/devices/virtual/powercap",
+      "/sys/firmware"
+    ],
+    "ReadonlyPaths": [
+      "/proc/bus",
+      "/proc/fs",
+      "/proc/irq",
+      "/proc/sys",
+      "/proc/sysrq-trigger"
+    ]
+  },
+  "GraphDriver": {
+    "Data": {
+      "ID": "7da703d81adddcafbbe10f09b9496ccef9b63c90ed7680491939aea7cd93142c",
+      "LowerDir": "/var/lib/docker/overlay2/91c32ac0e88a1e43121e96654a9f971c5f207ce05e8be6968c6de810698bdf37-init/diff:/var/lib/docker/overlay2/m1p5j9kiztuvb1utsmzauqafz/diff:/var/lib/docker/overlay2/v8tb1akrb3brnbyomlozvbqy3/diff:/var/lib/docker/overlay2/w8cieg300rbdbdx0lg1o01ll5/diff:/var/lib/docker/overlay2/eh7jldpachd0wwau1bv5a4rx7/diff:/var/lib/docker/overlay2/a1c56d0a8208e5f4c0bd0c39e57d5fca469bfa3617d64a10f8304b010381428b/diff:/var/lib/docker/overlay2/28568373da235ec3c980081a1ca984f6ac3777b65ee346c3666d110f8cb2886b/diff:/var/lib/docker/overlay2/6235210989a3d11d2639679abd52621e50862bd158b39e4308bd69cf9d892c10/diff:/var/lib/docker/overlay2/d1913e5aa1dafc4fe00e63bb9f44a5842614036c18b2bb5d03b0f6c236b441ba/diff:/var/lib/docker/overlay2/b65330d40b5d4d17cbf5a5295c628d0402757b12f68abc15567816a866251334/diff:/var/lib/docker/overlay2/a007f4c98d34da8e128300900528b06f1d489a2d5165894224577b05b4ff5b6c/diff:/var/lib/docker/overlay2/2667414a7529874d0dbf1f0c1902b9e538802b94e357aaea951274c8c56cdd28/diff",
+      "MergedDir": "/var/lib/docker/overlay2/91c32ac0e88a1e43121e96654a9f971c5f207ce05e8be6968c6de810698bdf37/merged",
+      "UpperDir": "/var/lib/docker/overlay2/91c32ac0e88a1e43121e96654a9f971c5f207ce05e8be6968c6de810698bdf37/diff",
+      "WorkDir": "/var/lib/docker/overlay2/91c32ac0e88a1e43121e96654a9f971c5f207ce05e8be6968c6de810698bdf37/work"
+    },
+    "Name": "overlay2"
+  },
+  "Mounts": [],
+  "Config": {
+    "Hostname": "7da703d81add",
+    "Domainname": "",
+    "User": "",
+    "AttachStdin": false,
+    "AttachStdout": true,
+    "AttachStderr": true,
+    "ExposedPorts": {
+      "8080/tcp": {}
+    },
+    "Tty": false,
+    "OpenStdin": false,
+    "StdinOnce": false,
+    "Env": [
+      "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/local/bun-node-fallback-bin",
+      "BUN_RUNTIME_TRANSPILER_CACHE_PATH=0",
+      "BUN_INSTALL_BIN=/usr/local/bin",
+      "NODE_ENV=production",
+      "BENCH_WORKERS=2"
+    ],
+    "Cmd": null,
+    "Healthcheck": {
+      "Test": [
+        "NONE"
+      ]
+    },
+    "Image": "crab-fw-bench-20261019223645-91848-elysia",
+    "Volumes": null,
+    "WorkingDir": "/srv/app",
+    "Entrypoint": [
+      "bun",
+      "cluster.ts"
+    ],
+    "Labels": {
+      "com.docker.compose.config-hash": "ae7cd478f6476e7d16193b964966783ad1f41d852de0ce99f128605b51b21ea7",
+      "com.docker.compose.container-number": "1",
+      "com.docker.compose.depends_on": "",
+      "com.docker.compose.image": "sha256:2475fab50bdcc1688f70920eca561d302a991aa9c727da06426b6a2e96459280",
+      "com.docker.compose.oneoff": "False",
+      "com.docker.compose.project": "crab-fw-bench-20261019223645-91848",
+      "com.docker.compose.project.config_files": "/Users/daudau/Code/crabphp/framework/benchmarks/frameworks/compose.yaml",
+      "com.docker.compose.project.working_dir": "/Users/daudau/Code/crabphp/framework/benchmarks/frameworks",
+      "com.docker.compose.service": "elysia",
+      "com.docker.compose.version": "5.5.0",
+      "org.opencontainers.image.created": "2026-09-05T05:58:20.106Z",
+      "org.opencontainers.image.description": "Incredibly fast JavaScript runtime, bundler, test runner, and package manager \u2013 all in one",
+      "org.opencontainers.image.licenses": "NOASSERTION",
+      "org.opencontainers.image.revision": "744846f844374847c902b5e7fd59b4342a51ef99",
+      "org.opencontainers.image.source": "https://github.com/oven-sh/bun",
+      "org.opencontainers.image.title": "bun",
+      "org.opencontainers.image.url": "https://github.com/oven-sh/bun",
+      "org.opencontainers.image.version": "1.4.2"
+    },
+    "StopTimeout": 15
+  },
+  "NetworkSettings": {
+    "SandboxID": "447cb9d958662ee81ccb2c43d7759bdecf0612ab2101d603e1b1827beb7037e9",
+    "SandboxKey": "/var/run/docker/netns/447cb9d95866",
+    "Ports": {
+      "8080/tcp": [
+        {
+          "HostIp": "127.0.0.1",
+          "HostPort": "23106"
+        }
+      ]
+    },
+    "Networks": {
+      "crab-fw-bench-20261019223645-91848_default": {
+        "IPAMConfig": null,
+        "Links": null,
+        "Aliases": [
+          "crab-fw-bench-20261019223645-91848-elysia-1",
+          "elysia"
+        ],
+        "DriverOpts": null,
+        "GwPriority": 0,
+        "NetworkID": "b7d089002ed1a36dc5245a617160a38c8deb11d818b11bedf4fe2d9a88335508",
+        "EndpointID": "95d059ef595e07647db1da31d560375e8873e643da7f51fd2674a36bf5a4d764",
+        "Gateway": "192.168.97.1",
+        "IPAddress": "192.168.97.9",
+        "MacAddress": "32:e1:c6:d5:fc:4d",
+        "IPPrefixLen": 24,
+        "IPv6Gateway": "",
+        "GlobalIPv6Address": "",
+        "GlobalIPv6PrefixLen": 0,
+        "DNSNames": [
+          "crab-fw-bench-20261019223645-91848-elysia-1",
+          "elysia",
+          "7da703d81add"
+        ]
+      }
+    }
+  }
+}

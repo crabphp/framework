@@ -1,0 +1,31 @@
+{
+  "started_utc": "2026-10-19T22:36:47.679826+00:00",
+  "host": "macOS-27.2-arm64-arm-64bit-Mach-O",
+  "docker": {
+    "NCPU": 8,
+    "MemTotal": 8392925184,
+    "KernelVersion": "7.2.9-orbstack-00391-g2b298d05fbd4",
+    "ServerVersion": "29.8.2",
+    "Architecture": "aarch64",
+    "OperatingSystem": "OrbStack"
+  },
+  "orbstack": "Version: 2.2.4 (2020400)\nCommit: 1c4c8267f3256f8df9e4d80a2e50ac8f1136956c (v2.2.4)\n",
+  "orbstack_settings": "app.start_at_login: false\napp.wait_for_container_stop: false\ncpu: 8\ndata_allow_backup: false\ndocker.expose_ports_to_lan: true\ndocker.node_name: orbstack\ndocker.set_context: true\nk8s.enable: false\nk8s.expose_services: false\nk8s.kubeconfig_use_domain: false\nk8s.tls_san: \nmachine.docker.cpu: 0\nmachine.docker.disk_bytes: 0\nmachine.docker.http_port: 0\nmachine.docker.https_port: 0\nmachine.docker.isolated: false\nmachine.docker.memory_mib: 0\nmachine.docker.mounts: \nmachine.docker.username: root\nmachines.expose_ports_to_lan: true\nmachines.forward_ports: true\nmemory_mib: 8192\nmount_hide_shared: false\nnetwork.https: true\nnetwork.proxy.exclude: \nnetwork.subnet4: 192.168.138.0/23\nnetwork_bridge: true\nnetwork_proxy: auto\npower.pause_in_sleep: true\nrosetta: true\nsetup.use_admin: true\nssh.expose_port: false\n",
+  "source_commits": {
+    "framework_commit": "4ecdd3826105f0b73d2f0dccc49a90216171601a",
+    "skeleton_commit": "b99e28702f06915cd377c0c799837d4d9b97c543"
+  },
+  "warmup_seconds": 15,
+  "duration_seconds": 30,
+  "trials": 5,
+  "full_method": true,
+  "images": "PHP_CLI_IMAGE=php@sha256:836ac6c672d1372a47c8fd61b625015bd07760f493fb2eaab2087636498a2b4b\nPHP_FPM_IMAGE=php@sha256:6bfef8e416977aa41f48e3e42a40c1e08050d24e4a938c6edb421400bff24601\nFRANKEN_IMAGE=dunglas/frankenphp@sha256:14007e6207a57651cb402970a44e5f2df15bfeffcbdeb5bbb322271949878b07\nMYSQL_IMAGE=mysql@sha256:6ea90827b1100f8f2ae306a539f86d2c264a26ed435a2a9f75551dd5c3aeb242\nLOADGEN_IMAGE=debian@sha256:7c7b2c966bc9ee8cedfeef67e0e279108992c77681fa595db4a9d65c06ccc587\nCOMPOSER_IMAGE=composer@sha256:af98f42dfff7c68ba8d53c2164fd9fde1087b7d449514baa38c418b1f6bc4bac\nBUN_IMAGE=oven/bun@sha256:9114c058aeae42162ee16dd5084b95fe9473970bb6bcb5b232ab1630f0546895\n",
+  "excluded": {
+    "tempest": {
+      "skeleton": "tempest/app v3.1.0",
+      "framework": "tempest/framework v3.19.2",
+      "reason": "The current release requires PHP ^8.5; the benchmark requires PHP 8.4. Composer refuses it on PHP 8.4.26.",
+      "evidence": "tempest/php84-attempt.log"
+    }
+  }
+}

@@ -1,0 +1,11 @@
+{
+    auto_https off
+    admin off
+    frankenphp {
+        worker /srv/app/public/index.php 2
+    }
+}
+:8080 {
+    root * /srv/app/public
+    php_server
+}

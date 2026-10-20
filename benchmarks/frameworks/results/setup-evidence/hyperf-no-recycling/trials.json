@@ -1,0 +1,192 @@
+[
+  {
+    "workload": "hello",
+    "bad_body": 0,
+    "bad_response": 0,
+    "requests": 2919939,
+    "duration_us": 30101147,
+    "rps": 97004.243725,
+    "p50_us": 639.0,
+    "p99_us": 1412.0,
+    "bad_status": 0,
+    "errors": {
+      "connect": 0,
+      "read": 0,
+      "write": 0,
+      "timeout": 0,
+      "status": 0
+    },
+    "command": [
+      "docker",
+      "exec",
+      "786203b7f224bfe0fa1019a2912bd44d3e3c0cffe3c1d70256582f7c05f544f2",
+      "wrk",
+      "-t4",
+      "-c64",
+      "-d30s",
+      "--timeout",
+      "5s",
+      "--latency",
+      "-s",
+      "/bench/workload.lua",
+      "http://hyperf:8080",
+      "--",
+      "hello"
+    ],
+    "kind": "hello",
+    "connections": 64,
+    "service": "hyperf",
+    "error_count": 0,
+    "resources": {
+      "hyperf": {
+        "average_cpu_percent": 199.09443029069647,
+        "peak_sampled_memory_bytes": 71610368
+      },
+      "mysql": {
+        "average_cpu_percent": 1.361529768393858,
+        "peak_sampled_memory_bytes": 569073664
+      },
+      "loadgen": {
+        "average_cpu_percent": 97.37741138369572,
+        "peak_sampled_memory_bytes": 21700608
+      }
+    },
+    "container_peak_bytes": 91738112,
+    "container_current_bytes": 47239168,
+    "trial": 1,
+    "runtime_after": {
+      "php": "8.4.26",
+      "sapi": "cli",
+      "classmap_authoritative": true,
+      "memory_limit": "256M",
+      "debug": false,
+      "pid": 8,
+      "opcache": "1",
+      "timestamps": "0",
+      "jit": {
+        "enabled": false,
+        "on": false,
+        "kind": 0,
+        "opt_level": 0,
+        "opt_flags": 0,
+        "buffer_size": 0,
+        "buffer_free": 0
+      },
+      "opcache_statistics": {
+        "num_cached_scripts": 442,
+        "num_cached_keys": 855,
+        "max_cached_keys": 32531,
+        "hits": 47,
+        "start_time": 1792449181,
+        "last_restart_time": 0,
+        "oom_restarts": 0,
+        "hash_restarts": 0,
+        "manual_restarts": 0,
+        "misses": 444,
+        "blacklist_misses": 0,
+        "blacklist_miss_ratio": 0,
+        "opcache_hit_rate": 9.572301425661914
+      },
+      "cache_full": false,
+      "workers": 2,
+      "swoole": "6.2.3",
+      "scan_cacheable": true,
+      "pool_per_worker": 10
+    }
+  },
+  {
+    "workload": "hello",
+    "bad_body": 0,
+    "bad_response": 0,
+    "requests": 2899060,
+    "duration_us": 30089568,
+    "rps": 96347.677707,
+    "p50_us": 2740.0,
+    "p99_us": 4477.0,
+    "bad_status": 0,
+    "errors": {
+      "connect": 0,
+      "read": 0,
+      "write": 0,
+      "timeout": 0,
+      "status": 0
+    },
+    "command": [
+      "docker",
+      "exec",
+      "786203b7f224bfe0fa1019a2912bd44d3e3c0cffe3c1d70256582f7c05f544f2",
+      "wrk",
+      "-t4",
+      "-c256",
+      "-d30s",
+      "--timeout",
+      "5s",
+      "--latency",
+      "-s",
+      "/bench/workload.lua",
+      "http://hyperf:8080",
+      "--",
+      "hello"
+    ],
+    "kind": "hello",
+    "connections": 256,
+    "service": "hyperf",
+    "error_count": 0,
+    "resources": {
+      "hyperf": {
+        "average_cpu_percent": 199.12465235329665,
+        "peak_sampled_memory_bytes": 40542208
+      },
+      "mysql": {
+        "average_cpu_percent": 1.3850587976025417,
+        "peak_sampled_memory_bytes": 520372224
+      },
+      "loadgen": {
+        "average_cpu_percent": 100.07128504439376,
+        "peak_sampled_memory_bytes": 27258880
+      }
+    },
+    "container_peak_bytes": 56119296,
+    "container_current_bytes": 37539840,
+    "trial": 1,
+    "runtime_after": {
+      "php": "8.4.26",
+      "sapi": "cli",
+      "classmap_authoritative": true,
+      "memory_limit": "256M",
+      "debug": false,
+      "pid": 9,
+      "opcache": "1",
+      "timestamps": "0",
+      "jit": {
+        "enabled": false,
+        "on": false,
+        "kind": 0,
+        "opt_level": 0,
+        "opt_flags": 0,
+        "buffer_size": 0,
+        "buffer_free": 0
+      },
+      "opcache_statistics": {
+        "num_cached_scripts": 442,
+        "num_cached_keys": 855,
+        "max_cached_keys": 32531,
+        "hits": 48,
+        "start_time": 1792449228,
+        "last_restart_time": 0,
+        "oom_restarts": 0,
+        "hash_restarts": 0,
+        "manual_restarts": 0,
+        "misses": 443,
+        "blacklist_misses": 0,
+        "blacklist_miss_ratio": 0,
+        "opcache_hit_rate": 9.775967413441954
+      },
+      "cache_full": false,
+      "workers": 2,
+      "swoole": "6.2.3",
+      "scan_cacheable": true,
+      "pool_per_worker": 10
+    }
+  }
+]

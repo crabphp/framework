@@ -1,0 +1,8 @@
+parameters:
+    .container.dumper.inline_factories: true
+services:
+    _defaults:
+        autowire: true
+        autoconfigure: true
+    App\:
+        resource: '../src/'

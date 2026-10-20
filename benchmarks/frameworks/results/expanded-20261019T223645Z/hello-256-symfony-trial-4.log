@@ -1,0 +1,14 @@
+Running 30s test @ http://symfony:8080
+  4 threads and 256 connections
+  Thread Stats   Avg      Stdev     Max   +/- Stdev
+    Latency    18.32ms    7.67ms  57.58ms   69.87%
+    Req/Sec     3.52k   376.84     4.93k    69.23%
+  Latency Distribution
+     50%   18.03ms
+     75%   23.03ms
+     90%   28.08ms
+     99%   38.58ms
+  421062 requests in 30.05s, 77.90MB read
+Requests/sec:  14012.57
+Transfer/sec:      2.59MB
+BENCH_JSON {"workload":"hello","bad_body":0,"bad_response":0,"requests":421062,"duration_us":30048888,"rps":14012.565124,"p50_us":18026.000000,"p99_us":38582.000000,"bad_status":0,"errors":{"connect":0,"read":0,"write":0,"timeout":0,"status":0}}

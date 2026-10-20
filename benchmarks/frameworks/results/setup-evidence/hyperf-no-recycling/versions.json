@@ -1,0 +1,509 @@
+{
+  "mysql": "/usr/sbin/mysqld  Ver 8.4.11 for Linux on aarch64 (MySQL Community Server - GPL)\n",
+  "wrk": "wrk debian/4.1.0-3+b2 [epoll] Copyright (C) 2012 Will Glozer\nUsage: wrk <options> <url>                            \n  Options:                                            \n    -c, --connections <N>  Connections to keep open   \n    -d, --duration    <T>  Duration of test           \n    -t, --threads     <N>  Number of threads to use   \n                                                      \n    -s, --script      <S>  Load Lua script file       \n    -H, --header      <H>  Add header to request      \n        --latency          Print latency statistics   \n        --timeout     <T>  Socket/request timeout     \n    -v, --version          Print version details      \n                                                      \n  Numeric arguments may include a SI unit (1k, 1M, 1G)\n  Time arguments may include a time unit (2s, 2m, 2h)\n",
+  "loadgen_packages": "wrk\t4.1.0-3+b2\n",
+  "hyperf": {
+    "php": "PHP 8.4.26 (cli) (built: Oct  6 2026 01:27:25) (NTS)\nCopyright (c) The PHP Group\nBuilt by https://github.com/docker-library/php\nZend Engine v4.4.26, Copyright (c) Zend Technologies\n    with Zend OPcache v8.4.26, Copyright (c), by Zend Technologies\n",
+    "packages": {
+      "carbonphp/carbon-doctrine-types": [
+        "3.2.1",
+        "5fa5eacafd9ef47c8c6ab9143fc901ba0194d3dc"
+      ],
+      "doctrine/deprecations": [
+        "1.1.6",
+        "d4fe3e6fd9bb9e72557a19674f44d8ac7db4c6ca"
+      ],
+      "doctrine/inflector": [
+        "2.1.0",
+        "6d6c96277ea252fc1304627204c3d5e6e15faa3b"
+      ],
+      "doctrine/instantiator": [
+        "1.5.0",
+        "0a0fa9780f5d4e507415a065172d26a98d02047b"
+      ],
+      "doctrine/lexer": [
+        "2.1.1",
+        "861c870e8b75f7c8f69c146c7f89cc1c0f1b49b6"
+      ],
+      "egulias/email-validator": [
+        "3.2.6",
+        "e5997fa97e8790cdae03a9cbd5e78e45e3c7bda7"
+      ],
+      "fig/http-message-util": [
+        "1.1.5",
+        "9d94dc0154230ac39e5bf89398b324a86f63f765"
+      ],
+      "graham-campbell/result-type": [
+        "v1.2.0",
+        "adccca3324eece92ca35463648c12b9e6293c05b"
+      ],
+      "guzzlehttp/guzzle": [
+        "7.16.0",
+        "ffb62ec787050ae4fa9449cdd6b80335db69bda2"
+      ],
+      "guzzlehttp/promises": [
+        "2.6.0",
+        "3d88c829bd5f13d13847b39067dbf09a60af2154"
+      ],
+      "guzzlehttp/psr7": [
+        "2.13.2",
+        "adee536f95101929f262b8c59e8a61472f347d58"
+      ],
+      "hyperf/cache": [
+        "v3.2.0",
+        "08cda1e9658685f4e0fdbe5aadb1c09fc9b63abc"
+      ],
+      "hyperf/code-parser": [
+        "v3.2.0",
+        "aba869678e75612ded71c83a7824baac8eb53562"
+      ],
+      "hyperf/codec": [
+        "v3.2.0",
+        "a3ac4e1b77396b6aba0ecbb1c71865f25186078b"
+      ],
+      "hyperf/collection": [
+        "v3.2.5",
+        "55a3273d6267708577372dde008591cb507b002b"
+      ],
+      "hyperf/command": [
+        "v3.2.0",
+        "e55ccd23e5f667916c0dd14ca710d32bb519a1da"
+      ],
+      "hyperf/conditionable": [
+        "v3.2.0",
+        "00dccb962bc380e924507873d1fcc156e79356ee"
+      ],
+      "hyperf/config": [
+        "v3.2.0",
+        "c3845851baa861b890476860294b188abef9f1d3"
+      ],
+      "hyperf/context": [
+        "v3.2.0",
+        "caf0929d84571f68029a1d6e0bcabf1956312e04"
+      ],
+      "hyperf/contract": [
+        "v3.2.0",
+        "cd476c11ec79abfb4b5614512f9ad0b186a217e2"
+      ],
+      "hyperf/coordinator": [
+        "v3.2.1.1",
+        "51804b956777e1f9936cadc9d100207bea5e8b02"
+      ],
+      "hyperf/coroutine": [
+        "v3.2.1",
+        "f13925ad9d743ed1bba165a25ffaad1a233ed016"
+      ],
+      "hyperf/database": [
+        "v3.2.5",
+        "0d22588181cd58fee49cb7dcf7a4eab6655f0d79"
+      ],
+      "hyperf/db-connection": [
+        "v3.2.0",
+        "b73d08e47ad4d585b0d64c872dfd500d5ce8c23e"
+      ],
+      "hyperf/di": [
+        "v3.2.2",
+        "4f275d8adbc90c34205f8ee38f8069429e2c45dd"
+      ],
+      "hyperf/dispatcher": [
+        "v3.2.0",
+        "37fd3b18b8e6635209a898724c7747ce5f137281"
+      ],
+      "hyperf/engine": [
+        "v2.15.0",
+        "15c282e8fcf8596f3400ccd21c32a18a37036b9a"
+      ],
+      "hyperf/engine-contract": [
+        "v1.14.0",
+        "b6c8ff556fca5d4ffa29fba819fefc5e3572025d"
+      ],
+      "hyperf/event": [
+        "v3.2.0",
+        "49fce1bd38b9635568f82145dc5a0fc7048eca92"
+      ],
+      "hyperf/exception-handler": [
+        "v3.2.0",
+        "877dd0c96caed20e275d7659b86469cf3a93ee39"
+      ],
+      "hyperf/framework": [
+        "v3.2.0",
+        "507220bf93d8be11ddf1fa299cc457983a22fe71"
+      ],
+      "hyperf/guzzle": [
+        "v3.2.0",
+        "60881bd12f6e7c78014794157ef1a6127a85d41b"
+      ],
+      "hyperf/http-message": [
+        "v3.2.0",
+        "7ecdc00a2f28e9efed421014aa55521e9386f01f"
+      ],
+      "hyperf/http-server": [
+        "v3.2.0",
+        "80c52d4d742be46680fdeecc37f9650c533f6e93"
+      ],
+      "hyperf/hyperf-skeleton": [
+        "1.0.0+no-version-set",
+        null
+      ],
+      "hyperf/laminas-mime": [
+        "v3.0.0",
+        "425121a9094eaed3e167aeadc72538c6f448cfef"
+      ],
+      "hyperf/logger": [
+        "v3.2.4",
+        "8b7c98e43de6fd686e71ae24df30a9d82c7303ef"
+      ],
+      "hyperf/macroable": [
+        "v3.2.0",
+        "a091143dacac7de8b6c96d03aff114851cf38641"
+      ],
+      "hyperf/memory": [
+        "v3.2.5",
+        "d1e3338809692e1713b186e7d8c6a84994c9d3fb"
+      ],
+      "hyperf/model-listener": [
+        "v3.2.0",
+        "703948c84ae01bee43deaaaf351b3b211a0498a8"
+      ],
+      "hyperf/pipeline": [
+        "v3.2.0",
+        "18dced2352a60171777bca5e8aba8ac8f5f65457"
+      ],
+      "hyperf/pool": [
+        "v3.2.1",
+        "105054701c67b5d4b4f42fdd6029bedaf6c3d39a"
+      ],
+      "hyperf/process": [
+        "v3.2.0",
+        "44d87aba430e9a955a2e41e45d011661dd47922c"
+      ],
+      "hyperf/serializer": [
+        "v3.2.0",
+        "548d40d852c46146b0f525d0d0d3ed8aaf512c6b"
+      ],
+      "hyperf/server": [
+        "v3.2.0",
+        "c4b4e4756ba7c49e8d6e0dff4cf36ae922489d7b"
+      ],
+      "hyperf/stdlib": [
+        "v3.2.0",
+        "d4c783f52b0278817fd67848a511ef5c4c1011ad"
+      ],
+      "hyperf/stringable": [
+        "v3.2.5",
+        "595e802f75c08717d6be244e6d367223c661f9e9"
+      ],
+      "hyperf/support": [
+        "v3.2.4",
+        "2f08381a157e0839032f2174953b68f8355f2d65"
+      ],
+      "hyperf/tappable": [
+        "v3.2.0",
+        "5c539ea91d9997e3c89fd95a978fa5d7a0048aed"
+      ],
+      "hyperf/translation": [
+        "v3.2.0",
+        "7ea6a08d76c616ed4d7b38d6aab6e80af0346bd0"
+      ],
+      "hyperf/validation": [
+        "v3.2.5",
+        "e8a40e6f614e8cb4c3b6a5cfdbe0a53b5a93b2fc"
+      ],
+      "laminas/laminas-mime": [
+        null,
+        null
+      ],
+      "laminas/laminas-stdlib": [
+        "3.21.0",
+        "b1c81514cfe158aadf724c42b34d3d0a8164c096"
+      ],
+      "monolog/monolog": [
+        "3.12.1",
+        "d7059e4c691d05ea1222b5124bed0f961be46e15"
+      ],
+      "nesbot/carbon": [
+        "3.15.0",
+        "217d38553209bdb44e01590d9e9a2e4df8354cce"
+      ],
+      "nikic/fast-route": [
+        "1.3.1",
+        "7476684f39bb9124b3be69ed3d84b66723920298"
+      ],
+      "nikic/php-parser": [
+        "v5.9.0",
+        "9e33da9553fe7786f0962b35f4e4ecf01be89def"
+      ],
+      "php-di/phpdoc-reader": [
+        "2.2.1",
+        "66daff34cbd2627740ffec9469ffbac9f8c8185c"
+      ],
+      "phpoption/phpoption": [
+        "1.10.0",
+        "67b192b6a42ec03944b972d6e633ddec78ad2c6d"
+      ],
+      "psr/clock": [
+        "1.0.0",
+        "e41a24703d4560fd0acb709162f73b8adfc3aa0d"
+      ],
+      "psr/clock-implementation": [
+        null,
+        null
+      ],
+      "psr/container": [
+        "2.0.2",
+        "c71ecc56dfe541dbd90c5360474fbc405f8d5963"
+      ],
+      "psr/event-dispatcher": [
+        "1.0.0",
+        "dbefd12671e8a14ec7f180cab83036ed26714bb0"
+      ],
+      "psr/http-client": [
+        "1.0.3",
+        "bb5906edc1c324c9a05aa0873d40117941e5fa90"
+      ],
+      "psr/http-client-implementation": [
+        null,
+        null
+      ],
+      "psr/http-factory": [
+        "1.1.0",
+        "2b4765fddfe3b508ac62f829e852b1501d3f6e8a"
+      ],
+      "psr/http-factory-implementation": [
+        null,
+        null
+      ],
+      "psr/http-message": [
+        "2.0",
+        "402d35bcb92c70c026d1a6a9883f06b2ead23d71"
+      ],
+      "psr/http-message-implementation": [
+        null,
+        null
+      ],
+      "psr/http-server-handler": [
+        "1.0.2",
+        "84c4fb66179be4caaf8e97bd239203245302e7d4"
+      ],
+      "psr/http-server-middleware": [
+        "1.0.2",
+        "c1481f747daaa6a0782775cd6a8c26a1bf4a3829"
+      ],
+      "psr/log": [
+        "3.0.2",
+        "f16e1d5863e37f8d8c2a01719f5b34baa2b714d3"
+      ],
+      "psr/log-implementation": [
+        null,
+        null
+      ],
+      "psr/simple-cache": [
+        "3.0.0",
+        "764e0b3939f5ca87cb904f570ef9be2d78a07865"
+      ],
+      "ralouphie/getallheaders": [
+        "3.0.3",
+        "120b605dfeb996808c31b6477290a714d356e822"
+      ],
+      "swow/psr7-plus": [
+        "v1.1.2",
+        "7acc4924be907d2ff64edee5a2bd116620e56364"
+      ],
+      "symfony/clock": [
+        "v8.1.9",
+        "945ea3b64d6da9c1c2c354fe5c07b27455df6442"
+      ],
+      "symfony/console": [
+        "v7.4.21",
+        "21f1bc2296f7ff6043241a8dcbc09559b3732820"
+      ],
+      "symfony/deprecation-contracts": [
+        "v3.7.1",
+        "f3202fa1b5097b0af062dc978b32ecf63404e31d"
+      ],
+      "symfony/finder": [
+        "v7.4.20",
+        "2dd31e5208db7a0fda7bfc998ad727b79c2e4d1e"
+      ],
+      "symfony/polyfill-ctype": [
+        "v1.37.0",
+        "141046a8f9477948ff284fa65be2095baafb94f2"
+      ],
+      "symfony/polyfill-intl-grapheme": [
+        "v1.43.0",
+        "5cac8f4db97208823aa353f59a01faad2da52c75"
+      ],
+      "symfony/polyfill-intl-idn": [
+        "v1.43.0",
+        "533d68cf99c8f8ee2e8893c59ed59192e92cfd74"
+      ],
+      "symfony/polyfill-intl-normalizer": [
+        "v1.43.0",
+        "ebd57ccc7edb93d632e184efbe7693d2517bab3b"
+      ],
+      "symfony/polyfill-mbstring": [
+        "v1.43.0",
+        "4d5d331bf731e0aedbc6b2f5e61135b7b7996a72"
+      ],
+      "symfony/polyfill-php80": [
+        "v1.43.0",
+        "9c6a5d6b01ca51d486c813e9a9c0ed55f208bb74"
+      ],
+      "symfony/polyfill-php83": [
+        "v1.43.0",
+        "80ccff923a8d61f73ebe9da0aa94e25232f004ce"
+      ],
+      "symfony/polyfill-php84": [
+        "v1.43.0",
+        "22c6548499cbe5c5bb072fc0c42312dff062a015"
+      ],
+      "symfony/polyfill-php85": [
+        "v1.43.0",
+        "86a42cbcc07adc331481a5ab310a4024bfc227f6"
+      ],
+      "symfony/polyfill-time": [
+        "v1.42.0",
+        "ac9f1ed802dd58f37e720388130c088434aa09fc"
+      ],
+      "symfony/service-contracts": [
+        "v3.7.3",
+        "15e6a07ec2a2c75ceb1b21dd98105ee8456d2257"
+      ],
+      "symfony/string": [
+        "v8.1.9",
+        "07fb208558f941eab50ec49c89c2a6a93fb11f01"
+      ],
+      "symfony/translation": [
+        "v8.1.5",
+        "d9e1caba0d6b6f9a26710af8a2f88d37f001215a"
+      ],
+      "symfony/translation-contracts": [
+        "v3.7.1",
+        "ccb206b98faccc511ebae8e5fad50f2dc0b30621"
+      ],
+      "symfony/translation-implementation": [
+        null,
+        null
+      ],
+      "vlucas/phpdotenv": [
+        "v5.7.0",
+        "301c07936b16d88628b126b01d082ba153cf4c40"
+      ]
+    },
+    "metadata": {
+      "php": "8.4.26",
+      "sapi": "cli",
+      "classmap_authoritative": true,
+      "memory_limit": "256M",
+      "debug": false,
+      "pid": 8,
+      "opcache": "1",
+      "timestamps": "0",
+      "jit": {
+        "enabled": false,
+        "on": false,
+        "kind": 0,
+        "opt_level": 0,
+        "opt_flags": 0,
+        "buffer_size": 0,
+        "buffer_free": 0
+      },
+      "opcache_statistics": {
+        "num_cached_scripts": 442,
+        "num_cached_keys": 855,
+        "max_cached_keys": 32531,
+        "hits": 46,
+        "start_time": 1792449181,
+        "last_restart_time": 0,
+        "oom_restarts": 0,
+        "hash_restarts": 0,
+        "manual_restarts": 0,
+        "misses": 444,
+        "blacklist_misses": 0,
+        "blacklist_miss_ratio": 0,
+        "opcache_hit_rate": 9.387755102040817
+      },
+      "cache_full": false,
+      "workers": 2,
+      "swoole": "6.2.3",
+      "scan_cacheable": true,
+      "pool_per_worker": 10
+    },
+    "image": {
+      "Id": "sha256:31b8249cc3ecd83771b20801e20309c04dd85270612f74c8aa41eea2889d59e5",
+      "RepoTags": [
+        "crab-bench-expanded-setup-hyperf:latest"
+      ],
+      "RepoDigests": [],
+      "Comment": "buildkit.dockerfile.v0",
+      "Created": "2026-10-20T05:32:29.253559362+07:00",
+      "Config": {
+        "Env": [
+          "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+          "PHPIZE_DEPS=autoconf \t\tdpkg-dev \t\tfile \t\tg++ \t\tgcc \t\tlibc-dev \t\tmake \t\tpkg-config \t\tre2c",
+          "PHP_INI_DIR=/usr/local/etc/php",
+          "PHP_CFLAGS=-fstack-protector-strong -fpic -fpie -O2 -D_LARGEFILE_SOURCE -D_FILE_OFFSET_BITS=64",
+          "PHP_CPPFLAGS=-fstack-protector-strong -fpic -fpie -O2 -D_LARGEFILE_SOURCE -D_FILE_OFFSET_BITS=64",
+          "PHP_LDFLAGS=-Wl,-O1 -pie",
+          "GPG_KEYS=AFD8691FDAEDF03BDF6E460563F15A9B715376CA 9D7F99A0CB8F05C8A6958D6256A97AF7600A39A6 0616E93D95AF471243E26761770426E17EBBB3DD",
+          "PHP_VERSION=8.4.26",
+          "PHP_URL=https://www.php.net/distributions/php-8.4.26.tar.xz",
+          "PHP_ASC_URL=https://www.php.net/distributions/php-8.4.26.tar.xz.asc",
+          "PHP_SHA256=32a2de53862ad44ed4a5005244ce4f1b50c271e74dced215449a4443b40569f1",
+          "COMPOSER_ALLOW_SUPERUSER=1",
+          "APP_ENV=production",
+          "APP_DEBUG=false"
+        ],
+        "Entrypoint": [
+          "/bench/hyperf/entrypoint.sh"
+        ],
+        "WorkingDir": "/srv/app",
+        "Labels": {
+          "com.docker.compose.project": "crab-bench-expanded-setup",
+          "com.docker.compose.service": "hyperf",
+          "com.docker.compose.version": "5.5.0"
+        }
+      },
+      "Architecture": "arm64",
+      "Os": "linux",
+      "Size": 582772354,
+      "GraphDriver": {
+        "Data": {
+          "LowerDir": "/var/lib/docker/overlay2/7oq1esmratq7ulcohl9ewr9c7/diff:/var/lib/docker/overlay2/b5bomvmkdz79y95ieiv2wluc4/diff:/var/lib/docker/overlay2/o2agql57p8beujcrlcdmazpvw/diff:/var/lib/docker/overlay2/oltmajdkowg1p89fz3bphcoc9/diff:/var/lib/docker/overlay2/7s4x9170cezgzdqj5e5e2a8hd/diff:/var/lib/docker/overlay2/ufkv2o6xe307ymumnz9c48txc/diff:/var/lib/docker/overlay2/u0tub6ilptkd6m2aegk1tu8fr/diff:/var/lib/docker/overlay2/hmuvpu5mlellhw3ys6xj3382m/diff:/var/lib/docker/overlay2/fad2791b34d3204de4b3f5713e35e3a453c53910e5502c666e0510135bc54721/diff:/var/lib/docker/overlay2/677cb376ba5340756baa7b6dd799ce3e9e313be9bcc36f7f029b45b933c3c4f9/diff:/var/lib/docker/overlay2/e31502279739a3aa25a190c5982b3543dc666203c67c455c38323eb88336ff62/diff:/var/lib/docker/overlay2/9e303ac44b78b4b3528e2294b581bace085eb08e54444ebd209be2a550a6a8d9/diff:/var/lib/docker/overlay2/26d5ba6efc4d2fdc82e02456f382b8e6f6d3a549f7423651fc1c040a55223ab3/diff:/var/lib/docker/overlay2/ac7512231d7cbffe982c692e3b629ae2258ae7278b40e45d106eb9be77205b0a/diff:/var/lib/docker/overlay2/bc6db4a5a7357d3ceb50516149318340a9bda62de8506c342d412f25b39ff49a/diff:/var/lib/docker/overlay2/1edddef9fdb002e16aae134bb188797493da0cbb47a425cefc68952c478ffa62/diff:/var/lib/docker/overlay2/3d56ccbf6a0166eaea668e91e5982561240bf77c00d323bfde151ae2678ee677/diff:/var/lib/docker/overlay2/6d3e82b4902cbcae710f25be79833881ce0650054341015a85591ab307bc50df/diff",
+          "MergedDir": "/var/lib/docker/overlay2/i7h03mc6oyi08orvs0iu4ftwi/merged",
+          "UpperDir": "/var/lib/docker/overlay2/i7h03mc6oyi08orvs0iu4ftwi/diff",
+          "WorkDir": "/var/lib/docker/overlay2/i7h03mc6oyi08orvs0iu4ftwi/work"
+        },
+        "Name": "overlay2"
+      },
+      "RootFS": {
+        "Type": "layers",
+        "Layers": [
+          "sha256:dca69811453d69d10b6c0345a5c49147162abe20a2f77802d66efc60667949ea",
+          "sha256:63a268ec30e8ca895cf323cec9401e303815c2b8ca84efd9516d6b0e7024b6fc",
+          "sha256:28da9613fb812523f9e8c3c97f153e9ccbfc766f7f7101ada7e2fc3a2128deb3",
+          "sha256:15e34bf06f53c77d5cf373751e34d2d0d065dce43b6767fa4f8444a1a52ad572",
+          "sha256:40f92513cef94a28be1116aa4feb4389a90750766784dc5d70c27924f12f78cd",
+          "sha256:5c7286806528e26bcd06ff1ea616c2ed6b08e1cedd9bcbd9ee8deb92593aa4bb",
+          "sha256:90d0862433034df725d57eccd1af3b03908bc1ad239d35e3e34b66c8e3ea49e5",
+          "sha256:1632cbd5cc114226e6bf26e115241399243922852bf0bf29c8e024ea088bd1c0",
+          "sha256:a8a8e870bc7d4d37a0f32f7142a461f6337f1278302c26fd03fc034f383a17c2",
+          "sha256:856126ba3d7d838ab5fbb57361ce757ba978066413ae0b9402cb82fec088545c",
+          "sha256:2cddb8a58de74075089d7e3c3ab46b19e6dd8390913e2cca3b0a537497421796",
+          "sha256:049c5c1b0fdcc8ba090fef4aa5aec61ca8c136baa020f2843b66dea60dd3d787",
+          "sha256:6b3ad175a84f8057529d61aa0f8b94839e7996e59c678ee6eee50684c8de42c8",
+          "sha256:83b2c7ea69215462d7d740d47b6d8e7e4c7f13ff0a4d8de2b470e9b050e8fe1f",
+          "sha256:6dd7c02d61adc97fb7dde2846c565e42bcf67b7c066ae397d82cb9b9cc8e1f7b",
+          "sha256:87d09373d5846edc41a09304edfabad43c9e5cf010e4ab7df5ec2a03ac66396b",
+          "sha256:4581a1bc8fd501f05cbdc596044e0662d34a584f541110ef14344f45bfcf1698",
+          "sha256:b178d4d3afc948ef9fb140722cbcae1db4fa4b100e7e5a2233ac0ff8826d2ec6",
+          "sha256:5f70bf18a086007016e948b04aed3b82103a36bea41755b6cddfaf10ace3c6ef"
+        ]
+      },
+      "Metadata": {
+        "LastTagTime": "2026-10-20T05:32:29.468965405+07:00"
+      }
+    },
+    "processes": "PID                 PPID                COMMAND\n278525              278508              {php} benchmark.Manager\n278557              278525              {php} benchmark.Worker.0\n278558              278525              {php} benchmark.Worker.1\n"
+  }
+}

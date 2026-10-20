@@ -1,0 +1,12 @@
+[
+  {
+    "case": "hello-64",
+    "service": "hyperf",
+    "ready_seconds": 0.696974708000198
+  },
+  {
+    "case": "hello-256",
+    "service": "hyperf",
+    "ready_seconds": 0.4408031250059139
+  }
+]

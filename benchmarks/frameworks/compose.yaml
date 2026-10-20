@@ -1,0 +1,130 @@
+x-app: &app
+  cpus: 2
+  cpuset: "0,1"
+  mem_limit: 2g
+  memswap_limit: 2g
+  stop_grace_period: 15s
+  healthcheck:
+    disable: true
+  environment: &env
+    APP_ENV: production
+    APP_DEBUG: "false"
+    SERVER_WORKERS: "2"
+    SERVER_QUEUE: "false"
+    SERVER_SCHEDULE: "false"
+    DB_DSN: "mysql:host=mysql;port=23306;dbname=benchmark;charset=utf8mb4"
+    DB_USERNAME: bench
+    DB_PASSWORD: bench
+    LOG_LEVEL: error
+  depends_on:
+    mysql:
+      condition: service_healthy
+services:
+  mysql:
+    image: ${MYSQL_IMAGE}
+    cpus: 2
+    cpuset: "2,3"
+    mem_limit: 2g
+    memswap_limit: 2g
+    command: ["--port=23306", "--mysqlx=OFF", "--innodb-buffer-pool-size=512M", "--max-connections=100"]
+    ports: ["127.0.0.1:23306:23306"]
+    environment:
+      MYSQL_ROOT_PASSWORD: benchroot
+      MYSQL_DATABASE: benchmark
+      MYSQL_USER: bench
+      MYSQL_PASSWORD: bench
+    volumes:
+      - mysql-data:/var/lib/mysql
+      - ${BENCH_CONTEXT}/mysql/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -P 23306 -uroot -pbenchroot --silent"]
+      interval: 2s
+      timeout: 2s
+      retries: 90
+  crab-off:
+    <<: *app
+    build:
+      context: ${BENCH_CONTEXT}
+      dockerfile: crab/Dockerfile
+      args: {BASE: '${PHP_CLI_IMAGE}'}
+    environment:
+      <<: *env
+      BENCH_JIT: "0"
+    ports: ["127.0.0.1:23101:8080"]
+  crab-jit:
+    <<: *app
+    build:
+      context: ${BENCH_CONTEXT}
+      dockerfile: crab/Dockerfile
+      args: {BASE: '${PHP_CLI_IMAGE}'}
+    environment:
+      <<: *env
+      BENCH_JIT: "1"
+    ports: ["127.0.0.1:23102:8080"]
+  octane:
+    <<: *app
+    environment: {}
+    build:
+      context: ${BENCH_CONTEXT}
+      dockerfile: laravel-octane/Dockerfile
+      args: {BASE: '${FRANKEN_IMAGE}'}
+    ports: ["127.0.0.1:23103:8080"]
+  symfony:
+    <<: *app
+    environment: {}
+    build:
+      context: ${BENCH_CONTEXT}
+      dockerfile: symfony/Dockerfile
+      args: {BASE: '${FRANKEN_IMAGE}'}
+    ports: ["127.0.0.1:23104:8080"]
+  fpm:
+    <<: *app
+    environment: {}
+    build:
+      context: ${BENCH_CONTEXT}
+      dockerfile: laravel-fpm/Dockerfile
+      args: {BASE: '${PHP_FPM_IMAGE}'}
+    ports: ["127.0.0.1:23105:8080"]
+  elysia:
+    <<: *app
+    environment: {}
+    build:
+      context: ${BENCH_CONTEXT}
+      dockerfile: elysia/Dockerfile
+      args: {BASE: '${BUN_IMAGE}'}
+    ports: ["127.0.0.1:23106:8080"]
+  webman:
+    <<: *app
+    environment: {}
+    build:
+      context: ${BENCH_CONTEXT}
+      dockerfile: webman/Dockerfile
+      args: {BASE: '${PHP_CLI_IMAGE}'}
+    ports: ["127.0.0.1:23107:8080"]
+  hyperf:
+    <<: *app
+    environment: {}
+    build:
+      context: ${BENCH_CONTEXT}
+      dockerfile: hyperf/Dockerfile
+      args: {BASE: '${PHP_CLI_IMAGE}'}
+    ports: ["127.0.0.1:23108:8080"]
+  spiral:
+    <<: *app
+    environment: {}
+    build:
+      context: ${BENCH_CONTEXT}
+      dockerfile: spiral/Dockerfile
+      args: {BASE: '${PHP_CLI_IMAGE}'}
+    ports: ["127.0.0.1:23109:8080"]
+  loadgen:
+    cpus: 4
+    cpuset: "4,5,6,7"
+    mem_limit: 512m
+    memswap_limit: 512m
+    build:
+      context: ${BENCH_CONTEXT}
+      dockerfile: loadgen/Dockerfile
+      args: {BASE: '${LOADGEN_IMAGE}'}
+volumes:
+  mysql-data:

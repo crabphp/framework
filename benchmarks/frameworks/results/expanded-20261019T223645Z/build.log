@@ -1,0 +1,480 @@
+ Image crab-fw-bench-20261019223645-91848-symfony Building 
+ Image crab-fw-bench-20261019223645-91848-spiral Building 
+ Image crab-fw-bench-20261019223645-91848-loadgen Building 
+ Image crab-fw-bench-20261019223645-91848-octane Building 
+ Image crab-fw-bench-20261019223645-91848-webman Building 
+ Image crab-fw-bench-20261019223645-91848-hyperf Building 
+ Image crab-fw-bench-20261019223645-91848-crab-jit Building 
+ Image crab-fw-bench-20261019223645-91848-elysia Building 
+ Image crab-fw-bench-20261019223645-91848-crab-off Building 
+ Image crab-fw-bench-20261019223645-91848-fpm Building 
+#1 [internal] load local bake definitions
+#1 reading from stdin 6.64kB done
+#1 DONE 0.0s
+
+#2 [crab-off internal] load build definition from Dockerfile
+#2 transferring dockerfile: 774B done
+#2 DONE 0.1s
+
+#3 [crab-off internal] load metadata for docker.io/library/composer@sha256:af98f42dfff7c68ba8d53c2164fd9fde1087b7d449514baa38c418b1f6bc4bac
+#3 DONE 0.0s
+
+#4 [crab-jit internal] load metadata for docker.io/library/php@sha256:836ac6c672d1372a47c8fd61b625015bd07760f493fb2eaab2087636498a2b4b
+#4 DONE 0.0s
+
+#5 [hyperf internal] load build definition from Dockerfile
+#5 transferring dockerfile: 914B done
+#5 DONE 0.1s
+
+#6 [crab-jit internal] load .dockerignore
+#6 transferring context: 2B 0.0s done
+#6 DONE 0.1s
+
+#7 [symfony internal] load build definition from Dockerfile
+#7 transferring dockerfile: 1.14kB done
+#7 DONE 0.1s
+
+#4 [hyperf internal] load metadata for docker.io/library/php@sha256:836ac6c672d1372a47c8fd61b625015bd07760f493fb2eaab2087636498a2b4b
+#4 DONE 0.0s
+
+#8 [loadgen internal] load build definition from Dockerfile
+#8 transferring dockerfile: 265B done
+#8 DONE 0.2s
+
+#3 [symfony internal] load metadata for docker.io/library/composer@sha256:af98f42dfff7c68ba8d53c2164fd9fde1087b7d449514baa38c418b1f6bc4bac
+#3 DONE 0.0s
+
+#9 [symfony internal] load metadata for docker.io/dunglas/frankenphp@sha256:14007e6207a57651cb402970a44e5f2df15bfeffcbdeb5bbb322271949878b07
+#9 DONE 0.0s
+
+#10 [loadgen internal] load metadata for docker.io/library/debian@sha256:7c7b2c966bc9ee8cedfeef67e0e279108992c77681fa595db4a9d65c06ccc587
+#10 DONE 0.0s
+
+#11 [fpm internal] load build definition from Dockerfile
+#11 transferring dockerfile: 1.18kB done
+#11 DONE 0.2s
+
+#6 [spiral internal] load .dockerignore
+#6 transferring context: 2B 0.0s done
+#6 DONE 0.1s
+
+#12 [loadgen 1/3] FROM docker.io/library/debian@sha256:7c7b2c966bc9ee8cedfeef67e0e279108992c77681fa595db4a9d65c06ccc587
+#12 DONE 0.0s
+
+#13 [symfony] FROM docker.io/library/composer@sha256:af98f42dfff7c68ba8d53c2164fd9fde1087b7d449514baa38c418b1f6bc4bac
+#13 DONE 0.0s
+
+#14 [hyperf stage-0  1/11] FROM docker.io/library/php@sha256:836ac6c672d1372a47c8fd61b625015bd07760f493fb2eaab2087636498a2b4b
+#14 DONE 0.0s
+
+#15 [spiral internal] load build definition from Dockerfile
+#15 transferring dockerfile: 910B done
+#15 DONE 0.3s
+
+#16 [elysia internal] load build definition from Dockerfile
+#16 transferring dockerfile: 277B 0.0s done
+#16 DONE 0.3s
+
+#17 [symfony internal] load build context
+#17 DONE 0.0s
+
+#18 [elysia internal] load metadata for docker.io/oven/bun@sha256:9114c058aeae42162ee16dd5084b95fe9473970bb6bcb5b232ab1630f0546895
+#18 DONE 0.0s
+
+#19 [fpm internal] load metadata for docker.io/library/php@sha256:6bfef8e416977aa41f48e3e42a40c1e08050d24e4a938c6edb421400bff24601
+#19 DONE 0.0s
+
+#9 [spiral internal] load metadata for docker.io/dunglas/frankenphp@sha256:14007e6207a57651cb402970a44e5f2df15bfeffcbdeb5bbb322271949878b07
+#9 DONE 0.0s
+
+#4 [spiral internal] load metadata for docker.io/library/php@sha256:836ac6c672d1372a47c8fd61b625015bd07760f493fb2eaab2087636498a2b4b
+#4 DONE 0.0s
+
+#20 [symfony stage-0  1/10] FROM docker.io/dunglas/frankenphp@sha256:14007e6207a57651cb402970a44e5f2df15bfeffcbdeb5bbb322271949878b07
+#20 DONE 0.0s
+
+#3 [spiral internal] load metadata for docker.io/library/composer@sha256:af98f42dfff7c68ba8d53c2164fd9fde1087b7d449514baa38c418b1f6bc4bac
+#3 DONE 0.0s
+
+#21 [octane internal] load build definition from Dockerfile
+#21 transferring dockerfile: 1.11kB done
+#21 DONE 0.3s
+
+#22 [webman internal] load build definition from Dockerfile
+#22 transferring dockerfile: 913B 0.0s done
+#22 DONE 0.3s
+
+#23 [loadgen internal] load build context
+#23 transferring context: 143B 0.0s done
+#23 DONE 0.1s
+
+#24 [crab-off internal] load build context
+#24 transferring context: 2.03MB 0.0s done
+#24 DONE 0.1s
+
+#6 [webman internal] load .dockerignore
+#6 transferring context: 2B 0.0s done
+#6 DONE 0.1s
+
+#13 [octane] FROM docker.io/library/composer@sha256:af98f42dfff7c68ba8d53c2164fd9fde1087b7d449514baa38c418b1f6bc4bac
+#13 DONE 0.0s
+
+#14 [spiral stage-0  1/11] FROM docker.io/library/php@sha256:836ac6c672d1372a47c8fd61b625015bd07760f493fb2eaab2087636498a2b4b
+#14 DONE 0.0s
+
+#20 [octane stage-0  1/10] FROM docker.io/dunglas/frankenphp@sha256:14007e6207a57651cb402970a44e5f2df15bfeffcbdeb5bbb322271949878b07
+#20 DONE 0.0s
+
+#9 [webman internal] load metadata for docker.io/dunglas/frankenphp@sha256:14007e6207a57651cb402970a44e5f2df15bfeffcbdeb5bbb322271949878b07
+#9 DONE 0.0s
+
+#3 [webman internal] load metadata for docker.io/library/composer@sha256:af98f42dfff7c68ba8d53c2164fd9fde1087b7d449514baa38c418b1f6bc4bac
+#3 DONE 0.0s
+
+#4 [webman internal] load metadata for docker.io/library/php@sha256:836ac6c672d1372a47c8fd61b625015bd07760f493fb2eaab2087636498a2b4b
+#4 DONE 0.0s
+
+#25 [loadgen 2/3] RUN apt-get update && apt-get install -y --no-install-recommends wrk=4.1.0-3+b2 python3 ca-certificates && rm -rf /var/lib/apt/lists/*
+#25 CACHED
+
+#26 [loadgen 3/3] COPY loadgen/ /bench/
+#26 CACHED
+
+#27 [crab-jit stage-0  7/11] COPY framework-source/ /srv/framework/
+#27 CACHED
+
+#28 [crab-jit stage-0  8/11] COPY crab-source/ /srv/crab/
+#28 CACHED
+
+#29 [crab-jit stage-0  2/11] COPY --from=composer@sha256:af98f42dfff7c68ba8d53c2164fd9fde1087b7d449514baa38c418b1f6bc4bac /usr/bin/composer /usr/local/bin/composer
+#29 CACHED
+
+#30 [crab-jit stage-0  4/11] RUN cp "/usr/local/etc/php/php.ini-production" "/usr/local/etc/php/php.ini"
+#30 CACHED
+
+#31 [crab-jit stage-0  9/11] COPY crab/app/ /srv/crab/
+#31 CACHED
+
+#32 [crab-jit stage-0  5/11] COPY common/php.ini /usr/local/etc/php/conf.d/zz-benchmark.ini
+#32 CACHED
+
+#33 [crab-jit stage-0 10/11] RUN /bench/crab/setup.sh
+#33 CACHED
+
+#34 [crab-jit stage-0  3/11] RUN apt-get update && apt-get install -y --no-install-recommends unzip && docker-php-ext-install -j2 pcntl pdo_mysql && rm -rf /var/lib/apt/lists/*
+#34 CACHED
+
+#35 [crab-jit stage-0  6/11] COPY crab/ /bench/crab/
+#35 CACHED
+
+#36 [crab-jit stage-0 11/11] WORKDIR /srv/crab
+#36 CACHED
+
+#37 [elysia 1/5] FROM docker.io/oven/bun@sha256:9114c058aeae42162ee16dd5084b95fe9473970bb6bcb5b232ab1630f0546895
+#37 DONE 0.0s
+
+#38 [fpm stage-0  1/10] FROM docker.io/library/php@sha256:6bfef8e416977aa41f48e3e42a40c1e08050d24e4a938c6edb421400bff24601
+#38 DONE 0.0s
+
+#17 [symfony internal] load build context
+#17 transferring context: 160.06kB 0.0s done
+#17 DONE 0.1s
+
+#39 [loadgen] exporting to image
+#39 exporting layers done
+#39 writing image sha256:8fd194ae76e156f724fa58bd100e037539db636147fd7d6c0ef14cacea00246a done
+#39 naming to docker.io/library/crab-fw-bench-20261019223645-91848-loadgen done
+#39 DONE 0.0s
+
+#40 [spiral internal] load build context
+#40 DONE 0.0s
+
+#41 [hyperf internal] load build context
+#41 transferring context: 380.49kB done
+#41 DONE 0.1s
+
+#42 [elysia internal] load build context
+#42 transferring context: 213B done
+#42 DONE 0.1s
+
+#43 [crab-off] exporting to image
+#43 exporting layers done
+#43 writing image sha256:6d356b1dca3804c98546c4fa818b8d2ccd548a0b7a9d891044941b4e0262c43e done
+#43 naming to docker.io/library/crab-fw-bench-20261019223645-91848-crab-off done
+#43 DONE 0.1s
+
+#44 [crab-jit] exporting to image
+#44 exporting layers done
+#44 writing image sha256:5ff1b4b954a23f3c761809b7c33da3623e43e58d2d2aa9acb52abb34a112ad0a done
+#44 naming to docker.io/library/crab-fw-bench-20261019223645-91848-crab-jit done
+#44 DONE 0.1s
+
+#45 [fpm internal] load build context
+#45 transferring context: 332.06kB 0.0s done
+#45 DONE 0.0s
+
+#46 [webman internal] load build context
+#46 transferring context: 191.75kB done
+#46 DONE 0.1s
+
+#47 [octane internal] load build context
+#47 transferring context: 1.91kB done
+#47 DONE 0.1s
+
+#48 [elysia 2/5] WORKDIR /srv/app
+#48 CACHED
+
+#49 [elysia 4/5] RUN bun install --frozen-lockfile --production
+#49 CACHED
+
+#50 [elysia 3/5] COPY elysia/package.json elysia/bun.lock ./
+#50 CACHED
+
+#51 [elysia 5/5] COPY elysia/app/ ./
+#51 CACHED
+
+#52 [symfony stage-0  6/10] COPY common/php.ini /usr/local/etc/php/conf.d/zz-benchmark.ini
+#52 CACHED
+
+#53 [symfony stage-0  2/10] COPY --from=composer@sha256:af98f42dfff7c68ba8d53c2164fd9fde1087b7d449514baa38c418b1f6bc4bac /usr/bin/composer /usr/local/bin/composer
+#53 CACHED
+
+#54 [symfony stage-0  4/10] RUN apt-get update && apt-get install -y --no-install-recommends unzip && rm -rf /var/lib/apt/lists/*
+#54 CACHED
+
+#55 [symfony stage-0  5/10] RUN cp "/usr/local/etc/php/php.ini-production" "/usr/local/etc/php/php.ini"
+#55 CACHED
+
+#56 [symfony stage-0  7/10] COPY symfony/ /bench/symfony/
+#56 CACHED
+
+#57 [symfony stage-0  8/10] RUN /bench/symfony/setup.sh
+#57 CACHED
+
+#58 [symfony stage-0  9/10] COPY symfony/preload.ini /usr/local/etc/php/conf.d/zzz-preload.ini
+#58 CACHED
+
+#59 [symfony stage-0  3/10] RUN install-php-extensions pcntl pdo_mysql mbstring intl opcache
+#59 CACHED
+
+#60 [symfony stage-0 10/10] WORKDIR /srv/app
+#60 CACHED
+
+#61 [hyperf stage-0  3/10] COPY --from=dunglas/frankenphp@sha256:14007e6207a57651cb402970a44e5f2df15bfeffcbdeb5bbb322271949878b07 /usr/local/bin/install-php-extensions /usr/local/bin/install-php-extensions
+#61 CACHED
+
+#62 [hyperf stage-0  4/10] RUN apt-get update && apt-get install -y --no-install-recommends unzip && install-php-extensions pcntl pdo_mysql sockets swoole-6.2.3 && rm -rf /var/lib/apt/lists/*
+#62 CACHED
+
+#63 [hyperf stage-0  5/10] RUN cp "/usr/local/etc/php/php.ini-production" "/usr/local/etc/php/php.ini"
+#63 CACHED
+
+#29 [hyperf stage-0  2/11] COPY --from=composer@sha256:af98f42dfff7c68ba8d53c2164fd9fde1087b7d449514baa38c418b1f6bc4bac /usr/bin/composer /usr/local/bin/composer
+#29 CACHED
+
+#64 [hyperf stage-0  6/10] COPY common/php.ini /usr/local/etc/php/conf.d/zz-benchmark.ini
+#64 CACHED
+
+#65 [hyperf stage-0  7/10] COPY common/metadata.php /bench/metadata.php
+#65 CACHED
+
+#66 [hyperf stage-0  9/10] RUN /bench/hyperf/setup.sh
+#66 CACHED
+
+#67 [hyperf stage-0  8/10] COPY hyperf/ /bench/hyperf/
+#67 CACHED
+
+#68 [hyperf stage-0 10/10] WORKDIR /srv/app
+#68 CACHED
+
+#69 [elysia] exporting to image
+#69 exporting layers done
+#69 writing image sha256:2475fab50bdcc1688f70920eca561d302a991aa9c727da06426b6a2e96459280 done
+#69 naming to docker.io/library/crab-fw-bench-20261019223645-91848-elysia 0.0s done
+#69 DONE 0.1s
+
+#70 [octane stage-0  7/10] COPY laravel/ /bench/laravel/
+#70 CACHED
+
+#71 [octane stage-0  9/10] RUN /bench/laravel-octane/setup.sh
+#71 CACHED
+
+#72 [octane stage-0  6/10] COPY common/php.ini /usr/local/etc/php/conf.d/zz-benchmark.ini
+#72 CACHED
+
+#55 [octane stage-0  5/10] RUN cp "/usr/local/etc/php/php.ini-production" "/usr/local/etc/php/php.ini"
+#55 CACHED
+
+#53 [octane stage-0  2/10] COPY --from=composer@sha256:af98f42dfff7c68ba8d53c2164fd9fde1087b7d449514baa38c418b1f6bc4bac /usr/bin/composer /usr/local/bin/composer
+#53 CACHED
+
+#54 [octane stage-0  4/10] RUN apt-get update && apt-get install -y --no-install-recommends unzip && rm -rf /var/lib/apt/lists/*
+#54 CACHED
+
+#59 [octane stage-0  3/10] RUN install-php-extensions pcntl pdo_mysql mbstring intl opcache
+#59 CACHED
+
+#73 [octane stage-0  8/10] COPY laravel-octane/ /bench/laravel-octane/
+#73 CACHED
+
+#74 [webman stage-0  5/10] RUN cp "/usr/local/etc/php/php.ini-production" "/usr/local/etc/php/php.ini"
+#74 CACHED
+
+#75 [webman stage-0  6/10] COPY common/php.ini /usr/local/etc/php/conf.d/zz-benchmark.ini
+#75 CACHED
+
+#76 [webman stage-0  7/10] COPY common/metadata.php /bench/metadata.php
+#76 CACHED
+
+#77 [webman stage-0  4/10] RUN apt-get update && apt-get install -y --no-install-recommends unzip && install-php-extensions pcntl pdo_mysql sockets event-3.1.6 && rm -rf /var/lib/apt/lists/*
+#77 CACHED
+
+#78 [webman stage-0  8/10] COPY webman/ /bench/webman/
+#78 CACHED
+
+#79 [webman stage-0  9/10] RUN /bench/webman/setup.sh
+#79 CACHED
+
+#80 [fpm stage-0  9/10] WORKDIR /srv/app
+#80 CACHED
+
+#81 [fpm stage-0  8/10] RUN /bench/laravel-fpm/setup.sh
+#81 CACHED
+
+#82 [fpm stage-0  4/10] RUN cp "/usr/local/etc/php/php.ini-production" "/usr/local/etc/php/php.ini"
+#82 CACHED
+
+#83 [fpm stage-0  5/10] COPY common/php.ini /usr/local/etc/php/conf.d/zz-benchmark.ini
+#83 CACHED
+
+#84 [fpm stage-0  2/10] COPY --from=composer@sha256:af98f42dfff7c68ba8d53c2164fd9fde1087b7d449514baa38c418b1f6bc4bac /usr/bin/composer /usr/local/bin/composer
+#84 CACHED
+
+#85 [fpm stage-0  6/10] COPY laravel/ /bench/laravel/
+#85 CACHED
+
+#86 [fpm stage-0  3/10] RUN apt-get update && apt-get install -y --no-install-recommends nginx=1.22.1-9+deb12u10 libicu-dev unzip && docker-php-ext-install -j2 pdo_mysql intl && rm -rf /var/lib/apt/lists/*
+#86 CACHED
+
+#87 [fpm stage-0  7/10] COPY laravel-fpm/ /bench/laravel-fpm/
+#87 CACHED
+
+#88 [octane stage-0 10/10] WORKDIR /srv/app
+#88 CACHED
+
+#89 [fpm stage-0 10/10] RUN chown -R www-data:www-data /srv/app/storage /srv/app/bootstrap/cache
+#89 CACHED
+
+#90 [webman stage-0 10/10] WORKDIR /srv/app
+#90 CACHED
+
+#40 [spiral internal] load build context
+#40 transferring context: 469.61kB 0.0s done
+#40 DONE 0.0s
+
+#61 [spiral stage-0  3/10] COPY --from=dunglas/frankenphp@sha256:14007e6207a57651cb402970a44e5f2df15bfeffcbdeb5bbb322271949878b07 /usr/local/bin/install-php-extensions /usr/local/bin/install-php-extensions
+#61 CACHED
+
+#91 [spiral stage-0  7/10] COPY common/metadata.php /bench/metadata.php
+#91 CACHED
+
+#29 [spiral stage-0  2/11] COPY --from=composer@sha256:af98f42dfff7c68ba8d53c2164fd9fde1087b7d449514baa38c418b1f6bc4bac /usr/bin/composer /usr/local/bin/composer
+#29 CACHED
+
+#92 [spiral stage-0  6/10] COPY common/php.ini /usr/local/etc/php/conf.d/zz-benchmark.ini
+#92 CACHED
+
+#93 [spiral stage-0  4/10] RUN apt-get update && apt-get install -y --no-install-recommends unzip && install-php-extensions pcntl pdo_mysql sockets zip intl && rm -rf /var/lib/apt/lists/*
+#93 CACHED
+
+#94 [spiral stage-0  8/10] COPY spiral/ /bench/spiral/
+#94 CACHED
+
+#95 [spiral stage-0  5/10] RUN cp "/usr/local/etc/php/php.ini-production" "/usr/local/etc/php/php.ini"
+#95 CACHED
+
+#96 [spiral stage-0  9/10] RUN /bench/spiral/setup.sh
+#96 CACHED
+
+#97 [spiral stage-0 10/10] WORKDIR /srv/app
+#97 CACHED
+
+#98 [octane] exporting to image
+#98 exporting layers done
+#98 writing image sha256:e743431f5552f968bea2a932d181f8c751eed4c70aba734235484eae5f1d6009 0.0s done
+#98 naming to docker.io/library/crab-fw-bench-20261019223645-91848-octane done
+#98 DONE 0.1s
+
+#99 [hyperf] exporting to image
+#99 exporting layers done
+#99 writing image sha256:5cd9998f35b8af70c39c07350c9426c6513fe37f48dc95e62c32ab91f0179fbf done
+#99 naming to docker.io/library/crab-fw-bench-20261019223645-91848-hyperf 0.0s done
+#99 DONE 0.1s
+
+#100 [symfony] exporting to image
+#100 exporting layers done
+#100 writing image sha256:0ec979da50c222ab1a5a1f56f140a4abf2b3706633a11f65fe18bed8c4c11037 done
+#100 naming to docker.io/library/crab-fw-bench-20261019223645-91848-symfony 0.0s done
+#100 DONE 0.1s
+
+#101 [webman] exporting to image
+#101 exporting layers done
+#101 writing image sha256:e197f3caf856944233fa1169fe5fdcd354a0fa97b64f5ae57895a2b2f4ea17cc done
+#101 naming to docker.io/library/crab-fw-bench-20261019223645-91848-webman 0.0s done
+#101 DONE 0.1s
+
+#102 [fpm] exporting to image
+#102 exporting layers done
+#102 writing image sha256:140643d1f03c34e071159cc968b957acf9b4de268f6a8ec71a35520f3bb22dea 0.0s done
+#102 naming to docker.io/library/crab-fw-bench-20261019223645-91848-fpm done
+#102 DONE 0.1s
+
+#103 [spiral] exporting to image
+#103 exporting layers done
+#103 writing image sha256:bc3a52245cd696520cc70133d9e4218b0eafe2d579548f9a3dd7b5f6b7728d8f
+#103 writing image sha256:bc3a52245cd696520cc70133d9e4218b0eafe2d579548f9a3dd7b5f6b7728d8f done
+#103 naming to docker.io/library/crab-fw-bench-20261019223645-91848-spiral done
+#103 DONE 0.2s
+
+#104 [crab-off] resolving provenance for metadata file
+#104 DONE 0.2s
+
+#105 [loadgen] resolving provenance for metadata file
+#105 DONE 0.4s
+
+#106 [elysia] resolving provenance for metadata file
+#106 ...
+
+#107 [crab-jit] resolving provenance for metadata file
+#107 DONE 0.0s
+
+#108 [octane] resolving provenance for metadata file
+#108 DONE 0.1s
+
+#106 [elysia] resolving provenance for metadata file
+#106 DONE 0.1s
+
+#109 [hyperf] resolving provenance for metadata file
+#109 DONE 0.1s
+
+#110 [spiral] resolving provenance for metadata file
+#110 DONE 0.0s
+
+#111 [symfony] resolving provenance for metadata file
+#111 DONE 0.1s
+
+#112 [fpm] resolving provenance for metadata file
+#112 DONE 0.1s
+
+#113 [webman] resolving provenance for metadata file
+#113 DONE 0.0s
+ Image crab-fw-bench-20261019223645-91848-crab-jit Built 
+ Image crab-fw-bench-20261019223645-91848-symfony Built 
+ Image crab-fw-bench-20261019223645-91848-crab-off Built 
+ Image crab-fw-bench-20261019223645-91848-hyperf Built 
+ Image crab-fw-bench-20261019223645-91848-elysia Built 
+ Image crab-fw-bench-20261019223645-91848-webman Built 
+ Image crab-fw-bench-20261019223645-91848-spiral Built 
+ Image crab-fw-bench-20261019223645-91848-fpm Built 
+ Image crab-fw-bench-20261019223645-91848-loadgen Built 
+ Image crab-fw-bench-20261019223645-91848-octane Built 

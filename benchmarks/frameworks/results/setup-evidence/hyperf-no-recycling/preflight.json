@@ -1,0 +1,90 @@
+[
+  {
+    "case": "hello-64",
+    "service": "hyperf",
+    "ok": true,
+    "metadata": {
+      "php": "8.4.26",
+      "sapi": "cli",
+      "classmap_authoritative": true,
+      "memory_limit": "256M",
+      "debug": false,
+      "pid": 8,
+      "opcache": "1",
+      "timestamps": "0",
+      "jit": {
+        "enabled": false,
+        "on": false,
+        "kind": 0,
+        "opt_level": 0,
+        "opt_flags": 0,
+        "buffer_size": 0,
+        "buffer_free": 0
+      },
+      "opcache_statistics": {
+        "num_cached_scripts": 442,
+        "num_cached_keys": 855,
+        "max_cached_keys": 32531,
+        "hits": 46,
+        "start_time": 1792449181,
+        "last_restart_time": 0,
+        "oom_restarts": 0,
+        "hash_restarts": 0,
+        "manual_restarts": 0,
+        "misses": 444,
+        "blacklist_misses": 0,
+        "blacklist_miss_ratio": 0,
+        "opcache_hit_rate": 9.387755102040817
+      },
+      "cache_full": false,
+      "workers": 2,
+      "swoole": "6.2.3",
+      "scan_cacheable": true,
+      "pool_per_worker": 10
+    }
+  },
+  {
+    "case": "hello-256",
+    "service": "hyperf",
+    "ok": true,
+    "metadata": {
+      "php": "8.4.26",
+      "sapi": "cli",
+      "classmap_authoritative": true,
+      "memory_limit": "256M",
+      "debug": false,
+      "pid": 8,
+      "opcache": "1",
+      "timestamps": "0",
+      "jit": {
+        "enabled": false,
+        "on": false,
+        "kind": 0,
+        "opt_level": 0,
+        "opt_flags": 0,
+        "buffer_size": 0,
+        "buffer_free": 0
+      },
+      "opcache_statistics": {
+        "num_cached_scripts": 442,
+        "num_cached_keys": 855,
+        "max_cached_keys": 32531,
+        "hits": 47,
+        "start_time": 1792449228,
+        "last_restart_time": 0,
+        "oom_restarts": 0,
+        "hash_restarts": 0,
+        "manual_restarts": 0,
+        "misses": 443,
+        "blacklist_misses": 0,
+        "blacklist_miss_ratio": 0,
+        "opcache_hit_rate": 9.591836734693878
+      },
+      "cache_full": false,
+      "workers": 2,
+      "swoole": "6.2.3",
+      "scan_cacheable": true,
+      "pool_per_worker": 10
+    }
+  }
+]

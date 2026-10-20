@@ -1,0 +1,14 @@
+octane-1  | {"level":"info","ts":1792450947.1895142,"msg":"maxprocs: Updating GOMAXPROCS=2: determined from CPU quota"}
+octane-1  | {"level":"info","ts":1792450947.1895223,"msg":"GOMEMLIMIT is updated","GOMEMLIMIT":1932735283,"previous":9223372036854775807}
+octane-1  | {"level":"info","ts":1792450947.1895244,"msg":"using config from file","file":"/srv/app/vendor/laravel/octane/src/Commands/stubs/Caddyfile"}
+octane-1  | {"level":"info","ts":1792450947.1895256,"msg":"adapted config to JSON","adapter":"caddyfile"}
+octane-1  | {"level":"info","ts":1792450947.208538,"logger":"admin","msg":"admin endpoint started","address":"localhost:2019","enforce_origin":false,"origins":["//localhost:2019","//[::1]:2019","//127.0.0.1:2019"]}
+octane-1  | {"level":"info","ts":1792450947.2092803,"logger":"tls.cache.maintenance","msg":"started background certificate maintenance","cache":"0x5a8966d9be80"}
+octane-1  | {"level":"info","ts":1792450947.3432178,"logger":"frankenphp","msg":"FrankenPHP started 🐘","php_version":"8.4.26","total_threads":4,"worker_threads":2,"max_threads":4,"max_requests":0}
+octane-1  | {"level":"warn","ts":1792450947.3435578,"logger":"http","msg":"HTTP/2 skipped because it requires TLS","network":"tcp","addr":":8080"}
+octane-1  | {"level":"warn","ts":1792450947.3435616,"logger":"http","msg":"HTTP/3 skipped because it requires TLS","network":"tcp","addr":":8080"}
+octane-1  | {"level":"info","ts":1792450947.3435645,"logger":"http.log","msg":"server running","name":"srv0","protocols":["h1","h2","h3"]}
+octane-1  | {"level":"info","ts":1792450947.3447883,"msg":"autosaved config (load with --resume flag)","file":"/config/caddy/autosave.json"}
+octane-1  | {"level":"info","ts":1792450947.3447957,"msg":"serving initial configuration"}
+octane-1  | {"level":"info","ts":1792450947.3509974,"logger":"tls","msg":"cleaning storage unit","storage":"FileStorage:/data/caddy"}
+octane-1  | {"level":"info","ts":1792450947.3528295,"logger":"tls","msg":"finished cleaning storage units"}

@@ -1,0 +1,259 @@
+{
+  "Id": "c579249d39a7bb73e742e17c6243978e1f8a4e1df729cf8ae51a81a42b75f9f6",
+  "Created": "2026-10-19T23:27:56.375509589Z",
+  "Path": "/bin/bash",
+  "Args": [
+    "/bench/laravel-fpm/entrypoint.sh"
+  ],
+  "State": {
+    "Status": "running",
+    "Running": true,
+    "Paused": false,
+    "Restarting": false,
+    "OOMKilled": false,
+    "Dead": false,
+    "Pid": 313269,
+    "ExitCode": 0,
+    "Error": "",
+    "StartedAt": "2026-10-19T23:27:56.460909418Z",
+    "FinishedAt": "0001-01-01T00:00:00Z"
+  },
+  "Image": "sha256:140643d1f03c34e071159cc968b957acf9b4de268f6a8ec71a35520f3bb22dea",
+  "ResolvConfPath": "/var/lib/docker/containers/c579249d39a7bb73e742e17c6243978e1f8a4e1df729cf8ae51a81a42b75f9f6/resolv.conf",
+  "HostnamePath": "/var/lib/docker/containers/c579249d39a7bb73e742e17c6243978e1f8a4e1df729cf8ae51a81a42b75f9f6/hostname",
+  "HostsPath": "/var/lib/docker/containers/c579249d39a7bb73e742e17c6243978e1f8a4e1df729cf8ae51a81a42b75f9f6/hosts",
+  "LogPath": "/var/lib/docker/containers/c579249d39a7bb73e742e17c6243978e1f8a4e1df729cf8ae51a81a42b75f9f6/c579249d39a7bb73e742e17c6243978e1f8a4e1df729cf8ae51a81a42b75f9f6-json.log",
+  "Name": "/crab-fw-bench-20261019223645-91848-fpm-1",
+  "RestartCount": 0,
+  "Driver": "overlay2",
+  "Platform": "linux",
+  "MountLabel": "",
+  "ProcessLabel": "",
+  "AppArmorProfile": "",
+  "ExecIDs": null,
+  "HostConfig": {
+    "Binds": null,
+    "ContainerIDFile": "",
+    "LogConfig": {
+      "Type": "json-file",
+      "Config": {
+        "max-file": "5",
+        "max-size": "20m"
+      }
+    },
+    "NetworkMode": "crab-fw-bench-20261019223645-91848_default",
+    "PortBindings": {
+      "8080/tcp": [
+        {
+          "HostIp": "127.0.0.1",
+          "HostPort": "23105"
+        }
+      ]
+    },
+    "RestartPolicy": {
+      "Name": "no",
+      "MaximumRetryCount": 0
+    },
+    "AutoRemove": false,
+    "VolumeDriver": "",
+    "VolumesFrom": null,
+    "ConsoleSize": [
+      0,
+      0
+    ],
+    "CapAdd": null,
+    "CapDrop": null,
+    "CgroupnsMode": "private",
+    "Dns": null,
+    "DnsOptions": null,
+    "DnsSearch": null,
+    "ExtraHosts": [],
+    "GroupAdd": null,
+    "IpcMode": "private",
+    "Cgroup": "",
+    "Links": null,
+    "OomScoreAdj": 0,
+    "PidMode": "",
+    "Privileged": false,
+    "PublishAllPorts": false,
+    "ReadonlyRootfs": false,
+    "SecurityOpt": null,
+    "UTSMode": "",
+    "UsernsMode": "",
+    "ShmSize": 4196401152,
+    "Runtime": "runc",
+    "Isolation": "",
+    "CpuShares": 0,
+    "Memory": 2147483648,
+    "NanoCpus": 2000000000,
+    "CgroupParent": "",
+    "BlkioWeight": 0,
+    "BlkioWeightDevice": null,
+    "BlkioDeviceReadBps": null,
+    "BlkioDeviceWriteBps": null,
+    "BlkioDeviceReadIOps": null,
+    "BlkioDeviceWriteIOps": null,
+    "CpuPeriod": 0,
+    "CpuQuota": 0,
+    "CpuRealtimePeriod": 0,
+    "CpuRealtimeRuntime": 0,
+    "CpusetCpus": "0,1",
+    "CpusetMems": "",
+    "Devices": null,
+    "DeviceCgroupRules": null,
+    "DeviceRequests": null,
+    "MemoryReservation": 0,
+    "MemorySwap": 2147483648,
+    "MemorySwappiness": null,
+    "OomKillDisable": null,
+    "PidsLimit": null,
+    "Ulimits": null,
+    "CpuCount": 0,
+    "CpuPercent": 0,
+    "IOMaximumIOps": 0,
+    "IOMaximumBandwidth": 0,
+    "MaskedPaths": [
+      "/proc/acpi",
+      "/proc/asound",
+      "/proc/interrupts",
+      "/proc/kcore",
+      "/proc/keys",
+      "/proc/latency_stats",
+      "/proc/sched_debug",
+      "/proc/scsi",
+      "/proc/timer_list",
+      "/proc/timer_stats",
+      "/sys/devices/virtual/powercap",
+      "/sys/firmware"
+    ],
+    "ReadonlyPaths": [
+      "/proc/bus",
+      "/proc/fs",
+      "/proc/irq",
+      "/proc/sys",
+      "/proc/sysrq-trigger"
+    ]
+  },
+  "GraphDriver": {
+    "Data": {
+      "ID": "c579249d39a7bb73e742e17c6243978e1f8a4e1df729cf8ae51a81a42b75f9f6",
+      "LowerDir": "/var/lib/docker/overlay2/039002e1b737eea5d949c37a2d70ba52eac5cc6c4b189a51f0554349726f8852-init/diff:/var/lib/docker/overlay2/64t2uk9m7awmt7f6ty9wtxqnz/diff:/var/lib/docker/overlay2/neu87w4xpwsjmmzs8f6mf7uqt/diff:/var/lib/docker/overlay2/4io7g6vnnv4tm9vs8cr45gsbn/diff:/var/lib/docker/overlay2/xeebjdz6li1ig7o0fmzpsfbd6/diff:/var/lib/docker/overlay2/hwktjhwomv2zmr8d06znw8rd1/diff:/var/lib/docker/overlay2/sadep3tzpk3aozqwrithe8q7w/diff:/var/lib/docker/overlay2/c0odbnpmt8wa9roovf0n0nea8/diff:/var/lib/docker/overlay2/oywjpo8ekt77h7shdtqtigz1l/diff:/var/lib/docker/overlay2/vk2f5w0pcitpzngtfdn8oy1p0/diff:/var/lib/docker/overlay2/3aa989d05b39982a67e34fc5be094b16347720ddbd0f5bafcf7c841479a4c105/diff:/var/lib/docker/overlay2/194c8c6faefad8c4c0b50a5cb95ee125e5da6d922a2bfc6f7859e13b65f7595c/diff:/var/lib/docker/overlay2/1e327faeea28ac73faba6e64d638fa66482c31ac56a9a4d4c61f90f8139bf8f6/diff:/var/lib/docker/overlay2/d9560bac1c6a8ae12a23f43e1194bcd729e707214755de0ef3da842aa5ab2e55/diff:/var/lib/docker/overlay2/322b9529c0867de1c2aa8ee7fa4bdc6e0d3cf516234e6b624081dbfe69520615/diff:/var/lib/docker/overlay2/422caf6adff3607db4cd224cff7a748b1694f1a5d54d77e519a0a3bde3701d43/diff:/var/lib/docker/overlay2/86d4864786b74101b165e857c8d829d2ad4f12861b408f07e7072005b1133a6f/diff:/var/lib/docker/overlay2/80000bcbac8fbe571d0940ee40a63d81b3b4a4723cce535b064eeba7870345c9/diff:/var/lib/docker/overlay2/522dae109c0a279a6ba39993b6ee763c1c66f6cff7f19aa973b7bb3da9d4720b/diff:/var/lib/docker/overlay2/3f9cf20b5717f06c9fa5451c6cb93267d5998ee3ec83246132550610472f6de0/diff:/var/lib/docker/overlay2/32d1820556d9b00ea88c6ab7c629a3ef3a24b9c5e8c6458b651ce7f9579196a5/diff:/var/lib/docker/overlay2/6d3e82b4902cbcae710f25be79833881ce0650054341015a85591ab307bc50df/diff",
+      "MergedDir": "/var/lib/docker/overlay2/039002e1b737eea5d949c37a2d70ba52eac5cc6c4b189a51f0554349726f8852/merged",
+      "UpperDir": "/var/lib/docker/overlay2/039002e1b737eea5d949c37a2d70ba52eac5cc6c4b189a51f0554349726f8852/diff",
+      "WorkDir": "/var/lib/docker/overlay2/039002e1b737eea5d949c37a2d70ba52eac5cc6c4b189a51f0554349726f8852/work"
+    },
+    "Name": "overlay2"
+  },
+  "Mounts": [],
+  "Config": {
+    "Hostname": "c579249d39a7",
+    "Domainname": "",
+    "User": "",
+    "AttachStdin": false,
+    "AttachStdout": true,
+    "AttachStderr": true,
+    "ExposedPorts": {
+      "8080/tcp": {},
+      "9000/tcp": {}
+    },
+    "Tty": false,
+    "OpenStdin": false,
+    "StdinOnce": false,
+    "Env": [
+      "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+      "PHPIZE_DEPS=autoconf \t\tdpkg-dev \t\tfile \t\tg++ \t\tgcc \t\tlibc-dev \t\tmake \t\tpkg-config \t\tre2c",
+      "PHP_INI_DIR=/usr/local/etc/php",
+      "PHP_CFLAGS=-fstack-protector-strong -fpic -fpie -O2 -D_LARGEFILE_SOURCE -D_FILE_OFFSET_BITS=64",
+      "PHP_CPPFLAGS=-fstack-protector-strong -fpic -fpie -O2 -D_LARGEFILE_SOURCE -D_FILE_OFFSET_BITS=64",
+      "PHP_LDFLAGS=-Wl,-O1 -pie",
+      "GPG_KEYS=AFD8691FDAEDF03BDF6E460563F15A9B715376CA 9D7F99A0CB8F05C8A6958D6256A97AF7600A39A6 0616E93D95AF471243E26761770426E17EBBB3DD",
+      "PHP_VERSION=8.4.26",
+      "PHP_URL=https://www.php.net/distributions/php-8.4.26.tar.xz",
+      "PHP_ASC_URL=https://www.php.net/distributions/php-8.4.26.tar.xz.asc",
+      "PHP_SHA256=32a2de53862ad44ed4a5005244ce4f1b50c271e74dced215449a4443b40569f1",
+      "COMPOSER_ALLOW_SUPERUSER=1",
+      "APP_ENV=production",
+      "APP_DEBUG=0",
+      "APP_SECRET=benchmark-secret",
+      "APP_KEY=base64:MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=",
+      "DB_CONNECTION=mysql",
+      "DB_HOST=mysql",
+      "DB_PORT=23306",
+      "DB_DATABASE=benchmark",
+      "DB_USERNAME=bench",
+      "DB_PASSWORD=bench",
+      "DATABASE_URL=mysql://bench:bench@mysql:23306/benchmark",
+      "SESSION_DRIVER=array",
+      "CACHE_STORE=array",
+      "QUEUE_CONNECTION=sync",
+      "LOG_CHANNEL=stderr",
+      "LOG_LEVEL=error"
+    ],
+    "Cmd": null,
+    "Healthcheck": {
+      "Test": [
+        "NONE"
+      ]
+    },
+    "Image": "crab-fw-bench-20261019223645-91848-fpm",
+    "Volumes": null,
+    "WorkingDir": "/srv/app",
+    "Entrypoint": [
+      "/bin/bash",
+      "/bench/laravel-fpm/entrypoint.sh"
+    ],
+    "Labels": {
+      "com.docker.compose.config-hash": "8d6d652fa3d3366d67283aaab7bf4f413a397e56ec24e5756305e73a385681d1",
+      "com.docker.compose.container-number": "1",
+      "com.docker.compose.depends_on": "",
+      "com.docker.compose.image": "sha256:140643d1f03c34e071159cc968b957acf9b4de268f6a8ec71a35520f3bb22dea",
+      "com.docker.compose.oneoff": "False",
+      "com.docker.compose.project": "crab-fw-bench-20261019223645-91848",
+      "com.docker.compose.project.config_files": "/Users/daudau/Code/crabphp/framework/benchmarks/frameworks/compose.yaml",
+      "com.docker.compose.project.working_dir": "/Users/daudau/Code/crabphp/framework/benchmarks/frameworks",
+      "com.docker.compose.service": "fpm",
+      "com.docker.compose.version": "5.5.0"
+    },
+    "StopSignal": "SIGQUIT",
+    "StopTimeout": 15
+  },
+  "NetworkSettings": {
+    "SandboxID": "f9c58064ec47f55ebbc541c27e52cd7250eb1d57810fb6b92f68f096b19adbc7",
+    "SandboxKey": "/var/run/docker/netns/f9c58064ec47",
+    "Ports": {
+      "8080/tcp": [
+        {
+          "HostIp": "127.0.0.1",
+          "HostPort": "23105"
+        }
+      ],
+      "9000/tcp": null
+    },
+    "Networks": {
+      "crab-fw-bench-20261019223645-91848_default": {
+        "IPAMConfig": null,
+        "Links": null,
+        "Aliases": [
+          "crab-fw-bench-20261019223645-91848-fpm-1",
+          "fpm"
+        ],
+        "DriverOpts": null,
+        "GwPriority": 0,
+        "NetworkID": "b7d089002ed1a36dc5245a617160a38c8deb11d818b11bedf4fe2d9a88335508",
+        "EndpointID": "6df4a68a281730dbe32cd7df3323ce28f7b39c416d6b68028199d0fbe075e795",
+        "Gateway": "192.168.97.1",
+        "IPAddress": "192.168.97.8",
+        "MacAddress": "42:8e:6a:53:3f:2a",
+        "IPPrefixLen": 24,
+        "IPv6Gateway": "",
+        "GlobalIPv6Address": "",
+        "GlobalIPv6PrefixLen": 0,
+        "DNSNames": [
+          "crab-fw-bench-20261019223645-91848-fpm-1",
+          "fpm",
+          "c579249d39a7"
+        ]
+      }
+    }
+  }
+}

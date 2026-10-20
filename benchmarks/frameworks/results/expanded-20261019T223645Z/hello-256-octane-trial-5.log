@@ -1,0 +1,14 @@
+Running 30s test @ http://octane:8080
+  4 threads and 256 connections
+  Thread Stats   Avg      Stdev     Max   +/- Stdev
+    Latency    65.00ms    9.17ms 225.17ms   90.97%
+    Req/Sec     0.99k   112.41     1.27k    76.43%
+  Latency Distribution
+     50%   63.67ms
+     75%   67.35ms
+     90%   71.77ms
+     99%   89.04ms
+  118616 requests in 30.10s, 21.95MB read
+Requests/sec:   3941.18
+Transfer/sec:    746.67KB
+BENCH_JSON {"workload":"hello","bad_body":0,"bad_response":0,"requests":118616,"duration_us":30096586,"rps":3941.177913,"p50_us":63674.000000,"p99_us":89037.000000,"bad_status":0,"errors":{"connect":0,"read":0,"write":0,"timeout":0,"status":0}}
