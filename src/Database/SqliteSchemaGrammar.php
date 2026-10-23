@@ -24,6 +24,17 @@ final class SqliteSchemaGrammar extends SchemaGrammar
         return 'select count(*) as found from pragma_table_info(?) where name = ?';
     }
 
+    public function tables(): string
+    {
+        return "select name, type as kind from sqlite_master where type in ('table', 'view') and name not like 'sqlite\\_%' escape '\\'";
+    }
+
+    public function foreignKeysOff(): array
+    {
+        // foreign_keys cannot change inside a transaction; deferred checks end with it, by which time nothing is left.
+        return [['pragma defer_foreign_keys = on'], []];
+    }
+
     protected function type(Column $column): string
     {
         // SQLite stores by the kind of value; these names choose how it compares and sorts.

@@ -148,6 +148,45 @@ final class Migrator implements MigratorContract
         return $done;
     }
 
+    public function fresh(): array
+    {
+        return $this->locked(function (Connection $connection): array {
+            $this->assertLockHeld($connection);
+            $grammar = SchemaGrammar::for($connection->driver());
+            $tables = array_map(static fn(array $row): array => [
+                'name' => (string) $row['name'],
+                'kind' => (string) $row['kind'],
+            ], $connection->select($grammar->tables()));
+            if ($tables !== []) {
+                $drop = static function (Connection $connection) use ($grammar, $tables): void {
+                    [$off, $on] = $grammar->foreignKeysOff();
+                    foreach ($off as $statement) {
+                        $connection->execute($statement);
+                    }
+                    try {
+                        foreach ($grammar->dropAll($tables) as $statement) {
+                            $connection->execute($statement);
+                        }
+                    } finally {
+                        // The session goes back to the pool checking foreign keys again.
+                        foreach ($on as $statement) {
+                            $connection->execute($statement);
+                        }
+                    }
+                };
+                try {
+                    $grammar->transactional() ? $connection->transaction($drop) : $drop($connection);
+                } catch (DatabaseException $error) {
+                    throw new DatabaseException(
+                        "Not every table could be dropped: {$error->getMessage()} Run migrate:fresh again once it is fixed.",
+                        previous: $error,
+                    );
+                }
+            }
+            return $this->runMigrations($connection);
+        });
+    }
+
     public function status(): array
     {
         $ran = $this->ran($this->connection, create: false);

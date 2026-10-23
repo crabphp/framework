@@ -13,6 +13,7 @@ use Crab\Contracts\Database\Migrator as MigratorContract;
 use Crab\Contracts\Database\Migrators;
 use Crab\Contracts\Database\Schema as SchemaContract;
 use Crab\Contracts\WorkerProvider;
+use Crab\Database\Commands\Fresh;
 use Crab\Database\Commands\MakeMigration;
 use Crab\Database\Commands\Migrate;
 use Crab\Database\Commands\Rollback;
@@ -82,6 +83,7 @@ final class DatabaseProvider implements WorkerProvider
             $console = $container->get(Console::class);
             $console->add('migrate', Migrate::class);
             $console->add('migrate:rollback', Rollback::class);
+            $console->add('migrate:fresh', Fresh::class);
             $console->add('migrate:status', Status::class);
             $console->add('make:migration', MakeMigration::class);
         }

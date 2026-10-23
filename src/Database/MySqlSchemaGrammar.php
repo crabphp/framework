@@ -25,6 +25,19 @@ final class MySqlSchemaGrammar extends SchemaGrammar
         return 'select count(*) as found from information_schema.columns where table_schema = database() and table_name = ? and column_name = ?';
     }
 
+    public function tables(): string
+    {
+        return "select table_name as name, if(table_type = 'VIEW', 'view', 'table') as kind from information_schema.tables where table_schema = database()";
+    }
+
+    public function foreignKeysOff(): array
+    {
+        return [
+            ['set foreign_key_checks = 0'],
+            ['set foreign_key_checks = 1'],
+        ];
+    }
+
     protected function type(Column $column): string
     {
         $type = match ($column->type) {

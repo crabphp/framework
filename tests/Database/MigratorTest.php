@@ -137,6 +137,61 @@ final class MigratorTest extends TestCase
     }
 
     #[DataProvider('drivers')]
+    public function testFreshDropsEveryTableAndRunsEveryMigrationAsOneBatch(string $driver): void
+    {
+        $db = $this->database($driver);
+        $db->execute('drop view if exists migrator_names');
+        $schema = new Schema($db);
+        $migrator = new Migrator($db, $this->directory . '/migrations');
+        $this->migration(
+            'migrations/2026_01_01_000000_create_users',
+            "\$schema->create('migrator_users', function (Table \$t) { \$t->id(); \$t->string('name'); });",
+            "\$schema->drop('migrator_users');",
+        );
+        $this->migration(
+            'migrations/2026_01_02_000000_create_posts',
+            "\$schema->create('migrator_posts', function (Table \$t) { \$t->id(); \$t->foreignId('user_id')->references('migrator_users'); });",
+            "\$schema->drop('migrator_posts');",
+        );
+        self::assertCount(2, $migrator->run());
+        $id = $db->table('migrator_users')->insert(['name' => 'Ada']);
+        $db->table('migrator_posts')->insert(['user_id' => $id]);
+        // What no migration made goes too: a table, and a view that reads one.
+        $schema->create('migrator_log', static function ($t): void {
+            $t->id();
+        });
+        $db->execute('create view migrator_names as select name from migrator_users');
+        $this->migration(
+            'migrations/2026_01_03_000000_create_teams',
+            "\$schema->create('migrator_teams', function (Table \$t) { \$t->id(); });",
+            "\$schema->drop('migrator_teams');",
+        );
+
+        self::assertSame(
+            ['2026_01_01_000000_create_users', '2026_01_02_000000_create_posts', '2026_01_03_000000_create_teams'],
+            $migrator->fresh(),
+            'Every migration runs, the one that had not run yet too, and no down() is called.',
+        );
+        self::assertSame(0, $db->table('migrator_users')->count());
+        self::assertFalse($schema->hasTable('migrator_log'));
+        self::assertSame(
+            [],
+            $db->select(
+                $db->driver() === 'mysql'
+                    ? "select table_name from information_schema.views where table_schema = database() and table_name = 'migrator_names'"
+                    : "select name from sqlite_master where type = 'view'",
+            ),
+        );
+        self::assertSame([1, 1, 1], array_values($migrator->status()), 'One batch.');
+        try {
+            $db->table('migrator_posts')->insert(['user_id' => 99]);
+            self::fail('Foreign keys were left unchecked after the tables were dropped.');
+        } catch (DatabaseException) {
+        }
+        self::assertCount(3, $migrator->fresh(), 'A second fresh drops what the first made.');
+    }
+
+    #[DataProvider('drivers')]
     public function testAMigrationThatFailsIsNamedAndNotRecorded(string $driver): void
     {
         $db = $this->database($driver);
@@ -362,6 +417,28 @@ final class MigratorTest extends TestCase
             'migrate',
             expect: 1,
         ));
+    }
+
+    public function testMigrateFreshDropsAndMigrates(): void
+    {
+        $app = new App(new Config([
+            'database' => [
+                'connections' => ['main' => [
+                    'dsn' => 'sqlite:' . $this->directory . '/app.sqlite',
+                    'migrations' => $this->directory . '/migrations',
+                ]],
+            ],
+        ]));
+        $app->register(DatabaseProvider::class);
+        $this->migration(
+            'migrations/2026_01_01_000000_create_users',
+            "\$schema->create('migrator_users', function (Table \$t) { \$t->id(); });",
+            "throw new \\LogicException('fresh does not call down()');",
+        );
+        $expected = "Dropped all tables.\nMigrated     2026_01_01_000000_create_users\n";
+        self::assertSame($expected, $this->run_($app, 'migrate:fresh'));
+        self::assertSame($expected, $this->run_($app, 'migrate:fresh'));
+        $app->container->get(DatabaseContract::class)->close();
     }
 
     public function testSeveralDatabasesAreConfiguredByNameAndReachedFromOneAnother(): void

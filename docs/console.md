@@ -206,7 +206,7 @@ The default framework providers add their commands automatically; `TokenAuthProv
 
 | Provider | Commands |
 | --- | --- |
-| `DatabaseProvider` | `migrate`, `migrate:rollback`, `migrate:status`, `make:migration` |
+| `DatabaseProvider` | `migrate`, `migrate:rollback`, `migrate:fresh`, `migrate:status`, `make:migration` |
 | `TokenAuthProvider` | `token:install` |
 | `CacheProvider` | `cache:clear`, `cache:prune`, `cache:install` |
 | `QueueProvider` | `queue:work`, `queue:failed`, `queue:retry`, `queue:forget`, `queue:install` |

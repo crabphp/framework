@@ -64,9 +64,12 @@ return new class implements Migration {
 php cua migrate                  # runs those that have not run
 php cua migrate:status           # lists each and whether it has run
 php cua migrate:rollback         # takes back the last run
+php cua migrate:fresh            # drops every table, then runs them all
 ```
 
 Migrations run in the order of their file names. Each `migrate` is a batch, and `migrate:rollback` takes back the last batch, newest first.
+
+While you develop, `migrate:fresh` is the quick way back to a clean database after you change a migration or switch branches: it drops every table and view, whether a migration made it or not, and runs every migration again as one batch, without calling any `down()`. Every row is lost, so never run it against a database whose data you need.
 
 Run `php cua migrate` as a step of every deploy, before the new code goes live.
 

@@ -43,6 +43,37 @@ abstract class SchemaGrammar
     abstract public function hasColumn(): string;
 
     /**
+     * A query whose rows are every table and view of the database, each a
+     * "name" and a "kind", table or view.
+     */
+    abstract public function tables(): string;
+
+    /**
+     * The statements that drop all of these, to run between foreignKeysOff()'s.
+     *
+     * @param list<array{name: string, kind: string}> $tables
+     * @return list<string>
+     */
+    public function dropAll(array $tables): array
+    {
+        $statements = [];
+        // A view may read a table, so the views go first.
+        foreach ($tables as $table) {
+            $statements[$table['kind'] === 'view' ? 0 : 1][] =
+                ($table['kind'] === 'view' ? 'drop view if exists ' : 'drop table if exists ')
+                . $this->quote($table['name']);
+        }
+        return [...($statements[0] ?? []), ...($statements[1] ?? [])];
+    }
+
+    /**
+     * What turns foreign key checks off, and what turns them back on.
+     *
+     * @return array{list<string>, list<string>}
+     */
+    abstract public function foreignKeysOff(): array;
+
+    /**
      * The database's type for a column, such as "varchar(255)".
      */
     abstract protected function type(Column $column): string;

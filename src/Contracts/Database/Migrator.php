@@ -30,6 +30,15 @@ interface Migrator
     public function rollback(): array;
 
     /**
+     * Drops every table and view of the database, whether a migration made
+     * it or not, then runs every migration as one batch. For development:
+     * all data is lost.
+     *
+     * @return list<string> The names of those it ran, in order.
+     */
+    public function fresh(): array;
+
+    /**
      * @return array<string, int|null> Every migration by name, with the batch it ran in, or null when it has not run.
      */
     public function status(): array;
