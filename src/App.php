@@ -41,6 +41,7 @@ use Crab\Engine\Async\Async;
 use Crab\Engine\Async\Cancellation;
 use Crab\Engine\Async\CancelledException;
 use Crab\Engine\EventLoop\RevoltEventLoop;
+use Crab\Engine\EventLoop\StreamSelectEventLoop;
 use Crab\Engine\FailureReporter;
 use Crab\Engine\Process\Worker;
 use Crab\Engine\Runtime;
@@ -413,7 +414,9 @@ final class App implements RequestHandlerInterface, Runner
         $groups = $this->alongside($with);
         // Long enough for the slowest of them to finish what it has in hand.
         $runtime = new Runtime(
-            loopFactory: static fn() => RevoltEventLoop::create($backend),
+            loopFactory: static fn() => $backend === 'select'
+                ? new StreamSelectEventLoop()
+                : RevoltEventLoop::create($backend),
             shutdownTimeout: max($drain, $this->servers->grace($with)),
         );
         foreach ($groups as $group) {

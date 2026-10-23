@@ -4,11 +4,11 @@ Status: implemented networking foundation on PHP 8.4, with lifecycle checks and 
 
 ## One scheduler, explicit ownership
 
-The engine runs on its own `EventLoop`, an abstract class: timers, stream and signal watchers, and `Suspension` for waiting fibers. Everything in the engine, and everything built on it, asks for `Crab\Engine\EventLoop` and never for a third-party type. `EventLoop\RevoltEventLoop` extends it on a `revolt/event-loop` driver, and `src/Engine/EventLoop/` is the only code that names Revolt; `tests/EngineBoundaryTest.php` enforces that. Revolt supplies the scheduler today, and replacing or forking it means replacing that one adapter. There is still one scheduler: `EventLoop` adds a type, not a second loop.
+The engine runs on its own `EventLoop`, an abstract class: timers, stream and signal watchers, and `Suspension` for waiting fibers. Everything in the engine, and everything built on it, asks for `Crab\Engine\EventLoop` and never for a third-party type. `EventLoop\FiberEventLoop` is the engine's own scheduler, ported from Revolt with its semantics: watcher bookkeeping, timers, callback fibers, suspensions and error routing. A backend extends it with `watch()`, `unwatch()` and `wait()`; `EventLoop\StreamSelectEventLoop` is the pure-PHP one. A callback fiber whose callback suspended becomes a spare when that callback ends, instead of a new fiber being made per suspending callback; that is about 8 µs saved per suspending request. `EventLoop\RevoltEventLoop` extends `EventLoop` on a `revolt/event-loop` driver, and `src/Engine/EventLoop/` is the only code that names Revolt; `tests/EngineBoundaryTest.php` enforces that. There is one scheduler per process: `EventLoop` adds a type, not a second loop.
 
-The stream-select backend is the explicit default; `RevoltEventLoop::create('ev' | 'event' | 'uv')` selects a native one through the runtime's loop factory. The adapter exposes its driver for the one case that needs it, handing it to a library built on Revolt.
+`StreamSelectEventLoop` is the default; `RevoltEventLoop::create('ev' | 'event' | 'uv')` selects a native one through the runtime's loop factory. That adapter exposes its driver for the one case that needs it, handing it to a library built on Revolt.
 
-Create the loop **after fork**, install it with `EventLoop::install()`, and inject that same instance into networking and async operations. `EventLoop::current()` is the installed loop, for code that outlives a fork and so must not keep one. Installing also makes it Revolt's global driver, so libraries built on Revolt schedule on the same loop. Native extensions are optional for scheduling; supervised Unix processes separately require `pcntl` and `posix`. [Revolt drivers](https://revolt.run/extensions), [Revolt fundamentals](https://revolt.run/fundamentals)
+Create the loop **after fork**, install it with `EventLoop::install()`, and inject that same instance into networking and async operations. `EventLoop::current()` is the installed loop, for code that outlives a fork and so must not keep one. Installing a `RevoltEventLoop` also makes it Revolt's global driver, so libraries built on Revolt schedule on the same loop. Native extensions are optional for scheduling; supervised Unix processes separately require `pcntl` and `posix`. [Revolt drivers](https://revolt.run/extensions), [Revolt fundamentals](https://revolt.run/fundamentals)
 
 ~~~mermaid
 flowchart TD
@@ -16,7 +16,7 @@ flowchart TD
     G --> S[Supervisor: process lifecycle]
     G -. single process .-> W[Worker: resource ownership]
     S --> W
-    W --> D[One Revolt Driver]
+    W --> D[One EventLoop]
     D --> SD[StreamSelectDriver default]
     D -. optional .-> ND[Native driver]
     W --> L[Listener and Connector]
@@ -51,7 +51,7 @@ A group serves several TCP listeners and UDP endpoints, or only bootstrap tasks/
 
 Startup binds sockets in the parent, forks workers, closes unrelated inherited descriptors, installs each worker's driver, creates endpoint owners, runs bootstrap callbacks, then reports readiness. Bind failure closes earlier bindings. Child bootstrap failure exits and enters bounded restart/backoff handling.
 
-The parent never runs application callbacks or an application Revolt loop. It monitors control channels and child exits independently, so replacement forks happen outside a running Fiber. Raw signal handlers set flags; lifecycle mutations happen at safe supervisor boundaries.
+The parent never runs application callbacks or an application event loop. It monitors control channels and child exits independently, so replacement forks happen outside a running Fiber. Raw signal handlers set flags; lifecycle mutations happen at safe supervisor boundaries.
 
 Admission counts accepted and pending outbound connections together, including closed connections whose service cleanup is still running. At capacity the worker disables accept watchers and resumes them when capacity returns. Tasks have a separate cap. Defaults are 512 owned connections/pending connects and 1,024 tasks per worker.
 
@@ -129,9 +129,9 @@ Text/binary sends report pressure explicitly. Binary chunk sends provide message
 
 ## Fibers, cancellation and parallelism
 
-Revolt executes callbacks in reusable Fibers; transport adds no separate Crab Fiber per packet. `Task::spawn()` uses that scheduler. `Worker::spawn()` additionally applies admission and lifecycle ownership. Results/failures are observable and worker-owned failures are reported.
+The loop executes callbacks in reusable Fibers; transport adds no separate Crab Fiber per packet. `Task::spawn()` uses that scheduler. `Worker::spawn()` additionally applies admission and lifecycle ownership. Results/failures are observable and worker-owned failures are reported.
 
-`Async::sleep()` and `ConnectionStream` use Revolt suspensions. A stream has at most one waiting reader and writer, demand-driven reads and bounded read-ahead. Writes return after bytes reach the local socket. Raw/protocol consumers cannot share its reader.
+`Async::sleep()` and `ConnectionStream` use loop suspensions. A stream has at most one waiting reader and writer, demand-driven reads and bounded read-ahead. Writes return after bytes reach the local socket. Raw/protocol consumers cannot share its reader.
 
 `Pool` bounds a set of reusable resources. A caller beyond the limit suspends in a FIFO queue; release hands the resource straight to the longest waiter, so it never becomes idle in between. A place is reserved while a resource is being made, a failed creation frees it, and a timed-out or cancelled waiter leaves no registration behind.
 

@@ -6,7 +6,7 @@ namespace Crab\Engine\Tests;
 
 use Closure;
 use Crab\Engine\EventLoop;
-use Crab\Engine\EventLoop\RevoltEventLoop;
+use Crab\Engine\EventLoop\StreamSelectEventLoop;
 use Crab\Engine\Network\Connection;
 use Crab\Engine\Network\Connector;
 use Crab\Engine\Network\Listener;
@@ -518,9 +518,9 @@ final class TransportTest extends TestCase
         yield 'path' => ['tcp://127.0.0.1:80/path'];
     }
 
-    private function newLoop(): RevoltEventLoop
+    private function newLoop(): StreamSelectEventLoop
     {
-        $loop = RevoltEventLoop::create();
+        $loop = new StreamSelectEventLoop();
         $this->deferCleanup(static function () use ($loop): void {
             foreach ($loop->getIdentifiers() as $id) {
                 $loop->cancel($id);
@@ -547,7 +547,7 @@ final class TransportTest extends TestCase
     }
 
     /**
-     * @return array{RevoltEventLoop, Connection, resource}
+     * @return array{StreamSelectEventLoop, Connection, resource}
      */
     private function connectedPair(int $capacity = 1_048_576, float $closeTimeout = 5.0): array
     {

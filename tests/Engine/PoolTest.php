@@ -11,7 +11,7 @@ use Crab\Engine\Async\Pool;
 use Crab\Engine\Async\PoolExhaustedException;
 use Crab\Engine\Async\Task;
 use Crab\Engine\EventLoop;
-use Crab\Engine\EventLoop\RevoltEventLoop;
+use Crab\Engine\EventLoop\StreamSelectEventLoop;
 use Crab\Engine\Tests\Support\TestCase;
 use InvalidArgumentException;
 use LogicException;
@@ -251,9 +251,9 @@ final class PoolTest extends TestCase
         self::assertSame(6, $rejected);
     }
 
-    private function newLoop(): RevoltEventLoop
+    private function newLoop(): StreamSelectEventLoop
     {
-        $loop = RevoltEventLoop::create();
+        $loop = new StreamSelectEventLoop();
         $this->deferCleanup(static function () use ($loop): void {
             foreach ($loop->getIdentifiers() as $id) {
                 $loop->cancel($id);

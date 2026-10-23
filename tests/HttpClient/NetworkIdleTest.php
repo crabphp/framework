@@ -8,7 +8,7 @@ use Crab\Engine\Async\Cancellation;
 use Crab\Engine\Async\Pool;
 use Crab\Engine\Async\Task;
 use Crab\Engine\EventLoop;
-use Crab\Engine\EventLoop\RevoltEventLoop;
+use Crab\Engine\EventLoop\StreamSelectEventLoop;
 use Crab\Engine\Network\DnsResolver;
 use Crab\Engine\Suspension;
 use Crab\Http\Request;
@@ -51,7 +51,7 @@ final class NetworkIdleTest extends TestCase
 
     protected function setUp(): void
     {
-        $this->loop = EventLoop::install(RevoltEventLoop::create());
+        $this->loop = EventLoop::install(new StreamSelectEventLoop());
         $this->hosts = sys_get_temp_dir() . '/crab-idle-hosts-' . bin2hex(random_bytes(6));
         file_put_contents($this->hosts, '');
         $this->network = new Network(

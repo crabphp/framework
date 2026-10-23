@@ -9,7 +9,7 @@ use Crab\Engine\Async\Cancellation;
 use Crab\Engine\Async\CancelledException;
 use Crab\Engine\Async\Task;
 use Crab\Engine\EventLoop;
-use Crab\Engine\EventLoop\RevoltEventLoop;
+use Crab\Engine\EventLoop\StreamSelectEventLoop;
 use Crab\Engine\Network\DnsResolver;
 use Crab\Engine\Tests\Support\TestCase;
 use RuntimeException;
@@ -468,7 +468,7 @@ final class DnsResolverTest extends TestCase
 
     private function newLoop(): EventLoop
     {
-        $loop = RevoltEventLoop::create();
+        $loop = new StreamSelectEventLoop();
         $this->deferCleanup(static function () use ($loop): void {
             foreach ($loop->getIdentifiers() as $id) {
                 $loop->cancel($id);

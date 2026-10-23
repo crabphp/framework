@@ -2,7 +2,7 @@
 
 A PHP 8.4 networking engine with TCP, UDP, HTTP/1.1, WebSocket, coroutines, timers, and supervised worker processes.
 
-The engine has its own event loop type, `Crab\Engine\EventLoop`, which everything is written against; `EventLoop::current()` is the loop of the running process. `RevoltEventLoop` extends it on `revolt/event-loop`, the only Composer runtime dependency, and is the only code that names Revolt. The default backend is pure PHP stream-select. Swoole and OpenSwoole are not required. A native backend is chosen through the loop factory: `new Runtime(loopFactory: fn () => RevoltEventLoop::create('uv'))`.
+The engine has its own event loop type, `Crab\Engine\EventLoop`, which everything is written against; `EventLoop::current()` is the loop of the running process. `StreamSelectEventLoop`, the default, is the engine's own pure-PHP loop on `stream_select()`; backend-neutral scheduling lives in `FiberEventLoop`, so a native backend only adds how streams and signals are watched. `RevoltEventLoop` extends `EventLoop` on `revolt/event-loop` for the native ev, event and uv backends, and is the only code that names Revolt. Swoole and OpenSwoole are not required. A native backend is chosen through the loop factory: `new Runtime(loopFactory: fn () => RevoltEventLoop::create('uv'))`.
 
 ## Run it
 

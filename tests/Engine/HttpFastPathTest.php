@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace Crab\Engine\Tests;
 
 use Crab\Engine\EventLoop;
-use Crab\Engine\EventLoop\RevoltEventLoop;
+use Crab\Engine\EventLoop\StreamSelectEventLoop;
 use Crab\Engine\Http\Body;
 use Crab\Engine\Http\HttpException;
 use Crab\Engine\Http\Parser;
@@ -924,9 +924,9 @@ final class HttpFastPathTest extends TestCase
         return (string) end($matches[1]);
     }
 
-    private function newLoop(): RevoltEventLoop
+    private function newLoop(): StreamSelectEventLoop
     {
-        $loop = RevoltEventLoop::create();
+        $loop = new StreamSelectEventLoop();
         EventLoop::install($loop);
         $this->deferCleanup(static function () use ($loop): void {
             foreach ($loop->getIdentifiers() as $id) {
@@ -956,7 +956,7 @@ final class HttpFastPathTest extends TestCase
         return $pair;
     }
 
-    private function connection(RevoltEventLoop $loop, mixed $stream, int $capacity = 1_048_576): Connection
+    private function connection(StreamSelectEventLoop $loop, mixed $stream, int $capacity = 1_048_576): Connection
     {
         $connection = new Connection($loop, $stream, 'test-peer', $capacity);
         $this->deferCleanup($connection->close(...));

@@ -1,6 +1,6 @@
 # HTTP/1 server module
 
-`Server\HttpServer` is a connection handler for `Crab::listen()`. A handler receives a read-only `Request` and returns a `Response`, `Upgrade`, or text string. A string is sent as `text/plain; charset=utf-8` with status 200 and is the cheapest result to produce. Handlers run one at a time per connection, including when a handler suspends through Revolt. Response order matches request order.
+`Server\HttpServer` is a connection handler for `Crab::listen()`. A handler receives a read-only `Request` and returns a `Response`, `Upgrade`, or text string. A string is sent as `text/plain; charset=utf-8` with status 200 and is the cheapest result to produce. Handlers run one at a time per connection, including when a handler suspends on the event loop. Response order matches request order.
 
 Pass `Request::$cancellation` into `Async::sleep()`, `Task::await()` and other cooperative operations. The session cancels it on request completion, timeout, upgrade or connection teardown, allowing suspended handlers to release their resources. The worker retains HTTP handler and response-producer activities until they actually exit, including asynchronous `finally` cleanup after a socket closes. Arbitrary operations that ignore cancellation remain bounded by the worker shutdown deadline. Independently running or long-lived work should use `Worker::spawn()` so its ownership is explicit.
 

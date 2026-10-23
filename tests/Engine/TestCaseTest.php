@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace Crab\Engine\Tests;
 
 use Crab\Engine\EventLoop;
-use Crab\Engine\EventLoop\RevoltEventLoop;
+use Crab\Engine\EventLoop\StreamSelectEventLoop;
 use Crab\Engine\Tests\Support\TestCase;
 use PHPUnit\Framework\AssertionFailedError;
 use PHPUnit\Framework\Attributes\DataProvider;
@@ -16,10 +16,10 @@ final class TestCaseTest extends TestCase
     #[DataProvider('assertionContexts')]
     public function testTeardownFinishesAnInterruptedLoopAndPreservesTheOriginalAssertion(bool $inCallback): void
     {
-        $loop = RevoltEventLoop::create();
+        $loop = new StreamSelectEventLoop();
         EventLoop::install($loop);
         $fixture = new class('failWhileTheLoopIsSuspended') extends TestCase {
-            public function failWhileTheLoopIsSuspended(RevoltEventLoop $loop, bool $inCallback): void
+            public function failWhileTheLoopIsSuspended(StreamSelectEventLoop $loop, bool $inCallback): void
             {
                 $this->deferCleanup(static function () use ($loop): void {
                     foreach ($loop->getIdentifiers() as $id) {
@@ -53,7 +53,7 @@ final class TestCaseTest extends TestCase
             }
             self::assertInstanceOf(AssertionFailedError::class, $original);
             self::assertSame('original assertion', $original->getMessage());
-            self::assertTrue($loop->driver->isRunning(), 'Fixture did not reproduce an interrupted loop.');
+            self::assertTrue($loop->isRunning(), 'Fixture did not reproduce an interrupted loop.');
             $cleanupFailure = null;
             try {
                 $fixture->finish();
@@ -61,8 +61,8 @@ final class TestCaseTest extends TestCase
                 $cleanupFailure = $error;
             }
             self::assertSame($inCallback ? $original : null, $cleanupFailure, 'Cleanup hid the original assertion.');
-            self::assertFalse($loop->driver->isRunning(), 'Teardown left the interrupted loop running.');
-            $next = RevoltEventLoop::create();
+            self::assertFalse($loop->isRunning(), 'Teardown left the interrupted loop running.');
+            $next = new StreamSelectEventLoop();
             EventLoop::install($next);
             $ran = false;
             $next->defer(static function () use (&$ran): void {
@@ -76,7 +76,7 @@ final class TestCaseTest extends TestCase
                 $loop->cancel($id);
             }
             $loop->stop();
-            if ($loop->driver->isRunning()) {
+            if ($loop->isRunning()) {
                 $loop->run();
             }
         }

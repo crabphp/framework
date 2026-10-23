@@ -9,7 +9,7 @@ use Crab\Engine\Async\Cancellation;
 use Crab\Engine\Async\CancelledException;
 use Crab\Engine\Async\Task;
 use Crab\Engine\EventLoop;
-use Crab\Engine\EventLoop\RevoltEventLoop;
+use Crab\Engine\EventLoop\StreamSelectEventLoop;
 use Crab\Http\Request;
 use Crab\Http\Stream;
 use Crab\HttpClient\Client;
@@ -654,7 +654,7 @@ final class Http2Test extends TestCase
      */
     private function withWriterSession(\Closure $check): void
     {
-        $loop = EventLoop::install(RevoltEventLoop::create());
+        $loop = EventLoop::install(new StreamSelectEventLoop());
         [$socket, $peer] = stream_socket_pair(STREAM_PF_UNIX, STREAM_SOCK_STREAM, 0);
         stream_set_blocking($socket, false);
         stream_set_blocking($peer, false);

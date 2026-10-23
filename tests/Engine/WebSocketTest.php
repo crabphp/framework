@@ -9,7 +9,7 @@ use Crab\Engine\Async\Cancellation;
 use Crab\Engine\Async\CancelledException;
 use Crab\Engine\Async\Task;
 use Crab\Engine\EventLoop;
-use Crab\Engine\EventLoop\RevoltEventLoop;
+use Crab\Engine\EventLoop\StreamSelectEventLoop;
 use Crab\Engine\Http\Parser;
 use Crab\Engine\Http\Request;
 use Crab\Engine\Network\Connection;
@@ -1206,7 +1206,7 @@ final class WebSocketTest extends TestCase
 
     public function testManyDrainClosesAreSpreadOverTurnsAndFinishWithinTheirDeadline(): void
     {
-        $loop = RevoltEventLoop::create();
+        $loop = new StreamSelectEventLoop();
         EventLoop::install($loop);
         $this->deferCleanup(static function () use ($loop): void {
             foreach ($loop->getIdentifiers() as $id) {
@@ -1536,11 +1536,11 @@ final class WebSocketTest extends TestCase
     }
 
     /**
-     * @return array{RevoltEventLoop, Connection, resource}
+     * @return array{StreamSelectEventLoop, Connection, resource}
      */
     private function pair(int $capacity = 1_048_576): array
     {
-        $loop = RevoltEventLoop::create();
+        $loop = new StreamSelectEventLoop();
         EventLoop::install($loop);
         $this->deferCleanup(static function () use ($loop): void {
             foreach ($loop->getIdentifiers() as $id) {
@@ -1575,7 +1575,7 @@ final class WebSocketTest extends TestCase
     }
 
     private function until(
-        RevoltEventLoop $loop,
+        StreamSelectEventLoop $loop,
         Closure $complete,
         float $timeout = 5,
         string $message = 'WebSocket test deadline exceeded.',

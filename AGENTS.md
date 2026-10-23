@@ -10,7 +10,7 @@
 
 ## Lean and standard
 
-- Keep the framework lean. Prefer a small implementation of our own to a third-party dependency; runtime dependencies are Revolt and the PSR interface packages. Ask before adding any other.
+- Keep the framework lean. Prefer a small implementation of our own to a third-party dependency; runtime dependencies are Revolt (for the native loop backends) and the PSR interface packages. Ask before adding any other.
 - Everything is used through a `Crab\` type, so that nothing we depend on is outside our control and Crab always has a place to add a method. A third-party library is wrapped behind our own interface in one place, and only that place names it. A PSR interface is extended by a Crab contract, never asked for bare by Crab's own services.
 - Async tools come from `Crab\Engine`: `EventLoop`, `Suspension`, and `Async\Pool`, `Task`, `Async` and `Cancellation`. Only `src/Engine/EventLoop/` may name Revolt; `tests/EngineBoundaryTest.php` enforces it for all of `src/`.
 - Follow PHP-FIG wherever a PSR exists: PSR-7 messages, PSR-17 factories, PSR-15 handlers and middleware, PSR-11 container, PSR-3 logger, PSR-14 events, PSR-16 cache, PSR-18 client and PSR-20 clock.
@@ -309,6 +309,6 @@
 - Prioritize performance with proven networking designs and reproducible measurements, while keeping extension points small and explicit.
 - Keep reproducible HTTP and WebSocket benchmarks and repeat matched measurements when changing their performance-critical paths; report throughput, latency, errors, environment and limitations without claiming an unmeasured maximum.
 - Nothing the engine catches is dropped. A `catch` that does not rethrow reports through `FailureReporter::report()`, or `Connection::reportFailure()` for a protocol owner; never a bare `catch (\Throwable)` and never `error_log()`. A client's malformed input is answered, not reported. Engine tests read `$this->reports`.
-- The engine is written against its own `EventLoop` (an abstract class, whose `EventLoop::current()` is the process's loop) and `Suspension`. Revolt is the scheduler behind them today, through `RevoltEventLoop` in `src/Engine/EventLoop/`; a loop method the engine needs is added to `EventLoop` and the adapter together.
+- The engine is written against its own `EventLoop` (an abstract class, whose `EventLoop::current()` is the process's loop) and `Suspension`. The scheduler is the engine's own `FiberEventLoop` in `src/Engine/EventLoop/`, with `StreamSelectEventLoop` as the default backend; `RevoltEventLoop` serves the native ev, event and uv backends. A loop method the engine needs is added to `EventLoop`, `FiberEventLoop` and `RevoltEventLoop` together.
 - Name a type for what it is, in full: `EventLoop`, not `Loop`. One exception by the owner's choice: `Engine\Crab` is a named set of identical worker processes (a "worker group" elsewhere), named after the project. Do not name a class as the plural of another (`Loops`); put the behaviour on the type it belongs to. Evaluate the overhead of any change there and preserve PHP 8.4 compatibility.
 - During the engine redesign, treat existing code and architecture as references; choose APIs, ownership boundaries, and dependencies from the requirements without preserving the current design for compatibility alone.

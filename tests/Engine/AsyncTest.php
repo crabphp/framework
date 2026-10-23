@@ -11,7 +11,7 @@ use Crab\Engine\Async\CancelledException;
 use Crab\Engine\Async\ConnectionStream;
 use Crab\Engine\Async\Task;
 use Crab\Engine\EventLoop;
-use Crab\Engine\EventLoop\RevoltEventLoop;
+use Crab\Engine\EventLoop\StreamSelectEventLoop;
 use Crab\Engine\Network\Connection;
 use Crab\Engine\Tests\Support\TestCase;
 use Crab\Tests\Support\Wait;
@@ -248,9 +248,9 @@ final class AsyncTest extends TestCase
         self::assertSame([], $loop->getIdentifiers());
     }
 
-    private function newLoop(): RevoltEventLoop
+    private function newLoop(): StreamSelectEventLoop
     {
-        $loop = RevoltEventLoop::create();
+        $loop = new StreamSelectEventLoop();
         $this->deferCleanup(static function () use ($loop): void {
             foreach ($loop->getIdentifiers() as $id) {
                 $loop->cancel($id);
@@ -262,7 +262,7 @@ final class AsyncTest extends TestCase
     /**
      * @return array{ConnectionStream, Connection, resource}
      */
-    private function connectedStream(RevoltEventLoop $loop, int $capacity = 65_536): array
+    private function connectedStream(StreamSelectEventLoop $loop, int $capacity = 65_536): array
     {
         $pair = stream_socket_pair(STREAM_PF_UNIX, STREAM_SOCK_STREAM, STREAM_IPPROTO_IP);
         self::assertNotFalse($pair, 'Socket pair creation failed.');

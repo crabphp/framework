@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace Crab\Engine;
 
-use Crab\Engine\EventLoop\RevoltEventLoop;
+use Crab\Engine\EventLoop\StreamSelectEventLoop;
 use Crab\Engine\Network\Listener;
 use Crab\Engine\Network\UdpEndpoint;
 use Crab\Engine\Process\Supervisor;
@@ -27,8 +27,8 @@ final class Runtime
 
     /**
      * The factory makes each process's EventLoop; without one it is a
-     * stream-select loop. `fn () => RevoltEventLoop::create('uv')` chooses a
-     * native backend.
+     * StreamSelectEventLoop. `fn () => RevoltEventLoop::create('uv')` chooses
+     * a native backend.
      */
     public function __construct(
         ?callable $loopFactory = null,
@@ -38,7 +38,7 @@ final class Runtime
             throw new \InvalidArgumentException('Shutdown timeout must be finite and positive.');
         }
         $this->loopFactory = $loopFactory === null
-            ? static fn(): EventLoop => RevoltEventLoop::create()
+            ? static fn(): EventLoop => new StreamSelectEventLoop()
             : $loopFactory(...);
     }
 

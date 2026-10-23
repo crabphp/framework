@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace Crab\Engine\Tests;
 
-use Crab\Engine\EventLoop\RevoltEventLoop;
+use Crab\Engine\EventLoop\StreamSelectEventLoop;
 use Crab\Engine\Network\UdpEndpoint;
 use Crab\Engine\Tests\Support\TestCase;
 use InvalidArgumentException;
@@ -113,9 +113,9 @@ final class UdpTest extends TestCase
         );
     }
 
-    private function newLoop(): RevoltEventLoop
+    private function newLoop(): StreamSelectEventLoop
     {
-        $loop = RevoltEventLoop::create();
+        $loop = new StreamSelectEventLoop();
         $this->deferCleanup(static function () use ($loop): void {
             foreach ($loop->getIdentifiers() as $id) {
                 $loop->cancel($id);
@@ -124,8 +124,11 @@ final class UdpTest extends TestCase
         return $loop;
     }
 
-    private function endpoint(RevoltEventLoop $loop, callable $handler, int $maxDatagramSize = 65_507): UdpEndpoint
-    {
+    private function endpoint(
+        StreamSelectEventLoop $loop,
+        callable $handler,
+        int $maxDatagramSize = 65_507,
+    ): UdpEndpoint {
         $socket = UdpEndpoint::bind('udp://127.0.0.1:0');
         $this->deferCleanup(static function () use ($socket): void {
             if (is_resource($socket)) {

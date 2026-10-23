@@ -7,7 +7,7 @@ namespace Crab\Engine\Tests;
 use Crab\Engine\Async\Async;
 use Crab\Engine\Async\Cancellation;
 use Crab\Engine\Crab;
-use Crab\Engine\EventLoop\RevoltEventLoop;
+use Crab\Engine\EventLoop\StreamSelectEventLoop;
 use Crab\Engine\Http\Request;
 use Crab\Engine\Http\Response;
 use Crab\Engine\Network\Connection;
@@ -20,7 +20,6 @@ use Crab\Tests\Support\Wait;
 use Generator;
 use OverflowException;
 use PHPUnit\Framework\Attributes\RequiresPhpExtension;
-use Revolt\EventLoop\CallbackType;
 use RuntimeException;
 use stdClass;
 use Throwable;
@@ -289,12 +288,7 @@ final class RuntimeTest extends TestCase
                 Wait::until(
                     $loop,
                     static function () use ($loop): bool {
-                        foreach ($loop->getIdentifiers() as $id) {
-                            if ($loop->driver->getType($id) === CallbackType::Readable) {
-                                return false;
-                            }
-                        }
-                        return true;
+                        return new \ReflectionProperty($loop, 'readStreams')->getValue($loop) === [];
                     },
                     'control EOF to remove its read watcher while the task is active',
                 );
@@ -586,9 +580,9 @@ final class RuntimeTest extends TestCase
         return [$cleanupStarted, $cleanupDone, (hrtime(true) - $start) / 1e9, $worker->stats()['connections']];
     }
 
-    private function driver(): RevoltEventLoop
+    private function driver(): StreamSelectEventLoop
     {
-        $driver = RevoltEventLoop::create();
+        $driver = new StreamSelectEventLoop();
         $this->deferCleanup(static function () use ($driver): void {
             foreach ($driver->getIdentifiers() as $id) {
                 $driver->cancel($id);

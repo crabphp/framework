@@ -23,7 +23,7 @@ use Crab\Contracts\Cache\Store;
 use Crab\Contracts\WebSocket\Socket;
 use Crab\Engine\Async\Task;
 use Crab\Engine\EventLoop;
-use Crab\Engine\EventLoop\RevoltEventLoop;
+use Crab\Engine\EventLoop\StreamSelectEventLoop;
 use Crab\Engine\FailureReporter;
 use Crab\Http\AccessLog;
 use Crab\Testing\Api;
@@ -49,7 +49,7 @@ final class TicketTest extends TestCase
 
     protected function setUp(): void
     {
-        EventLoop::install(RevoltEventLoop::create());
+        EventLoop::install(new StreamSelectEventLoop());
         $this->reporter = FailureReporter::handleWith(function (string $what, ?\Throwable $error): void {
             $this->reports[] = [$what, $error?->getMessage()];
         });

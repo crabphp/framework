@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace Crab\Engine;
 
-use Crab\Engine\EventLoop\RevoltEventLoop;
+use Crab\Engine\EventLoop\StreamSelectEventLoop;
 
 /**
  * The event loop the engine runs on: timers, stream and signal watchers,
@@ -28,7 +28,7 @@ abstract class EventLoop
      */
     final public static function current(): self
     {
-        return self::$current ?? self::install(RevoltEventLoop::create());
+        return self::$current ?? self::install(new StreamSelectEventLoop());
     }
 
     /**
@@ -46,6 +46,12 @@ abstract class EventLoop
     abstract public function run(): void;
 
     abstract public function stop(): void;
+
+    /**
+     * Whether run() has started and not yet returned, including while the
+     * main program waits on a suspension.
+     */
+    abstract public function isRunning(): bool;
 
     /**
      * Runs the callback on the next turn of the loop.

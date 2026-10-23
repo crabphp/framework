@@ -8,7 +8,7 @@ use Crab\Engine\Async\Cancellation;
 use Crab\Engine\Async\CancelledException;
 use Crab\Engine\Async\Task;
 use Crab\Engine\EventLoop;
-use Crab\Engine\EventLoop\RevoltEventLoop;
+use Crab\Engine\EventLoop\StreamSelectEventLoop;
 use Crab\Engine\Suspension;
 use Crab\HttpClient\Client;
 use Crab\HttpClient\Connection;
@@ -46,7 +46,7 @@ final class Http2IdleTest extends TestCase
 
     protected function setUp(): void
     {
-        $this->loop = EventLoop::install(RevoltEventLoop::create());
+        $this->loop = EventLoop::install(new StreamSelectEventLoop());
         $this->network = new Network();
         $this->client = new Client(transport: $this->network, timeout: 5);
     }

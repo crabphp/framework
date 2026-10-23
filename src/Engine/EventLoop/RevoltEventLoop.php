@@ -57,6 +57,11 @@ final class RevoltEventLoop extends EventLoop
         $this->driver->stop();
     }
 
+    public function isRunning(): bool
+    {
+        return $this->driver->isRunning();
+    }
+
     public function defer(\Closure $callback): string
     {
         return $this->driver->defer($callback);

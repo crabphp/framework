@@ -12,7 +12,7 @@ use Crab\Contracts\WebSocket\Socket;
 use Crab\Engine\Async\Async;
 use Crab\Engine\Async\Task;
 use Crab\Engine\EventLoop;
-use Crab\Engine\EventLoop\RevoltEventLoop;
+use Crab\Engine\EventLoop\StreamSelectEventLoop;
 use Crab\Engine\FailureReporter;
 use Crab\Http\AccessLog;
 use Crab\Http\Concurrency;
@@ -50,7 +50,7 @@ final class RouteTest extends TestCase
 
     protected function setUp(): void
     {
-        $this->loop = EventLoop::install(RevoltEventLoop::create());
+        $this->loop = EventLoop::install(new StreamSelectEventLoop());
         $this->reporter = FailureReporter::handleWith(function (string $what, ?\Throwable $error): void {
             $this->reports[] = [$what, $error];
         });
@@ -1134,7 +1134,7 @@ final class RouteTest extends TestCase
         self::assertTrue($ended);
         self::assertNull($weak->get());
         self::assertSame([], $this->loop->getIdentifiers());
-        EventLoop::install(RevoltEventLoop::create());
+        EventLoop::install(new StreamSelectEventLoop());
     }
 
     public function testClosingOneTestSocketDoesNotCancelAnother(): void
@@ -1177,7 +1177,7 @@ final class RouteTest extends TestCase
         }
         self::assertLessThan(5.0, (hrtime(true) - $start) / 1e9);
         self::assertFalse($ended);
-        EventLoop::install(RevoltEventLoop::create());
+        EventLoop::install(new StreamSelectEventLoop());
         EventLoop::install($this->loop);
         $cleanup->cancel();
         $this->loop->run();

@@ -20,7 +20,7 @@ use Crab\Contracts\WebSocket\Recipient;
 use Crab\Contracts\WebSocket\Socket;
 use Crab\Database\PdoConnection;
 use Crab\Engine\EventLoop;
-use Crab\Engine\EventLoop\RevoltEventLoop;
+use Crab\Engine\EventLoop\StreamSelectEventLoop;
 use Crab\Engine\FailureReporter;
 use Crab\Engine\Network\WriteResult;
 use Crab\Testing\Api;
@@ -44,7 +44,7 @@ final class BroadcastTest extends TestCase
 
     protected function setUp(): void
     {
-        $this->loop = EventLoop::install(RevoltEventLoop::create());
+        $this->loop = EventLoop::install(new StreamSelectEventLoop());
         $this->reporter = FailureReporter::handleWith(function (string $what, ?\Throwable $error): void {
             $this->reports[] = [$what, $error];
         });
