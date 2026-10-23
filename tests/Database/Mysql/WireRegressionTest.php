@@ -184,8 +184,8 @@ final class WireRegressionTest extends TestCase
     public function testConsoleTlsChecksTheReportedCipherBeforeLendingItsConnection(): void
     {
         $key = openssl_pkey_new(['private_key_bits' => 2048]);
-        $request = openssl_csr_new(['commonName' => '127.0.0.1'], $key);
-        $certificate = openssl_csr_sign($request, null, $key, 1);
+        $request = openssl_csr_new(['commonName' => '127.0.0.1'], $key, ['digest_alg' => 'sha256']);
+        $certificate = openssl_csr_sign($request, null, $key, 1, ['digest_alg' => 'sha256']);
         openssl_x509_export($certificate, $pem);
         openssl_pkey_export($key, $private);
         $path = tempnam(sys_get_temp_dir(), 'crab-pdo-cert-');

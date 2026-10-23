@@ -155,8 +155,8 @@ final class AuthenticationTest extends TestCase
     public function testTlsStartsAfterSslRequestAndProtectsTheFullPasswordExchange(): void
     {
         $key = openssl_pkey_new(['private_key_bits' => 2048]);
-        $request = openssl_csr_new(['commonName' => 'localhost'], $key);
-        $certificate = openssl_csr_sign($request, null, $key, 1);
+        $request = openssl_csr_new(['commonName' => 'localhost'], $key, ['digest_alg' => 'sha256']);
+        $certificate = openssl_csr_sign($request, null, $key, 1, ['digest_alg' => 'sha256']);
         openssl_x509_export($certificate, $pem);
         openssl_pkey_export($key, $private);
         $path = tempnam(sys_get_temp_dir(), 'crab-mysql-cert-');
@@ -239,8 +239,8 @@ final class AuthenticationTest extends TestCase
     private function verifiedTls(string $name, bool $trusted, bool $accepted): void
     {
         $key = openssl_pkey_new(['private_key_bits' => 2048]);
-        $request = openssl_csr_new(['commonName' => $name], $key);
-        $certificate = openssl_csr_sign($request, null, $key, 1);
+        $request = openssl_csr_new(['commonName' => $name], $key, ['digest_alg' => 'sha256']);
+        $certificate = openssl_csr_sign($request, null, $key, 1, ['digest_alg' => 'sha256']);
         openssl_x509_export($certificate, $pem);
         openssl_pkey_export($key, $private);
         $path = tempnam(sys_get_temp_dir(), 'crab-verified-cert-');
