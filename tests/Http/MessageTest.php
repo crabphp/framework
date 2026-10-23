@@ -354,6 +354,26 @@ final class MessageTest extends TestCase
         );
     }
 
+    #[DataProvider('receivedTargets')]
+    public function testThePathOfAReceivedTargetIsTheUrisPath(string $target): void
+    {
+        $request = Request::fromEngine(new EngineRequest('GET', $target, '1.1', ['host' => ['example.test']]));
+        $path = $request->path();
+        self::assertSame($request->getUri()->getPath(), $path);
+        self::assertSame($path, $request->path(), 'Once the URI exists, the path comes from it.');
+    }
+
+    public static function receivedTargets(): iterable
+    {
+        yield 'plain' => ['/hello'];
+        yield 'query' => ['/users/7?page=2&q=a b'];
+        yield 'encoded' => ['/caf%C3%A9'];
+        yield 'raw space and percent' => ['/a b/100%/x?y'];
+        yield 'empty query' => ['/?'];
+        yield 'absolute form' => ['http://proxy.test/path?x=1'];
+        yield 'asterisk' => ['*'];
+    }
+
     public function testEngineRequestTargetsWithoutAHost(): void
     {
         $request = Request::fromEngine(new EngineRequest('GET', '/a b?x=1', '1.0', []));

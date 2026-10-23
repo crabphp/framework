@@ -10,6 +10,7 @@ use Crab\Contracts\Routing\Router as RouterContract;
 use Crab\Contracts\Validation\Validator as ValidatorContract;
 use Crab\Http\ErrorResponse;
 use Crab\Http\MiddlewareStack;
+use Crab\Http\Request;
 use Crab\Validation\Validator;
 use Crab\WebSocket\Connections;
 use Psr\Container\ContainerInterface;
@@ -461,7 +462,7 @@ final class Router implements RouterContract
     public function handle(ServerRequestInterface $request): ResponseInterface
     {
         $method = $request->getMethod();
-        $path = $request->getUri()->getPath();
+        $path = $request instanceof Request ? $request->path() : $request->getUri()->getPath();
         if ($path === '') {
             // An absolute-form target may name only the authority.
             $path = '/';

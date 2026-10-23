@@ -153,6 +153,22 @@ final class Request extends Message implements RequestContract
         return $this->uri;
     }
 
+    /**
+     * The path of the URI. A received origin-form target gives it without
+     * the URI being made, which routing alone does not need.
+     *
+     * @internal
+     */
+    public function path(): string
+    {
+        if ($this->uri === null && $this->source !== null && $this->source->target[0] === '/') {
+            $target = $this->source->target;
+            $query = strpos($target, '?');
+            return Uri::encodePath($query === false ? $target : substr($target, 0, $query));
+        }
+        return $this->getUri()->getPath();
+    }
+
     public function withUri(UriInterface $uri, bool $preserveHost = false): static
     {
         $this->load();

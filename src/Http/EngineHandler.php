@@ -36,6 +36,12 @@ final readonly class EngineHandler
         if ($response instanceof UpgradeResponse && $response->getStatusCode() === 101) {
             return $response->toUpgrade();
         }
+        if ($response instanceof Response) {
+            $engine = $response->toEngine();
+            if ($engine !== null) {
+                return $engine;
+            }
+        }
         $body = $response->getBody();
         $content = $body instanceof Stream ? $body->text() : null;
         $headers = $response->getHeaders();

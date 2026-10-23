@@ -75,6 +75,16 @@ final class Uri implements UriInterface
         return $uri;
     }
 
+    /**
+     * A received path as getPath() gives it, without making the URI.
+     *
+     * @internal
+     */
+    public static function encodePath(string $path): string
+    {
+        return self::encode($path, self::PATH);
+    }
+
     public function getScheme(): string
     {
         $this->source === null || $this->resolve();

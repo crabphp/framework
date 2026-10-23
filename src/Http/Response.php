@@ -153,6 +153,29 @@ final class Response extends Message implements ResponseInterface
         return $new;
     }
 
+    /**
+     * The engine's response for this one while its body is still the
+     * string it was made with; null once it is a stream.
+     *
+     * @internal
+     */
+    public function toEngine(): ?EngineResponse
+    {
+        if (!is_string($this->body)) {
+            return null;
+        }
+        if ($this->names !== []) {
+            return new EngineResponse($this->status, $this->getHeaders(), $this->body);
+        }
+        $headers = $this->headers;
+        // Alone and spelled this way, the type matches the fields the
+        // engine has already encoded for its own text and JSON responses.
+        if (isset($headers['content-type']) && count($headers) === 1 && count($headers['content-type']) === 1) {
+            $headers = ['Content-Type' => $headers['content-type'][0]];
+        }
+        return new EngineResponse($this->status, $headers, $this->body);
+    }
+
     public function getReasonPhrase(): string
     {
         // The engine's phrase is the one that goes on the wire.
