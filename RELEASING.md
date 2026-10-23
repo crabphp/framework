@@ -6,7 +6,7 @@
 - [x] Remove the `CRAB_REPOS_TOKEN` lines from the sibling workflows; public checkouts need no token. (`sample` is the owner's local app and keeps its workflow as it is.)
 - [ ] In each repository: protect `main` so the CI checks must pass, and turn on private vulnerability reporting (Settings, Security).
 - [ ] Register `crabphp/framework`, `crabphp/redis`, `crabphp/clockwerk` and `crabphp/crab` on Packagist, with the GitHub hook so tags appear on their own.
-- [ ] Decide whether `crabphp/engine` is published now (a split repository fed from `src/Engine/`) or later. Until it is, keep `replace` in `composer.json`.
+- [x] Decide whether `crabphp/engine` is published now or later: later (2026-10-23). It ships inside the framework, so keep `replace` in `composer.json`; a split repository fed from `src/Engine/` comes when someone needs the engine alone.
 - [ ] Replace the `../framework` path repositories and `@dev` constraints with the release (`^0.1`) in `crab`, `clockwerk`, `redis` and `sample`, and drop "until there is a release" from AGENTS.md and the READMEs.
 - [ ] In `crab`, remove `composer.lock` from `.gitignore` and tell application authors to commit theirs, so a deploy installs the versions that were tested.
 - [ ] Write the install step in the README and `docs/installation.md` as `composer create-project crabphp/crab app`.

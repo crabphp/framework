@@ -215,7 +215,7 @@ The default framework providers add their commands automatically; `TokenAuthProv
 
 ## Describing the application
 
-`php cua describe` prints the application for a coding agent to read instead of its files: its routes with what each takes, the middleware around every request, the commands, the servers `serve` can run, the databases with their migration files, and every setting.
+`php cua describe` prints the application for a coding agent to read instead of its files: its routes with what each takes, the middleware around every request, the commands, the scheduled tasks, the event listeners, the servers `serve` can run, the databases with their migration files, and every setting.
 
 ```sh
 php cua describe                  # everything, as text

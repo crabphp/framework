@@ -999,7 +999,7 @@ A provider that needs something open in every worker, such as a connection or a 
 
 | Path | Contents |
 | --- | --- |
-| `src/Engine/` | The networking engine: TCP, UDP, HTTP/1.1, WebSocket, coroutines, timers and supervised workers. It has its own `composer.json` and is also published as `crabphp/engine`. See its [README](src/Engine/README.md) and [architecture](src/Engine/ARCHITECTURE.md). |
+| `src/Engine/` | The networking engine: TCP, UDP, HTTP/1.1, WebSocket, coroutines, timers and supervised workers. It has its own `composer.json`, so it can later be published alone as `crabphp/engine`; for now it ships inside the framework. See its [README](src/Engine/README.md) and [architecture](src/Engine/ARCHITECTURE.md). |
 | `src/App.php` | The application: configuration, container, router, middleware and the engine runtime that serves them. |
 | `src/Http/` | PSR-7 request, response, stream and URI, the PSR-17 factory, the middleware pipeline, the error handler, and `EngineHandler`, which runs a PSR-15 handler on the engine's HTTP server. |
 | `src/Console/` | The command runner, with its input and output. |

@@ -10,7 +10,9 @@ use Crab\Contracts\Console\Command;
 use Crab\Contracts\Console\Input;
 use Crab\Contracts\Console\Output;
 use Crab\Contracts\Database\Migrators;
+use Crab\Contracts\Events\Dispatcher;
 use Crab\Contracts\Http\MiddlewareStack;
+use Crab\Contracts\Schedule\Schedule;
 use Crab\Database\DatabaseManager;
 
 /**
@@ -19,7 +21,17 @@ use Crab\Database\DatabaseManager;
  */
 final readonly class Describe implements Command
 {
-    public const SECTIONS = ['app', 'routes', 'middleware', 'commands', 'servers', 'database', 'config'];
+    public const SECTIONS = [
+        'app',
+        'routes',
+        'middleware',
+        'commands',
+        'schedule',
+        'listeners',
+        'servers',
+        'database',
+        'config',
+    ];
 
     /**
      * A setting whose name ends in one of these holds a secret.
@@ -36,7 +48,7 @@ final readonly class Describe implements Command
             Describe the application, for coding agents and tools
 
             Arguments:
-              section   app, routes, middleware, commands, servers, database or config; more than one may be given. Without one, all.
+              section   app, routes, middleware, commands, schedule, listeners, servers, database or config; more than one may be given. Without one, all.
 
             Options:
               --json    The same as JSON; each route's input is JSON Schema
@@ -150,6 +162,38 @@ final readonly class Describe implements Command
             static fn(string $description): string => strtok($description, "\n") ?: '',
             $this->app->console->descriptions(),
         );
+    }
+
+    /**
+     * @return list<array{task: string, when: string, one_server: bool}>
+     */
+    private function schedule(): array
+    {
+        // Bound only when the schedule's provider is registered.
+        if (!$this->app->container->has(Schedule::class)) {
+            return [];
+        }
+        $tasks = [];
+        foreach ($this->app->container->get(Schedule::class)->tasks() as $task) {
+            $interval = $task->interval();
+            $tasks[] = [
+                'task' => $task->named(),
+                'when' => $interval === null ? $task->expression() : "every {$interval}s",
+                'one_server' => $task->runsOnOneServer(),
+            ];
+        }
+        return $tasks;
+    }
+
+    /**
+     * @return array<string, list<string>>|\stdClass
+     */
+    private function listeners(): array|\stdClass
+    {
+        $listeners = $this->app->container->has(Dispatcher::class)
+            ? $this->app->container->get(Dispatcher::class)->listeners()
+            : [];
+        return $listeners === [] ? new \stdClass() : $listeners;
     }
 
     /**

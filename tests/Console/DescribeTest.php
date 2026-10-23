@@ -115,13 +115,31 @@ final class DescribeTest extends TestCase
         ]));
         $app->container->get(\Crab\Contracts\Http\MiddlewareStack::class)->add(new Cors(['https://shop.example']));
         $app->console->add('shop:sync', static fn(): int => 0, "Sync the shop\n\nRuns nightly.");
+        $app->register(\Crab\Events\EventsProvider::class, \Crab\Schedule\ScheduleProvider::class);
+        $schedule = $app->container->get(\Crab\Contracts\Schedule\Schedule::class);
+        $schedule->command('shop:sync')->daily('03:00')->onOneServer();
+        $schedule
+            ->call(static fn() => null)
+            ->name('heartbeat')
+            ->everySeconds(5);
+        $events = $app->container->get(\Crab\Contracts\Events\Dispatcher::class);
+        $events->listen(DescribedOrder::class, DescribedListener::class);
+        $events->listen(DescribedOrder::class, static fn() => null);
 
         $described = $this->describe($app);
 
         self::assertSame(
-            ['app', 'routes', 'middleware', 'commands', 'servers', 'database', 'config'],
+            ['app', 'routes', 'middleware', 'commands', 'schedule', 'listeners', 'servers', 'database', 'config'],
             array_keys($described),
         );
+        self::assertSame(
+            [
+                ['task' => 'command shop:sync', 'when' => '0 3 * * *', 'one_server' => true],
+                ['task' => 'heartbeat', 'when' => 'every 5s', 'one_server' => false],
+            ],
+            $described['schedule'],
+        );
+        self::assertSame([DescribedOrder::class => [DescribedListener::class, 'Closure']], $described['listeners']);
         self::assertSame('Shop', $described['app']['name']);
         self::assertSame(Cors::class, $described['middleware'][array_key_last($described['middleware'])]);
         self::assertSame('Sync the shop', $described['commands']['shop:sync'], 'The first line; --help has the rest.');
@@ -232,4 +250,9 @@ final readonly class DescribedOrder
         public array $lines,
         public ?string $note = null,
     ) {}
+}
+
+final readonly class DescribedListener
+{
+    public function handle(DescribedOrder $order): void {}
 }

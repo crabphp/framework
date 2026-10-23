@@ -39,6 +39,8 @@ final class DescribeText
                 'routes' => self::routes((array) $value),
                 'middleware' => "middleware\n" . self::indent($value),
                 'commands' => self::commands($value),
+                'schedule' => self::schedule($value),
+                'listeners' => self::listeners((array) $value),
                 'servers' => self::servers($value),
                 'database' => self::database($value),
                 'config' => self::config($value),
@@ -152,6 +154,36 @@ final class DescribeText
         $lines = ['commands'];
         foreach ($commands as $name => $description) {
             $lines[] = "  {$name}: {$description}";
+        }
+        return implode("\n", $lines);
+    }
+
+    /**
+     * @param list<array{task: string, when: string, one_server: bool}> $tasks
+     */
+    private static function schedule(array $tasks): string
+    {
+        $lines = ['schedule'];
+        foreach ($tasks as $task) {
+            $lines[] = "  {$task['when']}: {$task['task']}" . ($task['one_server'] ? ', on one server' : '');
+        }
+        if ($tasks === []) {
+            $lines[] = '  nothing';
+        }
+        return implode("\n", $lines);
+    }
+
+    /**
+     * @param array<string, list<string>> $listeners
+     */
+    private static function listeners(array $listeners): string
+    {
+        $lines = ['listeners'];
+        foreach ($listeners as $event => $heard) {
+            $lines[] = "  {$event}: " . implode(', ', $heard);
+        }
+        if ($listeners === []) {
+            $lines[] = '  none';
         }
         return implode("\n", $lines);
     }

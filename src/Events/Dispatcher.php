@@ -53,6 +53,15 @@ final class Dispatcher implements DispatcherContract, ListenerProviderInterface
         $this->listeners[] = [$event, $listener];
     }
 
+    public function listeners(): array
+    {
+        $listeners = [];
+        foreach ($this->listeners as [$class, $listener]) {
+            $listeners[$class][] = is_string($listener) ? $listener : 'Closure';
+        }
+        return $listeners;
+    }
+
     public function dispatch(object $event): object
     {
         $stoppable = $event instanceof StoppableEventInterface;

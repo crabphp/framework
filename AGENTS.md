@@ -1,6 +1,6 @@
 # Framework conventions
 
-- This repository is `crabphp/framework`. The networking engine lives in `src/Engine/` with its own `composer.json` and is also published alone as `crabphp/engine`; framework components are sibling namespaces under `src/`.
+- This repository is `crabphp/framework`. The networking engine lives in `src/Engine/` with its own `composer.json`, kept able to be published alone as `crabphp/engine`, and for now released only inside the framework, which `replace`s it; framework components are sibling namespaces under `src/`.
 - Nothing under `src/Engine/` may reference a `Crab\` namespace other than `Crab\Engine\`; `tests/EngineBoundaryTest.php` enforces this. The framework may depend on the engine, never the reverse.
 - Engine tests live in `tests/Engine/`, engine benchmarks in `benchmarks/`.
 - [ARCHITECTURE.md](ARCHITECTURE.md) is the agreed design: layers, lifecycle, scopes, concurrency model and build order. Read it before designing a component and keep it true when the design changes.
@@ -299,7 +299,7 @@
 - An application's `app/` has few folders, by where a class is used and not one for each kind: `Actions/` for every class with `handle()` (what a route points at, a job, a listener, a scheduled class), `Console/` for commands, `Http/` for what only a request meets (middleware, input classes), `Providers/`, and `Events/` for event objects. A folder is made when there are files for it, not before. Do not add `Jobs/`, `Listeners/`, `Middleware/` or `Commands/` to the skeleton, the sample or the guide.
 - `storage/` holds what the application writes while it runs (logs in `storage/logs/`, the SQLite file, the file cache when its directory is set there, later uploads) and is never committed. Nothing the application needs in order to start lives there. A relative `log.path` is inside the application's base path. Add a folder to it only when a component that needs one is built.
 - `app.php` is one `App::configure(__DIR__)` chain that names the providers and, in `withRouting(routes:, commands:)`, the route and command files, and ends in `create()`. The builder starts with the framework's provider and middleware lists, `App::PROVIDERS` and `App::MIDDLEWARE`, and finds nothing by convention. `App::configure()` applies the providers and, with a base path, takes `withEnv('.env')` and `withConfig('config', required: false)` on the application's behalf. An application names only its own and its packages' providers; `remove:` and `only:` change the framework's part. A new default needs the owner's agreement and is written where anyone can read it. A step takes one thing or a list. The route files declare with `Route::` and `Command::`, and no skeleton file uses a variable it did not define.
-- When the framework changes how an application is written, change the skeleton and its README in the same piece of work, and run its tests.
+- When the framework changes how an application is written, change the skeleton, its README and its `AGENTS.md` in the same piece of work, and run its tests. The skeleton's `AGENTS.md` is what an agent working on an application reads first: keep every rule in it true, and keep it short.
 
 # Engine conventions
 

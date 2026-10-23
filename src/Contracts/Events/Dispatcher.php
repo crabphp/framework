@@ -24,4 +24,12 @@ interface Dispatcher extends EventDispatcherInterface
      * @param \Closure(object): void|class-string $listener
      */
     public function listen(string $event, \Closure|string $listener): void;
+
+    /**
+     * Every event class with its listeners, in the order added: a class
+     * by its name, a closure as "Closure".
+     *
+     * @return array<class-string, list<string>>
+     */
+    public function listeners(): array;
 }
