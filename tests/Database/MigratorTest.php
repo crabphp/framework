@@ -441,6 +441,33 @@ final class MigratorTest extends TestCase
         $app->container->get(DatabaseContract::class)->close();
     }
 
+    public function testTheDefaultDatabaseKeepsItsMigrationsInDatabaseMigrations(): void
+    {
+        $app = new App(new Config([
+            'database' => [
+                'connections' => [
+                    'main' => ['dsn' => 'sqlite:' . $this->directory . '/app.sqlite'],
+                    'reports' => ['dsn' => 'sqlite:' . $this->directory . '/reports.sqlite'],
+                ],
+            ],
+        ]), basePath: $this->directory);
+        $app->container->instance(Clock::class, new FrozenClock('2026-01-31 12:00:00'));
+        $app->register(DatabaseProvider::class);
+
+        self::assertSame("Nothing to migrate.\n", $this->run_($app, 'migrate'), 'The folder need not exist yet.');
+        self::assertSame(
+            "Created {$this->directory}/database/migrations/2026_01_31_120000_create_migrator_users_table.php\n",
+            $this->run_($app, 'make:migration', 'create_migrator_users_table'),
+        );
+        self::assertSame("Migrated     2026_01_31_120000_create_migrator_users_table\n", $this->run_($app, 'migrate'));
+        self::assertStringContainsString(
+            'Set "migrations" on its connection',
+            $this->run_($app, 'migrate', '--database=reports', expect: 1),
+            'Another database is not given the default one\'s files.',
+        );
+        $app->container->get(\Crab\Database\DatabaseManager::class)->close();
+    }
+
     public function testSeveralDatabasesAreConfiguredByNameAndReachedFromOneAnother(): void
     {
         mkdir($this->directory . '/reports');

@@ -43,12 +43,14 @@ final class DatabaseManager implements Migrators
      * @param string $default The name of the one used when none is named.
      * @param ClockInterface|null $clock Passed to the migrators; the real time when left out.
      * @param int $migrationLockTimeout Whole seconds each migrator waits; zero does not wait.
+     * @param string|null $migrations Where the default database's migrations are when its settings do not say.
      */
     public function __construct(
         private readonly array $connections,
         private readonly string $default,
         private readonly ?ClockInterface $clock = null,
         private readonly int $migrationLockTimeout = 60,
+        private readonly ?string $migrations = null,
     ) {
         // With none configured there is nothing to check: an application that uses no database asks for none.
         if ($connections !== [] && !isset($connections[$default])) {
@@ -75,15 +77,30 @@ final class DatabaseManager implements Migrators
         $name ??= $this->default;
         if (!isset($this->migrators[$name])) {
             $database = $this->connection($name);
-            $directory = $this->connections[$name]['migrations'] ?? null;
+            $directory = $this->migrations($name);
             $this->migrators[$name] = new Migrator(
                 $database,
-                is_string($directory) && $directory !== '' ? $directory : [],
+                $directory ?? [],
                 clock: $this->clock,
                 lockTimeout: $this->migrationLockTimeout,
             );
         }
         return $this->migrators[$name];
+    }
+
+    /**
+     * The folder of this database's migrations: its "migrations" setting,
+     * or for the default database, database/migrations. Another database
+     * has none until it is set, since guessing one would mix two databases' files.
+     */
+    public function migrations(?string $name = null): ?string
+    {
+        $name ??= $this->default;
+        $directory = $this->connections[$name]['migrations'] ?? null;
+        if (is_string($directory) && $directory !== '') {
+            return $directory;
+        }
+        return $name === $this->default ? $this->migrations : null;
     }
 
     /**

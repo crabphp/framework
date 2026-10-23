@@ -21,9 +21,9 @@ return [
             // The most connections each worker opens, 10, or 1 for SQLite; and seconds to wait for a free one.
             // 'pool' => 10,
             'timeout' => 5.0,
-
-            // Where `php cua make:migration` writes and `php cua migrate` reads.
-            'migrations' => dirname(__DIR__) . '/database/migrations',
+            // Where `php cua make:migration` writes and `php cua migrate` reads: database/migrations for the
+            // default database. Another database needs a folder of its own.
+            // 'migrations' => dirname(__DIR__) . '/database/migrations',
         ],
     ],
 

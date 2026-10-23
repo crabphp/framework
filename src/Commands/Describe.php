@@ -9,7 +9,9 @@ use Crab\App;
 use Crab\Contracts\Console\Command;
 use Crab\Contracts\Console\Input;
 use Crab\Contracts\Console\Output;
+use Crab\Contracts\Database\Migrators;
 use Crab\Contracts\Http\MiddlewareStack;
+use Crab\Database\DatabaseManager;
 
 /**
  * Prints the application for coding agents and tools, as text or JSON: its routes with what each takes, the middleware, commands,
@@ -169,9 +171,16 @@ final readonly class Describe implements Command
     private function database(): array
     {
         $connections = $this->app->config->get('database.connections');
+        // The folders the migrators use, defaults included, when the database provider is registered.
+        // Migrators is bound only by the provider; has() of a class is true whenever it could be autowired.
+        $databases = $this->app->container->has(Migrators::class)
+            ? $this->app->container->get(DatabaseManager::class)
+            : null;
         $described = [];
         foreach (is_array($connections) ? $connections : [] as $name => $connection) {
-            $directory = is_array($connection) ? $connection['migrations'] ?? null : null;
+            $directory =
+                $databases?->migrations((string) $name)
+                ?? (is_array($connection) ? $connection['migrations'] ?? null : null);
             $migrations = [];
             if (is_string($directory) && $directory !== '') {
                 foreach (glob($directory . '/*.php') ?: [] as $file) {

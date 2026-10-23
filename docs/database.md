@@ -28,7 +28,6 @@ return [
             'dsn' => env('DB_DSN', 'sqlite:' . dirname(__DIR__) . '/storage/database.sqlite'),
             'username' => env('DB_USERNAME'),
             'password' => env('DB_PASSWORD'),
-            'migrations' => dirname(__DIR__) . '/database/migrations',
         ],
     ],
 ];
@@ -52,7 +51,7 @@ Each connection takes these keys:
 | `async` | `false` | Use the nonblocking MySQL driver inside workers |
 | `pool` | 10, or 1 for SQLite | The most connections each worker opens |
 | `timeout` | `5.0` | Seconds to wait for a free connection |
-| `migrations` | none | The folder that holds this database's migration files |
+| `migrations` | `database/migrations` for the default database, none for another | The folder that holds this database's migration files |
 
 ### Several databases
 
@@ -67,7 +66,6 @@ return [
             'dsn' => env('DB_DSN'),
             'username' => env('DB_USERNAME'),
             'password' => env('DB_PASSWORD'),
-            'migrations' => dirname(__DIR__) . '/database/migrations',
         ],
         'reports' => [
             'dsn' => env('REPORTS_DSN'),
@@ -82,7 +80,7 @@ $db->table('users')->count();                                  // the default
 $db->connection('reports')->table('daily_totals')->get();      // another, by name
 ```
 
-Each has its own connections and its own migrations; the migration commands take `--database=reports`. A transaction is on one database: neither MySQL nor SQLite can commit across two.
+Each has its own connections and its own migrations: the default database's in `database/migrations`, and another's wherever its `migrations` says. The migration commands take `--database=reports`. A transaction is on one database: neither MySQL nor SQLite can commit across two.
 
 ## Running SQL
 

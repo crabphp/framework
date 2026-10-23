@@ -62,7 +62,15 @@ final class DatabaseProvider implements WorkerProvider
                     'Set "database.migration_lock_timeout" to a nonnegative number of whole seconds; zero does not wait.',
                 );
             }
-            return new DatabaseManager($connections, $default, $clock, (int) $lockTimeout);
+            $base = $config->get('app.path');
+            return new DatabaseManager(
+                $connections,
+                $default,
+                $clock,
+                (int) $lockTimeout,
+                // The default database's migrations are in database/migrations unless its settings say otherwise.
+                is_string($base) && $base !== '' ? rtrim($base, '/') . '/database/migrations' : null,
+            );
         });
         $container->singleton(DatabaseContract::class, static fn(Container $container): Database => $container->get(
             DatabaseManager::class,
