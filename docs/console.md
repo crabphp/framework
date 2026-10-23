@@ -51,7 +51,7 @@ The third argument is the description shown in the command list.
 
 ### A class
 
-Use a class when the command needs services. The container makes it when its description is first needed or when it runs, so listing commands or asking for help can construct it:
+Use a class when the command needs services. `php cua make:command PruneUsers` writes one in `app/Console/` and registers it in `routes/console.php` as `user:prune`; `--command=` names it otherwise. The container makes it when its description is first needed or when it runs, so listing commands or asking for help can construct it:
 
 ```php
 // app/Console/PruneUsers.php
@@ -191,6 +191,8 @@ Print results with `line()` and problems with `error()`, so that a script can pi
 | `stop`, `reload`, `restart`, `status` | Control a server running in the background |
 | `route:list` | Lists routes, actions and route and group middleware; global middleware is not shown |
 | `make:middleware` | Writes a middleware class in `app/Http/` |
+| `make:command` | Writes a command class in `app/Console/` and registers it in `routes/console.php` |
+| `config:publish` | Writes a framework section's complete configuration file into `config/` |
 
 `stop` and the stop phase of `restart` use the running server's remaining allowance, even after its configuration changes. `--timeout` overrides the graceful wait. To cut in-flight requests and end every server process immediately, use:
 

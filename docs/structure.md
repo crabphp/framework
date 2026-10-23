@@ -72,7 +72,7 @@ return App::configure(__DIR__)
 
 ## Where to put new things
 
-The framework does not look for folders, so these are suggestions that keep applications alike. `php cua make:middleware` and `php cua make:migration` write into the folders shown.
+The framework does not look for folders, so these are suggestions that keep applications alike. `php cua make:middleware`, `php cua make:command` and `php cua make:migration` write into the folders shown.
 
 | You are adding | Put it in | Then |
 | --- | --- | --- |

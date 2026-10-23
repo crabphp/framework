@@ -9,7 +9,9 @@ use Crab\Broadcast\BroadcastProvider;
 use Crab\Broadcast\Lifecycle as BroadcastLifecycle;
 use Crab\Cache\CacheProvider;
 use Crab\Clock\SystemClock;
+use Crab\Commands\MakeCommand;
 use Crab\Commands\MakeMiddleware;
+use Crab\Commands\PublishConfig;
 use Crab\Commands\Reload;
 use Crab\Commands\Restart;
 use Crab\Commands\Routes;
@@ -254,6 +256,8 @@ final class App implements RequestHandlerInterface, Runner
         $this->console->add('status', Status::class);
         $this->console->add('route:list', Routes::class);
         $this->console->add('make:middleware', MakeMiddleware::class);
+        $this->console->add('make:command', MakeCommand::class);
+        $this->console->add('config:publish', PublishConfig::class);
         $container->instance(ConsoleContract::class, $this->console);
         $container->singleton(Console::class, ConsoleContract::class);
     }

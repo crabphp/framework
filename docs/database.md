@@ -23,8 +23,6 @@ The database provider is registered by default by `App::configure()`, so it need
 ```php
 // config/database.php
 return [
-    'default' => 'main',
-
     'connections' => [
         'main' => [
             'dsn' => env('DB_DSN', 'sqlite:' . dirname(__DIR__) . '/storage/database.sqlite'),

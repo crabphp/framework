@@ -60,6 +60,17 @@ return [
 
 To add a setting of your own, add a key to a file, or add a file. There is nothing to register.
 
+A framework section works without a file, from its defaults. To see every setting of one and change it, write its complete file, each setting at its default with what it does:
+
+```sh
+php cua config:publish              # lists the sections
+php cua config:publish server queue
+# Created config/server.php
+# Created config/queue.php
+```
+
+An existing file is left alone; `--force` replaces it, losing what it set.
+
 ## Reading configuration
 
 | Setting | Default | Use |
