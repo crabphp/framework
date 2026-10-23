@@ -8,6 +8,7 @@
 - [Deploying new code](#deploying-new-code)
 - [Finishing requests on stop](#finishing-requests-on-stop)
 - [How many workers](#how-many-workers)
+- [How many connections](#how-many-connections)
 - [Behind a proxy](#behind-a-proxy)
 - [The other processes](#the-other-processes)
 - [A deploy, start to finish](#a-deploy-start-to-finish)
@@ -147,6 +148,27 @@ A worker serves many requests at once as long as they wait through Crab, as call
 
 Workers share nothing. Anything two requests must both see, a cache entry, a rate limit, a session, belongs in the database or the cache, never in a worker's memory.
 
+## How many connections
+
+Every open connection is a file descriptor, and so is every open file, database or Redis connection and log. Each worker is its own process, so these limits apply per worker; four workers hold four times as many connections.
+
+On the default `select` loop a worker holds at most 900 connections (`server.max_connections`), whatever the system allows. PHP's `stream_select()` cannot watch a descriptor numbered 1024 or higher (FD_SETSIZE is compiled into PHP), and the rest of the 1024 is left for files, the database and Redis. Raising the system's descriptor limit does not change this; more workers do.
+
+For more connections per worker, install `ev`, `event` or `uv`, set `server.loop` to it, raise `server.max_connections`, and raise the per-process descriptor limit too, which is often 1024 by default. Allow `server.max_connections` plus a hundred or so for everything else:
+
+```text
+# systemd, in [Service]
+LimitNOFILE=65536
+
+# a shell that starts the server
+ulimit -n 65536
+
+# Docker
+docker run --ulimit nofile=65536:65536 ...
+```
+
+Each connection also costs memory for its buffers; see the [WebSockets](websockets.md#configuration) limits when sockets stay open.
+
 ## Behind a proxy
 
 The server speaks HTTP, not HTTPS. In production, put a proxy that terminates TLS in front of it: Nginx, Caddy, or your platform's load balancer.
@@ -278,7 +300,9 @@ Run the migrations before the reload, and write them so that the old code still 
 - Choose `SERVER_WORKERS` explicitly; the skeleton starts with one for development.
 - Set `SERVER_QUEUE=true` and `SERVER_SCHEDULE=true` for the work this machine must run, and apply the database queue migration before starting its workers. Run the scheduler in one place, or use `onOneServer()`.
 - The `pcntl` and `posix` extensions, for workers and the background server.
+- Connections per worker within the loop's reach: at most 900 on `select`; beyond that a native `server.loop` and a raised descriptor limit, as in [How many connections](#how-many-connections).
 - OPcache on, with `opcache.enable_cli=1`: the server runs under PHP's command line.
+- The JIT on, with `opcache.jit=tracing` and a `opcache.jit_buffer_size` such as `64M`: about 12% more requests on a small JSON response. PHP 8.4 ships with `opcache.jit=disable`, which cannot be changed once PHP has started, so set it in `php.ini` or with `php -d opcache.jit=tracing cua serve`.
 - A proxy with TLS in front, and the server on `127.0.0.1`.
 - `TrustedProxies` in `app.php`, naming only the proxy addresses you control, so clients have their own address-based limits.
 - `storage/` writable by the user the server runs as.
