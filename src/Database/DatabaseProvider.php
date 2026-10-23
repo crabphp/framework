@@ -46,12 +46,12 @@ final class DatabaseProvider implements WorkerProvider
             $connections = $config->get('database.connections');
             if ($config->get('database.dsn') !== null) {
                 throw new DatabaseException(
-                    '"database.dsn" is not read. A database is described under "database.connections", by name: \'connections\' => [\'main\' => [\'dsn\' => ...]].',
+                    '"database.dsn" is not read. A database is described under "database.connections", by name: \'connections\' => [\'main\' => [\'driver\' => \'mysql\', \'host\' => ..., \'database\' => ...]].',
                 );
             }
             if (!is_array($connections)) {
                 throw new DatabaseException(
-                    '"database.connections" holds each database by name: \'connections\' => [\'main\' => [\'dsn\' => \'sqlite:/path/app.sqlite\']].',
+                    '"database.connections" holds each database by name: \'connections\' => [\'main\' => [\'driver\' => \'sqlite\', \'database\' => \'/path/app.sqlite\']].',
                 );
             }
             $default = (string) ($config->get('database.default') ?? array_key_first($connections));

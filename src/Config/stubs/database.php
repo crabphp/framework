@@ -7,10 +7,22 @@ return [
     // Each database by a name of your choosing; reach another than the default with $database->connection('name').
     'connections' => [
         'main' => [
-            // "sqlite:/path/to/file.sqlite", or "mysql:host=127.0.0.1;dbname=app". The kind of database is read from it.
-            'dsn' => env('DB_DSN', 'sqlite:' . dirname(__DIR__) . '/storage/database.sqlite'),
+            // mysql or sqlite.
+            'driver' => env('DB_DRIVER', 'sqlite'),
+
+            // MySQL's server, the database on it, and who connects. For SQLite, the database is the file.
+            'host' => env('DB_HOST', '127.0.0.1'),
+            'port' => env('DB_PORT', 3306),
+            'database' => env('DB_DATABASE', dirname(__DIR__) . '/storage/database.sqlite'),
             'username' => env('DB_USERNAME'),
             'password' => env('DB_PASSWORD'),
+
+            // MySQL: the connection's character set, such as utf8mb4; the server's default when not set.
+            // 'charset' => 'utf8mb4',
+            // MySQL: a socket file in place of host and port.
+            // 'unix_socket' => '/var/run/mysqld/mysqld.sock',
+            // In place of all of the above, a PDO data source name: 'mysql:host=127.0.0.1;dbname=app'.
+            // 'dsn' => env('DB_DSN'),
 
             // Further PDO attributes.
             'options' => [],

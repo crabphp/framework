@@ -143,7 +143,7 @@ final class DatabaseManager implements Migrators
     {
         if ($this->connections === []) {
             throw new DatabaseException(
-                'No database is configured. Describe one under "database.connections", by name: \'connections\' => [\'main\' => [\'dsn\' => \'sqlite:/path/app.sqlite\']].',
+                'No database is configured. Describe one under "database.connections", by name: \'connections\' => [\'main\' => [\'driver\' => \'sqlite\', \'database\' => \'/path/app.sqlite\']].',
             );
         }
         $settings = $this->connections[$name] ?? null;
@@ -154,12 +154,7 @@ final class DatabaseManager implements Migrators
                 . '.',
             );
         }
-        $dsn = $settings['dsn'] ?? null;
-        if (!is_string($dsn) || $dsn === '') {
-            throw new DatabaseException(
-                "The database \"{$name}\" has no \"dsn\" configured. Set it to a data source name such as \"sqlite:/path/app.sqlite\" or \"mysql:host=127.0.0.1;dbname=app\".",
-            );
-        }
+        $dsn = self::dsn($name, $settings);
         $username = $settings['username'] ?? null;
         $password = $settings['password'] ?? null;
         $options = (array) ($settings['options'] ?? []);
@@ -208,6 +203,63 @@ final class DatabaseManager implements Migrators
             )
             : new PdoConnection($connect);
         return new Database($connect, $pool, $timeout, $this, $factory);
+    }
+
+    /**
+     * The data source name of a database: its "dsn" when one is given, or
+     * one written from its "driver" and the settings of that driver.
+     *
+     *     sqlite   database: the file, or ":memory:"
+     *     mysql    host (127.0.0.1), port (3306), database, and charset or unix_socket when given
+     *
+     * @param array<string, mixed> $settings
+     */
+    public static function dsn(string $name, array $settings): string
+    {
+        $dsn = $settings['dsn'] ?? null;
+        if (is_string($dsn) && $dsn !== '') {
+            return $dsn;
+        }
+        $driver = $settings['driver'] ?? null;
+        $database = (string) ($settings['database'] ?? '');
+        if ($driver === 'sqlite') {
+            if ($database === '') {
+                throw new DatabaseException(
+                    "The database \"{$name}\" is SQLite and names no file. Set \"database\" to the file, such as storage/database.sqlite in the application.",
+                );
+            }
+            return 'sqlite:' . $database;
+        }
+        if ($driver !== 'mysql') {
+            throw new DatabaseException(
+                "The database \"{$name}\" needs a \"driver\": \"mysql\" with its host, port, database, username and password, or \"sqlite\" with the file as its database.",
+            );
+        }
+        if ($database === '' || str_contains($database, '/')) {
+            // A path is the SQLite default left in place after switching to MySQL.
+            throw new DatabaseException(
+                "The database \"{$name}\" is MySQL and names no database"
+                . ($database === '' ? '' : ", only the file {$database}")
+                . '. Set "database", DB_DATABASE in the skeleton, to the name of the database on the server.',
+            );
+        }
+        $parts = ($settings['unix_socket'] ?? '') !== ''
+            ? ['unix_socket' => $settings['unix_socket']]
+            : ['host' => $settings['host'] ?? '127.0.0.1', 'port' => $settings['port'] ?? 3306];
+        $parts['dbname'] = $database;
+        if (($settings['charset'] ?? '') !== '') {
+            $parts['charset'] = $settings['charset'];
+        }
+        $written = [];
+        foreach ($parts as $key => $value) {
+            $value = (string) $value;
+            // A ";" would start another part of the name.
+            if (str_contains($value, ';')) {
+                throw new DatabaseException("The {$key} of the database \"{$name}\" cannot contain \";\".");
+            }
+            $written[] = "{$key}={$value}";
+        }
+        return 'mysql:' . implode(';', $written);
     }
 
     /**

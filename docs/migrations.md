@@ -87,7 +87,8 @@ During a rolling deploy, several machines may run `php cua migrate` together. A 
 return [
     'connections' => [
         'main' => [
-            'dsn' => env('DB_DSN'),
+            'driver' => 'mysql',
+            'database' => env('DB_DATABASE'),
         ],
     ],
     'migration_lock_timeout' => 120,

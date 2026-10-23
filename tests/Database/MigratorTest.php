@@ -468,6 +468,72 @@ final class MigratorTest extends TestCase
         $app->container->get(\Crab\Database\DatabaseManager::class)->close();
     }
 
+    public function testAConnectionIsDescribedByItsDriverHostPortAndDatabase(): void
+    {
+        $dsn = \Crab\Database\DatabaseManager::dsn(...);
+        self::assertSame('mysql:host=127.0.0.1;port=3306;dbname=shop', $dsn('main', [
+            'driver' => 'mysql',
+            'database' => 'shop',
+        ]));
+        self::assertSame(
+            'mysql:host=db;port=3307;dbname=shop;charset=utf8mb4',
+            $dsn('main', [
+                'driver' => 'mysql',
+                'host' => 'db',
+                'port' => '3307',
+                'database' => 'shop',
+                'charset' => 'utf8mb4',
+            ]),
+            'A port from .env arrives as text.',
+        );
+        self::assertSame('mysql:unix_socket=/run/mysqld.sock;dbname=shop', $dsn('main', [
+            'driver' => 'mysql',
+            'unix_socket' => '/run/mysqld.sock',
+            'host' => 'ignored',
+            'database' => 'shop',
+        ]));
+        self::assertSame('sqlite:/srv/app.sqlite', $dsn('main', [
+            'driver' => 'sqlite',
+            'database' => '/srv/app.sqlite',
+        ]));
+        self::assertSame(
+            'sqlite::memory:',
+            $dsn('main', ['dsn' => 'sqlite::memory:', 'driver' => 'mysql']),
+            'A dsn, when given, is used as it is.',
+        );
+        foreach ([
+            'is MySQL and names no database' => ['driver' => 'mysql'],
+            'names no database, only the file /app/storage/database.sqlite' => [
+                'driver' => 'mysql',
+                'database' => '/app/storage/database.sqlite',
+            ],
+            'is SQLite and names no file' => ['driver' => 'sqlite'],
+            'needs a "driver"' => ['database' => 'shop'],
+            'cannot contain ";"' => ['driver' => 'mysql', 'database' => 'shop;host=evil'],
+        ] as $expected => $settings) {
+            try {
+                $dsn('main', $settings);
+                self::fail("Not refused: {$expected}");
+            } catch (DatabaseException $error) {
+                self::assertStringContainsString($expected, $error->getMessage());
+            }
+        }
+
+        $app = new App(new Config([
+            'database' => [
+                'connections' => ['main' => [
+                    'driver' => 'sqlite',
+                    'database' => $this->directory . '/app.sqlite',
+                    'migrations' => $this->directory . '/migrations',
+                ]],
+            ],
+        ]));
+        $app->register(DatabaseProvider::class);
+        self::assertSame("Nothing to migrate.\n", $this->run_($app, 'migrate'));
+        self::assertFileExists($this->directory . '/app.sqlite');
+        $app->container->get(\Crab\Database\DatabaseManager::class)->close();
+    }
+
     public function testSeveralDatabasesAreConfiguredByNameAndReachedFromOneAnother(): void
     {
         mkdir($this->directory . '/reports');
@@ -547,7 +613,7 @@ final class MigratorTest extends TestCase
         $mistakes = [
             'There is no database named "archive"; the configured ones are: reports, main, broken.' =>
                 static fn() => $main->connection('archive'),
-            'The database "broken" has no "dsn" configured' => static fn() => $main->connection('broken'),
+            'The database "broken" needs a "driver"' => static fn() => $main->connection('broken'),
             'was made on its own and knows no other, so it has none named "reports"' => static fn() => new Database(
                 static fn() => new \PDO('sqlite::memory:'),
             )->connection('reports'),

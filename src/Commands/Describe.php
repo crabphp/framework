@@ -189,7 +189,7 @@ final readonly class Describe implements Command
                 sort($migrations);
             }
             $described[(string) $name] = [
-                'driver' => strtok((string) (is_array($connection) ? $connection['dsn'] ?? '' : ''), ':') ?: null,
+                'driver' => is_array($connection) ? self::driver($connection) : null,
                 'migrations' => is_string($directory) ? $this->relative($directory) : null,
                 'files' => $migrations,
             ];
@@ -198,6 +198,15 @@ final readonly class Describe implements Command
             'default' => $this->app->config->get('database.default') ?? array_key_first($described),
             'connections' => $described === [] ? new \stdClass() : $described,
         ];
+    }
+
+    /**
+     * @param array<mixed> $connection
+     */
+    private static function driver(array $connection): ?string
+    {
+        $driver = $connection['driver'] ?? strtok((string) ($connection['dsn'] ?? ''), ':');
+        return is_string($driver) && $driver !== '' ? $driver : null;
     }
 
     /**

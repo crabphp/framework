@@ -25,7 +25,10 @@ The database provider is registered by default by `App::configure()`, so it need
 return [
     'connections' => [
         'main' => [
-            'dsn' => env('DB_DSN', 'sqlite:' . dirname(__DIR__) . '/storage/database.sqlite'),
+            'driver' => env('DB_DRIVER', 'sqlite'),
+            'host' => env('DB_HOST', '127.0.0.1'),
+            'port' => env('DB_PORT', 3306),
+            'database' => env('DB_DATABASE', dirname(__DIR__) . '/storage/database.sqlite'),
             'username' => env('DB_USERNAME'),
             'password' => env('DB_PASSWORD'),
         ],
@@ -35,8 +38,13 @@ return [
 
 An application with no database configured still starts; asking for the database then names the missing configuration. A database is always described under `database.connections`, by a name of your choosing, whether you have one or several. `database.default` names the one you get when you name none; left out, it is the first.
 
+For MySQL, set in `.env`:
+
 ```text
-DB_DSN=mysql:host=127.0.0.1;dbname=orders;charset=utf8mb4
+DB_DRIVER=mysql
+DB_HOST=127.0.0.1
+DB_PORT=3306
+DB_DATABASE=orders
 DB_USERNAME=orders
 DB_PASSWORD=secret
 ```
@@ -45,8 +53,13 @@ Each connection takes these keys:
 
 | Key | Default | |
 | --- | --- | --- |
-| `dsn` | none | `mysql:host=...;dbname=...` or `sqlite:/path/to/file.sqlite`. The kind of database is read from it. |
+| `driver` | none | `mysql` or `sqlite` |
+| `database` | none | MySQL: the database's name on the server. SQLite: the file, or `:memory:` |
+| `host`, `port` | `127.0.0.1`, `3306` | MySQL's server |
 | `username`, `password` | none | For MySQL |
+| `charset` | the server's | MySQL: the connection's character set, such as `utf8mb4` |
+| `unix_socket` | none | MySQL: a socket file in place of `host` and `port` |
+| `dsn` | none | In place of all of the above, a PDO data source name such as `mysql:host=127.0.0.1;dbname=app` |
 | `options` | `[]` | Further PDO attributes |
 | `async` | `false` | Use the nonblocking MySQL driver inside workers |
 | `pool` | 10, or 1 for SQLite | The most connections each worker opens |
@@ -63,12 +76,15 @@ return [
     'default' => 'main',
     'connections' => [
         'main' => [
-            'dsn' => env('DB_DSN'),
+            'driver' => 'mysql',
+            'host' => env('DB_HOST', '127.0.0.1'),
+            'database' => env('DB_DATABASE'),
             'username' => env('DB_USERNAME'),
             'password' => env('DB_PASSWORD'),
         ],
         'reports' => [
-            'dsn' => env('REPORTS_DSN'),
+            'driver' => 'sqlite',
+            'database' => dirname(__DIR__) . '/storage/reports.sqlite',
             'migrations' => dirname(__DIR__) . '/database/reports',
         ],
     ],
@@ -169,7 +185,9 @@ Turn on `async` when MySQL queries keep your HTTP workers waiting while other re
 // config/database.php
 'connections' => [
     'main' => [
-        'dsn' => env('DB_DSN'),
+        'driver' => 'mysql',
+        'host' => env('DB_HOST', '127.0.0.1'),
+        'database' => env('DB_DATABASE'),
         'username' => env('DB_USERNAME'),
         'password' => env('DB_PASSWORD'),
         'async' => (bool) env('DB_ASYNC', false),
@@ -189,7 +207,7 @@ TLS is off by default. Enable it with `'options' => ['ssl' => true]`, or supply 
 'options' => ['ssl' => ['cafile' => '/etc/mysql/ca.pem']],
 ```
 
-With `ssl => true`, `verify_peer` and `verify_peer_name` both default to true: the certificate and the DSN host name are verified. Explicit SSL context options can override those defaults. PHP's OpenSSL extension is needed for TLS and for full `caching_sha2_password` authentication over TCP without TLS. Unix sockets work through `unix_socket=/path/mysql.sock` in the DSN. Integer PDO options are ignored by the async driver.
+With `ssl => true`, `verify_peer` and `verify_peer_name` both default to true: the certificate and the `host` are verified. Explicit SSL context options can override those defaults. PHP's OpenSSL extension is needed for TLS and for full `caching_sha2_password` authentication over TCP without TLS. A Unix socket is given with `'unix_socket' => '/path/mysql.sock'` in place of `host` and `port`. Integer PDO options are ignored by the async driver.
 
 The RSA public-key path trusts the key the server sends; it does not authenticate that server. Use verified TLS across an untrusted network, or a trusted local transport. The async driver does not support pinning a public-key file through PDO's integer options.
 
@@ -198,7 +216,7 @@ The driver is tested against MySQL 8.0, 8.4 and 9.7. Two things differ between t
 - `VECTOR` columns need MySQL 9 or newer.
 - MySQL 8.4 and newer switch `mysql_native_password` off by default, and an account that still uses it is refused with error 1524. Move such accounts to `caching_sha2_password`.
 
-A certificate MySQL generates for itself names no host, so trusting its CA alone does not pass the host name check. Give the server a certificate for the host in your DSN; the async driver also takes the name to expect as `peer_name`, which console commands on PDO cannot.
+A certificate MySQL generates for itself names no host, so trusting its CA alone does not pass the host name check. Give the server a certificate for the `host` you connect to; the async driver also takes the name to expect as `peer_name`, which console commands on PDO cannot.
 
 Console commands, including `migrate`, map `cafile`, `capath`, `local_cert`, `local_pk` and `ciphers` to PDO's SSL attributes. `ssl => true` requests TLS with the system's trust and both verification checks enabled. PDO couples certificate and name verification, so `verify_peer` and `verify_peer_name` must be equal; both default to true. Other context keys, including `peer_name`, and conflicting integer PDO SSL attributes are refused. Before lending the connection, Crab checks that the session reports a non-empty SSL cipher and refuses it if TLS was not established.
 

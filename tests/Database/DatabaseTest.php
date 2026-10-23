@@ -450,7 +450,7 @@ final class DatabaseTest extends TestCase
                 self::fail('A database outside "connections" must be refused.');
             } catch (DatabaseException $error) {
                 self::assertStringContainsString($says, $error->getMessage());
-                self::assertStringContainsString("'connections' => ['main' => ['dsn' =>", $error->getMessage());
+                self::assertStringContainsString("'connections' => ['main' => ['driver' =>", $error->getMessage());
             }
         }
     }
