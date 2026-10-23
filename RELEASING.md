@@ -45,4 +45,4 @@ Each depends on the one before it.
 ### Verify
 
 - [ ] Packagist lists the new versions.
-- [ ] From an empty folder: `composer create-project crabphp/crab app`, then in `app/`: `php cua serve`, `curl http://127.0.0.1:8080/up` answers, `vendor/bin/phpunit` passes.
+- [ ] From an empty folder: `composer create-project crabphp/crab app`, then in `app/`: `php cua dev`, `curl http://127.0.0.1:8080/up` answers, `vendor/bin/phpunit` passes.

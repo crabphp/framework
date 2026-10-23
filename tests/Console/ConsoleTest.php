@@ -265,7 +265,7 @@ final class ConsoleTest extends TestCase
         $app = new App();
         self::assertSame($app->console, $app->container->get(ConsoleContract::class));
         self::assertSame($app->console, $app->container->get(Console::class));
-        self::assertTrue($app->console->has('serve') && $app->console->has('route:list'));
+        self::assertTrue($app->console->has('start') && $app->console->has('route:list'));
         self::assertSame(0, $this->exec($app->console, 'route:list'));
         $app->router->get('/', static fn() => 'home');
         $app->router->post('/users/{id}', \Crab\Http\Health::class);

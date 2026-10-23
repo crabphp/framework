@@ -10,13 +10,14 @@ use Crab\Broadcast\Lifecycle as BroadcastLifecycle;
 use Crab\Cache\CacheProvider;
 use Crab\Clock\SystemClock;
 use Crab\Commands\Describe;
+use Crab\Commands\Dev;
 use Crab\Commands\MakeCommand;
 use Crab\Commands\MakeMiddleware;
 use Crab\Commands\PublishConfig;
 use Crab\Commands\Reload;
 use Crab\Commands\Restart;
 use Crab\Commands\Routes;
-use Crab\Commands\Serve;
+use Crab\Commands\Start;
 use Crab\Commands\Status;
 use Crab\Commands\Stop;
 use Crab\Config\Config;
@@ -95,7 +96,7 @@ final class App implements RequestHandlerInterface, Runner
     public readonly RouterContract $router;
     public readonly ConsoleContract $console;
     /**
-     * The servers `serve` can run beside HTTP, as providers have registered them.
+     * The servers `start` can run beside HTTP, as providers have registered them.
      */
     public readonly Servers $servers;
     private readonly MiddlewareStack $stack;
@@ -250,7 +251,8 @@ final class App implements RequestHandlerInterface, Runner
         $container->instance(MiddlewareStackContract::class, $this->stack);
         $container->singleton(MiddlewareStack::class, MiddlewareStackContract::class);
         $this->console = new Console($container, (string) $config->get('app.name'));
-        $this->console->add('serve', Serve::class);
+        $this->console->add('dev', Dev::class);
+        $this->console->add('start', Start::class);
         $this->console->add('stop', Stop::class);
         $this->console->add('reload', Reload::class);
         $this->console->add('restart', Restart::class);
@@ -341,7 +343,7 @@ final class App implements RequestHandlerInterface, Runner
     }
 
     /**
-     * A runtime serving this application over HTTP; the `serve` command
+     * A runtime serving this application over HTTP; the `start` command
      * runs it. Each worker assembles its middleware and starts the worker
      * providers as it starts, so a misconfigured application fails then
      * and not on its first request. A task or timer that fails in a
@@ -514,7 +516,7 @@ final class App implements RequestHandlerInterface, Runner
     }
 
     /**
-     * The ids of the servers `serve` runs with HTTP, as "server.with"
+     * The ids of the servers `start` runs with HTTP, as "server.with"
      * says: each id with whether it is on, usually from the environment,
      *
      *     'with' => ['queue' => env('SERVER_QUEUE', false), 'schedule' => env('SERVER_SCHEDULE', false)],
@@ -575,11 +577,11 @@ final class App implements RequestHandlerInterface, Runner
                 continue;
             }
             $words = self::words($line);
-            if ($words === [] || $words[0] === 'serve' || !$this->console->has($words[0])) {
+            if ($words === [] || in_array($words[0], ['start', 'dev'], true) || !$this->console->has($words[0])) {
                 throw new \LogicException(
                     "The server \"{$id}\" runs `{$line}`, and "
                     . (
-                        ($words[0] ?? '') === 'serve'
+                        in_array($words[0] ?? '', ['start', 'dev'], true)
                             ? 'the server cannot run itself.'
                             : 'there is no command "' . ($words[0] ?? '') . '". Run `list` to see the commands.'
                     ),
@@ -593,7 +595,7 @@ final class App implements RequestHandlerInterface, Runner
     /**
      * How this application's command line was run, less the command and
      * what followed it: the script, and before the command whatever it
-     * was given, as in `bin/crab app.php serve`. A command run beside
+     * was given, as in `bin/crab app.php start`. A command run beside
      * the server is run the same way.
      *
      * @return list<string>
@@ -861,7 +863,7 @@ final class App implements RequestHandlerInterface, Runner
                 // The keeper hands the HTTP socket alone from one server process to the next. Another
                 // listener would be bound afresh by each, and the new one refused while the old holds it.
                 throw new \LogicException(
-                    "The server \"{$workers->group}\" listens on an address of its own, which a server in the background cannot yet hand over when it reloads. Run `serve` in the foreground, under systemd or a container, or run this server on its own.",
+                    "The server \"{$workers->group}\" listens on an address of its own, which a server in the background cannot yet hand over when it reloads. Run `start` in the foreground, under systemd or a container, or run this server on its own.",
                 );
             }
         }

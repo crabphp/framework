@@ -10,7 +10,7 @@ use Crab\Engine\Process\Worker;
 
 /**
  * One group of worker processes that serve no HTTP requests, for
- * Runner::runAll() or a service of `serve`: its name, how many there
+ * Runner::runAll() or a service of `start`: its name, how many there
  * are, and what each does. That is work, a loop that runs until it is
  * told to stop, such as taking jobs from a queue; or a setup, which has
  * the group listen on an address of its own, as a WebSocket server

@@ -8,7 +8,7 @@ use Crab\App;
 use Crab\Auth\AuthProvider;
 use Crab\Broadcast\BroadcastProvider;
 use Crab\Cache\CacheProvider;
-use Crab\Commands\Serve;
+use Crab\Commands\Start;
 use Crab\Console\Output;
 use Crab\Contracts\Auth\PasswordHasher;
 use Crab\Contracts\Broadcast\Broadcaster;
@@ -224,7 +224,7 @@ final class AppBuilderTest extends TestCase
     {
         $stream = fopen('php://memory', 'w+');
         try {
-            Serve::announceBackground(new Output($stream, $stream), App::configure()->create(), 'tcp://127.0.0.1:9000');
+            Start::announceBackground(new Output($stream, $stream), App::configure()->create(), 'tcp://127.0.0.1:9000');
             rewind($stream);
             self::assertSame("Crab server running on http://127.0.0.1:9000\n", stream_get_contents($stream));
         } finally {

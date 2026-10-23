@@ -207,7 +207,7 @@ php cua queue:work
 
 It runs jobs until you stop it with Ctrl+C.
 
-While you develop, start it in a second terminal when you are working on jobs. To have `php cua serve` start the queue's workers itself, beside the HTTP workers, and stop and reload them with the server, switch it on in `server.with`, with `SERVER_QUEUE=true` in `.env`; see [Deployment](deployment.md#the-other-processes).
+While you develop, start it in a second terminal when you are working on jobs. To have `php cua start` start the queue's workers itself, beside the HTTP workers, and stop and reload them with the server, switch it on in `server.with`, with `SERVER_QUEUE=true` in `.env`; see [Deployment](deployment.md#the-other-processes).
 
 | Option | |
 | --- | --- |
@@ -219,7 +219,7 @@ While you develop, start it in a second terminal when you are working on jobs. T
 | `--stop-when-empty` | Run jobs due now, print how many ran, and return when none are due; future delayed jobs and retries remain stored |
 
 > [!WARNING]
-> A worker runs the code it started with. When `serve` manages it, `php cua reload` replaces it after deployment. A separately started `queue:work` must be stopped and started again.
+> A worker runs the code it started with. When `start` manages it, `php cua reload` replaces it after deployment. A separately started `queue:work` must be stopped and started again.
 
 Value options are checked before consuming jobs. Worker and concurrency counts from configuration, supervisor overrides and command options must be positive whole numbers within PHP's integer range. Leave environment values uncast so invalid text can be refused. A queue list must contain a nonempty name at every comma, and `--supervisor` must name a configured supervisor.
 
@@ -271,7 +271,7 @@ A queue no supervisor names is run by nobody, so list every queue you push to. T
 
 ### In production
 
-On one machine, set `SERVER_QUEUE=true` and run `php cua serve --daemon`; `php cua reload` updates HTTP and queue workers together. See [Deployment](deployment.md#a-deploy-start-to-finish).
+On one machine, set `SERVER_QUEUE=true` and run `php cua start --daemon`; `php cua reload` updates HTTP and queue workers together. See [Deployment](deployment.md#a-deploy-start-to-finish).
 
 When queue workers run separately, leave that switch off on the HTTP server and keep `queue:work` running with a process manager. For example, with systemd:
 

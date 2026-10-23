@@ -153,11 +153,11 @@ final class AppTest extends TestCase
         self::assertSame('storage/logs/server.log', $app->config->get('server.log'));
         self::assertSame(
             $app->config->get('server.address'),
-            \Crab\Commands\Serve::address($app, new \Crab\Console\Input()),
+            \Crab\Commands\Start::address($app, new \Crab\Console\Input()),
         );
         self::assertSame(
             $app->config->get('server.workers'),
-            \Crab\Commands\Serve::workers($app, new \Crab\Console\Input()),
+            \Crab\Commands\Start::workers($app, new \Crab\Console\Input()),
         );
     }
 
@@ -176,8 +176,8 @@ final class AppTest extends TestCase
         self::assertNull($config->get('server.watch'));
         self::assertFalse($config->get('server.with'));
         self::assertSame([], $app->with());
-        self::assertSame('tcp://127.0.0.1:28480', \Crab\Commands\Serve::address($app, new \Crab\Console\Input()));
-        self::assertSame(3, \Crab\Commands\Serve::workers($app, new \Crab\Console\Input()));
+        self::assertSame('tcp://127.0.0.1:28480', \Crab\Commands\Start::address($app, new \Crab\Console\Input()));
+        self::assertSame(3, \Crab\Commands\Start::workers($app, new \Crab\Console\Input()));
     }
 
     public function testApplicationHandlesRequestsAndBuildsARuntime(): void
@@ -693,9 +693,9 @@ final class AppTest extends TestCase
             fclose($inherited);
         }
 
-        // What `serve` says as it comes up: every server by its id, the ones not named shown as off.
+        // What `start` says as it comes up: every server by its id, the ones not named shown as off.
         $stream = fopen('php://memory', 'w+');
-        \Crab\Commands\Serve::announceBackground(
+        \Crab\Commands\Start::announceBackground(
             new \Crab\Console\Output($stream, $stream),
             $app,
             'tcp://127.0.0.1:8080',
@@ -739,7 +739,7 @@ final class AppTest extends TestCase
                 $app->alongside(['mailer']);
             },
             'the server cannot run itself' => static function () use ($app): void {
-                $app->servers->command('again', 'serve --daemon');
+                $app->servers->command('again', 'start --daemon');
                 $app->alongside(['again']);
             },
             '"http" is the server\'s own' => static fn() => $servers->process('http', 'true'),

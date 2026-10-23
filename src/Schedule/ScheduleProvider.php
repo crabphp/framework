@@ -56,7 +56,7 @@ final class ScheduleProvider implements Provider
             );
         });
         if ($container->has(Servers::class)) {
-            // Named in "server.with", the scheduler is run by `serve` itself, beside HTTP, in one worker of its own.
+            // Named in "server.with", the scheduler is run by `start` itself, beside HTTP, in one worker of its own.
             $container->get(Servers::class)->add(
                 'schedule',
                 static function () use ($container): array {

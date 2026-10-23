@@ -111,7 +111,7 @@ final class QueueProvider implements Provider
             );
         });
         if ($container->has(Servers::class)) {
-            // Named in "server.with", the queue's workers are run by `serve` itself, beside HTTP: every
+            // Named in "server.with", the queue's workers are run by `start` itself, beside HTTP: every
             // supervisor declared, or one made of the queue's own settings.
             $container->get(Servers::class)->add(
                 'queue',

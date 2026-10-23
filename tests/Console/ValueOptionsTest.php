@@ -273,7 +273,7 @@ final class ValueOptionsTest extends TestCase
      */
     public static function invalidServerValues(): iterable
     {
-        foreach (['serve', 'restart', 'reload'] as $command) {
+        foreach (['start', 'restart', 'reload'] as $command) {
             foreach ([
                 '',
                 'four',
@@ -324,7 +324,7 @@ final class ValueOptionsTest extends TestCase
         $app = new App(new Config(['server' => ['pid' => $pid]]));
         [$status, $output] = $this->command($app, [
             $command,
-            ...($command === 'serve' ? ['--daemon'] : []),
+            ...($command === 'start' ? ['--daemon'] : []),
             ...$arguments,
         ]);
 
@@ -337,13 +337,13 @@ final class ValueOptionsTest extends TestCase
     {
         $app = new App();
         foreach (['tcp://127.0.0.1:8080', 'tcp://localhost:8080', 'tcp://[::1]:8080', 'tcp://[::]:0'] as $address) {
-            self::assertSame($address, \Crab\Commands\Serve::address(
+            self::assertSame($address, \Crab\Commands\Start::address(
                 $app,
                 new \Crab\Console\Input(['--address=' . $address]),
             ));
         }
         foreach (['1', '4', (string) PHP_INT_MAX] as $value) {
-            self::assertSame((int) $value, \Crab\Commands\Serve::workers(
+            self::assertSame((int) $value, \Crab\Commands\Start::workers(
                 $app,
                 new \Crab\Console\Input(['--workers=' . $value]),
             ));
@@ -483,11 +483,10 @@ final class ValueOptionsTest extends TestCase
     }
 
     #[DataProvider('invalidWatchPaths')]
-    public function testWatchPathsAreCheckedEvenWhenWatchingWouldBeDisabled(string $value): void
+    public function testWatchPathsAreCheckedBeforeAnythingStarts(string $value): void
     {
         $app = new App(basePath: $this->directory);
-        // The incompatible flags also prevent startup on the old implementation.
-        [$status, $output] = $this->command($app, ['serve', '--single', '--daemon', '--no-watch', '--watch=' . $value]);
+        [$status, $output] = $this->command($app, ['dev', '--watch=' . $value]);
         self::assertSame(1, $status, $output);
         self::assertStringContainsString('--watch=app,config', $output);
     }
@@ -538,10 +537,10 @@ final class ValueOptionsTest extends TestCase
      */
     public static function missingValuesBeforeOtherErrors(): iterable
     {
-        foreach (['serve', 'restart', 'reload'] as $command) {
+        foreach (['start', 'restart', 'reload'] as $command) {
             yield $command . ' workers' => [$command, ['--address=bad', '--workers'], 'workers'];
         }
-        yield 'serve watch' => ['serve', ['--workers=bad', '--watch'], 'watch'];
+        yield 'dev watch' => ['dev', ['--workers=bad', '--watch'], 'watch'];
         yield 'restart timeout' => ['restart', ['--workers=bad', '--timeout'], 'timeout'];
         yield 'migration without name' => ['make:migration', ['--database'], 'database'];
         yield 'migration invalid name' => ['make:migration', ['???', '--database'], 'database'];

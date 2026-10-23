@@ -19,8 +19,8 @@
 ```sh
 php cua                      # lists every command
 php cua route:list           # runs one
-php cua serve --help         # describes one without running it; -h does the same
-php cua help serve           # so does this
+php cua start --help         # describes one without running it; -h does the same
+php cua help start           # so does this
 ```
 
 ## Writing a command
@@ -187,7 +187,8 @@ Print results with `line()` and problems with `error()`, so that a script can pi
 
 | Command | Does |
 | --- | --- |
-| `serve` | Serves the application; see [Deployment](deployment.md) |
+| `dev` | Serves the application while developing, restarting it when a file is saved; see [Deployment](deployment.md) |
+| `start` | Serves the application, for production; see [Deployment](deployment.md) |
 | `stop`, `reload`, `restart`, `status` | Control a server running in the background |
 | `route:list` | Lists routes, actions and route and group middleware; global middleware is not shown |
 | `make:middleware` | Writes a middleware class in `app/Http/` |
@@ -201,7 +202,7 @@ Print results with `line()` and problems with `error()`, so that a script can pi
 php cua stop --force
 ```
 
-Success means the background server, including registered programs, has ended; a keeper that does not lead its own session is ended alone, with a non-zero result saying its workers may remain and must be ended by whatever started it. Foreground `serve` writes no background PID file: stop its terminal job or process manager. See [Deployment](deployment.md#finishing-requests-on-stop) for drain limits.
+Success means the background server, including registered programs, has ended; a keeper that does not lead its own session is ended alone, with a non-zero result saying its workers may remain and must be ended by whatever started it. Foreground `start` writes no background PID file: stop its terminal job or process manager. See [Deployment](deployment.md#finishing-requests-on-stop) for drain limits.
 
 The default framework providers add their commands automatically; `TokenAuthProvider` adds its command when you register it:
 
@@ -215,7 +216,7 @@ The default framework providers add their commands automatically; `TokenAuthProv
 
 ## Describing the application
 
-`php cua describe` prints the application for a coding agent to read instead of its files: its routes with what each takes, the middleware around every request, the commands, the scheduled tasks, the event listeners, the servers `serve` can run, the databases with their migration files, and every setting.
+`php cua describe` prints the application for a coding agent to read instead of its files: its routes with what each takes, the middleware around every request, the commands, the scheduled tasks, the event listeners, the servers `start` can run, the databases with their migration files, and every setting.
 
 ```sh
 php cua describe                  # everything, as text

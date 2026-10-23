@@ -127,7 +127,7 @@ foreach ($app->config->all() as $section => $values) {
         $settings[] = "{$section}.{$key}";
     }
 }
-foreach (['App.php', 'Server.php', 'Commands/Serve.php'] as $glue) {
+foreach (['App.php', 'Server.php', 'Commands/Start.php', 'Commands/Dev.php'] as $glue) {
     preg_match_all('/config->get\(\'([a-z_]+\.[a-z_]+)\'/', (string) file_get_contents($root . '/src/' . $glue), $read);
     array_push($settings, ...$read[1]);
 }

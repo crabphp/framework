@@ -67,7 +67,7 @@ final class ServerTest extends TestCase
 
     public function testReloadClosesOldSocketsWith1001AdmitsTheNewGenerationAndStopLeavesNothing(): void
     {
-        [$status, $output] = $this->command('serve', '--daemon', '--workers=1', '--address=' . $this->address);
+        [$status, $output] = $this->command('start', '--daemon', '--workers=1', '--address=' . $this->address);
         self::assertSame(0, $status, $output);
         $failed = $this->connect('/failure');
         [$opcode, $payload] = $this->readFrame($failed);

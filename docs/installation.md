@@ -20,7 +20,7 @@ Reach for it when you are building an API and want it to start fast, answer fast
 
 - PHP 8.4 or newer.
 - The `mbstring` extension, which comes with most installations of PHP.
-- The `pcntl` and `posix` extensions to run more than one worker or a server in the background. Without them, `serve --single` runs HTTP alone; run `queue:work --single` and `schedule:work --single` separately when needed.
+- The `pcntl` and `posix` extensions to run more than one worker or a server in the background. Without them, `start --single` runs HTTP alone; run `queue:work --single` and `schedule:work --single` separately when needed.
 - `pdo_sqlite` or `pdo_mysql` for the database, `openssl` for calling `https` APIs.
 
 ## Creating an application
@@ -33,12 +33,12 @@ git clone https://github.com/crabphp/framework.git framework
 cd crab
 composer install
 cp .env.example .env
-php cua serve
+php cua dev
 ```
 
 Open `http://127.0.0.1:8080`. `cua` is the application's command line; `php cua` on its own lists every command.
 
-`serve` restarts the server whenever you save a file under `app/`, `config/` or `routes/`, or `.env`, so there is nothing to restart by hand while you work. See [Deployment](deployment.md) for running it in production.
+`dev` restarts the server whenever you save a file under `app/`, `config/` or `routes/`, or `.env`, so there is nothing to restart by hand while you work. In production the server is run with `start`; see [Deployment](deployment.md).
 
 ## Your first route
 
@@ -95,7 +95,7 @@ return $app;
 ```
 
 ```sh
-php vendor/bin/crab app.php serve --single
+php vendor/bin/crab app.php start --single
 ```
 
 `bin/crab` takes the file that returns the application, then the command. Use this for a small service or to try something out; move to the skeleton's layout when the file grows.

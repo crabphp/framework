@@ -10,7 +10,7 @@ use Crab\Contracts\Console\Input;
 use Crab\Contracts\Console\Output;
 use Crab\Server;
 
-final readonly class Serve implements Command
+final readonly class Start implements Command
 {
     public function __construct(
         private App $app,
@@ -19,26 +19,27 @@ final readonly class Serve implements Command
     public function description(): string
     {
         return <<<'TEXT'
-            Serve the application over HTTP
+            Start the application's server, for production
 
             Options:
               --address=tcp://127.0.0.1:8080   Where to listen; default from "server.address"
               --workers=1                      Worker processes; default from "server.workers"
               --single                         Serve in this process, without pcntl and posix
-              --watch=app,config               What to watch instead of "server.watch"
-              --no-watch                       Do not restart when a file changes
               --daemon, -d                     Serve in the background and return once it is up
 
-            In the foreground the server restarts when a watched file changes, unless
-            --no-watch is given or "server.watch" is false. SIGINT or SIGTERM stops it
-            gracefully. In the background nothing is watched; use the `stop`, `reload`,
-            `restart` and `status` commands.
+            For production: nothing is watched. While developing, `dev` restarts the
+            server when a file is saved. SIGINT or SIGTERM stops it gracefully; in the
+            background, use the `stop`, `reload`, `restart` and `status` commands.
             TEXT;
     }
 
     public function handle(Input $input, Output $output): int
     {
-        self::requireValues($input, ['address', 'workers', 'watch']);
+        self::requireValues($input, ['address', 'workers']);
+        if ($input->option('watch') !== null || $input->flag('no-watch')) {
+            $output->error('`start` does not watch files; `dev` restarts the server when a file is saved.');
+            return 1;
+        }
         $server = new Server($this->app);
         $address = self::address($this->app, $input);
         $single = $input->flag('single');
@@ -46,7 +47,6 @@ final readonly class Serve implements Command
         if ($single) {
             $workers = 1;
         }
-        $paths = $this->watched($input);
         $daemon = $input->flag('daemon') || $input->flag('d');
 
         if ($input->flag('generation')) {
@@ -58,12 +58,6 @@ final readonly class Serve implements Command
                 $output->error('--single serves in this process, so it cannot be combined with --daemon.');
                 return 1;
             }
-            if ($input->option('watch') !== null) {
-                $output->error(
-                    '--watch restarts the server when a file changes, which a server in the background does not do; use `reload`.',
-                );
-                return 1;
-            }
             $running = $server->running();
             if ($running !== null) {
                 $output->error(
@@ -72,21 +66,13 @@ final readonly class Serve implements Command
                 return 1;
             }
             try {
-                $server->start($address, $workers, Server::invocation('serve'));
+                $server->start($address, $workers, Server::invocation('start'));
             } catch (\RuntimeException $error) {
                 $output->error($error->getMessage());
                 return 1;
             }
             self::announceBackground($output, $this->app, $address, $workers);
             return 0;
-        }
-        if ($paths !== null) {
-            // This process only watches; a child serves, and is started again when a file changes.
-            return $server->watch(
-                [...self::withoutWatch($_SERVER['argv'] ?? []), '--no-watch'],
-                $paths,
-                $output->line(...),
-            );
         }
         if (!$input->flag('quiet')) {
             $this->announce($output, $address, $workers, $single);
@@ -188,46 +174,6 @@ final readonly class Serve implements Command
     }
 
     /**
-     * What to watch while serving in the foreground: the paths of the
-     * --watch option, else those of "server.watch", else the usual ones.
-     * Null when --no-watch is given or "server.watch" is false or empty.
-     *
-     * @return list<string>|null
-     */
-    private function watched(Input $input): ?array
-    {
-        $option = $input->option('watch');
-        if ($option === true) {
-            throw new \InvalidArgumentException('--watch needs a value; use --watch=value.');
-        }
-        if (is_string($option)) {
-            $paths = explode(',', $option);
-            foreach ($paths as $path) {
-                if (
-                    $path === ''
-                    || preg_match('/[\x00-\x1f\x7f]/', $path) === 1
-                    || str_contains($path, '://')
-                    || !is_file($this->app->path($path)) && !is_dir($this->app->path($path))
-                    || !is_readable($this->app->path($path))
-                ) {
-                    throw new \InvalidArgumentException(
-                        '--watch must name readable local files or folders, separated by commas; use --watch=app,config.',
-                    );
-                }
-            }
-            return $input->flag('no-watch') ? null : $paths;
-        }
-        if ($input->flag('no-watch')) {
-            return null;
-        }
-        $configured = $this->app->config->get('server.watch');
-        if ($configured === false || $configured === null || $configured === []) {
-            return null;
-        }
-        return $configured === true ? Server::WATCHED : array_values((array) $configured);
-    }
-
-    /**
      * Diagnose omitted values before another option or argument can obscure them.
      *
      * @param list<string> $options
@@ -291,25 +237,5 @@ final readonly class Serve implements Command
             );
         }
         return (int) $workers;
-    }
-
-    /**
-     * The command line this process was started with, less the option
-     * that made it a watcher, which is what a child must run to serve.
-     *
-     * @param list<string> $arguments
-     * @return list<string>
-     */
-    private static function withoutWatch(array $arguments): array
-    {
-        $kept = [];
-        foreach ($arguments as $argument) {
-            if (!($argument !== '--watch' && !str_starts_with($argument, '--watch='))) {
-                continue;
-            }
-
-            $kept[] = $argument;
-        }
-        return $kept;
     }
 }

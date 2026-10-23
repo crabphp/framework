@@ -17,16 +17,16 @@
 
 ## Introduction
 
-A Crab application is its own server. There is no PHP-FPM and no web server to configure in front of it for PHP's sake: `php cua serve` listens on a port and answers. What you deploy is one command to keep running, and a way to give it new code.
+A Crab application is its own server. There is no PHP-FPM and no web server to configure in front of it for PHP's sake: `php cua start` listens on a port and answers. What you deploy is one command to keep running, and a way to give it new code.
 
 This page covers the three ways to run it, how to replace code while requests are in flight, and what else must be running.
 
 ## Running the server
 
 ```sh
-php cua serve                # in the foreground, restarting when a file changes
-php cua serve --no-watch     # in the foreground, as it is
-php cua serve --daemon       # in the background, returning once it is up
+php cua dev                  # while developing: restarts when a file is saved
+php cua start                # in the foreground, as it is
+php cua start --daemon       # in the background, returning once it is up
 ```
 
 | Option | |
@@ -34,26 +34,25 @@ php cua serve --daemon       # in the background, returning once it is up
 | `--address=tcp://0.0.0.0:8080` | Where to listen; the default is `server.address` |
 | `--workers=4` | Worker processes; the default is `server.workers` |
 | `--single` | Serve in this one process, without the `pcntl` and `posix` extensions |
-| `--watch=app,config` | What to watch, in place of `server.watch` |
-| `--no-watch` | Do not restart when a file changes |
-| `--daemon`, `-d` | Serve in the background |
+| `--daemon`, `-d` | Serve in the background; `start` only |
+| `--watch=app,config` | What to watch, in place of `server.watch`; `dev` only |
 
 Value options are checked before server control: `--workers` and `SERVER_WORKERS` in the skeleton are positive whole numbers within PHP's integer range; `--address` is `tcp://host:port` (bracket IPv6 hosts); and `--watch` lists existing readable local files or folders without empty entries. Mistyped values fail before startup, reload or restart contacts the running server.
 
 ### While developing
 
-Plain `serve` is for your own machine. It starts the server again whenever a PHP file under `app`, `config` or `routes`, or `app.php` or `.env`, is added, changed or removed. When the code does not load, the error stays on the screen, and saving a fix starts the server again.
+`dev` is for your own machine. It runs `start` as a child process and starts it again whenever a PHP file under `app`, `config` or `routes`, or `app.php` or `.env`, is added, changed or removed. When the code does not load, the error stays on the screen, and saving a fix starts the server again.
 
-Set `server.watch` to other paths, or to `false` to watch nothing.
+Set `server.watch` to other paths. `start` never watches, so a deploy that writes files does not restart a production server.
 
-Foreground `serve` writes no background PID file; stop it through its terminal job or the process manager that started it.
+`dev` and foreground `start` write no background PID file; stop them through their terminal job or the process manager that started them.
 
 ### In a container
 
 Run the server in the foreground and let the platform keep it alive:
 
 ```text
-CMD ["php", "cua", "serve", "--no-watch", "--address=tcp://0.0.0.0:8080"]
+CMD ["php", "cua", "start", "--address=tcp://0.0.0.0:8080"]
 ```
 
 A container is replaced, not reloaded: a deploy starts new containers and stops the old ones, and the platform moves traffic between them. On SIGTERM the server gives its requests up to `server.drain` seconds to finish, then cuts remaining connections and stops.
@@ -65,14 +64,14 @@ Point the platform's health check at the [health path](configuration.md#a-health
 Choose the production settings and prepare the database in [A deploy, start to finish](#a-deploy-start-to-finish), then run it in the background:
 
 ```sh
-php cua serve --daemon       # start
+php cua start --daemon       # start
 php cua status               # is it running? exit status 0 when it is
 php cua reload               # new code, without refusing a connection
 php cua restart              # stop, then start: a short gap
 php cua stop                 # allow server.drain seconds for requests, then stop
 ```
 
-`serve --daemon` returns when the server accepts connections, and fails with the reason when it cannot start, so a deploy script can trust its exit status.
+`start --daemon` returns when the server accepts connections, and fails with the reason when it cannot start, so a deploy script can trust its exit status.
 
 `stop` uses the running server's longest remaining stop allowance, with time to deliver the signal and collect its processes. Changing `server.drain` on disk, even to an invalid value, does not shorten that wait. `restart` drains the old server the same way, then uses the new configuration to start its replacement. An older server without a recorded allowance uses the configuration fallback, at least 15 seconds by default.
 
@@ -92,7 +91,7 @@ With systemd:
 Type=forking
 PIDFile=/srv/app/storage/crab.pid
 WorkingDirectory=/srv/app
-ExecStart=/usr/bin/php cua serve --daemon
+ExecStart=/usr/bin/php cua start --daemon
 ExecReload=/usr/bin/php cua reload
 ExecStop=/usr/bin/php cua stop
 Restart=on-failure
@@ -125,7 +124,7 @@ Set `server.drain` when a report request needs more than the default five second
 'drain' => 30.0,
 ```
 
-After an HTTP worker stops accepting connections, it has this many seconds to finish its in-flight requests. Stop, reload, restart and a watched restart use the same limit. The setting accepts a finite number of seconds greater than zero; an invalid value stops `serve` at startup.
+After an HTTP worker stops accepting connections, it has this many seconds to finish its in-flight requests. Stop, reload, restart and a watched restart use the same limit. The setting accepts a finite number of seconds greater than zero; an invalid value stops `start` at startup.
 
 At the limit, the worker cuts its remaining connections and logs one warning with its process id and the number of connections still reading, handling or answering a request. Idle keep-alive connections do not add to that count. If the logger throws, the same warning goes to standard error and the logger's failure is reported separately; worker providers still stop.
 
@@ -204,7 +203,7 @@ Name only the addresses of proxies you control; use your proxy's address if it i
 
 ## The other processes
 
-On one machine, run HTTP, queue and scheduler together with `serve`. No cron or separate queue/schedule process manager is needed.
+On one machine, run HTTP, queue and scheduler together with `start`. No cron or separate queue/schedule process manager is needed.
 
 The skeleton switches each on through `server.with`, reading its value from `.env`:
 
@@ -226,7 +225,7 @@ SERVER_SCHEDULE=true
 ```
 
 ```text
-$ php cua serve
+$ php cua start
 Starting Shop server on http://127.0.0.1:8080
 
   Server    Workers  Runs
@@ -238,7 +237,7 @@ Starting Shop server on http://127.0.0.1:8080
 Press Ctrl+C to stop
 ```
 
-Each server running under `serve` has an id: `http`, `queue`, `schedule`. They are started, stopped and reloaded together: `reload` after a deploy gives every one of them the new code, each given its shutdown period to finish the work in hand before remaining workers are ended. Each has processes of its own, so a slow job never holds up a request. When something runs beside HTTP, registered servers that are switched off are listed as `off`. With HTTP alone, `serve` prints no server table.
+Each server running under `start` has an id: `http`, `queue`, `schedule`. They are started, stopped and reloaded together: `reload` after a deploy gives every one of them the new code, each given its shutdown period to finish the work in hand before remaining workers are ended. Each has processes of its own, so a slow job never holds up a request. When something runs beside HTTP, registered servers that are switched off are listed as `off`. With HTTP alone, `start` prints no server table.
 
 | On | Switch on | Why |
 | --- | --- | --- |
@@ -251,11 +250,11 @@ Each server running under `serve` has an id: `http`, `queue`, `schedule`. They a
 
 | Process | Command | How many |
 | --- | --- | --- |
-| The HTTP server | `php cua serve --daemon` | One per machine |
+| The HTTP server | `php cua start --daemon` | One per machine |
 | Queue workers | `php cua queue:work` | One command per machine, or one per supervisor |
 | The scheduler | `php cua schedule:work` | Exactly one, or mark tasks `onOneServer()` |
 
-In this arrangement, leave those `server.with` switches off on the HTTP server. Keep the separate workers alive with systemd, Supervisor or containers and restart them after deployment; `reload` only covers workers managed by `serve`. Do not start a second scheduler alongside the integrated one.
+In this arrangement, leave those `server.with` switches off on the HTTP server. Keep the separate workers alive with systemd, Supervisor or containers and restart them after deployment; `reload` only covers workers managed by `start`. Do not start a second scheduler alongside the integrated one.
 
 `--single` serves HTTP alone whatever is switched on, as one process has room for nothing else. To add a server of your own to the list, a WebSocket server, a command of yours, or a program such as `npm run dev`, see [Service providers](providers.md#a-server-of-your-own-beside-http).
 
@@ -288,7 +287,7 @@ php cua migrate
 php cua reload
 ```
 
-Installation and migration must succeed before reload; `set -e` stops the script at a failed step. For the first deployment, use `php cua serve --daemon` in place of `php cua reload`. The one command manages HTTP, queue and scheduler, so there are no separate services to restart. If you deliberately run workers separately, restart those services only after the preceding steps succeed.
+Installation and migration must succeed before reload; `set -e` stops the script at a failed step. For the first deployment, use `php cua start --daemon` in place of `php cua reload`. The one command manages HTTP, queue and scheduler, so there are no separate services to restart. If you deliberately run workers separately, restart those services only after the preceding steps succeed.
 
 Run the migrations before the reload, and write them so that the old code still works on the new tables for the moment between the two: add a column in one deploy, start using it in the next.
 
@@ -302,7 +301,7 @@ Run the migrations before the reload, and write them so that the old code still 
 - The `pcntl` and `posix` extensions, for workers and the background server.
 - Connections per worker within the loop's reach: at most 900 on `select`; beyond that a native `server.loop` and a raised descriptor limit, as in [How many connections](#how-many-connections).
 - OPcache on, with `opcache.enable_cli=1`: the server runs under PHP's command line.
-- The JIT on, with `opcache.jit=tracing` and a `opcache.jit_buffer_size` such as `64M`: about 12% more requests on a small JSON response. PHP 8.4 ships with `opcache.jit=disable`, which cannot be changed once PHP has started, so set it in `php.ini` or with `php -d opcache.jit=tracing cua serve`.
+- The JIT on, with `opcache.jit=tracing` and a `opcache.jit_buffer_size` such as `64M`: about 12% more requests on a small JSON response. PHP 8.4 ships with `opcache.jit=disable`, which cannot be changed once PHP has started, so set it in `php.ini` or with `php -d opcache.jit=tracing cua start`.
 - A proxy with TLS in front, and the server on `127.0.0.1`.
 - `TrustedProxies` in `app.php`, naming only the proxy addresses you control, so clients have their own address-based limits.
 - `storage/` writable by the user the server runs as.

@@ -230,7 +230,7 @@ Each worker is started and stopped as an HTTP worker is, with every `WorkerProvi
 
 ### A server of your own beside HTTP
 
-`serve` runs HTTP, and beside it the servers that are registered and switched on. The queue registers `queue` and the scheduler `schedule`. Register your own through `Crab\Contracts\Servers`, each under an id:
+`start` runs HTTP, and beside it the servers that are registered and switched on. The queue registers `queue` and the scheduler `schedule`. Register your own through `Crab\Contracts\Servers`, each under an id:
 
 ```php
 use Crab\Contracts\Servers;
@@ -281,7 +281,7 @@ Then switch each on where it should run:
 What a command or a program prints appears in the server's output with its id in front, `[vite] ready in 300 ms`. One that ends is started again. Registering an id a second time takes the place of the first, so your provider, which comes after the framework's, can say what `queue` runs.
 
 > [!WARNING]
-> A server that listens on an address of its own cannot yet be run under `serve --daemon`: on `reload` only the HTTP socket is handed from the old server to the new. `serve` refuses to start it there and says so. Run `serve` in the foreground, kept alive by systemd or a container, where a restart replaces the whole process.
+> A server that listens on an address of its own cannot yet be run under `start --daemon`: on `reload` only the HTTP socket is handed from the old server to the new. `start` refuses to start it there and says so. Run `start` in the foreground, kept alive by systemd or a container, where a restart replaces the whole process.
 
 A group given to `add()` has a `setup`, which has it listen on an address of its own, or `work`, a loop that runs until it is told to stop, or both. The closure that returns the groups runs when the server starts, so it may read the configuration and what later providers bound.
 

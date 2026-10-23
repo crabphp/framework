@@ -189,8 +189,8 @@ It says that this worker answers, and asks nothing of the database. That is deli
 | `log.level` | `debug` | The least severe level written |
 | `server.address` | `tcp://127.0.0.1:8080` | Where the server listens |
 | `server.workers` | `1` | Worker processes |
-| `server.with` | `[]` | The servers `serve` runs beside HTTP, each id with whether it is on: `['queue' => env('SERVER_QUEUE', false)]`. A plain list of ids, or ids with commas between, also works |
-| `server.watch` | `app`, `app.php`, `config`, `routes`, `.env` | What `serve` watches; `false` to watch nothing |
+| `server.with` | `[]` | The servers `start` runs beside HTTP, each id with whether it is on: `['queue' => env('SERVER_QUEUE', false)]`. A plain list of ids, or ids with commas between, also works |
+| `server.watch` | `app`, `app.php`, `config`, `routes`, `.env` | What `dev` watches |
 | `server.max_connections` | `512` | Total HTTP and upgraded connections per worker; at most `900` on the select backend |
 | `server.loop` | `select` | `select`, `ev`, `uv` or `event`; a native backend needs its PHP extension |
 | `server.max_body` | `1048576` | The largest request body taken, in bytes |

@@ -58,7 +58,7 @@ final class FileCache implements Cache
 
 | Scope | Lives | Created | Example |
 | --- | --- | --- | --- |
-| Process | Whole run, copied to every worker | In the parent, before `serve` | Config values, the list of cache stores |
+| Process | Whole run, copied to every worker | In the parent, before `start` | Config values, the list of cache stores |
 | Worker | One worker's life | In the worker, on first use or in `start()` | The Redis connection, the cache object |
 | Request | One request | During the request | The cache key built from a route parameter |
 

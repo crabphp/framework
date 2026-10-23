@@ -161,9 +161,9 @@ Where clocks change in spring and autumn, a task set for an hour that is skipped
 php cua schedule:work
 ```
 
-To have `php cua serve` run the scheduler itself, in a worker of its own beside the HTTP workers, switch it on in `server.with`, with `SERVER_SCHEDULE=true` in `.env`; see [Deployment](deployment.md#the-other-processes).
+To have `php cua start` run the scheduler itself, in a worker of its own beside the HTTP workers, switch it on in `server.with`, with `SERVER_SCHEDULE=true` in `.env`; see [Deployment](deployment.md#the-other-processes).
 
-On one machine, set `SERVER_SCHEDULE=true` and run `php cua serve --daemon`; `php cua reload` updates the scheduler with the HTTP and queue workers. Keep one scheduler wherever the application is deployed, unless its tasks use `onOneServer()`.
+On one machine, set `SERVER_SCHEDULE=true` and run `php cua start --daemon`; `php cua reload` updates the scheduler with the HTTP and queue workers. Keep one scheduler wherever the application is deployed, unless its tasks use `onOneServer()`.
 
 If you run the scheduler separately, leave that switch off on the HTTP server. For example, with systemd:
 
@@ -176,7 +176,7 @@ Restart=always
 `--single` runs it in one process, without the `pcntl` and `posix` extensions.
 
 > [!WARNING]
-> The scheduler runs the code it started with. Use `php cua reload` when `serve` manages it; otherwise stop and restart the separate `schedule:work` process after a deploy.
+> The scheduler runs the code it started with. Use `php cua reload` when `start` manages it; otherwise stop and restart the separate `schedule:work` process after a deploy.
 
 A minute during which the scheduler was not running is not made up for. A task due at 03:00 does not run when the scheduler starts at 03:01. For work that must not be missed, have the task check what is outstanding instead of assuming it ran yesterday.
 

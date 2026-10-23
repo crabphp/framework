@@ -86,7 +86,7 @@ A contract exists for everything a package touches, including where no PSR exist
 | `Schedule\Schedule`, `Schedule\Task` | none | today |
 | `Queue\JobRan`, `Schedule\TaskRan` | none; events dispatched through PSR-14 after each try of a job and each run of a task | today |
 | `Runner`, `Workers` | none; runs worker processes that serve no requests, as one group or several | today |
-| `Servers` | none; what `serve` can run beside HTTP, registered by providers under an id | today |
+| `Servers` | none; what `start` can run beside HTTP, registered by providers under an id | today |
 
 Contracts are the stable surface. Once there is a release, a contract changes only in a major version; component classes may change freely behind it.
 
@@ -182,8 +182,8 @@ Components take every async tool from the engine's own types (`EventLoop`, `Susp
 ## Scaling out
 
 - **Stateless workers.** A worker holds nothing another worker needs. Sessions, cache, queues and locks live in external stores behind contracts, so any worker on any machine can serve any request.
-- **Process scaling.** `serve --workers=N` on one machine; identical instances behind a load balancer across machines. TLS terminates at the proxy (the engine has no TLS).
-- **Isolation by worker group.** HTTP, queue consumers and the scheduler run as separate engine worker groups, so a slow job cannot starve request handling. Today each is a command of its own, `serve`, `queue:work` and `schedule:work`, and so a process tree of its own; the queue's and the scheduler's are started through the `Runner` contract, which `App` implements.
+- **Process scaling.** `start --workers=N` on one machine; identical instances behind a load balancer across machines. TLS terminates at the proxy (the engine has no TLS).
+- **Isolation by worker group.** HTTP, queue consumers and the scheduler run as separate engine worker groups, so a slow job cannot starve request handling. Today each is a command of its own, `start`, `queue:work` and `schedule:work`, and so a process tree of its own; the queue's and the scheduler's are started through the `Runner` contract, which `App` implements.
 - **Bounded everything.** The engine already bounds connections, tasks, buffers and body size per worker; framework components that queue or buffer take an explicit limit too.
 - **Graceful change.** SIGTERM drains, and a connection that looks idle is read a moment longer, since a request may already be on its way to it. A worker has `server.drain` seconds for the requests in hand and then cuts what is left, logging how many. New code needs a new process, because everything defined in phase 1 lives in the server's parent: `reload` has the server's keeper start a new server process on the socket it holds, and retire the old one only once the new one accepts connections. If the new one cannot start, the old one is left serving. SIGUSR1 still replaces the workers of one server process one at a time, with the code it already has.
 
@@ -217,9 +217,11 @@ One class, the glue's `Server`, runs the application's HTTP server and controls 
 
 | Way | Command | For |
 | --- | --- | --- |
-| Watched | `serve` | Development, and so the default: a launcher runs the server as a child and starts it again when a source file changes |
-| Foreground | `serve --no-watch` | Containers and process managers that keep a process in the foreground |
-| Background | `serve --daemon`, then `status`, `reload`, `restart`, `stop` | A machine you deploy to |
+| Watched | `dev` | Development: a launcher runs `start` as a child and starts it again when a source file changes |
+| Foreground | `start` | Containers and process managers that keep a process in the foreground |
+| Background | `start --daemon`, then `status`, `reload`, `restart`, `stop` | A machine you deploy to |
+
+Watching is a command of its own, not a flag or a default of `start`, so that a production server never restarts because a deploy wrote files, and the command typed all day while developing takes no options. `start` pairs with `stop`, `restart`, `reload` and `status`.
 
 A server in the background is three levels of process:
 
@@ -239,7 +241,7 @@ flowchart TD
 - **New code is a new process.** PHP cannot redefine a class, and the application is defined in the server process before it forks, so neither a watcher nor a reload tries to change a running process. The watcher stops the old one first, since a moment's gap does not matter in development. A reload overlaps the two.
 - **The keeper is what makes the overlap exact.** It binds the address once and passes the socket to each generation it starts, so the old and the new accept from one queue and no connection is left without a taker. It serves nothing and loads nothing new, so it never needs replacing itself, and what a generation opens is never inherited by the next.
 - **A reload is all or nothing.** The keeper retires the old generation only when the new one reports that every worker accepts connections; otherwise it ends the new one and says why. A generation that dies by itself is started again.
-- **Starting is not done until it works.** `serve --daemon` and `reload` return when connections are accepted, or fail with the reason, so a deploy script can trust the exit status.
+- **Starting is not done until it works.** `start --daemon` and `reload` return when connections are accepted, or fail with the reason, so a deploy script can trust the exit status.
 - A background server writes its process id to `server.pid` and what it prints to `server.log`. A foreground server writes neither and is controlled by whatever started it.
 
 ## Extension points
@@ -254,7 +256,7 @@ Small and explicit; there are six, and no others are planned.
 | Commands | `Console` contract, `add()` | today |
 | Reacting to events | The `Events\Dispatcher` contract, PSR-14: `listen()` in a provider's `register()` | today, registered by default by `App::configure()` |
 | Worker processes | The `Runner` contract: `run($group, $work, $workers)` from a command, or `runAll()` for several groups under one parent | today |
-| Servers beside HTTP | The `Servers` contract: `add('chat', fn () => [new Workers(...)])` joins `serve` as its own workers, `command()` and `process()` run in a process of their own; `server.with` switches each on | today |
+| Servers beside HTTP | The `Servers` contract: `add('chat', fn () => [new Workers(...)])` joins `start` as its own workers, `command()` and `process()` run in a process of their own; `server.with` switches each on | today |
 
 No auto-discovery, no `boot()` phase, no global container accessor. `Route::get()` and `Command::add()` are static names for `$app->router` and `$app->console`, for declaring routes and commands before workers start; they are the only ones, and there is none for anything a request or a worker owns.
 
@@ -262,12 +264,12 @@ No auto-discovery, no `boot()` phase, no global container accessor. `Route::get(
 
 - **One error path per entry point.** HTTP requests go through `ErrorHandler` *(today)*. Console commands report through `Console::run()` *(today)*. A task spawned on a worker that fails, a failure that escapes a timer, and a provider that fails to stop are written to the application's logger, and the worker keeps running *(today)*. A queue job that throws is logged, tried again and in the end kept as failed; a scheduled task that throws is logged and runs again when next due; neither stops its worker *(today)*.
 - **The engine drops nothing.** Whatever it catches goes to the group's failure callbacks, and so to the application's logger, or to standard error when there are none *(today)*.
-- **Fail at startup, not at first use.** Misconfiguration stops `serve` with its cause *(today for middleware and logger)*.
+- **Fail at startup, not at first use.** Misconfiguration stops `start` with its cause *(today for middleware and logger)*.
 - **Request ids** *(today, opt-in)*. `Http\RequestId` is middleware an application adds with `withMiddleware(prepend: [RequestId::class])`; it assigns an id, stores it as the `request_id` attribute, returns it in `X-Request-Id` and the error handler adds it to the failure's log record. It is opt-in because it costs about 2 µs per request. The logger is shared by overlapping requests, so it cannot add the id by itself; code that logs passes it in the context.
 - **Health** *(today, opt-in)*. `withRouting(health: '/up')` adds a route answered by `Http\Health`, which says that the worker takes requests and asks nothing of any store.
 - **Metrics** *(proposed)*. `Worker::stats()` exposed through a command or route.
 - **CORS** *(today, opt-in)*. `Http\Cors` is middleware an application prepends, with its origins as an argument.
-- **Warnings are errors** *(today, in workers)*. Inside a worker, PHP warnings and notices are thrown as `ErrorException` so they reach the same error path; deprecations are logged once per place. Console commands other than `serve` run without this.
+- **Warnings are errors** *(today, in workers)*. Inside a worker, PHP warnings and notices are thrown as `ErrorException` so they reach the same error path; deprecations are logged once per place. Console commands other than `start` run without this.
 - **One error renderer** *(today)*. `Http\ErrorResponse` builds every error response, for the error handler and for the router's 404 and 405, so they look the same and unmatched routes still pass back through middleware as ordinary responses.
 
 ## Testing
@@ -289,7 +291,7 @@ A PSR implementation should also pass that PSR's public conformance suite where 
 3. **Finish Http:** response cookies, multipart uploads, JSON bodies, bodies for router 404 and 405, request id middleware, warnings to exceptions. *Done.* A multipart body is read where the engine stored it, and an uploaded file is never held in memory. Still open: `getBody()` copies a body from the engine's storage when it is asked for.
 4. **Small PSR components:** clock (PSR-20), events (PSR-14), cache (PSR-16), HTTP client (PSR-18). *Done.* The client speaks HTTP/2 and HTTP/1.1 on the event loop, with TLS through PHP's streams, an HTTP proxy, a cookie jar, retries and a fake for tests, and finds addresses with the engine's `DnsResolver`. The cache keeps its entries in files, in a database table or in memory, behind a `Store` contract that a Redis store can later implement.
 5. **Database.** *Connection pool, the thin query layer, the query builder, the schema builder and migrations are done, tested on SQLite and MySQL.* Models with relationships are not planned; see the decisions. Crab's own MySQL driver waits on the event loop behind the `Connection` contract, so a worker serves other requests while a query runs; it is a connection's `async`.
-6. **Queue**, then **Scheduling**, each as its own worker group. *Done.* Jobs are kept in a database table and run by `queue:work`; scheduled tasks are run by `schedule:work`, with no cron entry. `serve` starts both beside the HTTP workers when `server.with` switches them on, under the keeper, through the `Servers` contract, so that one command and one reload cover all three; a provider offers a server of its own the same way.
+6. **Queue**, then **Scheduling**, each as its own worker group. *Done.* Jobs are kept in a database table and run by `queue:work`; scheduled tasks are run by `schedule:work`, with no cron entry. `start` starts both beside the HTTP workers when `server.with` switches them on, under the keeper, through the `Servers` contract, so that one command and one reload cover all three; a provider offers a server of its own the same way.
 7. **Validation, Auth.** *Validation is done, together with typed actions. Authentication is done: a way of authenticating is middleware that puts the user on the request, an action takes the user as a parameter, and tokens in the database are one such way, opt-in, with a migration the application owns.* Roles and permissions, and sessions, are not planned; see the decisions.
 8. **Application skeleton** (`crabphp/crab`) and the `make:*` commands. *The skeleton exists, kept minimal; it grows a folder when a component arrives. The `make:*` commands are `make:migration`, `make:middleware` and `make:command`; `config:publish` writes a section's complete configuration file, and `migrate:fresh` starts a development database over.*
 9. **Per-component packages**, CI and the first tagged release. Nothing above needs to be finished first: what exists is a usable API framework, and use will say what is missing.
@@ -301,7 +303,7 @@ Crab is the framework that people and AI agents can both read, change and verify
 What stays fixed: the layers and their boundary tests, the scope of decision 6, PSR-7 and the other standards, explicit wiring with no discovery, a skeleton whose folders are by kind and whose every file means something, and `php cua describe` as the application's own description of itself.
 
 1. **The first release.** Step 9 of the build order: per-component packages, CI and a tagged version, after which the skeleton requires a version instead of `../framework`. Ahead of it, and done: the skeleton's `AGENTS.md`, which states its conventions and says to run `php cua describe` first, and `describe` showing scheduled tasks and event listeners.
-2. **Fail early, measure.** Every setting is checked when the application starts, and a wrong one stops `serve` with its key and what it takes, as middleware and the logger already are (see [Errors and observability](#errors-and-observability)). `Worker::stats()` is exposed through a command.
+2. **Fail early, measure.** Every setting is checked when the application starts, and a wrong one stops `start` with its key and what it takes, as middleware and the logger already are (see [Errors and observability](#errors-and-observability)). `Worker::stats()` is exposed through a command.
 3. **The schema as data.** An application describes the tables it wants and Crab writes the migration that gets there, as a diff to review. Correct diffs on MySQL and SQLite are hard; this is a project of its own, begun deliberately.
 
 Not planned: a generated OpenAPI document (see [Actions](#actions-today)); folders by feature, or a `Feature` that groups a route, a command and a migration (decision 9); actions that declare their effects, which is research.

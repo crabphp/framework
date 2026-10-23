@@ -8,7 +8,7 @@ use Crab\Contracts\Servers as ServersContract;
 use Crab\Contracts\Workers;
 
 /**
- * The servers providers have registered for `serve` to run beside HTTP.
+ * The servers providers have registered for `start` to run beside HTTP.
  */
 final class Servers implements ServersContract
 {
@@ -71,7 +71,7 @@ final class Servers implements ServersContract
     }
 
     /**
-     * How the list `serve` prints names what a server runs.
+     * How the list `start` prints names what a server runs.
      */
     public function label(string $id): string
     {

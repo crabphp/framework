@@ -97,7 +97,7 @@ final class ServerTest extends TestCase
         self::assertSame([0, "No server is running in the background.\n"], $this->cua('stop'));
         self::assertStringContainsString('No server is running in the background to reload', $this->cua('reload')[1]);
 
-        [$status, $output] = $this->cua('serve', '--daemon', "--address={$this->address}", '--workers=2');
+        [$status, $output] = $this->cua('start', '--daemon', "--address={$this->address}", '--workers=2');
         self::assertSame(0, $status, $output);
         $pid = $this->pid();
         self::assertSame("Crab server running on {$this->url}\n", $output);
@@ -119,12 +119,12 @@ final class ServerTest extends TestCase
             (string) file_get_contents($this->directory . '/storage/logs/server.log'),
         );
 
-        [$status, $output] = $this->cua('serve', '-d', "--address={$this->address}");
+        [$status, $output] = $this->cua('start', '-d', "--address={$this->address}");
         self::assertSame([
             1,
             "A server is already running in the background, pid {$pid}. Use `reload` to give it new code, or `stop` to end it.\n",
         ], [$status, $output]);
-        [$status, $output] = $this->cua('serve', "--address={$this->address}", '--single', '--no-watch');
+        [$status, $output] = $this->cua('start', "--address={$this->address}", '--single');
         self::assertSame(1, $status, 'A second server in the foreground cannot take the address by accident.');
         self::assertStringContainsString('Address already in use', $output);
         self::assertStringNotContainsString('server running', $output);
@@ -151,19 +151,18 @@ final class ServerTest extends TestCase
         self::assertTrue(posix_kill(getmypid(), 0));
         self::assertSame(
             0,
-            $this->cua('serve', '--daemon', "--address={$this->address}")[0],
+            $this->cua('start', '--daemon', "--address={$this->address}")[0],
             'Nor does it stand in the way of starting.',
         );
         self::assertNotSame(getmypid(), $this->pid());
         self::assertSame(0, $this->cua('stop')[0]);
 
-        self::assertSame(1, $this->cua('serve', '--daemon', '--single')[0]);
-        [$status, $output] = $this->cua('serve', '--help');
+        self::assertSame(1, $this->cua('start', '--daemon', '--single')[0]);
+        [$status, $output] = $this->cua('start', '--help');
         self::assertSame(0, $status, 'Asking a command for help describes it and does not run it.');
-        self::assertStringStartsWith("Serve the application over HTTP\n\nOptions:\n", $output);
-        self::assertSame($output, $this->cua('serve', '-h', "--address={$this->address}")[1]);
+        self::assertStringStartsWith("Start the application's server, for production\n\nOptions:\n", $output);
+        self::assertSame($output, $this->cua('start', '-h', "--address={$this->address}")[1]);
         self::assertNull($this->get());
-        self::assertSame(1, $this->cua('serve', '--daemon', '--watch')[0]);
     }
 
     public function testTheDefaultDrainKeepsTheWorkersFiveSecondsAndTheServersFifteenSeconds(): void
@@ -224,7 +223,7 @@ final class ServerTest extends TestCase
 
     public function testAWatchedChildLeavesALogSharedByStdoutAndStderrWhereItWas(): void
     {
-        // `serve > dev.log 2>&1`: stdout and stderr share one file, and so one position in it.
+        // `start > dev.log 2>&1`: stdout and stderr share one file, and so one position in it.
         $script = $this->directory . '/spawn.php';
         $autoload = dirname(__DIR__) . '/vendor/autoload.php';
         file_put_contents($this->directory . '/child.php', "<?php\necho \"child\\n\";\n");
@@ -262,8 +261,7 @@ final class ServerTest extends TestCase
             $this->drainSetting($drain);
             [$process, $report] = $spawn->invoke(null, [
                 $this->directory . '/cua',
-                'serve',
-                '--no-watch',
+                'start',
                 '--single',
                 '--quiet',
                 "--address={$this->address}",
@@ -286,12 +284,12 @@ final class ServerTest extends TestCase
         }
     }
 
-    public function testServeRefusesInvalidDrainSettingsBeforeStarting(): void
+    public function testStartRefusesInvalidDrainSettingsBeforeStarting(): void
     {
         foreach ([0, 'abc', -1, null, false, INF, NAN] as $drain) {
             $this->drainSetting($drain);
-            foreach ([['--no-watch', '--single'], ['--daemon'], []] as $options) {
-                [$status, $output] = $this->cua('serve', "--address={$this->address}", ...$options);
+            foreach ([['--single'], ['--daemon'], []] as $options) {
+                [$status, $output] = $this->cua('start', "--address={$this->address}", ...$options);
                 self::assertSame(1, $status, $output);
                 self::assertStringContainsString('server.drain', $output);
                 self::assertFileDoesNotExist($this->directory . '/storage/crab.pid');
@@ -303,7 +301,7 @@ final class ServerTest extends TestCase
     {
         $this->drainSetting(2.0);
         $this->slowVersion('one', 0.5);
-        [$status, $output] = $this->cua('serve', '--daemon', "--address={$this->address}");
+        [$status, $output] = $this->cua('start', '--daemon', "--address={$this->address}");
         self::assertSame(0, $status, $output);
         $request = $this->slowRequest();
         try {
@@ -333,7 +331,7 @@ final class ServerTest extends TestCase
             return $app;
             PHP);
         $this->slowVersion('one', 2.0);
-        [$status, $output] = $this->cua('serve', '--daemon', "--address={$this->address}");
+        [$status, $output] = $this->cua('start', '--daemon', "--address={$this->address}");
         self::assertSame(0, $status, $output);
         $request = $this->slowRequest();
         try {
@@ -356,7 +354,7 @@ final class ServerTest extends TestCase
     {
         $this->drainSetting(2.0);
         $this->slowVersion('one', 0.5);
-        [$status, $output] = $this->cua('serve', '--daemon', "--address={$this->address}");
+        [$status, $output] = $this->cua('start', '--daemon', "--address={$this->address}");
         self::assertSame(0, $status, $output);
         $request = $this->slowRequest();
         try {
@@ -378,7 +376,7 @@ final class ServerTest extends TestCase
     {
         $this->drainSetting(0.3);
         $this->slowVersion('one', 2.0);
-        [$status, $output] = $this->cua('serve', '--daemon', "--address={$this->address}");
+        [$status, $output] = $this->cua('start', '--daemon', "--address={$this->address}");
         self::assertSame(0, $status, $output);
         $first = $this->slowRequest();
         $second = $this->slowRequest();
@@ -401,7 +399,7 @@ final class ServerTest extends TestCase
     {
         $this->drainSetting(8.0);
         $this->slowVersion('one', 6.0);
-        [$status, $output] = $this->cua('serve', '--daemon', "--address={$this->address}");
+        [$status, $output] = $this->cua('start', '--daemon', "--address={$this->address}");
         self::assertSame(0, $status, $output);
         $request = $this->slowRequest();
         try {
@@ -421,7 +419,7 @@ final class ServerTest extends TestCase
     {
         $this->drainSetting(7.0);
         $this->slowVersion('one', 20.0);
-        [$status, $output] = $this->cua('serve', '--daemon', "--address={$this->address}");
+        [$status, $output] = $this->cua('start', '--daemon', "--address={$this->address}");
         self::assertSame(0, $status, $output);
         $request = $this->slowRequest();
         try {
@@ -443,7 +441,7 @@ final class ServerTest extends TestCase
     {
         $this->drainSetting(0.04);
         $this->slowVersion('one', 2.0);
-        self::assertSame(0, $this->cua('serve', '--daemon', "--address={$this->address}")[0]);
+        self::assertSame(0, $this->cua('start', '--daemon', "--address={$this->address}")[0]);
         $idle = stream_socket_client($this->address, $code, $message, 1);
         self::assertIsResource($idle);
         stream_set_timeout($idle, 5);
@@ -494,7 +492,7 @@ final class ServerTest extends TestCase
                 return 'too late';
             });
             PHP);
-        self::assertSame(0, $this->cua('serve', '--daemon', "--address={$this->address}")[0]);
+        self::assertSame(0, $this->cua('start', '--daemon', "--address={$this->address}")[0]);
         $request = $this->slowRequest();
         try {
             $worker = trim((string) file_get_contents($this->directory . '/in-flight'));
@@ -519,7 +517,7 @@ final class ServerTest extends TestCase
     public function testAnExplicitFifteenSecondStopDoesNotDeriveItsWaitFromConfiguration(): void
     {
         $this->drainSetting(30.0);
-        self::assertSame(0, $this->cua('serve', '--daemon', "--address={$this->address}")[0]);
+        self::assertSame(0, $this->cua('start', '--daemon', "--address={$this->address}")[0]);
         $pid = $this->pid();
         $this->drainSetting('abc');
         // An old pid file has no keeper record and uses the legacy fallback.
@@ -535,7 +533,7 @@ final class ServerTest extends TestCase
     public function testAnExplicitFifteenSecondRestartStopsBeforeValidatingTheNewGeneration(): void
     {
         $this->drainSetting(30.0);
-        self::assertSame(0, $this->cua('serve', '--daemon', "--address={$this->address}")[0]);
+        self::assertSame(0, $this->cua('start', '--daemon', "--address={$this->address}")[0]);
         $pid = $this->pid();
         $this->drainSetting('abc');
         [$status, $output] = $this->cua('restart', '--timeout=15', "--address={$this->address}");
@@ -554,7 +552,7 @@ final class ServerTest extends TestCase
     public function testTheDaemonLeadsItsGroupAndLeavesNoDrainRecordsAfterNormalStop(): void
     {
         $this->observeProcesses();
-        self::assertSame(0, $this->cua('serve', '--daemon', "--address={$this->address}", '--workers=2')[0]);
+        self::assertSame(0, $this->cua('start', '--daemon', "--address={$this->address}", '--workers=2')[0]);
         $pid = $this->pid();
         self::assertSame($pid, posix_getpgid($pid));
         self::assertSame($pid, posix_getsid($pid));
@@ -594,7 +592,7 @@ final class ServerTest extends TestCase
         try {
             foreach (['storage', 'unrelated'] as $name) {
                 $process = proc_open(
-                    [PHP_BINARY, $fixture, 'unresponsive', $autoload, $this->directory . '/' . $name, 'serve'],
+                    [PHP_BINARY, $fixture, 'unresponsive', $autoload, $this->directory . '/' . $name, 'start'],
                     [1 => ['pipe', 'w'], 2 => ['pipe', 'w']],
                     $pipes,
                 );
@@ -661,7 +659,7 @@ final class ServerTest extends TestCase
             'keep-pipeline',
             $this->directory . '/storage',
             $this->address,
-            'serve',
+            'start',
         );
         $owned = [];
         try {
@@ -672,7 +670,7 @@ final class ServerTest extends TestCase
             [$sibling, $siblingPipes, $siblingPid] = $this->launchDrainFixture(
                 'unresponsive',
                 $this->directory . '/unrelated',
-                'serve',
+                'start',
                 (string) $pid,
             );
             self::assertSame($pid, posix_getpgid($siblingPid));
@@ -696,11 +694,11 @@ final class ServerTest extends TestCase
     {
         mkdir($this->directory . '/config');
         file_put_contents($this->directory . '/config/server.php', "<?php return ['pid' => 'storage/service.pid'];");
-        [$old, $oldPipes, $oldPid] = $this->launchDrainFixture('unresponsive', $this->directory . '/old', 'serve');
+        [$old, $oldPipes, $oldPid] = $this->launchDrainFixture('unresponsive', $this->directory . '/old', 'start');
         $oldIdentity = \Crab\Engine\Process\PidFile::identity($oldPid);
         // ps lstart has one-second resolution; make these real births distinct.
         usleep(1_100_000);
-        [$other, $otherPipes, $pid] = $this->launchDrainFixture('unresponsive', $this->directory . '/storage', 'serve');
+        [$other, $otherPipes, $pid] = $this->launchDrainFixture('unresponsive', $this->directory . '/storage', 'start');
         self::assertNotNull($oldIdentity);
         self::assertNotSame($oldIdentity, \Crab\Engine\Process\PidFile::identity($pid));
         $pidFile = new \Crab\Engine\Process\PidFile($this->directory . '/storage/service.pid');
@@ -763,7 +761,7 @@ final class ServerTest extends TestCase
         [$keeper, $pipes, $pid] = $this->launchDrainFixture(
             'unresponsive-session',
             $this->directory . '/storage',
-            'serve',
+            'start',
         );
         self::assertSame($pid, posix_getsid($pid));
         // Do not poll/reap our child while the independent command observes it.
@@ -779,7 +777,7 @@ final class ServerTest extends TestCase
     public function testReloadReportsAKeeperThatEndedBeforeAnswering(): void
     {
         $this->observeProcesses();
-        self::assertSame(0, $this->cua('serve', '--daemon', "--address={$this->address}")[0]);
+        self::assertSame(0, $this->cua('start', '--daemon', "--address={$this->address}")[0]);
         $pid = $this->pid();
         $processes = $this->observedProcesses($pid);
         self::assertSame($pid, posix_getsid($pid));
@@ -846,7 +844,7 @@ final class ServerTest extends TestCase
             ]));
             while (true) { usleep(10_000); }
             PHP);
-        self::assertSame(0, $this->cua('serve', '--daemon', "--address={$this->address}")[0]);
+        self::assertSame(0, $this->cua('start', '--daemon', "--address={$this->address}")[0]);
         $pid = $this->pid();
         $deadline = microtime(true) + 3.0;
         while (!is_file($this->directory . '/aux-pid') && microtime(true) < $deadline) {
@@ -895,7 +893,7 @@ final class ServerTest extends TestCase
         $this->drainSetting(5.0);
         $this->slowVersion('one', 0.2);
         $this->observeProcesses();
-        self::assertSame(0, $this->cua('serve', '--daemon', "--address={$this->address}")[0]);
+        self::assertSame(0, $this->cua('start', '--daemon', "--address={$this->address}")[0]);
         $pid = $this->pid();
         $request = $this->slowRequest();
         $worker = (int) file_get_contents($this->directory . '/in-flight');
@@ -989,7 +987,7 @@ final class ServerTest extends TestCase
         $this->drainSetting(30.0);
         $this->slowVersion('one', 20.0);
         $this->observeProcesses();
-        self::assertSame(0, $this->cua('serve', '--daemon', "--address={$this->address}", '--workers=2')[0]);
+        self::assertSame(0, $this->cua('start', '--daemon', "--address={$this->address}", '--workers=2')[0]);
         $pid = $this->pid();
         $request = $this->slowRequest();
         $worker = (int) file_get_contents($this->directory . '/in-flight');
@@ -1017,7 +1015,7 @@ final class ServerTest extends TestCase
         $this->drainSetting(30.0);
         $this->slowVersion('one', 20.0);
         $this->observeProcesses();
-        self::assertSame(0, $this->cua('serve', '--daemon', "--address={$this->address}")[0]);
+        self::assertSame(0, $this->cua('start', '--daemon', "--address={$this->address}")[0]);
         $pid = $this->pid();
         $request = $this->slowRequest();
         try {
@@ -1060,7 +1058,7 @@ final class ServerTest extends TestCase
     {
         $this->drainSetting(30.0);
         $this->slowVersion('one', 0.5);
-        self::assertSame(0, $this->cua('serve', '--daemon', "--address={$this->address}")[0]);
+        self::assertSame(0, $this->cua('start', '--daemon', "--address={$this->address}")[0]);
         $pid = $this->pid();
         $request = $this->slowRequest();
         $this->drainSetting('abc');
@@ -1084,7 +1082,7 @@ final class ServerTest extends TestCase
     {
         $this->drainSetting(30.0);
         $this->slowVersion('one', $seconds);
-        self::assertSame(0, $this->cua('serve', '--daemon', "--address={$this->address}")[0]);
+        self::assertSame(0, $this->cua('start', '--daemon', "--address={$this->address}")[0]);
         $pid = $this->pid();
         $request = $this->slowRequest();
         $this->drainSetting($drain);
@@ -1182,7 +1180,7 @@ final class ServerTest extends TestCase
             PHP;
         $logger = str_replace('FAIL_ERRORS', var_export($failErrors, true), $logger);
         file_put_contents($path, str_replace('<?php', '<?php' . $logger, $source));
-        self::assertSame(0, $this->cua('serve', '--daemon', "--address={$this->address}")[0]);
+        self::assertSame(0, $this->cua('start', '--daemon', "--address={$this->address}")[0]);
         $request = $this->slowRequest();
         try {
             [$status, $output] = $this->stopDuringRequest();
@@ -1282,7 +1280,7 @@ final class ServerTest extends TestCase
 
     public function testAReloadBringsNewCodeWithoutRefusingAConnection(): void
     {
-        self::assertSame(0, $this->cua('serve', '--daemon', "--address={$this->address}", '--workers=2')[0]);
+        self::assertSame(0, $this->cua('start', '--daemon', "--address={$this->address}", '--workers=2')[0]);
         $pid = $this->pid();
 
         // Requests keep arriving, each on a new connection, while the server is replaced.
@@ -1377,7 +1375,7 @@ final class ServerTest extends TestCase
 
     public function testAReloadThatCannotStartLeavesTheOldServerServing(): void
     {
-        self::assertSame(0, $this->cua('serve', '--daemon', "--address={$this->address}")[0]);
+        self::assertSame(0, $this->cua('start', '--daemon', "--address={$this->address}")[0]);
         $pid = $this->pid();
 
         // Wrong where the application is described: the command itself cannot load it.
@@ -1441,8 +1439,7 @@ final class ServerTest extends TestCase
     public function testTheWatcherRestartsTheServerWhenAFileChanges(): void
     {
         $this->watcher = proc_open(
-            // No option asks for it: in the foreground the server is watched unless told otherwise.
-            [PHP_BINARY, $this->directory . '/cua', 'serve', "--address={$this->address}", '--single'],
+            [PHP_BINARY, $this->directory . '/cua', 'dev', "--address={$this->address}", '--single'],
             [0 => ['pipe', 'r'], 1 => ['pipe', 'w'], 2 => ['pipe', 'w']],
             $pipes,
             $this->directory,
@@ -1539,7 +1536,7 @@ final class ServerTest extends TestCase
                 }
             });
             PHP);
-        [$status, $output] = $this->cua('serve', '--daemon', "--address={$this->address}");
+        [$status, $output] = $this->cua('start', '--daemon', "--address={$this->address}");
         self::assertSame(0, $status, $output);
 
         $http = new \Crab\HttpClient\Client($this->url);

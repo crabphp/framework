@@ -34,10 +34,10 @@ final readonly class Restart implements Command
 
     public function handle(Input $input, Output $output): int
     {
-        Serve::requireValues($input, ['address', 'workers', 'timeout']);
+        Start::requireValues($input, ['address', 'workers', 'timeout']);
         $server = new Server($this->app);
-        $address = Serve::address($this->app, $input);
-        $workers = Serve::workers($this->app, $input);
+        $address = Start::address($this->app, $input);
+        $workers = Start::workers($this->app, $input);
         $seconds = Stop::timeout($input);
         try {
             $old = $server->stop($seconds, $input->flag('force'));
@@ -49,7 +49,7 @@ final readonly class Restart implements Command
             $output->error($error->getMessage());
             return 1;
         }
-        Serve::announceBackground($output, $this->app, $address, $workers);
+        Start::announceBackground($output, $this->app, $address, $workers);
         return 0;
     }
 }

@@ -20,7 +20,7 @@ Route::get('/hello/{name}', static fn (string $name): array => ['hello' => $name
 return $app;
 ~~~
 
-Save it as `app.php` and run `php bin/crab app.php serve --single`. `Route::get()` declares a route on the application just created; it is `$app->router->get()` under a shorter name. `{name}` matches one path segment and `{name:expression}` matches a regular expression.
+Save it as `app.php` and run `php bin/crab app.php start --single`. `Route::get()` declares a route on the application just created; it is `$app->router->get()` under a shorter name. `{name}` matches one path segment and `{name:expression}` matches a regular expression.
 
 ## Actions
 
@@ -900,37 +900,37 @@ php cua schedule:work        # runs each task when it is due, until stopped
 php cua schedule:list        # the tasks, and when each runs next
 ~~~
 
-Keep one `schedule:work` running and no cron entry is needed. Switched on in `server.with`, as in production, the scheduler and the queue's workers are run by `php cua serve` itself, beside HTTP, and reloaded with the server. `everySeconds()` runs a task by an interval, down to a hundredth of a second, counted from when the scheduler starts. A task that fails is logged and runs again when next due; one still running is not started twice. `->onOneServer()` lets one of several machines run a task, agreed through a shared cache. `schedule.timezone` is the zone the times are in. See [docs/scheduling.md](docs/scheduling.md).
+Keep one `schedule:work` running and no cron entry is needed. Switched on in `server.with`, as in production, the scheduler and the queue's workers are run by `php cua start` itself, beside HTTP, and reloaded with the server. `everySeconds()` runs a task by an interval, down to a hundredth of a second, counted from when the scheduler starts. A task that fails is logged and runs again when next due; one still running is not started twice. `->onOneServer()` lets one of several machines run a task, agreed through a shared cache. `schedule.timezone` is the zone the times are in. See [docs/scheduling.md](docs/scheduling.md).
 
 ## Running the server
 
 ~~~sh
-php cua serve                # in the foreground, restarting when a file changes; Ctrl-C stops it
-php cua serve --no-watch     # in the foreground, as it is: for a container
-php cua serve --daemon       # in the background, returning once it is up: for a machine you deploy to
+php cua dev                  # while developing: restarts when a file is saved; Ctrl-C stops it
+php cua start                # in the foreground, as it is: for a container
+php cua start --daemon       # in the background, returning once it is up: for a machine you deploy to
 ~~~
 
 `--address=tcp://0.0.0.0:8080` and `--workers=4` override the `server.address` and `server.workers` settings. `--single` serves in one process, without PHP's `pcntl` and `posix` extensions.
 
 ### In development
 
-Plain `serve` is what you want while writing code. It runs the server as a child process and starts it again whenever a PHP file under `app`, `config` or `routes`, or `app.php` or `.env`, is added, changed or removed. Set `server.watch` to a list of other paths, or pass them: `--watch=app,config,packages`. Folders named `vendor`, `node_modules`, `storage` and `.git` are never looked into.
+`dev` is what you want while writing code. It runs `start` as a child process and starts it again whenever a PHP file under `app`, `config` or `routes`, or `app.php` or `.env`, is added, changed or removed. Set `server.watch` to a list of other paths, or pass them: `--watch=app,config,packages`. Folders named `vendor`, `node_modules`, `storage` and `.git` are never looked into.
 
 When the code does not load, the server stays down and the error stays on the screen; saving a fix starts it again. Files are checked a few times a second by their time and size, so no extension is needed. Options given to PHP itself (`php -d ...`) are not passed on to the child.
 
-Where nothing should restart by itself, such as a container, pass `--no-watch` or set `server.watch` to `false`. A server in the background never watches; it is given new code with `reload`.
+`start` never watches, in the foreground or the background, so nothing restarts by itself in production; a server in the background is given new code with `reload`.
 
 ### In production
 
 ~~~sh
-php cua serve --daemon       # start
+php cua start --daemon       # start
 php cua status               # is it running? exit status 0 when it is
 php cua reload               # new code, without refusing a connection
 php cua restart              # stop, then start: a short gap
 php cua stop                 # finish the requests in hand, then stop
 ~~~
 
-- **`serve --daemon`** (or `-d`) returns when the server accepts connections, and fails with the reason when it cannot start, so a deploy script can rely on its exit status. The server leaves the terminal behind: closing it does not stop the server.
+- **`start --daemon`** (or `-d`) returns when the server accepts connections, and fails with the reason when it cannot start, so a deploy script can rely on its exit status. The server leaves the terminal behind: closing it does not stop the server.
 - **`reload`** is how new code goes live. The server starts a new process, with the code and configuration as they are now, on the socket it already listens on. When every worker of the new process accepts connections, the old process finishes the requests it has and stops. If the new one cannot start, because of a syntax error or a service that cannot be made, the old one goes on serving and `reload` fails, showing what went wrong first.
 - **`stop`** uses the running server’s recorded stop allowance; an explicit `--timeout` overrides that wait. `--force` cuts requests and ends the server. See [Finishing requests on stop](docs/deployment.md#finishing-requests-on-stop).
 - **Files.** The process id is in `server.pid` (`storage/crab.pid`) and everything the server prints goes to `server.log` (`storage/logs/server.log`); both are settings. The log is opened for appending, so it can be rotated by copying and truncating.
@@ -952,8 +952,8 @@ keeper            holds the listening socket; its process id is the server's and
 
 Things to know:
 
-- A server in the foreground is not controlled by these commands. Under Docker, or systemd with `Type=simple`, run `php cua serve --no-watch` and let the manager restart it; a container is replaced, not reloaded.
-- For systemd with reloads, use the background server: `Type=forking`, `PIDFile=` the `server.pid` path, `ExecStart=php cua serve --daemon`, `ExecReload=php cua reload`, `ExecStop=php cua stop`.
+- A server in the foreground is not controlled by these commands. Under Docker, or systemd with `Type=simple`, run `php cua start` and let the manager restart it; a container is replaced, not reloaded.
+- For systemd with reloads, use the background server: `Type=forking`, `PIDFile=` the `server.pid` path, `ExecStart=php cua start --daemon`, `ExecReload=php cua reload`, `ExecStop=php cua stop`.
 - Running in the background needs PHP's `pcntl` and `posix` extensions, and so Linux or macOS.
 - The server has no TLS. Put it behind a proxy that does.
 - Sending the server SIGUSR1 replaces its workers one at a time with the code it already has. It does not load new code; `reload` does.
@@ -964,7 +964,8 @@ Things to know:
 
 | Command | Does |
 | --- | --- |
-| `serve` | Serves the application; see [Running the server](#running-the-server). |
+| `dev` | Serves the application while developing, restarting it when a file is saved; see [Running the server](#running-the-server). |
+| `start` | Serves the application, for production; see [Running the server](#running-the-server). |
 | `stop`, `reload`, `restart`, `status` | Control a server running in the background. |
 | `route:list` | Lists the registered routes, each with its action and the middleware around it. |
 | `make:middleware` | Writes a new middleware class in `app/Http/`. |
@@ -1031,7 +1032,7 @@ A provider that needs something open in every worker, such as a connection or a 
 ~~~sh
 composer install
 composer test
-php bin/crab examples/hello.php serve --single   # the framework
+php bin/crab examples/hello.php start --single   # the framework
 php bin/crab examples/servers.php --single   # the engine alone
 ~~~
 

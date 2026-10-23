@@ -14,7 +14,7 @@ use Crab\Engine\Process\PidFile;
 /**
  * Runs the application's server and controls one that is running: in the
  * foreground, in the background, restarted when files change, stopped,
- * and replaced by a new one without refusing a connection. The `serve`,
+ * and replaced by a new one without refusing a connection. The `start`,
  * `stop`, `reload`, `restart` and `status` commands are this class with
  * words around it.
  *
@@ -94,14 +94,14 @@ final class Server
             $report = @fopen('php://fd/' . self::WATCH_REPORT, 'wb');
             if ($report === false) {
                 throw new \RuntimeException(
-                    'The watched server has no pipe to report its stop allowance. Start it with `serve`.',
+                    'The watched server has no pipe to report its stop allowance. Start it with `dev`.',
                 );
             }
             try {
                 $allowance = $this->grace() . "\n";
                 if (@fwrite($report, $allowance) !== strlen($allowance)) {
                     throw new \RuntimeException(
-                        'The watched server could not report its stop allowance. Start it again with `serve`.',
+                        'The watched server could not report its stop allowance. Start it again with `dev`.',
                     );
                 }
             } finally {
@@ -171,7 +171,7 @@ final class Server
 
     /**
      * Serves as the child of a keeper, on the socket it passed on. This is
-     * what `serve --generation` runs; a keeper starts it and nothing else
+     * what `start --generation` runs; a keeper starts it and nothing else
      * does.
      */
     public function generation(string $address, int $workers): never
@@ -258,7 +258,7 @@ final class Server
         $server = $this->running();
         if ($server === null) {
             throw new \RuntimeException(
-                'No server is running in the background to reload. Start one with `serve --daemon`.',
+                'No server is running in the background to reload. Start one with `start --daemon`.',
             );
         }
         self::requireSignals();
@@ -401,7 +401,7 @@ final class Server
      */
     private static function generationCommand(array $invocation, string $address, int $workers): array
     {
-        return [...$invocation, 'serve', '--generation', "--address={$address}", "--workers={$workers}"];
+        return [...$invocation, 'start', '--generation', "--address={$address}", "--workers={$workers}"];
     }
 
     /**
@@ -551,7 +551,7 @@ final class Server
             // There is no way to ask here, so the file is taken at its word.
             return true;
         }
-        foreach ([' serve ', ' reload ', ' restart '] as $started) {
+        foreach ([' start ', ' reload ', ' restart '] as $started) {
             if (str_contains(" {$command} ", $started)) {
                 return true;
             }

@@ -5,8 +5,8 @@ declare(strict_types=1);
 namespace Crab\Contracts;
 
 /**
- * The servers `serve` can run beside HTTP, each under an id: "queue",
- * "schedule", "chat", "vite". A provider registers one here, and `serve`
+ * The servers `start` can run beside HTTP, each under an id: "queue",
+ * "schedule", "chat", "vite". A provider registers one here, and `start`
  * runs the ones "server.with" names, under the one parent: started,
  * stopped and reloaded with the HTTP workers.
  *
@@ -26,14 +26,14 @@ namespace Crab\Contracts;
 interface Servers
 {
     /**
-     * Registers a server that joins `serve` itself, as groups of its
+     * Registers a server that joins `start` itself, as groups of its
      * workers. The groups are asked for when the server starts, not when
      * it is registered, so they may depend on what later providers and
      * the configuration say.
      *
      * @param \Closure(): list<Workers> $groups The groups of workers it runs.
      * @param float $grace Seconds its workers are given to finish what they have in hand when the server stops.
-     * @param string $runs What it is, for the list `serve` prints: "queue:work".
+     * @param string $runs What it is, for the list `start` prints: "queue:work".
      */
     public function add(string $id, \Closure $groups, float $grace = 5.0, string $runs = ''): void;
 
