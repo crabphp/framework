@@ -137,27 +137,42 @@ final class Console implements ConsoleContract
 
     private function list(OutputContract $output): int
     {
-        $names = array_keys($this->commands);
-        sort($names);
-        $rows = [];
-        foreach ($names as $name) {
+        // Grouped by what comes before the ":", those without one first.
+        $groups = ['' => [
+            'help <command>' => 'Describe a command; so does <command> --help',
+            'list' => 'List the commands',
+        ]];
+        foreach (array_keys($this->commands) as $name) {
+            $name = (string) $name;
             try {
-                $description = strtok($this->describe((string) $name), "\n") ?: '';
+                $description = strtok($this->describe($name), "\n") ?: '';
             } catch (\Throwable $error) {
                 $description = '(unavailable: ' . $error->getMessage() . ')';
             }
-            $rows[] = [(string) $name, $description];
+            $groups[str_contains($name, ':') ? strstr($name, ':', true) : ''][$name] = $description;
         }
+        // "migrate" goes with "migrate:fresh" and the rest of its group.
+        foreach (array_intersect_key($groups[''], $groups) as $name => $description) {
+            $groups[$name][$name] = $description;
+            unset($groups[''][$name]);
+        }
+        ksort($groups, SORT_STRING);
+        // One width for every group, so the descriptions line up down the whole list.
+        $width = max(array_map(strlen(...), array_merge(...array_map(array_keys(...), array_values($groups)))));
         if ($this->title !== '') {
             $output->line($this->title);
             $output->line();
         }
         $output->line('Commands:');
-        $output->table([
-            ...$rows,
-            ['help <command>', 'Describe a command; so does <command> --help'],
-            ['list', 'List the commands'],
-        ], '  ');
+        foreach ($groups as $group => $commands) {
+            ksort($commands, SORT_STRING);
+            if ($group !== '') {
+                $output->line(' ' . $group);
+            }
+            foreach ($commands as $name => $description) {
+                $output->line(rtrim('  ' . str_pad($name, $width + 2) . $description));
+            }
+        }
         return 0;
     }
 

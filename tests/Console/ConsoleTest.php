@@ -128,21 +128,36 @@ final class ConsoleTest extends TestCase
 
     public function testListAndHelp(): void
     {
-        $console = new Console()->add('zeta', static fn() => 0, 'Last')->add('greet', Greet::class);
+        $console = new Console()
+            ->add('zeta', static fn() => 0, 'Last')
+            ->add('greet', Greet::class)
+            ->add('user:prune', static fn() => 0, 'Prune users')
+            ->add('cache:clear', static fn() => 0, 'Clear the cache')
+            ->add('user:add', static fn() => 0)
+            ->add('user', static fn() => 0, 'Show the users');
         foreach ([[], ['list'], ['--help'], ['help']] as $arguments) {
             ftruncate($this->out, 0);
             rewind($this->out);
             self::assertSame(0, $this->exec($console, ...$arguments));
-            self::assertSame(
-                "Commands:\n  greet           Greet someone\n  zeta            Last\n"
-                . "  help <command>  Describe a command; so does <command> --help\n  list            List the commands\n",
-                $this->written($this->out),
-            );
+            self::assertSame(<<<'TEXT'
+                Commands:
+                  greet           Greet someone
+                  help <command>  Describe a command; so does <command> --help
+                  list            List the commands
+                  zeta            Last
+                 cache
+                  cache:clear     Clear the cache
+                 user
+                  user            Show the users
+                  user:add
+                  user:prune      Prune users
+
+                TEXT, $this->written($this->out), 'Grouped by prefix, those without one first, aligned down the whole list.');
         }
         ftruncate($this->out, 0);
         rewind($this->out);
         self::assertSame(0, $this->exec(new Console(title: 'Shop')->add('zeta', static fn() => 0, 'Last'), 'list'));
-        self::assertStringStartsWith("Shop\n\nCommands:\n  zeta", $this->written($this->out));
+        self::assertStringStartsWith("Shop\n\nCommands:\n  help <command>", $this->written($this->out));
 
         ftruncate($this->out, 0);
         rewind($this->out);
