@@ -59,11 +59,12 @@ final class Parser
 
     /**
      * One anchored pattern for the usual request: a buffer holding exactly one
-     * bodyless head with an origin-form target. It validates the request line
-     * and every field and captures Host and Connection. Anything else,
-     * including a repeated captured field, an expectation or any body framing,
-     * fails the match and takes the general path, which also decides the status
-     * of a malformed head.
+     * head with an origin-form target, bodyless or framed by one decimal
+     * Content-Length. It validates the request line and every field and
+     * captures Host, Connection and Content-Length. Anything else, including a
+     * repeated captured field, an expectation, chunked framing or a malformed
+     * length, fails the match and takes the general path, which also decides
+     * the status of a malformed head.
      */
     private static function headPattern(int $maxHeaderCount): string
     {
@@ -76,13 +77,14 @@ final class Parser
             . $value
             . '|(?i:connection):(?(5)(*COMMIT)(*FAIL))'
             . $value
+            . '|(?i:content-length):(?(6)(*COMMIT)(*FAIL))[ \t]*+([0-9]++)[ \t]*+\r\n'
             . '|(?i:expect|content-length|transfer-encoding):(*COMMIT)(*FAIL)'
             . '|'
             . self::TOKEN
             . ':[\x09\x20-\x7E\x80-\xFF]*+\r\n'
             . '){0,'
             . $maxHeaderCount
-            . '}+\r\K\n\z/'
+            . '}+\r\K\n(?(6)|\z)/'
         );
     }
 
@@ -158,20 +160,51 @@ final class Parser
                     ) {
                         $connection = rtrim($connection, " \t");
                     }
-                    if ($bytes === '') {
-                        $this->buffer = '';
+                    $length = $match[6];
+                    if ($length === null) {
+                        if ($bytes === '') {
+                            $this->buffer = '';
+                        }
+                        return new Request(
+                            $method,
+                            $match[2],
+                            $match[3] === '1' ? '1.1' : '1.0',
+                            [],
+                            null,
+                            [],
+                            null,
+                            $head,
+                            $connection,
+                        );
                     }
-                    return new Request(
-                        $method,
-                        $match[2],
-                        $match[3] === '1' ? '1.1' : '1.0',
-                        [],
-                        null,
-                        [],
-                        null,
-                        $head,
-                        $connection,
-                    );
+                    // Taken here only when the buffer is that body exactly; a
+                    // partial, pipelined or oversized one is framed or refused
+                    // by the general path.
+                    $at = strpos($head, "\r\n\r\n") + 4;
+                    $digits = ltrim($length, '0');
+                    if (
+                        strlen($digits) <= 18
+                        && (int) $digits <= $this->maxBodyBytes
+                        && (strlen($head) - $at) === (int) $digits
+                    ) {
+                        if ($bytes === '') {
+                            $this->buffer = '';
+                        }
+                        $body = new Body();
+                        $body->append(substr($head, $at));
+                        $body->rewind();
+                        return new Request(
+                            $method,
+                            $match[2],
+                            $match[3] === '1' ? '1.1' : '1.0',
+                            [],
+                            $body,
+                            [],
+                            null,
+                            substr($head, 0, $at),
+                            $connection,
+                        );
+                    }
                 }
             }
         }

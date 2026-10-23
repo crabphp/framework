@@ -69,6 +69,59 @@ final class HttpFastPathTest extends TestCase
         self::assertSame(['/three', '1.0', []], [$last?->target, $last?->version, $last?->headers]);
     }
 
+    #[DataProvider('framedBodies')]
+    public function testWholeFramedBodiesMatchTheGeneralParser(string $wire, string $body): void
+    {
+        $fast = new Parser()->receive($wire);
+        // One byte at a time never takes the fast path.
+        $general = new Parser();
+        $slow = null;
+        foreach (str_split($wire) as $byte) {
+            $slow ??= $general->receive($byte);
+        }
+        self::assertNotNull($fast);
+        self::assertNotNull($slow);
+        self::assertSame([$slow->method, $slow->target, $slow->version, $slow->headers], [
+            $fast->method,
+            $fast->target,
+            $fast->version,
+            $fast->headers,
+        ]);
+        self::assertSame([strlen($body), $body, $body], [
+            $fast->body->size(),
+            $fast->body->read(),
+            $slow->body->contents(),
+        ]);
+    }
+
+    public static function framedBodies(): iterable
+    {
+        yield 'json' => [
+            "POST /users HTTP/1.1\r\nHost: a\r\nContent-Type: application/json\r\nContent-Length: 7\r\n\r\n{\"a\":1}",
+            '{"a":1}',
+        ];
+        yield 'empty' => ["POST / HTTP/1.1\r\nHost: a\r\nContent-Length: 0\r\n\r\n", ''];
+        yield 'leading zeros and spaces' => ["PUT / HTTP/1.1\r\nHost: a\r\ncontent-length:  002 \r\n\r\nok", 'ok'];
+        yield 'blank line in the body' => [
+            "POST / HTTP/1.1\r\nContent-Length: 6\r\nHost: a\r\n\r\n\r\n\r\nx\0",
+            "\r\n\r\nx\0",
+        ];
+        yield 'connection' => ["POST / HTTP/1.1\r\nHost: a\r\nConnection: close \r\nContent-Length: 1\r\n\r\nz", 'z'];
+    }
+
+    public function testFramedBodiesNotWhollyInTheBufferTakeTheGeneralPath(): void
+    {
+        $parser = new Parser();
+        self::assertNull($parser->receive("POST / HTTP/1.1\r\nHost: a\r\nContent-Length: 4\r\n\r\nab"));
+        self::assertSame('abcd', $parser->receive('cd')?->body->contents());
+        $pipelined = $parser->receive(
+            "POST /1 HTTP/1.1\r\nHost: a\r\nContent-Length: 2\r\n\r\nokGET /2 HTTP/1.1\r\nHost: a\r\n\r\n",
+        );
+        self::assertSame(['/1', 'ok'], [$pipelined?->target, $pipelined?->body->contents()]);
+        self::assertSame('/2', $parser->next()?->target);
+        self::assertNull($parser->next());
+    }
+
     public function testIdenticalFieldsAreNeverChangedByAnEarlierRequestLine(): void
     {
         $parser = new Parser();
