@@ -12,6 +12,7 @@ use Crab\Contracts\WebSocket\Socket;
 use Crab\Http\ErrorResponse;
 use Crab\Http\Response;
 use Crab\Validation\Data;
+use Crab\Validation\JsonSchema;
 use Crab\Validation\ValidationException;
 use Crab\WebSocket\Connections;
 use Psr\Container\ContainerInterface;
@@ -251,6 +252,41 @@ final class ActionHandler implements RequestHandlerInterface
             return Response::noContent();
         }
         return Response::json($result);
+    }
+
+    /**
+     * What the action takes, as JSON Schema; see Router::input().
+     *
+     * @return array{parameters: array<string, mixed>, query?: array<string, mixed>, body?: array<string, mixed>, user: array{class: string, required: bool}|null}
+     */
+    public function input(): array
+    {
+        $parameters = [];
+        foreach ($this->parameters as $name => $type) {
+            $parameters[$name] = [
+                'type' => ['int' => 'integer', 'float' => 'number', 'bool' => 'boolean'][$type] ?? 'string',
+                ...JsonSchema::rules($this->rules[$name] ?? []),
+            ];
+        }
+        $input = ['parameters' => $parameters === [] ? new \stdClass() : $parameters];
+        $data = match (true) {
+            $this->input !== null && $this->input[1] === Data::class => $this->validator->parameterSchema(
+                $this->signature,
+                [$this->input[0]],
+            )['properties'][$this->input[0]],
+            $this->input !== null => $this->validator->schema($this->input[1]),
+            $this->fields !== [] => $this->validator->parameterSchema($this->signature, $this->fields),
+            default => null,
+        };
+        if ($data !== null) {
+            $input[$this->fromQuery ? 'query' : 'body'] = $data;
+        }
+        $user = null;
+        foreach ($this->users as [$class, $optional]) {
+            $user = ['class' => $class, 'required' => !$optional];
+        }
+        $input['user'] = $user;
+        return $input;
     }
 
     /**

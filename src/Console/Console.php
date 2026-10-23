@@ -121,6 +121,20 @@ final class Console implements ConsoleContract
         return false;
     }
 
+    public function descriptions(): array
+    {
+        $descriptions = [];
+        foreach (array_keys($this->commands) as $name) {
+            try {
+                $descriptions[(string) $name] = $this->describe((string) $name);
+            } catch (\Throwable $error) {
+                $descriptions[(string) $name] = '(unavailable: ' . $error->getMessage() . ')';
+            }
+        }
+        ksort($descriptions, SORT_STRING);
+        return $descriptions;
+    }
+
     private function list(OutputContract $output): int
     {
         $names = array_keys($this->commands);

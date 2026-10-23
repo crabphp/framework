@@ -54,4 +54,20 @@ interface Validator
      * @param list<string> $names
      */
     public function inspectParameters(\ReflectionFunctionAbstract $function, array $names): void;
+
+    /**
+     * The data validate() takes for the class, as a JSON Schema object.
+     *
+     * @param class-string $class
+     * @return array<string, mixed>
+     */
+    public function schema(string $class): array;
+
+    /**
+     * The same for a function's named parameters, each a property.
+     *
+     * @param list<string> $names
+     * @return array<string, mixed>
+     */
+    public function parameterSchema(\ReflectionFunctionAbstract $function, array $names): array;
 }

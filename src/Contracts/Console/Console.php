@@ -18,6 +18,13 @@ interface Console
     public function has(string $name): bool;
 
     /**
+     * Every command's name with its whole description, in order of name.
+     *
+     * @return array<string, string>
+     */
+    public function descriptions(): array;
+
+    /**
      * @param list<string> $arguments The command's name followed by its own words.
      * @return int The process exit status.
      */

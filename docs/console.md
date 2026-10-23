@@ -193,6 +193,7 @@ Print results with `line()` and problems with `error()`, so that a script can pi
 | `make:middleware` | Writes a middleware class in `app/Http/` |
 | `make:command` | Writes a command class in `app/Console/` and registers it in `routes/console.php` |
 | `config:publish` | Writes a framework section's complete configuration file into `config/` |
+| `describe` | Prints the whole application for coding agents, as text or `--json` |
 
 `stop` and the stop phase of `restart` use the running server's remaining allowance, even after its configuration changes. `--timeout` overrides the graceful wait. To cut in-flight requests and end every server process immediately, use:
 
@@ -211,6 +212,33 @@ The default framework providers add their commands automatically; `TokenAuthProv
 | `CacheProvider` | `cache:clear`, `cache:prune`, `cache:install` |
 | `QueueProvider` | `queue:work`, `queue:failed`, `queue:retry`, `queue:forget`, `queue:install` |
 | `ScheduleProvider` | `schedule:work`, `schedule:list` |
+
+## Describing the application
+
+`php cua describe` prints the application for a coding agent to read instead of its files: its routes with what each takes, the middleware around every request, the commands, the servers `serve` can run, the databases with their migration files, and every setting.
+
+```sh
+php cua describe                  # everything, as text
+php cua describe routes commands  # some sections
+php cua describe --json           # the same as JSON
+```
+
+The text is one thing to a line, with each route's input in TypeScript notation and its limits by JSON Schema's names. Agents read it as well as JSON or TOML, in fewer tokens:
+
+```text
+routes
+  POST /orders -> App\Actions\PlaceOrder via Crab\Auth\TokenAuth
+    body { lines: Array<{ productId: int; quantity?: int | null (minimum=1, maximum=20, default=1) }> (minItems=1, maxItems=20) }
+    user: App\User
+  GET /products/{id} -> App\Actions\ShowProduct
+    {id}: int
+```
+
+A field written `name?:` may be left out, and `| null` may be null. Limits are inclusive and apply to what they follow: `(minItems=1, maxItems=20)` after `Array<...>` is how many lines there may be. A route that takes nothing says `takes nothing`, and one whose action is a PSR-15 handler of its own says `input not declared`. A command shows the first line of its description; `php cua <command> --help` has the rest.
+
+With `--json`, a route's input is JSON Schema: `parameters` for those of its pattern, `body` or `query` for the fields of the request's data, and `user` for the logged-in user, with whether one is required. Rules are given in JSON Schema's words, `#[Range(min: 1)]` as `"minimum": 1` and `#[Email]` as `"format": "email"`; a rule of your own is named under `x-rules`.
+
+Settings whose names end in `password`, `secret`, `token`, `private` or `key` are printed as `(hidden)` when they are set. Any other value is printed as it is, so a secret kept under another name is printed too.
 
 ## Running a command on a schedule
 

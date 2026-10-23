@@ -379,6 +379,12 @@ final class Router implements RouterContract
         return array_values($this->routes);
     }
 
+    public function input(RouteInfo $route): ?array
+    {
+        $handler = $this->declared["{$route->method} {$route->pattern}"][0] ?? null;
+        return $handler instanceof ActionHandler ? $handler->input() : null;
+    }
+
     public function route(string $name): ?RouteInfo
     {
         return isset($this->names[$name]) ? $this->routes[$this->names[$name]] : null;

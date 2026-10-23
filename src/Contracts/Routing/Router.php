@@ -81,6 +81,16 @@ interface Router extends RequestHandlerInterface
     public function route(string $name): ?RouteInfo;
 
     /**
+     * What a route's action takes, as JSON Schema: "parameters", those of
+     * its pattern; "query" or "body", the fields of the request's data; and
+     * "user", the class of the logged-in user, with whether one is required.
+     * Null when the action is a handler of its own, whose input is not declared.
+     *
+     * @return array{parameters: array<string, mixed>, query?: array<string, mixed>, body?: array<string, mixed>, user: array{class: string, required: bool}|null}|null
+     */
+    public function input(RouteInfo $route): ?array;
+
+    /**
      * The path of the named route, with its parameters filled in and
      * encoded: path('orders.show', ['id' => 12]) is "/orders/12". A
      * parameter missing, one the pattern does not have, or a value its

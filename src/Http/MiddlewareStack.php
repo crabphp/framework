@@ -47,6 +47,13 @@ final class MiddlewareStack implements MiddlewareStackContract, RequestHandlerIn
         return $this;
     }
 
+    public function layers(): array
+    {
+        return array_map(static fn(MiddlewareInterface|string $layer): string => is_string($layer)
+            ? $layer
+            : $layer::class, $this->middleware);
+    }
+
     public function handle(ServerRequestInterface $request): ResponseInterface
     {
         return ($this->pipeline ?? $this->assemble())->handle($request);

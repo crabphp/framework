@@ -18,4 +18,11 @@ interface MiddlewareStack
      * as the worker starts.
      */
     public function add(MiddlewareInterface|string ...$middleware): static;
+
+    /**
+     * The class of each middleware, outermost first.
+     *
+     * @return list<string>
+     */
+    public function layers(): array;
 }

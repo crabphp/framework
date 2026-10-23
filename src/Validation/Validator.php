@@ -77,6 +77,16 @@ final class Validator implements ValidatorContract
         $this->inspectAll($this->parameters($function, $names), $seen);
     }
 
+    public function schema(string $class): array
+    {
+        return new JsonSchema($this->properties(...))->ofClass($class);
+    }
+
+    public function parameterSchema(\ReflectionFunctionAbstract $function, array $names): array
+    {
+        return new JsonSchema($this->properties(...))->object($this->parameters($function, $names));
+    }
+
     /**
      * @param class-string $class
      * @param array<mixed> $data
