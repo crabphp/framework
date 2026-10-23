@@ -288,11 +288,23 @@ A PSR implementation should also pass that PSR's public conformance suite where 
 2. **Worker lifecycle hooks:** `start` and `stop` for providers; error path for background tasks. *Done.*
 3. **Finish Http:** response cookies, multipart uploads, JSON bodies, bodies for router 404 and 405, request id middleware, warnings to exceptions. *Done.* A multipart body is read where the engine stored it, and an uploaded file is never held in memory. Still open: `getBody()` copies a body from the engine's storage when it is asked for.
 4. **Small PSR components:** clock (PSR-20), events (PSR-14), cache (PSR-16), HTTP client (PSR-18). *Done.* The client speaks HTTP/2 and HTTP/1.1 on the event loop, with TLS through PHP's streams, an HTTP proxy, a cookie jar, retries and a fake for tests, and finds addresses with the engine's `DnsResolver`. The cache keeps its entries in files, in a database table or in memory, behind a `Store` contract that a Redis store can later implement.
-5. **Database.** *Connection pool, the thin query layer, the query builder, the schema builder and migrations are done, tested on SQLite and MySQL.* Models with relationships are not planned; see the decisions. Next: a MySQL driver that waits on the event loop, behind the `Connection` contract as it is, so that a worker serves other requests while a query runs.
+5. **Database.** *Connection pool, the thin query layer, the query builder, the schema builder and migrations are done, tested on SQLite and MySQL.* Models with relationships are not planned; see the decisions. Crab's own MySQL driver waits on the event loop behind the `Connection` contract, so a worker serves other requests while a query runs; it is a connection's `async`.
 6. **Queue**, then **Scheduling**, each as its own worker group. *Done.* Jobs are kept in a database table and run by `queue:work`; scheduled tasks are run by `schedule:work`, with no cron entry. `serve` starts both beside the HTTP workers when `server.with` switches them on, under the keeper, through the `Servers` contract, so that one command and one reload cover all three; a provider offers a server of its own the same way.
 7. **Validation, Auth.** *Validation is done, together with typed actions. Authentication is done: a way of authenticating is middleware that puts the user on the request, an action takes the user as a parameter, and tokens in the database are one such way, opt-in, with a migration the application owns.* Roles and permissions, and sessions, are not planned; see the decisions.
-8. **Application skeleton** (`crabphp/crab`) and the `make:*` commands. *The skeleton exists, kept minimal; it grows a folder when a component arrives. `make:migration` and `make:middleware` are the `make:*` commands so far.*
+8. **Application skeleton** (`crabphp/crab`) and the `make:*` commands. *The skeleton exists, kept minimal; it grows a folder when a component arrives. The `make:*` commands are `make:migration`, `make:middleware` and `make:command`; `config:publish` writes a section's complete configuration file, and `migrate:fresh` starts a development database over.*
 9. **Per-component packages**, CI and the first tagged release. Nothing above needs to be finished first: what exists is a usable API framework, and use will say what is missing.
+
+## Direction *(proposed, 2026-10-23)*
+
+Crab is the framework that people and AI agents can both read, change and verify safely, for long-running JSON APIs. Goal 6 leads the others: when two designs serve an application equally, the one an agent can read and check without reading the framework wins.
+
+What stays fixed: the layers and their boundary tests, the scope of decision 6, PSR-7 and the other standards, explicit wiring with no discovery, a skeleton whose folders are by kind and whose every file means something, and `php cua describe` as the application's own description of itself.
+
+1. **The first release.** Step 9 of the build order: per-component packages, CI and a tagged version, after which the skeleton requires a version instead of `../framework`. With it, the skeleton gains an `AGENTS.md` that states its conventions and says to run `php cua describe` first, and `describe` shows what it does not yet: scheduled tasks and event listeners.
+2. **Fail early, measure.** Every setting is checked when the application starts, and a wrong one stops `serve` with its key and what it takes, as middleware and the logger already are (see [Errors and observability](#errors-and-observability)). `Worker::stats()` is exposed through a command.
+3. **The schema as data.** An application describes the tables it wants and Crab writes the migration that gets there, as a diff to review. Correct diffs on MySQL and SQLite are hard; this is a project of its own, begun deliberately.
+
+Not planned: a generated OpenAPI document (see [Actions](#actions-today)); folders by feature, or a `Feature` that groups a route, a command and a migration (decision 9); actions that declare their effects, which is research.
 
 ## Decisions
 
@@ -309,3 +321,10 @@ Agreed on 2026-10-10:
 6. **Scope:** Crab is not a Laravel on another engine. It stays a framework for JSON APIs that is long-running by design, and leaves out what that does not need: there is no model layer over the query builder, no session and no roles or permissions component. An application that wants one writes it over what is there, or brings a library.
 7. **Own components first:** events, cache, queue and scheduling are Crab's own, because each is small and the queue and the scheduler must run on the engine's worker groups, which a library with a worker loop of its own would sit beside. A third-party library remains welcome behind a contract, as a store or a driver: a Symfony cache adapter as a `Cache\Store`, for one.
 8. **Guide:** the usage of every component is written for application developers in `docs/`, one page per topic, and kept in step with the code by the `sync-docs` skill.
+
+Agreed on 2026-10-23:
+
+9. **Folders by kind:** an application's folders are by kind (`routes/`, `app/Actions/`, `database/migrations/`), not by feature. A feature is never removed by deleting a folder: it reaches across the whole application, so a folder that claims to hold it promises a separation that is not there.
+10. **PSR-7 stays,** although converting to and from it is a measurable share of the cost of the smallest request. There is no second, raw kind of route.
+11. **`describe` is text first.** Agents shown the same application as this text, as TOML and as JSON answered questions about it equally well, so the cheapest form is the default: one thing to a line, each input in TypeScript notation with JSON Schema's names for its limits. `--json` gives the same with each input as JSON Schema, for tools.
+12. **A connection is described by name:** `driver`, `host`, `port`, `database`, `username` and `password`, from which Crab writes the data source name. A `dsn` is accepted in their place.

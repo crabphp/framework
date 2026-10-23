@@ -247,7 +247,7 @@
 - A migration runs in a transaction only where the database can roll back a change to its tables; say so wherever that difference reaches the user.
 - Two deployments never run the same migration. On MySQL `run()` and `rollback()` hold a named lock on one connection, and check they still own it before each migration and before returning. On SQLite each migration commits on its own and checks its record again inside `BEGIN IMMEDIATE`, skipping what another process finished. `status()` and `make()` take no lock. The wait is `database.migration_lock_timeout`, whole seconds, zero for no wait.
 - A migration works through the `Schema` and connection it is given, so a pool of one is enough; one that takes another connection from the pool needs two.
-- An application's databases are configured by name and held by `DatabaseManager`. Asking for the `Database` contract gives the default one, and `Database::connection($name)` another; do not bind a second database in the container under a name of its own. The kind of database is read from its `dsn`, never from a separate setting.
+- An application's databases are configured by name and held by `DatabaseManager`. Asking for the `Database` contract gives the default one, and `Database::connection($name)` another; do not bind a second database in the container under a name of its own. A connection is described by `driver`, `host`, `port`, `database`, `username` and `password`, and `DatabaseManager::dsn()` writes the data source name from them; a `dsn` given in their place is used as it is.
 - The layers are built in order and each works without the one above it: pool, query layer, query builder, schema builder, migrator. Do not make a lower layer depend on a higher one. There is no model layer; see Scope.
 - The query builder needs only the `Connection` contract. The one place a lower layer names it is `Connection::table()`, a single `new Query($this, $table)`; nothing else in the pool or query layer may know it.
 - `Query` collects what a statement says and holds no SQL; `Grammar` writes it, and a dialect subclass overrides only where its database differs. A new clause is state on `Query` and a method on `Grammar`, never SQL assembled in `Query`.
@@ -265,6 +265,7 @@
 - Write plain statements that read top to bottom. Name a value on one line and use it on the next; do not call the result of a `require`, nest closures to pass one value, or pack unrelated steps into one expression.
 - A fluent chain is fine where each call is one named, typed step on its own line, as in `App::configure()->with...()->create()` and the query builder: the editor completes every step and the reader sees one thing per line.
 - This matters most in what application developers see: the skeleton, the README examples and error messages.
+- `php cua describe` is the application's description of itself for agents. Something an application declares (a route, a command, a server, a scheduled task, a listener) is shown there; when you add a kind of declaration, add it to `describe` in the same change. Its text form is the tested one (decision 11 in [ARCHITECTURE.md](ARCHITECTURE.md#decisions)); change its notation only by testing it on agents again.
 
 ## Helpers
 
