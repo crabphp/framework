@@ -439,19 +439,23 @@ final class DatabaseTest extends TestCase
     {
         $flat = new App(new Config(['database' => ['dsn' => 'sqlite::memory:']]));
         $flat->register(DatabaseProvider::class);
+        try {
+            $flat->container->get(DatabaseContract::class);
+            self::fail('A database outside "connections" must be refused.');
+        } catch (\Crab\Contracts\Config\InvalidSettings $error) {
+            self::assertSame(
+                ['database.dsn is not a setting; database takes connections, default and migration_lock_timeout.'],
+                $error->problems(),
+            );
+        }
         $none = new App(new Config([]));
         $none->register(DatabaseProvider::class);
-        foreach ([
-            [$flat, '"database.dsn" is not read'],
-            [$none, 'No database is configured'],
-        ] as [$app, $says]) {
-            try {
-                $app->container->get(DatabaseContract::class);
-                self::fail('A database outside "connections" must be refused.');
-            } catch (DatabaseException $error) {
-                self::assertStringContainsString($says, $error->getMessage());
-                self::assertStringContainsString("'connections' => ['main' => ['driver' =>", $error->getMessage());
-            }
+        try {
+            $none->container->get(DatabaseContract::class);
+            self::fail('An application without a database must be told how to describe one.');
+        } catch (DatabaseException $error) {
+            self::assertStringContainsString('No database is configured', $error->getMessage());
+            self::assertStringContainsString("'connections' => ['main' => ['driver' =>", $error->getMessage());
         }
     }
 

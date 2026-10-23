@@ -69,7 +69,7 @@ Run everything from the framework's root, the folder with `composer.json`.
 | `src/Schedule/` | `scheduling.md` |
 | `src/HttpClient/` | `http-client.md` |
 | `src/Testing/`, `FakeClient`, `MemoryStore`, `ArrayStore` | `testing.md` |
-| `src/Server.php`, `src/Commands/Serve.php` and the rest | `deployment.md` |
+| `src/Server.php`, `src/Commands/Start.php`, `Dev.php` and the rest | `deployment.md` |
 
 A component with no row gets a page of its own and a row here.
 

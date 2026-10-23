@@ -22,7 +22,7 @@ Under PHP-FPM every request starts from nothing: the framework boots, answers an
 | 3. Request | In each worker, many times, overlapping | Request, middleware, router, action, response |
 | 4. Stop | In each worker, as it stops | Requests have up to `server.drain` seconds to finish, then remaining connections close and providers stop |
 
-Phase 1 runs when you type `php cua start`. The server then forks its workers, and each worker runs phase 2. Invalid routes, middleware construction and provider start hooks can fail startup; an action service or a setting it needs can still fail on its first request.
+Phase 1 runs when you type `php cua start`. The server then forks its workers, and each worker runs phase 2. Settings that do not fit what they take, invalid routes, middleware construction and provider start hooks fail startup; an action service can still fail on its first request.
 
 ## Where state lives
 

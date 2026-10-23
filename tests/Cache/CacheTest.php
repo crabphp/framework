@@ -1425,7 +1425,9 @@ final class CacheTest extends TestCase
         $app = new App(new Config(['cache' => ['store' => 'redis']]));
         $app->register(CacheProvider::class);
         $this->expectException(\LogicException::class);
-        $this->expectExceptionMessage('"file", "database" and "array"');
+        $this->expectExceptionMessage(
+            'cache.store is "redis"; it takes "file", "database" or "array". "redis" is one more, with crabphp/redis and its RedisProvider registered after this provider.',
+        );
         $app->container->get(CacheContract::class);
     }
 

@@ -745,11 +745,17 @@ final class RouteTest extends TestCase
         $cases = [
             [['websocket' => ['max_connections' => 513]], 'websocket.max_connections exceeds'],
             [['server' => ['max_connections' => 901]], 'up to 900'],
-            [['server' => ['loop' => 'missing']], 'Set "server.loop"'],
-            [['server' => ['max_connections' => 1.5]], 'positive whole number'],
+            [
+                ['server' => ['loop' => 'missing']],
+                'server.loop is "missing"; it takes "select", "ev", "uv" or "event".',
+            ],
+            [
+                ['server' => ['max_connections' => 1.5]],
+                'server.max_connections is 1.5; it takes a whole number, at least 1.',
+            ],
             [['websocket' => ['ping' => -1]], 'websocket.ping'],
             [['websocket' => ['send_timeout' => 0]], 'websocket.send_timeout'],
-            [['websocket' => ['max_message' => 0]], 'positive whole number'],
+            [['websocket' => ['max_message' => 0]], 'websocket.max_message is 0; it takes a whole number, at least 1.'],
         ];
         foreach (['ev', 'uv', 'event'] as $backend) {
             if (extension_loaded($backend)) {
@@ -1300,16 +1306,34 @@ final class RouteTest extends TestCase
         self::assertSame([], $this->reports);
     }
 
-    public function testAnHttpOnlyAppDoesNotValidateUnusedSocketSettings(): void
+    public function testAnHttpOnlyAppDoesNotLimitConnectionsBySocketSettings(): void
     {
         $app = new App(new Config([
             'server' => ['max_connections' => 64],
-            'websocket' => ['ping' => -1, 'max_message' => 300_000, 'send_timeout' => 0, 'max_connections' => 10_000],
+            'websocket' => ['max_message' => 300_000, 'max_connections' => 10_000],
         ]));
         $app->router->get('/ok', static fn(): string => 'ok');
         $app->runtime('tcp://127.0.0.1:8200');
         new Api($app)->get('/ok')->assertStatus(200);
         self::assertSame([], $this->loop->getIdentifiers());
+    }
+
+    public function testSocketSettingsAreCheckedEvenWhereNoSocketRouteIsDeclared(): void
+    {
+        $app = new App(new Config(['websocket' => ['ping' => -1, 'send_timeout' => 0]]));
+        $app->router->get('/ok', static fn(): string => 'ok');
+        try {
+            $app->runtime('tcp://127.0.0.1:8200');
+            self::fail('A setting that does not fit stops the server from starting.');
+        } catch (\Crab\Contracts\Config\InvalidSettings $error) {
+            self::assertSame(
+                [
+                    'websocket.ping is -1; it takes a number, at least 0.',
+                    'websocket.send_timeout is 0; it takes a number greater than 0.',
+                ],
+                $error->problems(),
+            );
+        }
     }
 
     public function testTheActionObjectIsSharedButItsLocalParametersAreConnectionState(): void

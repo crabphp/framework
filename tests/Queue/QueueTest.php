@@ -1679,8 +1679,11 @@ final class QueueTest extends TestCase
                     $caught = $error;
                 }
                 self::assertNotNull($caught, $setting . ' was accepted before starting workers.');
-                self::assertStringContainsString($setting, $caught->getMessage());
-                self::assertStringContainsString('--' . $setting . '=1', $caught->getMessage());
+                self::assertStringContainsString(
+                    ($named ? 'queue.supervisors.mail.' : 'queue.') . $setting . ' is ',
+                    $caught->getMessage(),
+                );
+                self::assertStringContainsString('it takes a whole number, at least 1.', $caught->getMessage());
             }
         }
     }

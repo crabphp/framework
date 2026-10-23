@@ -31,6 +31,18 @@ final readonly class Supervisor
     private const KEYS = ['queues', 'workers', 'concurrency', 'tries', 'backoff', 'retry_after', 'sleep'];
 
     /**
+     * What the settings a supervisor may override take, as "queue.*" and under each of "queue.supervisors".
+     */
+    public const RULES = [
+        'tries' => ['type' => 'integer', 'minimum' => 1],
+        'backoff' => ['type' => 'array', 'items' => ['type' => 'integer', 'minimum' => 0]],
+        'retry_after' => ['type' => 'integer', 'minimum' => 1],
+        'workers' => ['type' => 'integer', 'minimum' => 1],
+        'concurrency' => ['type' => 'integer', 'minimum' => 1],
+        'sleep' => ['type' => 'number', 'minimum' => 0],
+    ];
+
+    /**
      * @param list<string> $queues Queue names, the most urgent first.
      * @param int $workers Worker processes.
      * @param int $concurrency Jobs one worker runs at a time.

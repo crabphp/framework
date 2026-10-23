@@ -39,6 +39,7 @@ final readonly class Restart implements Command
         $address = Start::address($this->app, $input);
         $workers = Start::workers($this->app, $input);
         $seconds = Stop::timeout($input);
+        $this->app->config->check();
         try {
             $old = $server->stop($seconds, $input->flag('force'));
             if ($old !== null) {

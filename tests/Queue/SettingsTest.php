@@ -123,8 +123,11 @@ final class SettingsTest extends TestCase
                         $error = $caught;
                     }
                     self::assertInstanceOf(\InvalidArgumentException::class, $error);
-                    self::assertStringContainsString($setting, $error->getMessage());
-                    self::assertStringContainsString('queue.' . $setting, $error->getMessage());
+                    // The settings check names the setting by its whole key; a supervisor read alone names itself.
+                    self::assertMatchesRegularExpression(
+                        '/queue\\.' . ($named ? '(supervisors\\.mail\\.)?' : '') . preg_quote($setting, '/') . '/',
+                        $error->getMessage(),
+                    );
                     self::assertStringContainsString($named ? 'mail' : 'queue', $error->getMessage());
                     self::assertSame(0, $opened, 'Invalid settings must be refused before opening the queue store.');
                 }
@@ -229,11 +232,23 @@ final class SettingsTest extends TestCase
         }
     }
 
-    public function testAStandaloneConsumerDoesNotReadUnusedWorkerOrPollingSettings(): void
+    public function testAConsumerRefusesEveryQueueSettingThatDoesNotFitEvenOnesItDoesNotRead(): void
     {
         $app = $this->app(['workers' => 0, 'concurrency' => null, 'sleep' => NAN]);
-
-        self::assertFalse($app->container->get(Consumer::class)->runNext());
+        try {
+            $app->container->get(Consumer::class);
+            self::fail('A queue with settings that do not fit is not made.');
+        } catch (\Crab\Contracts\Config\InvalidSettings $error) {
+            self::assertSame(
+                [
+                    'queue.workers is 0; it takes a whole number, at least 1.',
+                    'queue.concurrency is null; it takes a whole number, at least 1.',
+                    'queue.sleep is NAN; it takes a number, at least 0.',
+                ],
+                $error->problems(),
+            );
+        }
+        self::assertFalse($this->app([])->container->get(Consumer::class)->runNext());
     }
 
     /**

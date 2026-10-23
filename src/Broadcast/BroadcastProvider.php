@@ -20,16 +20,31 @@ final class BroadcastProvider implements WorkerProvider
 {
     public function register(Container $container): void
     {
-        $container->get(Config::class)->defaults('broadcast', [
-            'carrier' => 'local',
-            'prefix' => 'crab:broadcast:',
-            'max_channels' => 64,
-            'batch' => 128,
-            'max_pending_bytes' => 1_048_576,
-            'max_backlog_bytes' => 524_288,
-        ]);
+        $container->get(Config::class)->defaults(
+            'broadcast',
+            [
+                'carrier' => 'local',
+                'prefix' => 'crab:broadcast:',
+                'max_channels' => 64,
+                'batch' => 128,
+                'max_pending_bytes' => 1_048_576,
+                'max_backlog_bytes' => 524_288,
+            ],
+            [
+                'carrier' => [
+                    'enum' => ['local'],
+                    'description' => '"redis" is one more, with crabphp/redis and its RedisProvider registered after this provider.',
+                ],
+                'prefix' => ['type' => 'string'],
+                'max_channels' => ['type' => 'integer', 'minimum' => 1],
+                'batch' => ['type' => 'integer', 'minimum' => 1],
+                'max_pending_bytes' => ['type' => 'integer', 'minimum' => 1],
+                'max_backlog_bytes' => ['type' => 'integer', 'minimum' => 1],
+            ],
+        );
         $container->instance(Lifecycle::class, new Lifecycle());
         $container->singleton(Carrier::class, static function (Container $container): Carrier {
+            $container->get(Config::class)->check('broadcast');
             $name = $container->get(Config::class)->get('broadcast.carrier');
             if ($name !== 'local') {
                 throw new \LogicException(
@@ -49,13 +64,10 @@ final class BroadcastProvider implements WorkerProvider
         $container->singleton(Broadcaster::class, BroadcasterContract::class);
         $container->singleton(ChannelsContract::class, static function (Container $container): Channels {
             $config = $container->get(Config::class);
+            $config->check('broadcast');
             $limits = [];
             foreach (['max_channels', 'batch', 'max_pending_bytes', 'max_backlog_bytes'] as $key) {
-                $value = filter_var($config->get('broadcast.' . $key), FILTER_VALIDATE_INT);
-                if ($value === false || $value < 1) {
-                    throw new \InvalidArgumentException("Set broadcast.{$key} to a positive whole number.");
-                }
-                $limits[$key] = $value;
+                $limits[$key] = (int) $config->get('broadcast.' . $key);
             }
             $life = $container->get(Lifecycle::class);
             $life->carrier = $container->get(Carrier::class);

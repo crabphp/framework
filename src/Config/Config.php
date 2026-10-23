@@ -12,6 +12,13 @@ use Crab\Contracts\Config\Config as ConfigContract;
 final class Config implements ConfigContract
 {
     /**
+     * What each setting takes, by section and key.
+     *
+     * @var array<string, array<string, array<string, mixed>>>
+     */
+    private array $rules = [];
+
+    /**
      * @param array<string, mixed> $items
      */
     public function __construct(
@@ -50,10 +57,19 @@ final class Config implements ConfigContract
         return $found;
     }
 
-    public function defaults(string $section, array $values): void
+    public function defaults(string $section, array $values, array $rules = []): void
     {
         if ($section === '' || str_contains($section, '.')) {
             throw new \InvalidArgumentException('Defaults are declared for a top-level section.');
+        }
+        foreach ($rules as $key => $rule) {
+            Schema::assertValid("{$section}.{$key}", $rule);
+            $earlier = $this->rules[$section][$key] ?? null;
+            // Another provider offering one more choice adds to the ones there are.
+            $this->rules[$section][$key] = isset($earlier['enum'], $rule['enum']) && array_keys($rule) === ['enum']
+                ? ['enum' => array_values(array_unique([...$earlier['enum'], ...$rule['enum']], SORT_REGULAR))]
+                + $earlier
+                : $rule;
         }
         $set = $this->items[$section] ?? [];
         // A section the application set to something other than an array is left alone.
@@ -65,6 +81,41 @@ final class Config implements ConfigContract
     public function all(): array
     {
         return $this->items;
+    }
+
+    public function problems(string ...$sections): array
+    {
+        $problems = [];
+        $rules = $sections === [] ? $this->rules : array_intersect_key($this->rules, array_flip($sections));
+        foreach ($rules as $section => $rules) {
+            $values = $this->items[$section] ?? [];
+            if (!is_array($values) || $values !== [] && array_is_list($values)) {
+                $problems[] = "{$section} is not settings by name; it takes " . implode(', ', array_keys($rules)) . '.';
+                continue;
+            }
+            foreach ($values as $key => $value) {
+                $rule = $rules[$key] ?? $rules['*'] ?? null;
+                if ($rule === null) {
+                    $problems[] = Schema::unknown("{$section}.{$key}", (string) $key, array_keys($rules), $section);
+                    continue;
+                }
+                array_push($problems, ...Schema::problems("{$section}.{$key}", $value, $rule));
+            }
+        }
+        return $problems;
+    }
+
+    public function check(string ...$sections): void
+    {
+        $problems = $this->problems(...$sections);
+        if ($problems !== []) {
+            throw new SettingsException($problems);
+        }
+    }
+
+    public function rules(): array
+    {
+        return $this->rules;
     }
 
     /**

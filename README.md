@@ -990,7 +990,7 @@ $app->register(Acme\Mailer\MailerProvider::class);   // a class with register(Co
 Route::get('/users/{id}', ShowUser::class);            // an action class made by the container
 ~~~
 
-A provider reaches the application through contracts in the container: `Contracts\Routing\Router` to add routes, `Contracts\Console\Console` to add commands, `Contracts\Http\MiddlewareStack` to add middleware, `Contracts\Runner` to run worker processes of its own, as the queue and the scheduler do, and `Contracts\Config\Config` to declare its settings with `defaults('cache', [...])`, which the application's own configuration overrides.
+A provider reaches the application through contracts in the container: `Contracts\Routing\Router` to add routes, `Contracts\Console\Console` to add commands, `Contracts\Http\MiddlewareStack` to add middleware, `Contracts\Runner` to run worker processes of its own, as the queue and the scheduler do, and `Contracts\Config\Config` to declare its settings with `defaults('cache', [...], $rules)`, which the application's own configuration overrides and which are checked against their rules at startup; see [docs/configuration.md](docs/configuration.md#checked-at-startup).
 
 A provider that needs something open in every worker, such as a connection or a timer, implements `Contracts\WorkerProvider` too: `start(Worker $worker, Container $container)` runs in each worker after the engine forks and `stop(Worker $worker, Container $container)` after it has drained. A task or timer that fails in a worker is written to the log and the worker keeps running. `Testing\WorkerHarness::run()` runs such a provider through a worker's life inside a test.
 

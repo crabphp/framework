@@ -24,7 +24,13 @@ final class AuthProvider implements Provider
 {
     public function register(Container $container): void
     {
-        $container->get(Config::class)->defaults('auth', ['ticket_ttl' => 30]);
+        $container->get(Config::class)->defaults(
+            'auth',
+            ['ticket_ttl' => 30],
+            [
+                'ticket_ttl' => ['type' => 'integer', 'minimum' => 1],
+            ],
+        );
         $container->singleton(PasswordHasherContract::class, static fn(): PasswordHasher => new PasswordHasher());
         $container->singleton(PasswordHasher::class, PasswordHasherContract::class);
         $container->singleton(TicketsContract::class, static function (Container $container): Tickets {
@@ -35,13 +41,13 @@ final class AuthProvider implements Provider
                     . ' in your application provider.',
                 );
             }
-            $ttl = $container->get(Config::class)->get('auth.ticket_ttl');
-            if (!is_int($ttl) || $ttl < 1) {
-                throw new \InvalidArgumentException(
-                    'Set auth.ticket_ttl to a whole number of seconds greater than zero.',
-                );
-            }
-            return new Tickets($container->get(Cache::class), $container->get(IdentityResolver::class), $ttl);
+            $config = $container->get(Config::class);
+            $config->check('auth');
+            return new Tickets(
+                $container->get(Cache::class),
+                $container->get(IdentityResolver::class),
+                (int) $config->get('auth.ticket_ttl'),
+            );
         });
         $container->singleton(Tickets::class, TicketsContract::class);
     }

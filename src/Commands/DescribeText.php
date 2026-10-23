@@ -54,6 +54,10 @@ final class DescribeText
      */
     private static function app(array $app): string
     {
+        $problems = '';
+        foreach ($app['problems'] ?? [] as $problem) {
+            $problems .= "\n  does not fit: {$problem}";
+        }
         return implode(', ', [
             'app ' . self::json($app['name']),
             'url ' . ($app['url'] ?? 'none'),
@@ -61,7 +65,7 @@ final class DescribeText
             'php ' . $app['php'],
             'framework ' . ($app['framework'] ?? 'unknown'),
             'path ' . ($app['path'] ?? 'none'),
-        ]);
+        ]) . $problems;
     }
 
     /**

@@ -156,22 +156,79 @@ final class App implements RequestHandlerInterface, Runner
         public readonly ?string $basePath = null,
         array $middleware = self::MIDDLEWARE,
     ) {
-        $config->defaults('app', ['name' => 'Crab', 'debug' => false, 'url' => null, 'path' => $basePath]);
-        $config->defaults('log', ['path' => 'php://stderr', 'level' => 'debug']);
-        $config->defaults('server', [
-            'address' => 'tcp://127.0.0.1:8080',
-            'workers' => 1,
-            'with' => [],
-            'watch' => Server::WATCHED,
-            'max_body' => 1_048_576,
-            'body_timeout' => 30,
-            'drain' => 5.0,
-            'max_connections' => 512,
-            'loop' => 'select',
-            'pid' => 'storage/crab.pid',
-            'log' => 'storage/logs/server.log',
+        $config->defaults(
+            'app',
+            ['name' => 'Crab', 'debug' => false, 'url' => null, 'path' => $basePath],
+            [
+                'name' => ['type' => 'string'],
+                'debug' => ['type' => 'boolean'],
+                'url' => ['type' => ['string', 'null'], 'examples' => ['https://api.example.com']],
+                'path' => ['type' => ['string', 'null']],
+                // The application's own settings may sit beside these.
+                '*' => [],
+            ],
+        );
+        $config->defaults(
+            'log',
+            ['path' => 'php://stderr', 'level' => 'debug'],
+            [
+                'path' => ['type' => 'string', 'minLength' => 1, 'examples' => ['storage/logs/app.log']],
+                'level' => ['enum' => [
+                    'debug',
+                    'info',
+                    'notice',
+                    'warning',
+                    'error',
+                    'critical',
+                    'alert',
+                    'emergency',
+                ]],
+            ],
+        );
+        $config->defaults(
+            'server',
+            [
+                'address' => 'tcp://127.0.0.1:8080',
+                'workers' => 1,
+                'with' => [],
+                'watch' => Server::WATCHED,
+                'max_body' => 1_048_576,
+                'body_timeout' => 30,
+                'drain' => 5.0,
+                'max_connections' => 512,
+                'loop' => 'select',
+                'pid' => 'storage/crab.pid',
+                'log' => 'storage/logs/server.log',
+            ],
+            [
+                'address' => [
+                    'type' => 'string',
+                    'pattern' => '^tcp://(\\[[^\\]]+\\]|[^:/?#\\s]+):[0-9]{1,5}$',
+                    'examples' => ['tcp://127.0.0.1:8080'],
+                ],
+                'workers' => ['type' => 'integer', 'minimum' => 1],
+                // Each server's id with whether it is on, a list of ids, or ids with commas between.
+                'with' => [
+                    'type' => ['object', 'array', 'string', 'boolean', 'null'],
+                    'examples' => [['queue' => true]],
+                ],
+                'watch' => ['type' => 'array', 'items' => ['type' => 'string', 'minLength' => 1], 'minItems' => 1],
+                'max_body' => ['type' => 'integer', 'minimum' => 1],
+                'body_timeout' => ['type' => 'number', 'exclusiveMinimum' => 0],
+                'drain' => ['type' => 'number', 'exclusiveMinimum' => 0],
+                'max_connections' => ['type' => 'integer', 'minimum' => 1],
+                'loop' => ['enum' => ['select', 'ev', 'uv', 'event']],
+                'pid' => ['type' => 'string', 'minLength' => 1],
+                'log' => ['type' => 'string', 'minLength' => 1],
+            ],
+        );
+        $config->defaults('websocket', SocketSettings::DEFAULTS, [
+            // Zero sends no pings.
+            'ping' => ['type' => 'number', 'minimum' => 0],
+            'max_message' => ['type' => 'integer', 'minimum' => 1],
+            'send_timeout' => ['type' => 'number', 'exclusiveMinimum' => 0],
+            'max_connections' => ['type' => 'integer', 'minimum' => 1],
         ]);
-        $config->defaults('websocket', SocketSettings::DEFAULTS);
         self::$current = $this;
         $container->instance(self::class, $this);
         // What runs workers that serve no requests, for a provider's commands.
@@ -250,7 +307,9 @@ final class App implements RequestHandlerInterface, Runner
         $this->stack->add(...$middleware);
         $container->instance(MiddlewareStackContract::class, $this->stack);
         $container->singleton(MiddlewareStack::class, MiddlewareStackContract::class);
-        $this->console = new Console($container, (string) $config->get('app.name'));
+        // A name that is not text is reported by the settings check, not by a warning here.
+        $name = $config->get('app.name');
+        $this->console = new Console($container, is_scalar($name) ? (string) $name : 'Crab');
         $this->console->add('dev', Dev::class);
         $this->console->add('start', Start::class);
         $this->console->add('stop', Stop::class);
@@ -358,12 +417,11 @@ final class App implements RequestHandlerInterface, Runner
         mixed $socket = null,
         bool $servers = true,
     ): Runtime {
+        // Before anything starts, so that every setting that does not fit is said at once.
+        $this->config->check();
         $drain = $this->drain();
-        $maxConnections = $this->positiveInteger('server.max_connections');
+        $maxConnections = (int) $this->config->get('server.max_connections');
         $backend = $this->config->get('server.loop');
-        if (!in_array($backend, ['select', 'ev', 'uv', 'event'], true)) {
-            throw new \InvalidArgumentException('Set "server.loop" to "select", "ev", "uv" or "event".');
-        }
         if ($backend !== 'select' && !extension_loaded($backend)) {
             throw new \InvalidArgumentException(
                 "The server.loop backend {$backend} needs the {$backend} PHP extension. Install and enable it, or set server.loop to select.",
@@ -473,33 +531,16 @@ final class App implements RequestHandlerInterface, Runner
      */
     private function socketSettings(): SocketSettings
     {
-        $ping = $this->config->get('websocket.ping');
-        $timeout = $this->config->get('websocket.send_timeout');
-        if (!is_numeric($ping) || !is_numeric($timeout)) {
-            throw new \InvalidArgumentException('Set websocket.ping and websocket.send_timeout to numbers of seconds.');
-        }
+        $this->config->check('websocket');
         return new SocketSettings(
-            ping: (float) $ping,
-            maxMessage: $this->positiveInteger('websocket.max_message'),
-            sendTimeout: (float) $timeout,
-            maxConnections: $this->positiveInteger('websocket.max_connections'),
+            ping: (float) $this->config->get('websocket.ping'),
+            maxMessage: (int) $this->config->get('websocket.max_message'),
+            sendTimeout: (float) $this->config->get('websocket.send_timeout'),
+            maxConnections: (int) $this->config->get('websocket.max_connections'),
             // The engine spreads drain closes over min(1, closeTimeout).
             // Keep that window inside even a short worker allowance.
             closeTimeout: min(5.0, $this->drain()),
         );
-    }
-
-    /**
-     * Environment settings may be strings, but fractional or malformed
-     * connection and byte limits must not quietly become another number.
-     */
-    private function positiveInteger(string $key): int
-    {
-        $value = filter_var($this->config->get($key), FILTER_VALIDATE_INT);
-        if ($value === false || $value < 1) {
-            throw new \InvalidArgumentException("Set {$key} to a positive whole number.");
-        }
-        return $value;
     }
 
     /**
@@ -833,6 +874,8 @@ final class App implements RequestHandlerInterface, Runner
         if ($single && $workers !== 1) {
             throw new \InvalidArgumentException('Work that runs in this one process has one worker.');
         }
+        // Before anything starts, so that every setting that does not fit is said at once.
+        $this->config->check();
         $runtime = new Runtime(shutdownTimeout: $shutdownTimeout);
         $this->group($runtime, new Workers($group, $work, $workers));
         $runtime->run(singleProcess: $single);
@@ -843,6 +886,8 @@ final class App implements RequestHandlerInterface, Runner
         if ($groups === []) {
             throw new \InvalidArgumentException('There is no group of workers to run.');
         }
+        // Before anything starts, so that every setting that does not fit is said at once.
+        $this->config->check();
         $runtime = new Runtime(shutdownTimeout: $shutdownTimeout);
         foreach ($groups as $workers) {
             $this->group($runtime, $workers);

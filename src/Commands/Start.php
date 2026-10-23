@@ -44,6 +44,8 @@ final readonly class Start implements Command
         $address = self::address($this->app, $input);
         $single = $input->flag('single');
         $workers = self::workers($this->app, $input);
+        // Before anything starts, in the foreground or the background, so that what is wrong is said here.
+        $this->app->config->check();
         if ($single) {
             $workers = 1;
         }

@@ -34,14 +34,21 @@ final class ScheduleProvider implements Provider
 {
     public function register(Container $container): void
     {
-        $container->get(Config::class)->defaults('schedule', [
-            'timezone' => null,
-        ]);
+        $container->get(Config::class)->defaults(
+            'schedule',
+            [
+                'timezone' => null,
+            ],
+            [
+                'timezone' => ['type' => ['string', 'null'], 'format' => 'timezone', 'examples' => ['Europe/Paris']],
+            ],
+        );
         // Made now, in the parent: the tasks are part of what the application is defined as.
         $schedule = new Schedule();
         $container->instance(ScheduleContract::class, $schedule);
         $container->singleton(Schedule::class, ScheduleContract::class);
         $container->singleton(Scheduler::class, static function (Container $container): Scheduler {
+            $container->get(Config::class)->check('schedule');
             $timezone = $container->get(Config::class)->get('schedule.timezone');
             return new Scheduler(
                 $container->get(ScheduleContract::class),

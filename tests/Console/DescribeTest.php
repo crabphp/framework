@@ -194,6 +194,26 @@ final class DescribeTest extends TestCase
             TEXT, $text);
     }
 
+    public function testSettingsThatDoNotFitAreSaidFirst(): void
+    {
+        $app = new App(new Config(['server' => ['workers' => 0], 'log' => ['level' => 'loud']]));
+        self::assertSame(
+            [
+                'log.level is "loud"; it takes "debug", "info", "notice", "warning", "error", "critical", "alert" or "emergency".',
+                'server.workers is 0; it takes a whole number, at least 1.',
+            ],
+            $this->describe($app, 'app')['app']['problems'],
+        );
+        self::assertArrayNotHasKey('problems', $this->describe(new App(), 'app')['app']);
+        $stream = fopen('php://memory', 'w+b');
+        self::assertSame(0, $app->console->run(['describe', 'app'], new Output($stream, $stream)));
+        rewind($stream);
+        self::assertStringContainsString(
+            "path none\n  does not fit: log.level is \"loud\"; it takes",
+            (string) stream_get_contents($stream),
+        );
+    }
+
     public function testAnUnknownSectionIsRefused(): void
     {
         $stream = fopen('php://memory', 'w+b');

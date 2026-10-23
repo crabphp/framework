@@ -35,16 +35,31 @@ final class CacheProvider implements Provider
 {
     public function register(Container $container): void
     {
-        $container->get(Config::class)->defaults('cache', [
-            'store' => 'file',
-            'directory' => null,
-            'table' => 'cache',
-            'database' => null,
-            'prefix' => '',
-            'ttl' => null,
-        ]);
+        $container->get(Config::class)->defaults(
+            'cache',
+            [
+                'store' => 'file',
+                'directory' => null,
+                'table' => 'cache',
+                'database' => null,
+                'prefix' => '',
+                'ttl' => null,
+            ],
+            [
+                'store' => [
+                    'enum' => ['file', 'database', 'array'],
+                    'description' => '"redis" is one more, with crabphp/redis and its RedisProvider registered after this provider.',
+                ],
+                'directory' => ['type' => ['string', 'null'], 'minLength' => 1],
+                'table' => ['type' => 'string', 'minLength' => 1],
+                'database' => ['type' => ['string', 'null'], 'minLength' => 1],
+                'prefix' => ['type' => 'string'],
+                'ttl' => ['type' => ['integer', 'null'], 'minimum' => 1],
+            ],
+        );
         $container->singleton(Store::class, static function (Container $container): Store {
             $config = $container->get(Config::class);
+            $config->check('cache');
             $store = (string) $config->get('cache.store');
             if ($store === 'file') {
                 $directory = $config->get('cache.directory');
@@ -84,6 +99,7 @@ final class CacheProvider implements Provider
         });
         $container->singleton(CacheContract::class, static function (Container $container): Cache {
             $config = $container->get(Config::class);
+            $config->check('cache');
             $ttl = $config->get('cache.ttl');
             return new Cache(
                 $container->get(Store::class),

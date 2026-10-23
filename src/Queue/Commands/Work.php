@@ -48,6 +48,8 @@ final readonly class Work implements Command
 
     public function handle(Input $input, Output $output): int
     {
+        // Every setting, before the supervisors are read from them: the workers run with all of them.
+        $this->config->check();
         $supervisors = $this->supervisors($input);
         $drain = $input->flag('stop-when-empty');
         $single = $drain || $input->flag('single');

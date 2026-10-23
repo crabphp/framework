@@ -530,18 +530,24 @@ final class ServerTest extends TestCase
         self::assertFalse(posix_kill($pid, 0));
     }
 
-    public function testAnExplicitFifteenSecondRestartStopsBeforeValidatingTheNewGeneration(): void
+    public function testARestartWithSettingsThatDoNotFitLeavesTheServerRunning(): void
     {
         $this->drainSetting(30.0);
         self::assertSame(0, $this->cua('start', '--daemon', "--address={$this->address}")[0]);
         $pid = $this->pid();
         $this->drainSetting('abc');
-        [$status, $output] = $this->cua('restart', '--timeout=15', "--address={$this->address}");
-        self::assertSame(1, $status, $output);
-        self::assertStringContainsString("Stopped the server, pid {$pid}.", $output);
-        self::assertStringContainsString('server.drain', $output);
-        self::assertFalse(posix_kill($pid, 0));
-        self::assertFileDoesNotExist($this->directory . '/storage/crab.pid');
+        foreach ([['restart', '--timeout=15'], ['restart'], ['reload']] as $command) {
+            [$status, $output] = $this->cua(...[...$command, "--address={$this->address}"]);
+            self::assertSame(1, $status, $output);
+            self::assertSame(
+                "A setting does not fit:\n  server.drain is \"abc\"; it takes a number greater than 0.\n",
+                $output,
+            );
+            self::assertTrue(posix_kill($pid, 0), 'Nothing was stopped: the settings were checked first.');
+            self::assertSame('one', $this->get(retry: true));
+        }
+        $this->drainSetting(30.0);
+        self::assertSame(0, $this->cua('stop')[0]);
     }
 
     public function testAThrowingWarningLoggerPreservesTheCountAndProviderCleanup(): void
@@ -1052,26 +1058,6 @@ final class ServerTest extends TestCase
     public function testPlainStopAnswersTheRequestDespiteAnInvalidNewDrainSetting(): void
     {
         $this->checkChangedConfigurationStop('abc', 0.5);
-    }
-
-    public function testPlainRestartDrainsTheOldServerBeforeRejectingInvalidNewConfiguration(): void
-    {
-        $this->drainSetting(30.0);
-        $this->slowVersion('one', 0.5);
-        self::assertSame(0, $this->cua('start', '--daemon', "--address={$this->address}")[0]);
-        $pid = $this->pid();
-        $request = $this->slowRequest();
-        $this->drainSetting('abc');
-        try {
-            [$status, $output] = $this->stopDuringRequest('restart', "--address={$this->address}");
-            self::assertSame(1, $status, $output);
-            self::assertStringContainsString("Stopped the server, pid {$pid}.", $output);
-            self::assertStringContainsString('server.drain', $output);
-            self::assertStringEndsWith('one finished', (string) stream_get_contents($request));
-            self::assertFalse(posix_kill($pid, 0));
-        } finally {
-            fclose($request);
-        }
     }
 
     /**

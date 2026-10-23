@@ -38,6 +38,7 @@ final readonly class Reload implements Command
         $server = new Server($this->app);
         $address = Start::address($this->app, $input);
         $workers = Start::workers($this->app, $input);
+        $this->app->config->check();
         try {
             [$pid, $new, $old] = $server->reload($address, $workers, Server::invocation('reload'));
         } catch (\RuntimeException $error) {

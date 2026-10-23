@@ -46,22 +46,52 @@ final class QueueProvider implements Provider
 {
     public function register(Container $container): void
     {
-        $container->get(Config::class)->defaults('queue', [
-            'store' => 'database',
-            'table' => 'jobs',
-            'database' => null,
-            'queue' => 'default',
-            'tries' => 3,
-            'backoff' => [10, 60],
-            'retry_after' => 90,
-            'workers' => 1,
-            'concurrency' => 1,
-            'sleep' => 1.0,
-            'grace' => 30.0,
-            'supervisors' => [],
-        ]);
+        $container->get(Config::class)->defaults(
+            'queue',
+            [
+                'store' => 'database',
+                'table' => 'jobs',
+                'database' => null,
+                'queue' => 'default',
+                'tries' => 3,
+                'backoff' => [10, 60],
+                'retry_after' => 90,
+                'workers' => 1,
+                'concurrency' => 1,
+                'sleep' => 1.0,
+                'grace' => 30.0,
+                'supervisors' => [],
+            ],
+            [
+                'store' => [
+                    'enum' => ['database', 'memory'],
+                    'description' => '"redis" is one more, with crabphp/redis and its RedisProvider registered after this provider.',
+                ],
+                'table' => ['type' => 'string', 'minLength' => 1],
+                'database' => ['type' => ['string', 'null'], 'minLength' => 1],
+                'queue' => ['type' => 'string', 'minLength' => 1],
+                ...Supervisor::RULES,
+                'grace' => ['type' => 'number', 'minimum' => 0],
+                'supervisors' => [
+                    'type' => 'object',
+                    'additionalProperties' => [
+                        'type' => 'object',
+                        'properties' => [
+                            'queues' => [
+                                'type' => 'array',
+                                'items' => ['type' => 'string', 'minLength' => 1],
+                                'minItems' => 1,
+                            ],
+                            ...Supervisor::RULES,
+                        ],
+                        'additionalProperties' => false,
+                    ],
+                ],
+            ],
+        );
         $container->singleton(Store::class, static function (Container $container): Store {
             $config = $container->get(Config::class);
+            $config->check('queue');
             $store = (string) $config->get('queue.store');
             if ($store === 'memory') {
                 return new MemoryStore();
@@ -96,6 +126,7 @@ final class QueueProvider implements Provider
         $container->singleton(Queue::class, QueueContract::class);
         $container->singleton(Consumer::class, static function (Container $container): Consumer {
             $config = $container->get(Config::class);
+            $config->check('queue');
             $retry = Supervisor::retrySettings($config);
             return new Consumer(
                 $container->get(Store::class),
@@ -117,6 +148,7 @@ final class QueueProvider implements Provider
                 'queue',
                 static function () use ($container): array {
                     $config = $container->get(Config::class);
+                    $config->check('queue');
                     $supervisors = array_values(Supervisor::all($config));
                     return Supervisor::groups(
                         $supervisors === [] ? [Supervisor::from($config, 'queue')] : $supervisors,

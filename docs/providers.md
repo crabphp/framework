@@ -114,7 +114,7 @@ Start with the one `AppProvider`. Split it when it grows, by area: a `BillingPro
 
 ### Settings with defaults
 
-A provider that ships in a package declares its settings and their defaults once. The application's own configuration wins, and `config('mailer.port')` then reads the same value everywhere:
+A provider that ships in a package declares its settings, their defaults and what each takes, once. The application's own configuration wins, and `config('mailer.port')` then reads the same value everywhere:
 
 ```php
 use Crab\Contracts\Config\Config;
@@ -122,7 +122,31 @@ use Crab\Contracts\Config\Config;
 $container->get(Config::class)->defaults('mailer', [
     'host' => '127.0.0.1',
     'port' => 25,
+    'timeout' => 10.0,
+], [
+    'host' => ['type' => 'string', 'minLength' => 1],
+    'port' => ['type' => 'integer', 'minimum' => 1, 'maximum' => 65_535],
+    'timeout' => ['type' => 'number', 'exclusiveMinimum' => 0],
 ]);
+```
+
+The rules are JSON Schema: `type` (`string`, `integer`, `number`, `boolean`, `array` for a list, `object` for keys by name, `null`, or several), `enum`, `minimum`, `maximum`, `exclusiveMinimum`, `minLength`, `pattern`, `format` (`timezone`), `items`, `minItems`, `properties`, `additionalProperties`, `examples` and `description`. They are checked with every other setting before the application serves, as [Checked at startup](configuration.md#checked-at-startup) describes, and a rule using any other keyword is refused when it is declared. With rules, the section takes no keys but these; give `'*' => []` to let others through.
+
+Check the section where its service is made too, so a command or a test that uses it meets the same message:
+
+```php
+$container->singleton(Mailer::class, static function (Container $container): Mailer {
+    $config = $container->get(Config::class);
+    $config->check('mailer');
+
+    return new SmtpMailer($config->get('mailer.host'), (int) $config->get('mailer.port'));
+});
+```
+
+A provider that offers one more choice for another section's setting adds it with an `enum` of its own, which joins the earlier choices: this is how `crabphp/redis` makes `"redis"` a value of `cache.store`.
+
+```php
+$config->defaults('cache', [], ['store' => ['enum' => ['redis']]]);
 ```
 
 ### Reaching the application from a provider

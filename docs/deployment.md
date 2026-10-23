@@ -108,7 +108,7 @@ php cua reload
 The server starts a new process, with the code and configuration as they are now, on the socket it already listens on. When every worker of the new process accepts connections, the old process gives its requests up to its `server.drain` limit to finish and stops.
 
 - **Connections keep being accepted.** The old and the new process accept from the same socket. Requests already in flight finish within the old workers' `server.drain` limit; connections still open at that limit are cut.
-- **A reload that fails at startup leaves the old process serving.** Syntax errors, middleware construction and provider start hooks can fail here; lazily made action services can still fail after takeover.
+- **A reload that fails at startup leaves the old process serving.** Settings that do not fit are refused before the running server is touched; syntax errors, middleware construction and provider start hooks can fail here; lazily made action services can still fail after takeover.
 
 The console loads the application before running a command. If broken files prevent that bootstrap, `reload`, `status`, `stop` and help cannot contact the existing server. Restore the last working application files and retry; with release directories, run the command from the previous working release using the same shared `storage/`. A bootstrap error does not mean the running server stopped.
 

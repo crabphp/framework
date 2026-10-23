@@ -34,34 +34,53 @@ final class DatabaseProvider implements WorkerProvider
 {
     public function register(Container $container): void
     {
-        $container->get(Config::class)->defaults('database', [
-            // Each database by a name of your choosing; see DatabaseManager for its settings.
-            'connections' => [],
-            // The name of the one used when none is named; the first when left out.
-            'default' => null,
-            'migration_lock_timeout' => 60,
-        ]);
+        $container->get(Config::class)->defaults(
+            'database',
+            [
+                // Each database by a name of your choosing; see DatabaseManager for its settings.
+                'connections' => [],
+                // The name of the one used when none is named; the first when left out.
+                'default' => null,
+                'migration_lock_timeout' => 60,
+            ],
+            [
+                'connections' => [
+                    'type' => 'object',
+                    'additionalProperties' => [
+                        'type' => 'object',
+                        // Null, as env() gives for a variable that is not set, is the same as leaving the key out.
+                        'properties' => [
+                            'driver' => ['enum' => ['sqlite', 'mysql', null]],
+                            'host' => ['type' => ['string', 'null']],
+                            'port' => ['type' => ['integer', 'null'], 'minimum' => 1, 'maximum' => 65_535],
+                            'database' => ['type' => ['string', 'null']],
+                            'username' => ['type' => ['string', 'null']],
+                            'password' => ['type' => ['string', 'null']],
+                            'charset' => ['type' => ['string', 'null']],
+                            'unix_socket' => ['type' => ['string', 'null']],
+                            // In place of the keys above.
+                            'dsn' => ['type' => ['string', 'null'], 'examples' => ['mysql:host=127.0.0.1;dbname=app']],
+                            'migrations' => ['type' => ['string', 'null']],
+                            'options' => ['type' => ['object', 'null']],
+                            'pool' => ['type' => ['integer', 'null'], 'minimum' => 1],
+                            'timeout' => ['type' => ['number', 'null'], 'exclusiveMinimum' => 0],
+                            'async' => ['type' => ['boolean', 'null']],
+                        ],
+                        'additionalProperties' => false,
+                    ],
+                ],
+                'default' => ['type' => ['string', 'null'], 'minLength' => 1],
+                // Seconds, in whole seconds; zero does not wait.
+                'migration_lock_timeout' => ['type' => 'number', 'minimum' => 0],
+            ],
+        );
         $container->singleton(DatabaseManager::class, static function (Container $container): DatabaseManager {
             $config = $container->get(Config::class);
-            $connections = $config->get('database.connections');
-            if ($config->get('database.dsn') !== null) {
-                throw new DatabaseException(
-                    '"database.dsn" is not read. A database is described under "database.connections", by name: \'connections\' => [\'main\' => [\'driver\' => \'mysql\', \'host\' => ..., \'database\' => ...]].',
-                );
-            }
-            if (!is_array($connections)) {
-                throw new DatabaseException(
-                    '"database.connections" holds each database by name: \'connections\' => [\'main\' => [\'driver\' => \'sqlite\', \'database\' => \'/path/app.sqlite\']].',
-                );
-            }
+            $config->check('database');
+            $connections = (array) $config->get('database.connections');
             $default = (string) ($config->get('database.default') ?? array_key_first($connections));
             $clock = $container->has(ClockInterface::class) ? $container->get(ClockInterface::class) : null;
             $lockTimeout = $config->get('database.migration_lock_timeout');
-            if (!is_numeric($lockTimeout) || !is_finite((float) $lockTimeout) || (float) $lockTimeout < 0) {
-                throw new \InvalidArgumentException(
-                    'Set "database.migration_lock_timeout" to a nonnegative number of whole seconds; zero does not wait.',
-                );
-            }
             $base = $config->get('app.path');
             return new DatabaseManager(
                 $connections,

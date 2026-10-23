@@ -4,6 +4,7 @@
 - [Environment variables](#environment-variables)
 - [Configuration files](#configuration-files)
 - [Reading configuration](#reading-configuration)
+- [Checked at startup](#checked-at-startup)
 - [Describing the application](#describing-the-application)
     - [Providers](#providers)
     - [Middleware](#middleware)
@@ -98,6 +99,29 @@ $container->singleton(Mailer::class, static fn (): Mailer => new SmtpMailer(
 The core and providers declare their defaults before your application runs, so `config()` exposes the same values their consumers use. Values you supply, including explicit `null` and `false`, take precedence.
 
 Configuration is fixed once the application is defined. Do not change it at run time: every worker has its own copy, and a change in one is seen by no other.
+
+## Checked at startup
+
+Every framework setting says what it takes, and the application checks all of them before it serves or runs workers. A typo or a wrong value stops `php cua start` with every problem at once, each naming the setting and what it takes, instead of failing on the first request that reads it:
+
+```text
+$ php cua start
+3 settings do not fit:
+  log.level is "verbose"; it takes "debug", "info", "notice", "warning", "error", "critical", "alert" or "emergency".
+  database.connections.main.port is "70000"; it takes a whole number from 1 to 65535 or null.
+  cache.stroe is not a setting; cache takes store, directory, table, database, prefix and ttl. Did you mean cache.store?
+```
+
+The same check runs for `reload` and `restart` before they touch the running server, so a deploy with a broken setting leaves the old server serving. `queue:work` and `schedule:work` run it too, and a component checks its own section when its service is first made, so a console command or a test meets the same message. `php cua describe` lists the problems under the application's name.
+
+What the check takes:
+
+- A string of digits counts as a whole number and a numeric string as a number, since that is what `env()` gives: `SERVER_WORKERS=4` is fine. `true`, `false`, `0` and `1` count as a switch.
+- A database connection's keys may be `null`, which `env()` gives for a variable that is not set, and means the same as leaving the key out.
+- A framework section takes no keys other than its own, so a misspelt key is reported rather than ignored. `app` is the exception: put the application's own settings there, or in a file of their own, which the check leaves alone.
+- A value named like a secret (`password`, `secret`, `token`, `key`) is never repeated in a message, nor a password inside a URL.
+
+A provider of your own declares what its settings take the same way; see [Settings with defaults](providers.md#settings-with-defaults).
 
 ## Describing the application
 

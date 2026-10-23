@@ -97,7 +97,7 @@ final readonly class Describe implements Command
         } catch (\OutOfBoundsException) {
             $version = null;
         }
-        return [
+        $described = [
             'name' => $this->app->config->get('app.name'),
             'url' => $this->app->config->get('app.url'),
             'debug' => filter_var($this->app->config->get('app.debug'), FILTER_VALIDATE_BOOL),
@@ -105,6 +105,12 @@ final readonly class Describe implements Command
             'php' => PHP_VERSION,
             'framework' => $version,
         ];
+        // What `start` would refuse, said first, since nothing runs until it is fixed.
+        $problems = $this->app->config->problems();
+        if ($problems !== []) {
+            $described['problems'] = $problems;
+        }
+        return $described;
     }
 
     /**

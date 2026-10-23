@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Crab\Console;
 
+use Crab\Contracts\Config\InvalidSettings;
 use Crab\Contracts\Console\Command;
 use Crab\Contracts\Console\Console as ConsoleContract;
 use Crab\Contracts\Console\Input as InputContract;
@@ -93,6 +94,10 @@ final class Console implements ConsoleContract
                 return 0;
             }
             return $this->resolve($name)->handle(new Input($arguments), $output);
+        } catch (InvalidSettings $error) {
+            // Written for whoever runs the command; where it was thrown would only hide it.
+            $output->error($error->getMessage());
+            return 1;
         } catch (\Throwable $error) {
             $output->error(
                 $error::class . ': ' . $error->getMessage() . ' (' . $error->getFile() . ':' . $error->getLine() . ')',
