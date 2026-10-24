@@ -134,6 +134,15 @@ The server starts a new process, with the code and configuration as they are now
 
 - **Connections keep being accepted.** The old and the new process accept from the same socket. Requests already in flight finish within the old workers' `server.drain` limit; connections still open at that limit are cut.
 - **A reload that fails at startup leaves the old process serving.** Settings that do not fit are refused before the running server is touched; syntax errors, middleware construction and provider start hooks can fail here; lazily made action services can still fail after takeover.
+- **It starts the server as it was started.** An `--address` or `--workers` typed to `start` is kept by every `reload` and `restart` after it; one left to `server.address` or `server.workers` follows the configuration as it is now. Typing one to `reload` changes it without refusing a connection, and it is kept from then on:
+
+```sh
+php cua start --daemon --workers=4   # four workers, whatever server.workers says
+php cua reload                       # still four
+php cua reload --workers=8           # eight from now on, with no gap
+```
+
+A new `--address` is bound before the new process starts, and the old one lets the old address go when it stops.
 
 The console loads the application before running a command. If broken files prevent that bootstrap, `reload`, `status`, `stop` and help cannot contact the existing server. Restore the last working application files and retry; with release directories, run the command from the previous working release using the same shared `storage/`. A bootstrap error does not mean the running server stopped.
 

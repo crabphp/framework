@@ -165,10 +165,11 @@ final class Server
      * child, which a reload replaces. See Engine\Process\Keeper.
      *
      * @param list<string> $invocation How this application's command line is run, less the command; see invocation().
+     * @param array{address?: string, workers?: int} $given The options typed on the command line, which a reload or restart keeps; see given().
      * @param float $timeout Seconds to wait for it to be ready.
      * @return int The server's process id, which stays the same across reloads.
      */
-    public function start(string $address, int $workers, array $invocation, float $timeout = 20.0): int
+    public function start(string $address, array $given, array $invocation, float $timeout = 20.0): int
     {
         $grace = $this->grace();
         $pidFile = $this->pidFile();
@@ -203,7 +204,7 @@ final class Server
             $keeper = new Keeper($pidFile, $log, $timeout, $grace);
             $status = $keeper->run(
                 $address,
-                self::generationCommand($invocation, $address, $workers),
+                self::generationCommand($invocation, $given),
                 $directory,
                 static fn() => $daemon->ready((string) getmypid()),
             );
@@ -220,12 +221,14 @@ final class Server
      * what `start --generation` runs; a keeper starts it and nothing else
      * does.
      */
-    public function generation(string $address, int $workers): never
+    public function generation(?string $address, int $workers): never
     {
         $status = 0;
         $generation = null;
         try {
             $generation = Generation::inherit();
+            // Without an address of its own on the command line, it serves where the keeper's socket listens.
+            $address ??= 'tcp://' . stream_socket_get_name($generation->socket, false);
             $runtime = $this->keepStats($this->app->runtime($address, $workers, $generation->socket), [
                 'address' => $address,
                 'mode' => 'background',
@@ -303,7 +306,7 @@ final class Server
      * @param list<string> $invocation How this application's command line is run, less the command; see invocation().
      * @return array{int, int, int} The server's process id, and those of the new and the previous server process under it.
      */
-    public function reload(string $address, int $workers, array $invocation, float $timeout = 20.0): array
+    public function reload(string $address, array $given, array $invocation, float $timeout = 20.0): array
     {
         $server = $this->running();
         if ($server === null) {
@@ -321,7 +324,7 @@ final class Server
                 $pidFile,
                 $server,
                 $address,
-                self::generationCommand($invocation, $address, $workers),
+                self::generationCommand($invocation, $given),
                 (string) getcwd(),
                 $timeout + 5.0,
                 $this->grace(),
@@ -444,14 +447,43 @@ final class Server
     }
 
     /**
-     * The command a keeper starts a server process with, after the PHP binary.
+     * The command a keeper starts a server process with, after the PHP
+     * binary. It carries only the options that were typed: what was left to
+     * the configuration is read from it again by each new server process.
      *
      * @param list<string> $invocation
+     * @param array{address?: string, workers?: int} $given
      * @return list<string>
      */
-    private static function generationCommand(array $invocation, string $address, int $workers): array
+    private static function generationCommand(array $invocation, array $given): array
     {
-        return [...$invocation, 'start', '--generation', "--address={$address}", "--workers={$workers}"];
+        $command = [...$invocation, 'start', '--generation'];
+        foreach ($given as $option => $value) {
+            $command[] = "--{$option}={$value}";
+        }
+        return $command;
+    }
+
+    /**
+     * The options the server in the background was started with on the
+     * command line, or last reloaded with: a reload or restart starts it
+     * the same way unless told otherwise. Empty when none is running, or
+     * when it was started by a version that did not record them.
+     *
+     * @return array{address?: string, workers?: string}
+     */
+    public function given(): array
+    {
+        $pid = $this->running();
+        $command = $pid === null ? null : $this->pidFile()->command($pid);
+        $given = [];
+        foreach (array_slice($command ?? [], (int) array_search('--generation', $command ?? [], true)) as $argument) {
+            if (preg_match('/^--(address|workers)=(.*)$/sD', $argument, $match) !== 1) {
+                continue;
+            }
+            $given[$match[1]] = $match[2];
+        }
+        return $given;
     }
 
     /**

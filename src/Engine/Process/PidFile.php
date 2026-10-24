@@ -104,6 +104,19 @@ final readonly class PidFile
     }
 
     /**
+     * The command the keeper of this pid starts its server processes with,
+     * after the PHP binary; null when its state is missing or names another process.
+     *
+     * @return list<string>|null
+     */
+    public function command(int $pid): ?array
+    {
+        $state = json_decode((string) @file_get_contents($this->path . '.state'), true);
+        $command = is_array($state) && ($state['pid'] ?? null) === $pid ? $state['command'] ?? null : null;
+        return is_array($command) && array_is_list($command) ? array_map(strval(...), $command) : null;
+    }
+
+    /**
      * The OS start identity, not elapsed time: Linux's start ticks or
      * ps's fixed start date on systems without /proc.
      */

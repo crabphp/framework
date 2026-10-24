@@ -53,7 +53,7 @@ final readonly class Start implements Command
 
         if ($input->flag('generation')) {
             // How the keeper of a server in the background starts the server proper; see Server::start().
-            $server->generation($address, $workers);
+            $server->generation(is_string($input->option('address')) ? $address : null, $workers);
         }
         if ($daemon) {
             if ($single) {
@@ -68,7 +68,7 @@ final readonly class Start implements Command
                 return 1;
             }
             try {
-                $server->start($address, $workers, Server::invocation('start'));
+                $server->start($address, self::given($input, $address, $workers), Server::invocation('start'));
             } catch (\RuntimeException $error) {
                 $output->error($error->getMessage());
                 return 1;
@@ -202,15 +202,52 @@ final readonly class Start implements Command
     }
 
     /**
-     * Where to listen: the option, or the configuration.
+     * Refuses a typed --address or --workers of the wrong form before the
+     * running server's state is read.
+     *
+     * @internal Shared by the server commands.
      */
-    public static function address(App $app, Input $input): string
+    public static function checkTyped(App $app, Input $input): void
+    {
+        if ($input->option('address') !== null) {
+            self::address($app, $input);
+        }
+        if ($input->option('workers') !== null) {
+            self::workers($app, $input);
+        }
+    }
+
+    /**
+     * The options typed on this command line, as the server keeps them for a
+     * reload or restart, merged over those it was started with.
+     *
+     * @param array{address?: string, workers?: string} $kept
+     * @return array{address?: string, workers?: int}
+     * @internal Shared by the server commands.
+     */
+    public static function given(Input $input, string $address, int $workers, array $kept = []): array
+    {
+        $given = [];
+        if (is_string($input->option('address')) || isset($kept['address'])) {
+            $given['address'] = $address;
+        }
+        if (is_string($input->option('workers')) || isset($kept['workers'])) {
+            $given['workers'] = $workers;
+        }
+        return $given;
+    }
+
+    /**
+     * Where to listen: the option, else what the running server was started
+     * with ($kept), else the configuration.
+     */
+    public static function address(App $app, Input $input, ?string $kept = null): string
     {
         $address = $input->option('address');
         if ($address === true) {
             throw new \InvalidArgumentException('--address needs a value; use --address=value.');
         }
-        $address ??= $app->config->get('server.address');
+        $address ??= $kept ?? $app->config->get('server.address');
         $valid =
             is_string($address) && preg_match('~^tcp://(\[[^\]]+\]|[^:/?#\s]+):([0-9]+)$~D', $address, $parts) === 1;
         if ($valid) {
@@ -232,15 +269,16 @@ final readonly class Start implements Command
     }
 
     /**
-     * How many workers: the option, or the configuration.
+     * How many workers: the option, else what the running server was started
+     * with ($kept), else the configuration.
      */
-    public static function workers(App $app, Input $input): int
+    public static function workers(App $app, Input $input, ?string $kept = null): int
     {
         $workers = $input->option('workers');
         if ($workers === true) {
             throw new \InvalidArgumentException('--workers needs a value; use --workers=value.');
         }
-        $workers ??= $app->config->get('server.workers');
+        $workers ??= $kept ?? $app->config->get('server.workers');
         if (
             !is_int($workers) && (!is_string($workers) || preg_match('/^[1-9][0-9]*$/D', $workers) !== 1)
             || filter_var($workers, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]) === false

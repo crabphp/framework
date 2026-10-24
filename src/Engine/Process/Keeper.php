@@ -401,6 +401,8 @@ final class Keeper
             'pid' => getmypid(),
             'identity' => $this->identity,
             'started' => $this->started,
+            // What a later reload or restart reads to start the server as it was started.
+            'command' => $this->command,
             'generations' => array_values($generations),
         ]);
     }

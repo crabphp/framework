@@ -129,6 +129,60 @@ final class ServerTest extends TestCase
         self::assertSame([], glob($this->directory . '/storage/crab.stats/*'), 'Each server removed its file.');
     }
 
+    public function testReloadAndRestartKeepTheOptionsTheServerWasStartedWith(): void
+    {
+        // The configuration says otherwise: an address nothing could take over, and one worker.
+        $this->configure('tcp://127.0.0.2:9', 1);
+        [$status, $output] = $this->cua('start', '-d', "--address={$this->address}", '--workers=2');
+        self::assertSame(0, $status, $output);
+        $keeper = $this->pid();
+
+        [$status, $output] = $this->cua('reload');
+        self::assertSame(0, $status, $output);
+        self::assertStringStartsWith("Reloaded the server, pid {$keeper}, on {$this->url} with 2 workers.", $output);
+        self::assertSame('one', $this->get());
+        $server = $this->awaitStatus(static fn(array $server): bool => $server['state'] === 'running');
+        self::assertCount(2, $server['workers']);
+        self::assertSame($this->address, $server['about']['address']);
+
+        [$status, $output] = $this->cua('reload', '--workers=1');
+        self::assertSame(0, $status, $output);
+        self::assertStringStartsWith("Reloaded the server, pid {$keeper}, on {$this->url}.", $output);
+        [$status, $output] = $this->cua('restart');
+        self::assertSame(0, $status, $output);
+        self::assertStringContainsString(
+            "server running on {$this->url}\n",
+            $output,
+            'What a reload typed is kept too.',
+        );
+        $server = $this->awaitStatus(static fn(array $server): bool => $server['state'] === 'running');
+        self::assertCount(1, $server['workers'], 'And so is the number a reload typed.');
+        self::assertSame('one', $this->get());
+    }
+
+    public function testWhatWasLeftToTheConfigurationFollowsItOnReload(): void
+    {
+        $this->configure($this->address, 1);
+        [$status, $output] = $this->cua('start', '-d');
+        self::assertSame(0, $status, $output);
+        $keeper = $this->pid();
+
+        $probe = stream_socket_server('tcp://127.0.0.1:0');
+        $moved = 'tcp://' . stream_socket_get_name($probe, false);
+        fclose($probe);
+        $this->configure($moved, 2);
+        [$status, $output] = $this->cua('reload');
+        self::assertSame(0, $status, $output);
+        $url = str_replace('tcp://', 'http://', $moved);
+        self::assertStringStartsWith("Reloaded the server, pid {$keeper}, on {$url} with 2 workers.", $output);
+        $server = $this->awaitStatus(
+            static fn(array $server): bool => $server['state'] === 'running' && count($server['workers']) === 2,
+        );
+        self::assertSame($moved, $server['about']['address']);
+        $this->address = $moved;
+        self::assertSame('one', $this->get());
+    }
+
     public function testTheServerRunsInTheBackgroundAndIsStopped(): void
     {
         self::assertSame([1, "No server is running.\n"], $this->cua('status'));
@@ -1759,6 +1813,25 @@ final class ServerTest extends TestCase
             $result = $this->finishCommand($process, $pipes);
         }
         return $result;
+    }
+
+    /**
+     * Gives the application server settings in config/server.php.
+     */
+    private function configure(string $address, int $workers): void
+    {
+        if (!is_dir($this->directory . '/config')) {
+            mkdir($this->directory . '/config');
+            file_put_contents(
+                $this->directory . '/app.php',
+                "<?php\nreturn Crab\\App::configure(__DIR__)->withConfig(__DIR__ . '/config')"
+                . "->withRouting(routes: 'app/routes.php')->create();\n",
+            );
+        }
+        file_put_contents(
+            $this->directory . '/config/server.php',
+            "<?php\nreturn ['address' => '{$address}', 'workers' => {$workers}];\n",
+        );
     }
 
     /**
