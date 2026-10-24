@@ -65,7 +65,7 @@ Choose the production settings and prepare the database in [A deploy, start to f
 
 ```sh
 php cua start --daemon       # start
-php cua status               # is it running? exit status 0 when it is
+php cua status               # its workers and what they have handled; exit status 0 when it runs
 php cua reload               # new code, without refusing a connection
 php cua restart              # stop, then start: a short gap
 php cua stop                 # allow server.drain seconds for requests, then stop
@@ -96,6 +96,31 @@ ExecReload=/usr/bin/php cua reload
 ExecStop=/usr/bin/php cua stop
 Restart=on-failure
 ```
+
+### What a server is doing
+
+`status` shows every server of the application that is running, in the background or the foreground, `queue:work` and `schedule:work` included:
+
+```text
+$ php cua status
+In the background on http://127.0.0.1:8080, pid 4120, up 3h 12m, reloaded 25m ago
+
+  Worker       Pid   Up      Handled                 Connections  Memory  State
+  -----------  ----  ------  ----------------------  -----------  ------  ---------------------
+  http #0      4188  25m 3s  48,210 requests         12           6 MB    ready
+  http #1      4201  4m 9s   7,032 requests          9            6 MB    ready, restarted once
+  queue #0     4190  25m 3s  1,204 jobs, 3 failed    0            8 MB    ready
+  schedule #0  4191  25m 3s  50 runs                 0            4 MB    ready
+
+  Its output goes to /srv/app/storage/logs/server.log.
+```
+
+- **Handled** counts since the worker started: HTTP requests, queue jobs tried and those that failed, scheduled task runs. A reload or a restart starts the count again, so the numbers are for the code now running.
+- **restarted** says how many times the server started that worker again after it died. A worker that dies keeps dying for a reason worth reading in the log.
+- **State** is `starting` until the worker accepts work, then `ready`; `retiring` while it finishes what it has before a reload or a stop replaces it.
+- A server that has not said how it is doing for five seconds is marked as *not heard from*: it is stuck, or too busy to run its loop.
+
+`status --json` prints the same for a monitor or a script. Each server rewrites a file about once a second in `storage/crab.stats/`, beside `server.pid`, and removes it when it stops; `status` reads those files and passes over any left by a server that was killed.
 
 ## Deploying new code
 
@@ -305,7 +330,7 @@ Run the migrations before the reload, and write them so that the old code still 
 - A proxy with TLS in front, and the server on `127.0.0.1`.
 - `TrustedProxies` in `app.php`, naming only the proxy addresses you control, so clients have their own address-based limits.
 - `storage/` writable by the user the server runs as.
-- `php cua status` and `GET /up` in your monitoring.
+- `php cua status --json` and `GET /up` in your monitoring.
 
 ## How a background server holds together
 

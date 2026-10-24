@@ -42,9 +42,24 @@ final class Worker
      * callbacks remove them so the stop callback can report the cut once.
      */
     private int $cutConnections = 0;
+    /**
+     * What the application counts as it works, such as requests served, by name.
+     *
+     * @var array<string, int>
+     */
+    private array $counts = [];
+    private float $started;
+    /**
+     * A report the control stream has not yet taken all of.
+     */
+    private string $unsent = '';
 
     /**
+     * Under a supervisor, the worker reports its stats() over the control
+     * stream about once a second; alone, it hands them to $report.
+     *
      * @param array{tcp:list<resource>, udp:list<resource>} $bindings
+     * @param (\Closure(array<string, mixed>): void)|null $report
      */
     public function __construct(
         public readonly EventLoop $loop,
@@ -53,7 +68,10 @@ final class Worker
         private array $bindings,
         private readonly float $shutdownTimeout,
         private mixed $control = null,
-    ) {}
+        private readonly ?\Closure $report = null,
+    ) {
+        $this->started = microtime(true);
+    }
 
     public function run(): void
     {
@@ -119,6 +137,7 @@ final class Worker
                     throw new \RuntimeException('Could not notify the supervisor that this worker is ready.');
                 }
             }
+            $this->reportStats();
             $this->finishDrain();
             if (!$this->draining || $this->hasWork()) {
                 $this->loop->run();
@@ -278,12 +297,22 @@ final class Worker
         return $cancel(...);
     }
 
+    /**
+     * Adds to one of the worker's counts, which its stats() carry to
+     * whoever watches the server: `$worker->count('requests')`.
+     */
+    public function count(string $name, int $by = 1): void
+    {
+        $this->counts[$name] = ($this->counts[$name] ?? 0) + $by;
+    }
+
     public function stats(): array
     {
         return [
             'pid' => getmypid(),
             'group' => $this->group->name,
             'index' => $this->index,
+            'started' => $this->started,
             'connections' => count($this->connections),
             'pendingConnects' => count($this->pendingConnects),
             'tasks' => count($this->tasks),
@@ -295,7 +324,38 @@ final class Worker
             'memoryBytes' => memory_get_usage(true),
             'draining' => $this->draining,
             'cutConnections' => $this->cutConnections,
+            'counts' => $this->counts,
         ];
+    }
+
+    /**
+     * Reports now and then about once a second, on a timer that does not
+     * keep the loop running. A report the control stream could not take
+     * whole is finished before the next is written.
+     */
+    private function reportStats(): void
+    {
+        if (!is_resource($this->control) && $this->report === null) {
+            return;
+        }
+        $send = function (): void {
+            if ($this->report !== null) {
+                ($this->report)($this->stats());
+                return;
+            }
+            if (!is_resource($this->control)) {
+                return;
+            }
+            if ($this->unsent === '') {
+                $this->unsent = 'stats ' . json_encode($this->stats(), JSON_PRESERVE_ZERO_FRACTION) . "\n";
+            }
+            $written = @fwrite($this->control, $this->unsent);
+            if (is_int($written) && $written > 0) {
+                $this->unsent = (string) substr($this->unsent, $written);
+            }
+        };
+        $send();
+        $this->loop->unreference($this->loop->repeat(1.0, $send));
     }
 
     private function track(Connection $connection): void

@@ -7,6 +7,7 @@ namespace Crab\Engine;
 use Crab\Engine\EventLoop\StreamSelectEventLoop;
 use Crab\Engine\Network\Listener;
 use Crab\Engine\Network\UdpEndpoint;
+use Crab\Engine\Process\StatsFile;
 use Crab\Engine\Process\Supervisor;
 use Crab\Engine\Process\Worker;
 
@@ -24,6 +25,11 @@ final class Runtime
      * @var array<int, \Closure>
      */
     private array $onSignal = [];
+    private ?string $statsDirectory = null;
+    /**
+     * @var array<string, mixed>
+     */
+    private array $about = [];
 
     /**
      * The factory makes each process's EventLoop; without one it is a
@@ -88,6 +94,24 @@ final class Runtime
         return $this;
     }
 
+    /**
+     * Keeps a file in the directory saying how the server is doing: its
+     * workers, their state and what they have counted, rewritten about
+     * once a second and removed when it stops; see StatsFile. $about is
+     * written as it is, for whoever reads the file.
+     *
+     * @param array<string, mixed> $about
+     */
+    public function stats(string $directory, array $about = []): self
+    {
+        if ($this->running) {
+            throw new \LogicException('Say where to keep the stats before startup.');
+        }
+        $this->statsDirectory = $directory;
+        $this->about = $about;
+        return $this;
+    }
+
     public function run(bool $singleProcess = false): void
     {
         if ($this->running || $this->groups === []) {
@@ -101,6 +125,7 @@ final class Runtime
         }
         $bindings = [];
         $this->running = true;
+        $statsFile = $this->statsDirectory === null ? null : new StatsFile($this->statsDirectory, $this->about);
         try {
             foreach ($this->groups as $name => $group) {
                 $group->freeze();
@@ -126,6 +151,20 @@ final class Runtime
                     0,
                     $bindings[$group->name],
                     $group->shutdownTimeout ?? $this->shutdownTimeout,
+                    report: $statsFile === null
+                        ? null
+                        : static function (array $stats) use ($statsFile, $group): void {
+                            $statsFile->write($stats['draining'] ? 'stopping' : 'running', [
+                                StatsFile::worker(
+                                    $group->name,
+                                    0,
+                                    $stats['pid'],
+                                    $stats['draining'] ? 'retiring' : 'ready',
+                                    $stats,
+                                    reported: microtime(true),
+                                ),
+                            ]);
+                        },
                 );
                 if ($this->onReady !== null) {
                     // The first turn of the loop comes after the worker has started.
@@ -149,6 +188,7 @@ final class Runtime
                     $this->shutdownTimeout,
                     onReady: $this->onReady,
                     onSignal: $this->onSignal,
+                    statsFile: $statsFile,
                 );
             }
             $this->runner->run();
@@ -164,6 +204,7 @@ final class Runtime
                     }
                 }
             }
+            $statsFile?->remove();
             $this->runner = null;
             $this->running = false;
         }

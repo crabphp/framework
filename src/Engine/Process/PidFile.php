@@ -93,6 +93,17 @@ final readonly class PidFile
     }
 
     /**
+     * When the keeper of this pid started, as it recorded; null when the
+     * state it keeps beside the file is missing or names another process.
+     */
+    public function started(int $pid): ?float
+    {
+        $state = json_decode((string) @file_get_contents($this->path . '.state'), true);
+        $started = is_array($state) && ($state['pid'] ?? null) === $pid ? $state['started'] ?? null : null;
+        return is_float($started) || is_int($started) ? (float) $started : null;
+    }
+
+    /**
      * The OS start identity, not elapsed time: Linux's start ticks or
      * ps's fixed start date on systems without /proc.
      */

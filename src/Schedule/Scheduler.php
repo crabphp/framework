@@ -95,9 +95,10 @@ final class Scheduler
      * without a word: at several runs a second the warning would fill the
      * log.
      *
+     * @param Worker|null $worker Counts the run in its "runs", and a failure in its "failed".
      * @return bool Whether it ran and did not fail.
      */
-    public function run(Task $task, \DateTimeInterface $minute): bool
+    public function run(Task $task, \DateTimeInterface $minute, ?Worker $worker = null): bool
     {
         $name = $task->named();
         if (isset($this->running[$name])) {
@@ -130,10 +131,10 @@ final class Scheduler
             try {
                 $task->run($this->container);
             } catch (\Throwable $error) {
-                $this->tell(new TaskRan($name, (hrtime(true) - $started) / 1e9, $error));
+                $this->tell(new TaskRan($name, (hrtime(true) - $started) / 1e9, $error), $worker);
                 throw $error;
             }
-            $this->tell(new TaskRan($name, (hrtime(true) - $started) / 1e9));
+            $this->tell(new TaskRan($name, (hrtime(true) - $started) / 1e9), $worker);
             return true;
         } catch (\Throwable $error) {
             $this->logger?->error('Scheduled task {task} failed: {message}', [
@@ -160,7 +161,7 @@ final class Scheduler
         }
         $due = $this->due($at);
         foreach ($due as $task) {
-            $worker->spawn(fn(): bool => $this->run($task, $at));
+            $worker->spawn(fn(): bool => $this->run($task, $at, $worker));
         }
         return count($due);
     }
@@ -185,7 +186,7 @@ final class Scheduler
                 if ($worker->isDraining()) {
                     return;
                 }
-                $worker->spawn(fn(): bool => $this->run($task, $this->now()));
+                $worker->spawn(fn(): bool => $this->run($task, $this->now(), $worker));
             });
         }
         return $timers;
@@ -245,8 +246,16 @@ final class Scheduler
      * Tells the application's listeners of a run. What a listener throws
      * is logged and goes no further.
      */
-    private function tell(TaskRan $event): void
+    /**
+     * Tells the listeners of a run, and counts it in the worker's "runs",
+     * and a failure in its "failed", which `status` shows.
+     */
+    private function tell(TaskRan $event, ?Worker $worker): void
     {
+        $worker?->count('runs');
+        if ($event->error !== null) {
+            $worker?->count('failed');
+        }
         try {
             $this->events?->dispatch($event);
         } catch (\Throwable $error) {

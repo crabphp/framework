@@ -91,9 +91,47 @@ final class ServerTest extends TestCase
         rmdir($this->directory);
     }
 
+    public function testStatusShowsWhatEachWorkerHandledAndWhetherItWasStartedAgain(): void
+    {
+        [$status, $output] = $this->cua('start', '--daemon', "--address={$this->address}", '--workers=2');
+        self::assertSame(0, $status, $output);
+        $keeper = $this->pid();
+        for ($i = 0; $i < 7; ++$i) {
+            self::assertSame('one', $this->get());
+        }
+        $server = $this->awaitStatus(static fn(array $server): bool => self::handled($server) === 7);
+        self::assertSame(['address' => $this->address, 'mode' => 'background', 'keeper' => $keeper], $server['about']);
+        self::assertMatchesRegularExpression('~ http #\d +\d+ +\d+s +\d requests? ~', $this->cua('status')[1]);
+
+        $killed = $server['workers'][1]['pid'];
+        posix_kill($killed, SIGKILL);
+        $this->awaitStatus(
+            static fn(array $server): bool => (
+                $server['workers'][1]['restarts'] === 1
+                && $server['workers'][1]['state'] === 'ready'
+            ),
+        );
+        self::assertMatchesRegularExpression('~  http #1 .+ ready, restarted once\n~', $this->cua('status')[1]);
+
+        self::assertSame(0, $this->cua('reload', "--address={$this->address}", '--workers=2')[0]);
+        $generation = $server['pid'];
+        $server = $this->awaitStatus(
+            static fn(array $server): bool => $server['pid'] !== $generation && $server['state'] === 'running',
+        );
+        self::assertSame(0, self::handled($server), 'The new code has handled nothing yet.');
+        self::assertMatchesRegularExpression(
+            "~^In the background on {$this->url}, pid {$keeper}, up \\d+s, reloaded \\d+s ago\n~",
+            $this->cua('status')[1],
+        );
+
+        self::assertSame(0, $this->cua('stop')[0]);
+        self::assertSame([1, "No server is running.\n"], $this->cua('status'));
+        self::assertSame([], glob($this->directory . '/storage/crab.stats/*'), 'Each server removed its file.');
+    }
+
     public function testTheServerRunsInTheBackgroundAndIsStopped(): void
     {
-        self::assertSame([1, "No server is running in the background.\n"], $this->cua('status'));
+        self::assertSame([1, "No server is running.\n"], $this->cua('status'));
         self::assertSame([0, "No server is running in the background.\n"], $this->cua('stop'));
         self::assertStringContainsString('No server is running in the background to reload', $this->cua('reload')[1]);
 
@@ -107,12 +145,16 @@ final class ServerTest extends TestCase
             posix_getpgid($pid) === posix_getpgid(getmypid()) ? 0 : 1,
             'It is not in the group of the terminal that started it.',
         );
-        self::assertSame(
-            [
-                0,
-                "The server is running in the background, pid {$pid}.\nIts output goes to {$this->directory}/storage/logs/server.log.\n",
-            ],
-            $this->cua('status'),
+        [$status, $output] = $this->cua('status');
+        self::assertSame(0, $status, $output);
+        self::assertMatchesRegularExpression(
+            "~^In the background on {$this->url}, pid {$pid}, up \\d+s\n\n"
+            . "  Worker +Pid +Up +Handled +Connections +Memory +State\n"
+            . "  -+  -+  -+  -+  -+  -+  -+\n"
+            . "  http #0 +\\d+ +\\d+s +.+ready\n"
+            . "  http #1 +\\d+ +\\d+s +.+ready\n\n"
+            . "  Its output goes to {$this->directory}/storage/logs/server.log.\n$~",
+            $output,
         );
         self::assertMatchesRegularExpression(
             "~\\[keeper {$pid}\\] Serving on {$this->address}, generation pid \\d+\\.~",
@@ -143,7 +185,7 @@ final class ServerTest extends TestCase
         // A file left behind by a crash, whose number now belongs to something else: this test's own process.
         file_put_contents($this->directory . '/storage/crab.pid', getmypid() . "\n");
         self::assertSame(
-            [1, "No server is running in the background.\n"],
+            [1, "No server is running.\n"],
             $this->cua('status'),
             'A live process that is not the server is not taken for it.',
         );
@@ -1717,6 +1759,38 @@ final class ServerTest extends TestCase
             $result = $this->finishCommand($process, $pipes);
         }
         return $result;
+    }
+
+    /**
+     * The one server `status --json` shows, once it shows what the condition looks for.
+     *
+     * @param \Closure(array<string, mixed>): bool $until
+     * @return array<string, mixed>
+     */
+    private function awaitStatus(\Closure $until): array
+    {
+        $deadline = microtime(true) + 8;
+        $last = '';
+        do {
+            [, $last] = $this->cua('status', '--json');
+            $servers = json_decode($last, true)['servers'] ?? [];
+            if (count($servers) === 1 && $until($servers[0])) {
+                return $servers[0];
+            }
+            usleep(100_000);
+        } while (microtime(true) < $deadline);
+        self::fail("status did not come to show it in time; last:\n{$last}");
+    }
+
+    /**
+     * @param array<string, mixed> $server
+     */
+    private static function handled(array $server): int
+    {
+        return array_sum(array_map(
+            static fn(array $worker): int => $worker['counts']['requests'] ?? 0,
+            $server['workers'],
+        ));
     }
 
     private function pid(): int

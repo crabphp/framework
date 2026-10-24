@@ -10,6 +10,11 @@ use Crab\Engine\FailureReporter;
 
 final class Supervisor
 {
+    /**
+     * The longest line a worker may send; a report of its stats is far shorter.
+     */
+    private const LINE = 65_536;
+
     private array $slots = [];
     private array $children = [];
     private array $failures = [];
@@ -28,6 +33,14 @@ final class Supervisor
      * @var array<int, true>
      */
     private array $pendingSignals = [];
+    /**
+     * How many times each slot's worker has been started again after it died.
+     *
+     * @var array<string, int>
+     */
+    private array $restarts = [];
+    private float $written = -INF;
+    private bool $changed = true;
 
     /**
      * @param array<string, Crab> $groups
@@ -40,6 +53,7 @@ final class Supervisor
         private readonly float $startupTimeout = 10.0,
         private readonly ?\Closure $onReady = null,
         private readonly array $onSignal = [],
+        private readonly ?StatsFile $statsFile = null,
     ) {
         foreach ($groups as $name => $group) {
             for ($index = 0; $index < $group->workers; ++$index) {
@@ -145,6 +159,10 @@ final class Supervisor
         }
     }
 
+    /**
+     * Each worker with the stats it last reported, under 'stats', and
+     * how many times its slot has been started again.
+     */
     public function stats(): array
     {
         $workers = [];
@@ -154,6 +172,8 @@ final class Supervisor
                 'slot' => $child['slot'],
                 'ready' => $child['ready'],
                 'retiring' => $child['retiring'],
+                'restarts' => $this->restarts[$child['slot']] ?? 0,
+                'stats' => $child['stats'],
             ];
         }
         return ['pid' => getmypid(), 'stopping' => $this->stopping, 'workers' => $workers];
@@ -223,8 +243,11 @@ final class Supervisor
             'deadline' => null,
             'retiring' => false,
             'replaces' => $replaces,
+            'stats' => [],
+            'reported' => null,
         ];
         $this->slots[$slot]['pid'] = $pid;
+        $this->changed = true;
         return $pid;
     }
 
@@ -268,6 +291,7 @@ final class Supervisor
                 $this->children[$pid]['deadline'] = INF;
             }
         }
+        $this->writeStats($now);
         if ($this->stopping) {
             return;
         }
@@ -337,21 +361,91 @@ final class Supervisor
                 continue;
             }
             $child['buffer'] .= $bytes;
-            if (!$child['ready'] && !$child['retiring'] && str_contains($child['buffer'], "ready\n")) {
-                $child['ready'] = true;
-                $child['buffer'] = '';
-                if ($child['replaces'] !== null && isset($this->children[$child['replaces']])) {
-                    $this->retire($child['replaces']);
-                }
-                if ($this->replacement === $pid) {
-                    $this->replacement = null;
+            while (($end = strpos($child['buffer'], "\n")) !== false) {
+                $line = substr($child['buffer'], 0, $end);
+                $child['buffer'] = substr($child['buffer'], $end + 1);
+                if ($line === 'ready') {
+                    if ($child['ready'] || $child['retiring']) {
+                        continue;
+                    }
+                    $child['ready'] = true;
+                    $this->changed = true;
+                    if ($child['replaces'] !== null && isset($this->children[$child['replaces']])) {
+                        $this->retire($child['replaces']);
+                    }
+                    if ($this->replacement === $pid) {
+                        $this->replacement = null;
+                    }
+                } elseif (str_starts_with($line, 'stats ')) {
+                    $stats = json_decode(substr($line, 6), true);
+                    if (is_array($stats)) {
+                        $child['stats'] = $stats;
+                        $child['reported'] = microtime(true);
+                    }
                 }
             }
-            if (strlen($child['buffer']) > 1024) {
+            if (strlen($child['buffer']) > self::LINE) {
                 $this->retire($pid, intentional: false);
             }
         }
         unset($child);
+    }
+
+    /**
+     * Writes the stats file about once a second, and at once when a worker
+     * has started, become ready, begun to stop or gone.
+     */
+    private function writeStats(float $now): void
+    {
+        if ($this->statsFile === null || !$this->changed && ($now - $this->written) < 1.0) {
+            return;
+        }
+        $this->changed = false;
+        $this->written = $now;
+        $workers = [];
+        $add = function (int $pid, array $child) use (&$workers): void {
+            $definition = $this->slots[$child['slot']];
+            $workers[] = StatsFile::worker(
+                $definition['group'],
+                $definition['index'],
+                $pid,
+                match (true) {
+                    $child['retiring'] => 'retiring',
+                    $child['ready'] => 'ready',
+                    default => 'starting',
+                },
+                $child['stats'],
+                $this->restarts[$child['slot']] ?? 0,
+                $child['reported'],
+            );
+        };
+        foreach ($this->slots as $slot => $definition) {
+            $pid = $definition['pid'];
+            if ($pid !== null && isset($this->children[$pid])) {
+                $add($pid, $this->children[$pid]);
+                continue;
+            }
+            $workers[] = StatsFile::worker(
+                $definition['group'],
+                $definition['index'],
+                null,
+                $this->stopping ? 'stopped' : 'restarting',
+                restarts: $this->restarts[$slot] ?? 0,
+            );
+        }
+        // A worker being replaced, after the one that replaces it.
+        foreach ($this->children as $pid => $child) {
+            if ($this->slots[$child['slot']]['pid'] === $pid) {
+                continue;
+            }
+            $add($pid, $child);
+        }
+        $this->statsFile->write(match (true) {
+            $this->stopping => 'stopping',
+            $this->replacement !== null || $this->reloadQueue !== [] => 'reloading',
+            $this->allReady() => 'running',
+            default => 'starting',
+        }, $workers);
     }
 
     private function retire(int $pid, bool $intentional = true): void
@@ -360,6 +454,7 @@ final class Supervisor
             return;
         }
         $this->children[$pid]['retiring'] = true;
+        $this->changed = true;
         $this->children[$pid]['intentional'] = $intentional;
         $this->children[$pid]['deadline'] = self::now() + $this->grace($this->children[$pid]['slot']);
         $stream = $this->children[$pid]['stream'];
@@ -386,6 +481,7 @@ final class Supervisor
             fclose($child['stream']);
         }
         unset($this->children[$pid]);
+        $this->changed = true;
         $slot = $child['slot'];
         if ($this->replacement === $pid) {
             $this->replacement = null;
@@ -412,6 +508,7 @@ final class Supervisor
             static fn(float $at): bool => ($now - $at) < 60,
         ));
         $this->failures[$slot][] = $now;
+        $this->restarts[$slot] = ($this->restarts[$slot] ?? 0) + 1;
         if (count($this->failures[$slot]) > 5) {
             $this->failure = new \RuntimeException("Worker {$slot} exceeded five restarts in sixty seconds.");
             $this->stop();

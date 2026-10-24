@@ -488,18 +488,22 @@ final class App implements RequestHandlerInterface, Runner
         foreach ($groups as $group) {
             $this->group($runtime, $group, background: $socket !== null);
         }
+        $handler = new EngineHandler($this->stack);
         $runtime
             ->group('http', $workers, maxConnections: $maxConnections, shutdownTimeout: $drain)
             ->listen(
                 $address,
                 new HttpServer(
-                    new EngineHandler($this->stack),
+                    $handler,
                     maxBodyBytes: (int) $this->config->get('server.max_body'),
                     bodyTimeout: (float) $this->config->get('server.body_timeout'),
                 ),
                 socket: $socket,
             )
-            ->onStart(fn(Worker $worker) => $this->start($worker, serving: true))
+            ->onStart(function (Worker $worker) use ($handler): void {
+                $handler->countOn($worker);
+                $this->start($worker, serving: true);
+            })
             ->onStop(function (Worker $worker): void {
                 try {
                     $cut = $worker->stats()['cutConnections'];
@@ -878,6 +882,7 @@ final class App implements RequestHandlerInterface, Runner
         $this->config->check();
         $runtime = new Runtime(shutdownTimeout: $shutdownTimeout);
         $this->group($runtime, new Workers($group, $work, $workers));
+        new Server($this)->keepStats($runtime, ['mode' => $single ? 'single' : 'foreground']);
         $runtime->run(singleProcess: $single);
     }
 
@@ -892,6 +897,7 @@ final class App implements RequestHandlerInterface, Runner
         foreach ($groups as $workers) {
             $this->group($runtime, $workers);
         }
+        new Server($this)->keepStats($runtime, ['mode' => 'foreground']);
         $runtime->run();
     }
 

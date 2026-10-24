@@ -966,7 +966,8 @@ Things to know:
 | --- | --- |
 | `dev` | Serves the application while developing, restarting it when a file is saved; see [Running the server](#running-the-server). |
 | `start` | Serves the application, for production; see [Running the server](#running-the-server). |
-| `stop`, `reload`, `restart`, `status` | Control a server running in the background. |
+| `stop`, `reload`, `restart` | Control a server running in the background. |
+| `status` | Shows the servers that are running, their workers and what each has handled. |
 | `route:list` | Lists the registered routes, each with its action and the middleware around it. |
 | `make:middleware` | Writes a new middleware class in `app/Http/`. |
 

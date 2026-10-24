@@ -11,6 +11,7 @@ use Crab\Engine\Async\Async;
 use Crab\Engine\Async\Cancellation;
 use Crab\Engine\Async\CancelledException;
 use Crab\Engine\EventLoop;
+use Crab\Engine\Process\Worker;
 use Psr\Clock\ClockInterface;
 use Psr\Container\ContainerInterface;
 use Psr\EventDispatcher\EventDispatcherInterface;
@@ -34,6 +35,7 @@ final readonly class Consumer
      * @param list<int> $backoff Seconds to wait before the second try, the third, and so on; the last is used for every later one.
      * @param int $retryAfter Seconds after which a job that was taken and neither finished nor failed is given to another worker. Longer than the longest job takes.
      * @param EventDispatcherInterface|null $events Told of each try of a job, with a JobRan.
+     * @param Worker|null $worker Counts each try in its "jobs" and each that failed in its "failed", which `status` shows.
      */
     public function __construct(
         private Store $store,
@@ -44,6 +46,7 @@ final readonly class Consumer
         private array $backoff = [10, 60],
         private int $retryAfter = 90,
         private ?EventDispatcherInterface $events = null,
+        private ?Worker $worker = null,
     ) {
         if ($tries < 1 || $retryAfter < 1) {
             throw new \InvalidArgumentException(
@@ -56,7 +59,7 @@ final readonly class Consumer
      * A consumer of the same store that works within a supervisor's
      * limits in place of this one's.
      */
-    public function within(Supervisor $supervisor): self
+    public function within(Supervisor $supervisor, ?Worker $worker = null): self
     {
         return new self(
             $this->store,
@@ -67,6 +70,7 @@ final readonly class Consumer
             $supervisor->backoff,
             $supervisor->retryAfter,
             $this->events,
+            $worker ?? $this->worker,
         );
     }
 
@@ -143,6 +147,10 @@ final readonly class Consumer
      */
     private function tell(JobRan $event): void
     {
+        $this->worker?->count('jobs');
+        if ($event->error !== null) {
+            $this->worker?->count('failed');
+        }
         try {
             $this->events?->dispatch($event);
         } catch (\Throwable $error) {

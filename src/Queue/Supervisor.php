@@ -87,7 +87,7 @@ final readonly class Supervisor
      */
     public function consume(Consumer $consumer, Worker $worker, Cancellation $cancellation, bool $drain = false): int
     {
-        $consumer = $consumer->within($this);
+        $consumer = $consumer->within($this, $worker);
         $ran = 0;
         $others = [];
         for ($extra = 1; $extra < $this->concurrency; ++$extra) {

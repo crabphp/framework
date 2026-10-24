@@ -10,6 +10,8 @@ use Crab\Engine\Process\FileWatcher;
 use Crab\Engine\Process\Generation;
 use Crab\Engine\Process\Keeper;
 use Crab\Engine\Process\PidFile;
+use Crab\Engine\Process\StatsFile;
+use Crab\Engine\Runtime;
 
 /**
  * Runs the application's server and controls one that is running: in the
@@ -55,6 +57,47 @@ final class Server
     }
 
     /**
+     * Where each running server, in the foreground or the background,
+     * keeps a file saying how it is doing, for `status`: beside the
+     * process id file, "storage/crab.stats/". Null for an application with
+     * no base path, which has nowhere of its own to keep them.
+     */
+    public function statsDirectory(): ?string
+    {
+        $pid = (string) $this->app->config->get('server.pid');
+        try {
+            return $this->app->path((string) preg_replace('/\.pid$/', '', $pid) . '.stats');
+        } catch (\LogicException) {
+            return null;
+        }
+    }
+
+    /**
+     * The servers of this application running now, in the foreground or
+     * the background, each as its stats file says; see StatsFile.
+     *
+     * @return list<array<string, mixed>>
+     */
+    public function stats(): array
+    {
+        $directory = $this->statsDirectory();
+        return $directory === null ? [] : StatsFile::read($directory);
+    }
+
+    /**
+     * Has the runtime keep a stats file, when there is somewhere to keep it.
+     *
+     * @internal For App, whose runners keep one too.
+     *
+     * @param array<string, mixed> $about
+     */
+    public function keepStats(Runtime $runtime, array $about): Runtime
+    {
+        $directory = $this->statsDirectory();
+        return $directory === null ? $runtime : $runtime->stats($directory, $about);
+    }
+
+    /**
      * @return int|null The process id of the server in the background, or null when there is none.
      */
     public function running(): ?int
@@ -89,7 +132,10 @@ final class Server
      */
     public function serve(string $address, int $workers, bool $single = false): void
     {
-        $runtime = $this->app->runtime($address, $workers, servers: !$single);
+        $runtime = $this->keepStats($this->app->runtime($address, $workers, servers: !$single), [
+            'address' => $address,
+            'mode' => $single ? 'single' : 'foreground',
+        ]);
         if (in_array('--watch-report', $_SERVER['argv'] ?? [], true)) {
             $report = @fopen('php://fd/' . self::WATCH_REPORT, 'wb');
             if ($report === false) {
@@ -180,7 +226,11 @@ final class Server
         $generation = null;
         try {
             $generation = Generation::inherit();
-            $runtime = $this->app->runtime($address, $workers, $generation->socket);
+            $runtime = $this->keepStats($this->app->runtime($address, $workers, $generation->socket), [
+                'address' => $address,
+                'mode' => 'background',
+                'keeper' => posix_getppid(),
+            ]);
             $generation->attach($runtime);
             $runtime->run();
         } catch (\Throwable $error) {

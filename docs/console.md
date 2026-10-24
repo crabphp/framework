@@ -189,7 +189,8 @@ Print results with `line()` and problems with `error()`, so that a script can pi
 | --- | --- |
 | `dev` | Serves the application while developing, restarting it when a file is saved; see [Deployment](deployment.md) |
 | `start` | Serves the application, for production; see [Deployment](deployment.md) |
-| `stop`, `reload`, `restart`, `status` | Control a server running in the background |
+| `stop`, `reload`, `restart` | Control a server running in the background |
+| `status` | Shows the servers that are running, their workers and what each has handled; see [Deployment](deployment.md#what-a-server-is-doing) |
 | `route:list` | Lists routes, actions and route and group middleware; global middleware is not shown |
 | `make:middleware` | Writes a middleware class in `app/Http/` |
 | `make:command` | Writes a command class in `app/Console/` and registers it in `routes/console.php` |

@@ -155,19 +155,30 @@ final readonly class Start implements Command
         foreach (array_diff($servers->ids(), $with) as $id) {
             $rows[] = [$id, 'off', $servers->label($id)];
         }
-        // A rule under the heading, as wide as each column.
-        $rule = [];
-        foreach ($rows[0] as $column => $heading) {
-            $rule[] = str_repeat('-', max(array_map(static fn(array $row): int => strlen($row[$column]), $rows)));
-        }
-        array_splice($rows, 1, 0, [$rule]);
         $output->line();
-        $output->table($rows, '  ');
+        $output->table(self::ruled($rows), '  ');
         if (count($with) < count($servers->ids())) {
             $output->line();
             $output->line('  A server that is off is switched on in "server.with", or run on its own when needed.');
         }
         $output->line();
+    }
+
+    /**
+     * The rows with a rule under the heading, as wide as each column.
+     *
+     * @param list<list<string>> $rows
+     * @return list<list<string>>
+     * @internal Shared by the server commands.
+     */
+    public static function ruled(array $rows): array
+    {
+        $rule = [];
+        foreach ($rows[0] as $column => $heading) {
+            $rule[] = str_repeat('-', max(array_map(static fn(array $row): int => strlen($row[$column]), $rows)));
+        }
+        array_splice($rows, 1, 0, [$rule]);
+        return $rows;
     }
 
     private static function name(App $app): string

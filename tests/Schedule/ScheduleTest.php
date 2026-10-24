@@ -20,6 +20,7 @@ use Crab\Engine\Async\Async;
 use Crab\Engine\Async\Cancellation;
 use Crab\Engine\Crab;
 use Crab\Engine\EventLoop;
+use Crab\Engine\EventLoop\StreamSelectEventLoop;
 use Crab\Engine\FailureReporter;
 use Crab\Engine\Process\Worker;
 use Crab\Events\Dispatcher;
@@ -270,6 +271,22 @@ final class ScheduleTest extends TestCase
         self::assertCount(2, $scheduler->due($half));
         $scheduler->run($scheduler->due($half)[1], $half);
         self::assertSame(1, Beat::$count);
+    }
+
+    public function testAWorkerCountsEachRunAndEachFailureForStatus(): void
+    {
+        $schedule = new Schedule();
+        $schedule->call(static fn() => null)->name('ping');
+        $schedule->call(static fn() => throw new \RuntimeException('disk is full'))->name('backup');
+        $scheduler = new Scheduler($schedule, new Container(), $this->log);
+        $worker = new Worker(new StreamSelectEventLoop(), new Crab('schedule'), 0, ['tcp' => [], 'udp' => []], 1.0);
+
+        $minute = new \DateTimeImmutable('2026-03-10 07:00:00');
+        foreach ($scheduler->due($minute) as $task) {
+            $scheduler->run($task, $minute, $worker);
+        }
+
+        self::assertSame(['runs' => 2, 'failed' => 1], $worker->stats()['counts']);
     }
 
     public function testTheTimesAreInTheSchedulesZone(): void

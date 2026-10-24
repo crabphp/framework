@@ -17,6 +17,8 @@ use Crab\Database\Database;
 use Crab\Database\DatabaseProvider;
 use Crab\Database\Schema;
 use Crab\Engine\Async\Cancellation;
+use Crab\Engine\Crab;
+use Crab\Engine\EventLoop\StreamSelectEventLoop;
 use Crab\Engine\Process\Worker;
 use Crab\Events\Dispatcher;
 use Crab\Queue\Consumer;
@@ -650,6 +652,25 @@ final class QueueTest extends TestCase
         self::assertFalse($consumer->runNext());
         self::assertSame(5, $this->log->contexts[0]['wait']);
         self::assertSame(2, $this->log->contexts[0]['tries']);
+    }
+
+    public function testASupervisorsWorkerCountsEachTryAndEachFailureForStatus(): void
+    {
+        $store = new MemoryStore();
+        $worker = new Worker(new StreamSelectEventLoop(), new Crab('queue'), 0, ['tcp' => [], 'udp' => []], 1.0);
+        $consumer = new Consumer($store, new Container(), $this->log, $this->clock)->within(
+            new Supervisor('queue', ['default'], tries: 2, backoff: [0]),
+            $worker,
+        );
+        Ledger::$failures = 1;
+        new Queue($store, clock: $this->clock)->push(FlakyJob::class, id: 1);
+        new Queue($store, clock: $this->clock)->push(FlakyJob::class, id: 2);
+
+        while ($consumer->runNext()) {
+            // Each due job, the retried one again.
+        }
+
+        self::assertSame(['jobs' => 3, 'failed' => 1], $worker->stats()['counts']);
     }
 
     #[DataProvider('stores')]

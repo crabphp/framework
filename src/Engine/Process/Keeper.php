@@ -73,6 +73,10 @@ final class Keeper
     private bool $replacing = false;
     private bool $forcing = false;
     private ?string $identity = null;
+    /**
+     * When the keeper started, which is when the service did: reloads replace the processes under it.
+     */
+    private float $started = 0.0;
 
     /**
      * @param string $log The file generations print to.
@@ -106,6 +110,7 @@ final class Keeper
         $this->command = $command;
         $this->directory = $directory;
         $this->identity = PidFile::identity(getmypid());
+        $this->started = microtime(true);
         pcntl_async_signals(true);
         pcntl_signal(SIGTERM, function (): void {
             $this->stopping = true;
@@ -395,6 +400,7 @@ final class Keeper
         self::write($this->pidFile->path . '.state', [
             'pid' => getmypid(),
             'identity' => $this->identity,
+            'started' => $this->started,
             'generations' => array_values($generations),
         ]);
     }

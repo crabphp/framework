@@ -7,6 +7,7 @@ namespace Crab\Http;
 use Crab\Engine\Http\Request as EngineRequest;
 use Crab\Engine\Http\Response as EngineResponse;
 use Crab\Engine\Http\Upgrade;
+use Crab\Engine\Process\Worker;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\StreamInterface;
 use Psr\Http\Server\RequestHandlerInterface;
@@ -14,9 +15,10 @@ use Psr\Http\Server\RequestHandlerInterface;
 /**
  * Runs a PSR-15 handler as the handler of the engine's HttpServer.
  */
-final readonly class EngineHandler
+final class EngineHandler
 {
-    private \Closure $handler;
+    private readonly \Closure $handler;
+    private ?Worker $worker = null;
 
     /**
      * A closure is handled as a route's closure is; see ClosureHandler.
@@ -26,8 +28,18 @@ final readonly class EngineHandler
         $this->handler = ($handler instanceof \Closure ? new ClosureHandler($handler) : $handler)->handle(...);
     }
 
+    /**
+     * Counts each request in the worker's "requests", which `status` shows.
+     * Each worker process sets its own as it starts.
+     */
+    public function countOn(Worker $worker): void
+    {
+        $this->worker = $worker;
+    }
+
     public function __invoke(EngineRequest $request): EngineResponse|Upgrade
     {
+        $this->worker?->count('requests');
         return self::toEngine(($this->handler)(Request::fromEngine($request)));
     }
 
