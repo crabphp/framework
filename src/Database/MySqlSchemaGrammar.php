@@ -45,14 +45,14 @@ final class MySqlSchemaGrammar extends SchemaGrammar
             'integer' => 'int',
             'bigInteger' => 'bigint',
             'string' => "varchar({$column->length})",
-            'text' => 'text',
+            'text' => 'longtext',
             'boolean' => 'tinyint(1)',
             'decimal' => "decimal({$column->length}, {$column->places})",
             'float' => 'double',
             'date' => 'date',
             'dateTime' => 'datetime',
             'json' => 'json',
-            'binary' => 'blob',
+            'binary' => 'longblob',
         };
         $signed = in_array($column->type, ['integer', 'bigInteger', 'decimal', 'float'], true);
         return $column->unsigned && $signed ? $type . ' unsigned' : $type;

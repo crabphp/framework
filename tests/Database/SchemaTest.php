@@ -94,8 +94,8 @@ final class SchemaTest extends TestCase
             'create table `users` (`id` bigint unsigned not null auto_increment primary key, `team_id` bigint unsigned null, `email` varchar(120) not null,'
             . " `name` varchar(255) not null default 'O''Brien \\\\ Co', `age` int unsigned null, `views` bigint not null default 0,"
             . ' `active` tinyint(1) not null default 1, `balance` decimal(12, 4) not null default 1.5, `score` double null default null,'
-            . ' `bio` text null, `born` date null, `seen_at` datetime not null default current_timestamp, `settings` json null,'
-            . ' `avatar` blob null, `created_at` datetime null, `updated_at` datetime null,'
+            . ' `bio` longtext null, `born` date null, `seen_at` datetime not null default current_timestamp, `settings` json null,'
+            . ' `avatar` longblob null, `created_at` datetime null, `updated_at` datetime null,'
             . ' foreign key (`team_id`) references `teams` (`id`) on delete set null)',
             $mysql[0],
         );

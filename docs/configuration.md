@@ -24,7 +24,8 @@ Configuration has two layers. Values that differ per machine (a database passwor
 APP_NAME=Orders
 APP_DEBUG=true
 
-DB_DSN=mysql:host=127.0.0.1;dbname=orders
+DB_DRIVER=mysql
+DB_DATABASE=orders
 DB_USERNAME=root
 DB_PASSWORD=
 ```

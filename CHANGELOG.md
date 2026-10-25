@@ -4,6 +4,9 @@ Crab follows [semantic versioning](https://semver.org). Before 1.0, a minor vers
 
 ## Unreleased
 
+- **`text()` and `binary()` hold any length on MySQL,** as documented: they create `longtext` and `longblob`, where `text` and `blob` stopped at 64 KB. Tables already created keep their columns; change one with a migration of its own if it needs more.
+- **The testing guide's database settings** now match the skeleton (`DB_DRIVER` and `DB_DATABASE`, not `DB_DSN`, which nothing read), and the skeleton's `phpunit.xml` sets them, so tests never reach the development database.
+
 ## 0.1.0 — 2026-10-24
 
 The first public release: a long-running JSON API framework with its own engine.

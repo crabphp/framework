@@ -14,7 +14,12 @@ Crab is a PHP framework for JSON APIs. It runs your application as a long-lived 
 Reach for it when you are building an API and want it to start fast, answer fast and stay small enough to read. It is not a full-stack framework: there are no views, no sessions and no ORM. What you get is routing, typed actions with validation, middleware, a database layer with a query builder and migrations, authentication by token, a cache, events, a queue, a scheduler and an HTTP client.
 
 > [!NOTE]
-> Crab has no release yet. Until it has one, an application reads the framework from a folder beside it, as shown below.
+> Crab's first release, v0.1.0, is tagged on GitHub but not yet on Packagist. The skeleton reads the framework from a folder beside it, as shown below. An application of your own can instead require the release from GitHub:
+>
+> ```json
+> "repositories": [{"type": "vcs", "url": "https://github.com/crabphp/framework"}],
+> "require": {"crabphp/framework": "^0.1"}
+> ```
 
 ## Requirements
 

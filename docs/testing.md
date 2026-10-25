@@ -137,12 +137,13 @@ Use `$api->withToken($token)->get('/me')` when testing token authentication itse
 
 ## Settings for tests
 
-Tests should not use your development database or send real email. Configuration files read the environment, and PHPUnit can set it, so say what differs in `phpunit.xml`:
+Tests should not use your development database or send real email. Configuration files read the environment, and PHPUnit can set it, so say what differs in `phpunit.xml`. The skeleton's `phpunit.xml` already does this for the database, the cache and the log; add the queue when you use it:
 
 ```xml
 <phpunit bootstrap="vendor/autoload.php">
     <php>
-        <env name="DB_DSN" value="sqlite::memory:" force="true"/>
+        <env name="DB_DRIVER" value="sqlite" force="true"/>
+        <env name="DB_DATABASE" value=":memory:" force="true"/>
         <env name="QUEUE_STORE" value="memory" force="true"/>
         <env name="CACHE_STORE" value="array" force="true"/>
         <env name="LOG_PATH" value="php://memory" force="true"/>
@@ -150,7 +151,7 @@ Tests should not use your development database or send real email. Configuration
 </phpunit>
 ```
 
-The skeleton already maps `DB_DSN`, `CACHE_STORE` and `LOG_PATH` in its configuration. Add the queue mapping when you use the memory queue in tests:
+The skeleton already maps `DB_DRIVER`, `DB_DATABASE`, `CACHE_STORE` and `LOG_PATH` in its configuration. Add the queue mapping when you use the memory queue in tests:
 
 ```php
 // config/queue.php
@@ -161,7 +162,7 @@ The real environment wins over `.env`, so these apply whatever `.env` says. For 
 
 ## The database
 
-With `sqlite::memory:` every test starts with an empty database that vanishes afterwards. Run your migrations in `setUp()`:
+With `:memory:` as the database, every test starts with an empty database that vanishes afterwards. Run your migrations in `setUp()`:
 
 ```php
 use Crab\Contracts\Database\Database;

@@ -62,7 +62,7 @@ interface Table
     public function json(string $name): Column;
 
     /**
-     * Raw bytes.
+     * Raw bytes, of any length.
      */
     public function binary(string $name): Column;
 

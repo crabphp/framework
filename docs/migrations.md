@@ -111,13 +111,13 @@ SQLite commits each migration separately. Its writer transaction blocks other wr
 | `foreignId('user_id')` | Another table's id: an unsigned big integer on MySQL, an integer on SQLite |
 | `integer('age')`, `bigInteger('views')` | Whole numbers |
 | `string('name')`, `string('code', 20)` | Text up to 255 characters, or the length given, on MySQL; SQLite does not enforce the length |
-| `text('body')` | Long text |
+| `text('body')` | Text of any length: `longtext` on MySQL, so there is no size to choose |
 | `boolean('active')` | True or false |
 | `decimal('price', 10, 2)` | On MySQL, an exact number with total digits and digits after the point; SQLite ignores precision and scale and may store floating point |
 | `float('ratio')` | An approximate number |
 | `date('born_on')`, `dateTime('sent_at')` | A date; a date and time |
 | `json('settings')` | JSON |
-| `binary('data')` | Bytes |
+| `binary('data')` | Bytes of any length: `longblob` on MySQL |
 | `timestamps()` | `created_at` and `updated_at`, both nullable |
 
 Use `decimal` for money on MySQL; use integer minor units for exact money on both databases. SQLite does not enforce `unsigned()` either.

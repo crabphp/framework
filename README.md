@@ -624,7 +624,8 @@ return [
     'default' => 'main',
     'connections' => [
         'main' => [
-            'dsn' => env('DB_DSN', 'sqlite:' . __DIR__ . '/../database.sqlite'),   // or mysql:host=127.0.0.1;dbname=app
+            'driver' => env('DB_DRIVER', 'sqlite'),                           // or mysql, with host and port
+            'database' => env('DB_DATABASE', dirname(__DIR__) . '/storage/database.sqlite'),
             'username' => env('DB_USERNAME'),
             'password' => env('DB_PASSWORD'),
         ],
@@ -720,7 +721,8 @@ return [
     'default' => 'main',
     'connections' => [
         'main' => [
-            'dsn' => env('DB_DSN'),
+            'driver' => 'mysql',
+            'database' => env('DB_DATABASE'),
             'username' => env('DB_USERNAME'),
             'password' => env('DB_PASSWORD'),
             'migrations' => dirname(__DIR__) . '/database/migrations',
