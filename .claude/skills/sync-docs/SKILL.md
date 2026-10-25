@@ -64,6 +64,7 @@ Run everything from the framework's root, the folder with `composer.json`.
 | `src/Database/Query.php`, `Grammar` | `queries.md` |
 | `src/Database/Schema*`, `Migrator`, `Table`, `Column` | `migrations.md` |
 | `src/Cache/` | `cache.md` |
+| `src/Storage/`, `../s3` | `storage.md` |
 | `src/Events/` | `events.md` |
 | `src/Queue/` | `queues.md` |
 | `src/Schedule/` | `scheduling.md` |

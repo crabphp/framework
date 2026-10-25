@@ -108,7 +108,7 @@ Route::post('/me/avatar', static function (User $user, Request $request): array 
 })->middleware(TokenAuth::class);
 ```
 
-The file is named after the logged-in [user](authentication.md), not an id in the URL, so no one can replace someone else's picture.
+The file is named after the logged-in [user](authentication.md), not an id in the URL, so no one can replace someone else's picture. To keep it on a disk, local or on S3, write its stream with [file storage](storage.md#storing-an-upload).
 
 `getUploadedFiles()` returns the whole tree; fields named `photos[]` nest as they do in PHP. A form may have at most 1,000 parts, and its fields together 1 MiB.
 

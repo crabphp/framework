@@ -29,6 +29,7 @@ use Crab\Http\Request;
 use Crab\HttpClient\HttpClientProvider;
 use Crab\Queue\QueueProvider;
 use Crab\Schedule\ScheduleProvider;
+use Crab\Storage\StorageProvider;
 use PHPUnit\Framework\TestCase;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface;
@@ -112,6 +113,7 @@ final class AppBuilderTest extends TestCase
                     DatabaseProvider::class,
                     AuthProvider::class,
                     CacheProvider::class,
+                    StorageProvider::class,
                     EventsProvider::class,
                     QueueProvider::class,
                     ScheduleProvider::class,

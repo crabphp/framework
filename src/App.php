@@ -63,6 +63,7 @@ use Crab\Queue\QueueProvider;
 use Crab\Routing\Router;
 use Crab\Routing\Urls;
 use Crab\Schedule\ScheduleProvider;
+use Crab\Storage\StorageProvider;
 use Crab\Validation\Validator;
 use Crab\WebSocket\Connections;
 use Crab\WebSocket\Settings as SocketSettings;
@@ -137,6 +138,7 @@ final class App implements RequestHandlerInterface, Runner
         DatabaseProvider::class,
         AuthProvider::class,
         CacheProvider::class,
+        StorageProvider::class,
         EventsProvider::class,
         QueueProvider::class,
         ScheduleProvider::class,

@@ -827,6 +827,21 @@ It is PSR-16's cache under the contract `Contracts\Cache\Cache`, which adds `rem
 
 `cache.prefix` keeps two applications apart in one store and `cache.ttl` is the seconds an entry lives when none is given, forever unless set. `php cua cache:clear` empties it, locks included, and `php cua cache:prune` removes what has outlived its time. A store of your own implements `Contracts\Cache\Store` and is bound under that name. See [docs/cache.md](docs/cache.md).
 
+## File storage
+
+Disks are registered by default; `local`, the folder `storage/files`, needs no settings.
+
+~~~php
+use Crab\Contracts\Storage\Disk;
+
+$disk->write("avatars/{$user->id}.png", $upload->getStream(), 'image/png');  // whole or not at all
+$disk->read('avatars/7.png');                                                // a stream
+$disk->files('avatars/');                                                    // a page at a time
+$disk->temporaryUrl('reports/7.csv', $clock->now()->modify('+10 minutes'));  // signed, on S3
+~~~
+
+`storage.disks` names each disk with its driver: `local`, `memory` for tests, or `s3` from `crabphp/s3`, for Amazon S3, Cloudflare R2, MinIO and other services that speak its API, through the HTTP client so a request never holds up the worker. `storage.default` is the one `Contracts\Storage\Disk` gives; `Contracts\Storage\Storage` gives any by name. A path is checked before a disk is touched, so one built from user input cannot leave the disk. See [docs/storage.md](docs/storage.md).
+
 ## Events
 
 Events are registered by default by `App::configure()`; add your listeners in your own provider.

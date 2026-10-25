@@ -24,6 +24,7 @@
 - [Services and providers](providers.md)
 - [Console](console.md)
 - [Cache](cache.md)
+- [File storage](storage.md)
 - [Events](events.md)
 - [Queues](queues.md)
 - [Task scheduling](scheduling.md)
