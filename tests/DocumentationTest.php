@@ -273,6 +273,29 @@ final class DocumentationTest extends TestCase
         self::assertSame(1, $calls);
     }
 
+    public function testTheErrorRendererExampleWritesEveryErrorOfAnApplication(): void
+    {
+        $example = $this->example('errors.md', 'php', 'class Errors implements ErrorRenderer');
+        $namespace = 'DocumentationErrors' . bin2hex(random_bytes(6));
+        file_put_contents(
+            $this->directory . '/renderer.php',
+            "<?php\n" . str_replace('namespace App\\Http;', "namespace {$namespace};", $example),
+        );
+        require $this->directory . '/renderer.php';
+        $app = App::configure()->create();
+        $app->container->singleton(\Crab\Contracts\Http\ErrorRenderer::class, $namespace . '\\Errors');
+        $app->router->get('/invite', static fn(#[\Crab\Validation\Email] string $email): string => $email);
+
+        $missing = $app->handle(new Request('GET', '/nothing'));
+        self::assertSame(404, $missing->getStatusCode());
+        self::assertSame(['message' => 'Not Found', 'errors' => []], json_decode((string) $missing->getBody(), true));
+        $invalid = $app->handle(new Request('GET', '/invite?email=nope'));
+        self::assertSame(
+            ['message' => 'The request is invalid.', 'errors' => ['email' => ['must be an email address']]],
+            json_decode((string) $invalid->getBody(), true),
+        );
+    }
+
     /**
      * @return iterable<string, array{string, int|null, string, int}>
      */
@@ -281,7 +304,7 @@ final class DocumentationTest extends TestCase
         yield 'cancellation' => ['cancelled', null, '', 0];
         yield 'client answer' => ['client', 404, 'No such item.', 0];
         yield 'server answer' => ['server', 503, 'Not ready.', 1];
-        yield 'unexpected failure' => ['unexpected', 500, 'Something went wrong.', 1];
+        yield 'unexpected failure' => ['unexpected', 500, 'Internal Server Error', 1];
     }
 
     #[DataProvider('errorHandlerFailures')]
@@ -291,11 +314,19 @@ final class DocumentationTest extends TestCase
         string $title,
         int $logged,
     ): void {
-        $example = $this->example('errors.md', 'php', 'class ProblemJson');
-        $name = 'ProblemJson' . bin2hex(random_bytes(6));
+        $example = $this->example('errors.md', 'php', 'class ReportedErrors');
+        $name = 'ReportedErrors' . bin2hex(random_bytes(6));
+        if (!interface_exists(\Reporter::class)) {
+            // The service the example reports to, which the application would have.
+            file_put_contents(
+                $this->directory . '/reporter.php',
+                '<?php interface Reporter { public function report(\\Throwable $error): void; }',
+            );
+            require $this->directory . '/reporter.php';
+        }
         file_put_contents(
             $this->directory . '/errors.php',
-            "<?php\n" . str_replace('class ProblemJson', 'class ' . $name, $example),
+            "<?php\n" . str_replace('class ReportedErrors', 'class ' . $name, $example),
         );
         require $this->directory . '/errors.php';
         $error = match ($kind) {
@@ -311,7 +342,9 @@ final class DocumentationTest extends TestCase
             ->with('Request failed: {message}', ['message' => $error->getMessage(), 'exception' => $error]);
         $handler = $this->createStub(\Psr\Http\Server\RequestHandlerInterface::class);
         $handler->method('handle')->willThrowException($error);
-        $middleware = new $name($logger);
+        $reporter = $this->createMock(\Reporter::class);
+        $reporter->expects(self::exactly($logged))->method('report')->with($error);
+        $middleware = new $name($logger, $reporter);
         $response = null;
         $cancelled = null;
         try {
@@ -327,7 +360,8 @@ final class DocumentationTest extends TestCase
         self::assertNull($cancelled);
         self::assertInstanceOf(\Psr\Http\Message\ResponseInterface::class, $response);
         self::assertSame($status, $response->getStatusCode());
-        self::assertSame(['title' => $title], json_decode((string) $response->getBody(), true));
+        self::assertSame("{$status} {$title}\n", (string) $response->getBody());
+        self::assertSame($error, $response->problem()?->cause, "The application's renderer sees the cause.");
         if ($kind === 'server') {
             self::assertSame('5', $response->getHeaderLine('Retry-After'));
         }

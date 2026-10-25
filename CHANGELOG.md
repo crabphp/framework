@@ -4,6 +4,7 @@ Crab follows [semantic versioning](https://semver.org). Before 1.0, a minor vers
 
 ## Unreleased
 
+- **Your own error format:** bind `Crab\Contracts\Http\ErrorRenderer` and it writes every error response, returned or thrown: the router's 404 and 405, validation's 422, middleware's 401, 429 and CORS refusals, `HttpException` and a failure's 500, keeping the headers middleware gave them. Replacing the error handler is no longer needed to change the format. `ErrorResponse::make()` takes `cause:` and `debug:` in place of `$detail`.
 - **`text()` and `binary()` hold any length on MySQL,** as documented: they create `longtext` and `longblob`, where `text` and `blob` stopped at 64 KB. Tables already created keep their columns; change one with a migration of its own if it needs more.
 - **The testing guide's database settings** now match the skeleton (`DB_DRIVER` and `DB_DATABASE`, not `DB_DSN`, which nothing read), and the skeleton's `phpunit.xml` sets them, so tests never reach the development database.
 

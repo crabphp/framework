@@ -28,6 +28,7 @@ use Crab\Contracts\Clock\Clock as ClockContract;
 use Crab\Contracts\Config\Config as ConfigContract;
 use Crab\Contracts\Console\Console as ConsoleContract;
 use Crab\Contracts\Container\Container as ContainerContract;
+use Crab\Contracts\Http\ErrorRenderer;
 use Crab\Contracts\Http\Factory as FactoryContract;
 use Crab\Contracts\Http\MiddlewareStack as MiddlewareStackContract;
 use Crab\Contracts\Log\Logger as LoggerContract;
@@ -55,6 +56,7 @@ use Crab\Http\EngineHandler;
 use Crab\Http\ErrorHandler;
 use Crab\Http\Factory;
 use Crab\Http\MiddlewareStack;
+use Crab\Http\RenderedErrors;
 use Crab\HttpClient\HttpClientProvider;
 use Crab\Log\Logger;
 use Crab\Queue\QueueProvider;
@@ -100,6 +102,7 @@ final class App implements RequestHandlerInterface, Runner
      */
     public readonly Servers $servers;
     private readonly MiddlewareStack $stack;
+    private ?RequestHandlerInterface $entry = null;
     /**
      * Places a deprecation has already been logged from, in this worker.
      *
@@ -398,7 +401,18 @@ final class App implements RequestHandlerInterface, Runner
 
     public function handle(ServerRequestInterface $request): ResponseInterface
     {
-        return $this->stack->handle($request);
+        return $this->entry()->handle($request);
+    }
+
+    /**
+     * What a request enters: the middleware stack, behind the
+     * application's ErrorRenderer when it binds one.
+     */
+    private function entry(): RequestHandlerInterface
+    {
+        return $this->entry ??= $this->container->has(ErrorRenderer::class)
+            ? new RenderedErrors($this->stack, $this->container)
+            : $this->stack;
     }
 
     /**
@@ -488,7 +502,7 @@ final class App implements RequestHandlerInterface, Runner
         foreach ($groups as $group) {
             $this->group($runtime, $group, background: $socket !== null);
         }
-        $handler = new EngineHandler($this->stack);
+        $handler = new EngineHandler($this->entry());
         $runtime
             ->group('http', $workers, maxConnections: $maxConnections, shutdownTimeout: $drain)
             ->listen(

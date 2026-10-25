@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Crab\Http;
 
+use Crab\Contracts\Http\Problem;
 use Crab\Engine\Http\Response as EngineResponse;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\StreamInterface;
@@ -13,6 +14,8 @@ use Psr\Http\Message\StreamInterface;
  */
 final class Response extends Message implements ResponseInterface
 {
+    private ?Problem $problem = null;
+
     /**
      * @param array<string, string|list<string>> $headers
      */
@@ -150,6 +153,32 @@ final class Response extends Message implements ResponseInterface
         $new = clone $this;
         $new->status = $code;
         $new->reason = $reasonPhrase;
+        // It no longer answers with what the problem says.
+        $new->problem = null;
+        return $new;
+    }
+
+    public function withBody(StreamInterface $body): static
+    {
+        $new = parent::withBody($body);
+        $new->problem = null;
+        return $new;
+    }
+
+    /**
+     * The problem this error response was made for, which the
+     * application's ErrorRenderer writes; null for any other response,
+     * and once its status or body is changed.
+     */
+    public function problem(): ?Problem
+    {
+        return $this->problem;
+    }
+
+    public function withProblem(?Problem $problem): static
+    {
+        $new = clone $this;
+        $new->problem = $problem;
         return $new;
     }
 

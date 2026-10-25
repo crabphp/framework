@@ -53,7 +53,8 @@ final readonly class ErrorHandler implements Middleware
                 $status,
                 $shown ? $error->getMessage() : '',
                 $error instanceof HttpException ? $error->headers : [],
-                $this->debug && $status >= 500 ? $error : null,
+                cause: $error,
+                debug: $this->debug,
             );
         }
     }

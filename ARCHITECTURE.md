@@ -270,7 +270,7 @@ No auto-discovery, no `boot()` phase, no global container accessor. `Route::get(
 - **Metrics** *(proposed)*. `Worker::stats()` exposed through a command or route.
 - **CORS** *(today, opt-in)*. `Http\Cors` is middleware an application prepends, with its origins as an argument.
 - **Warnings are errors** *(today, in workers)*. Inside a worker, PHP warnings and notices are thrown as `ErrorException` so they reach the same error path; deprecations are logged once per place. Console commands other than `start` run without this.
-- **One error renderer** *(today)*. `Http\ErrorResponse` builds every error response, for the error handler and for the router's 404 and 405, so they look the same and unmatched routes still pass back through middleware as ordinary responses.
+- **One error renderer** *(today)*. `Http\ErrorResponse` builds every error response, for the error handler and for the router's 404 and 405, so they look the same and unmatched routes still pass back through middleware as ordinary responses. Each carries its `Problem`; an application that binds `Contracts\Http\ErrorRenderer` has it written again in front of the whole stack, keeping the headers middleware added, so one format covers returned and thrown errors alike without every producer taking the renderer.
 
 ## Testing
 
