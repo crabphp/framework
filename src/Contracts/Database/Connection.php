@@ -14,9 +14,11 @@ interface Connection
     /**
      * Starts a query on a table, built with methods instead of SQL:
      * table('users')->where('active', true)->get(). The table may be given
-     * an alias, "users as u".
+     * an alias, "users as u" or table('users', 'u'). Given another query,
+     * it reads that query's rows as a table named $as, which only reads:
+     * table($db->table('posts')->select('user_id')->selectRaw('count(*) as posts')->groupBy('user_id'), 'totals').
      */
-    public function table(string $table): Query;
+    public function table(string|Query $table, ?string $as = null): Query;
 
     /**
      * The database this connection talks to, "mysql" or "sqlite", which

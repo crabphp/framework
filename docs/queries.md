@@ -7,10 +7,13 @@
     - [Groups of conditions](#groups-of-conditions)
     - [Conditional clauses](#conditional-clauses)
 - [Selecting, joining and ordering](#selecting-joining-and-ordering)
+- [Subqueries](#subqueries)
+- [JSON columns](#json-columns)
 - [Inserting](#inserting)
 - [Updating](#updating)
 - [Deleting](#deleting)
 - [Pagination](#pagination)
+    - [Cursor pagination](#cursor-pagination)
 - [Large tables](#large-tables)
 - [In a transaction](#in-a-transaction)
 - [Raw SQL](#raw-sql)
@@ -124,7 +127,73 @@ $db->table('posts')
 ->forPage(3, 20)                // the third page of 20
 ```
 
-A table may have an alias, `table('users as u')`. The list of a `whereIn()` may be another query: `whereIn('id', $db->table('posts')->select('user_id'))`.
+A table may have an alias, `table('users as u')` or `table('users', 'u')`. `groupByRaw('date(created_at)')` groups by an expression.
+
+## Subqueries
+
+Another query can stand where a value, a column, a condition or a table would. Build it from `$db` as usual and pass it in; it is written inside the outer statement, and its values are bound in the order its SQL appears. A subquery may name the outer query's columns, which ties each of its runs to one outer row:
+
+```php
+$heartbeats = static fn () => $db->table('heartbeats as h')->whereColumn('h.game_id', 'games.id');
+
+$db->table('games')
+    ->select('games.id', 'games.title')
+    ->selectSub($heartbeats()->selectRaw('max(h.occurred_at)'), 'last_played_at')   // a column
+    ->whereExists($heartbeats())                                                     // a condition
+    ->where('user_id', $userId)
+    ->orderByDesc('last_played_at')
+    ->orderByDesc('games.id')
+    ->limit(12)
+    ->get();
+```
+
+That is this SQL, with `?` for `$userId`:
+
+```sql
+select `games`.`id`, `games`.`title`,
+    (select max(h.occurred_at) from `heartbeats` as `h` where `h`.`game_id` = `games`.`id`) as `last_played_at`
+from `games`
+where exists (select * from `heartbeats` as `h` where `h`.`game_id` = `games`.`id`) and `user_id` = ?
+order by `last_played_at` desc, `games`.`id` desc limit ?
+```
+
+| Method | Stands for |
+| --- | --- |
+| `selectSub($query, 'name')` | a column; the query reads one value |
+| `whereExists($query)`, `whereNotExists()`, `orWhereExists()`, `orWhereNotExists()` | whether it finds a row; what it selects does not matter |
+| `where('price', '>', $query)` | a value to compare with; the query reads one value |
+| `whereIn('id', $query)`, `whereNotIn()` | a list; the query reads one column |
+| `joinSub($query, 'name', 'name.user_id', '=', 'users.id')`, `leftJoinSub()` | a table to join |
+| `$db->table($query, 'name')` | the table read from |
+
+A query's rows read as a table answer the questions a grouped query cannot answer itself:
+
+```php
+$totals = $db->table('orders')->select('user_id')->selectRaw('sum(total) as spent')->groupBy('user_id');
+
+$db->table($totals, 'totals')->where('spent', '>', 1000)->count();      // customers who spent over 1000
+```
+
+Rows read from a query are not a table that can be written to: `insert()`, `update()` and `delete()` on one are refused. `update()` and `delete()` on a table may still have subqueries among their conditions.
+
+## JSON columns
+
+A column of JSON is read at a path with `->`, wherever a column is named:
+
+```php
+$db->table('notifications')
+    ->where('data->campaign', 'pro')
+    ->where(fn (Query $q) => $q->whereNull('data->actor->id')->orWhereNotIn('data->actor->id', $blocked))
+    ->where('data->seen', false)
+    ->select('id', 'data->tags[0] as first_tag')
+    ->get();
+```
+
+A key is letters, digits, `_` and `-`, and `[0]` reads an element of a list; anything else is refused, because the path is written into the SQL. `whereNull()` matches a key that is missing and one that holds JSON's `null` alike. `true` and `false` compare with JSON's own booleans.
+
+MySQL reads the value as text, which compares with numbers as you expect but sorts `10` before `9`; to order by a number there, select it with a cast, `selectRaw("cast(json_extract(data, '$.score') as signed) as score")`, and order by that. SQLite reads each value as what it is.
+
+A path is only read: `update(['data->seen' => true])` is refused. Set the whole column.
 
 ## Inserting
 
@@ -184,6 +253,43 @@ It returns a `Crab\Contracts\Database\Page` with `items`, `total`, `perPage`, `c
 `simplePaginate()` skips the count and knows only `hasMore`. Use it on a large table, where counting every row costs more than the page.
 
 The page number is an argument, a [query field](actions.md#query-fields) of the action's signature. Nothing reads the request behind your back.
+
+### Cursor pagination
+
+A list a client scrolls through, a feed or a library, is better paged by a cursor: each page carries the place it ends at, and the next starts after it. A row added or removed meanwhile does not shift what follows, nothing is counted, and a deep page costs what the first did.
+
+```php
+use Crab\Contracts\Database\CursorPage;
+
+Route::get('/games', static function (#[FromQuery] ?string $cursor = null) use ($db): CursorPage {
+    return $db->table('games')
+        ->select('id', 'title')
+        ->orderByDesc('id')
+        ->cursorPaginate(24, $cursor);
+});
+```
+
+It returns a `Crab\Contracts\Database\CursorPage` with `items`, `perPage`, `nextCursor` and `hasMore`, written as JSON with `data`, `per_page`, `next_cursor` and `has_more`. The client sends `next_cursor` back as `?cursor=` for the next page; on the last page it is `null`.
+
+The order is what the cursor follows, so it has rules, each refused with the fix when broken:
+
+- **It ends with a column no two rows share**, `id` unless you name another as the third argument, `cursorPaginate(24, $cursor, 'email')`. Without it, rows that tie on the other columns would be skipped or read twice. An unordered query is ordered by it.
+- **It is by columns the query selects.** To order by an expression, select it under an alias and order by the alias:
+
+```php
+$db->table('games')
+    ->select('id', 'title')
+    ->selectRaw("lower(coalesce(nullif(trim(title), ''), '')) as sort_title")
+    ->orderBy('sort_title')
+    ->orderBy('id')
+    ->cursorPaginate(24, $cursor);
+```
+
+- **A null sorts first ascending and last descending**, as MySQL and SQLite both sort it, and the pages follow that. Each column may go its own direction.
+
+A grouped query can be paged too: end its order with the grouped column, which is unique among its rows.
+
+A cursor is the order's values from the page's last row, encoded; it is not secret, and changing it only moves where the next page starts. One that is not from this order, cut short, made up, or from the list sorted another way, throws `Crab\Contracts\Database\InvalidCursor`, which is answered with a `422`. Clients should treat a cursor as opaque.
 
 ## Large tables
 

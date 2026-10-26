@@ -6,6 +6,7 @@ namespace Crab\Database;
 
 use Crab\Contracts\Database\Connection;
 use Crab\Contracts\Database\Database as DatabaseContract;
+use Crab\Contracts\Database\Query as QueryContract;
 use Crab\Engine\Async\Pool;
 use Crab\Engine\Async\PoolExhaustedException;
 use Crab\Engine\EventLoop;
@@ -121,9 +122,9 @@ final class Database implements DatabaseContract
         }
     }
 
-    public function table(string $table): Query
+    public function table(string|QueryContract $table, ?string $as = null): Query
     {
-        return new Query($this, $table);
+        return new Query($this, $table, as: $as);
     }
 
     public function driver(): string

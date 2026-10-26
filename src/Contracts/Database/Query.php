@@ -11,6 +11,18 @@ namespace Crab\Contracts\Database;
  * from a request. Only the methods ending in Raw put SQL in as written;
  * never pass them anything a user typed.
  *
+ * A column of JSON is read at a path with ->, wherever a column is named:
+ * where('data->actor->id', $id), whereNull('data->campaign'),
+ * select('data->tags[0] as tag'). MySQL reads the value as text and SQLite
+ * as what it is, so order by a number there with a cast in selectRaw().
+ * A path is only read: update() takes whole columns.
+ *
+ * Another query can stand where a value, a column or a table would: in
+ * selectSub(), whereExists(), whereIn(), a where() comparison, joinSub()
+ * and Connection::table(). It may name the outer query's columns, which
+ * makes it correlated: whereColumn('h.game_id', 'games.id'). Its values
+ * are bound in the order its SQL is written.
+ *
  * The methods that build return the query itself, changed. The methods
  * that run (get(), first(), count(), insert(), update(), ...) leave it as
  * it was, so one query can be run several ways; `clone` it to branch.
@@ -34,6 +46,12 @@ interface Query
      * @param list<mixed> $bindings
      */
     public function selectRaw(string $sql, array $bindings = []): static;
+
+    /**
+     * Adds a column worked out by another query, which must read one value:
+     * selectSub($db->table('heartbeats')->selectRaw('max(occurred_at)')->whereColumn('heartbeats.game_id', 'games.id'), 'last_played_at').
+     */
+    public function selectSub(Query $query, string $as): static;
 
     /**
      * Leaves out rows that repeat.
@@ -68,12 +86,40 @@ interface Query
     ): static;
 
     /**
+     * Joins the rows of another query, named $as, as join() joins a table:
+     * joinSub($totals, 'totals', 'totals.user_id', '=', 'users.id').
+     *
+     * @param string|\Closure(Query): mixed $first
+     */
+    public function joinSub(
+        Query $query,
+        string $as,
+        string|\Closure $first,
+        ?string $operator = null,
+        ?string $second = null,
+    ): static;
+
+    /**
+     * @param string|\Closure(Query): mixed $first
+     */
+    public function leftJoinSub(
+        Query $query,
+        string $as,
+        string|\Closure $first,
+        ?string $operator = null,
+        ?string $second = null,
+    ): static;
+
+    /**
      * Keeps the rows that match, in one of four forms:
      *
      *     where('age', '>', 18)                 a comparison: = != <> < > <= >= like, not like
      *     where('name', 'Ada')                  equals; a null value means "is null"
      *     where(['name' => 'Ada', 'age' => 36]) every pair equals
      *     where(fn (Query $q) => $q->...)       a group in parentheses
+     *
+     * The value may be another query that reads one value:
+     * where('price', '>', $db->table('products')->selectRaw('avg(price)')).
      *
      * @param string|array<string, mixed>|\Closure(Query): mixed $column
      */
@@ -118,6 +164,19 @@ interface Query
     public function orWhereNotNull(string $column): static;
 
     /**
+     * Keeps the rows for which another query finds a row. It is meant to
+     * name this query's columns: whereExists($db->table('heartbeats')->whereColumn('heartbeats.game_id', 'games.id')).
+     * What it selects does not matter.
+     */
+    public function whereExists(Query $query): static;
+
+    public function orWhereExists(Query $query): static;
+
+    public function whereNotExists(Query $query): static;
+
+    public function orWhereNotExists(Query $query): static;
+
+    /**
      * Keeps the rows whose column is from $from to $to, both included.
      */
     public function whereBetween(string $column, mixed $from, mixed $to): static;
@@ -149,6 +208,13 @@ interface Query
     public function orWhereRaw(string $sql, array $bindings = []): static;
 
     public function groupBy(string ...$columns): static;
+
+    /**
+     * Groups by an expression, as written: groupByRaw('date(created_at)').
+     *
+     * @param list<mixed> $bindings
+     */
+    public function groupByRaw(string $sql, array $bindings = []): static;
 
     /**
      * Keeps the groups that match: having('total', '>', 100), or without
@@ -280,6 +346,27 @@ interface Query
      * on a large table.
      */
     public function simplePaginate(int $perPage = 15, int $page = 1): Page;
+
+    /**
+     * A page of the rows after the place a cursor marks, for a list a
+     * client scrolls through: rows added or removed while it does so do
+     * not shift the pages, and no row is counted. Pass the page's
+     * nextCursor back to read the one after it; with no cursor it is the
+     * first page.
+     *
+     * The order is what the cursor follows, so it must be by columns the
+     * query selects, and end with $unique, a column no two rows share;
+     * left unordered, it is ordered by $unique. To order by an expression,
+     * select it under an alias and order by the alias:
+     *
+     *     selectRaw("lower(title) as sort_title")->orderBy('sort_title')->orderBy('id')
+     *
+     * Null comes first in an ascending order and last in a descending one,
+     * as both databases sort it, and the pages follow that.
+     *
+     * @throws InvalidCursor When the cursor is not one this order gave: answered with a 422.
+     */
+    public function cursorPaginate(int $perPage = 15, ?string $cursor = null, string $unique = 'id'): CursorPage;
 
     /**
      * Inserts one row, given as column to value.

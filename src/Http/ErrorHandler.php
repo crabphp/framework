@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Crab\Http;
 
+use Crab\Contracts\Http\HttpError;
 use Crab\Contracts\Http\Middleware;
 use Crab\Engine\Async\CancelledException;
 use Psr\Http\Message\ResponseInterface;
@@ -14,7 +15,7 @@ use Psr\Log\LoggerInterface;
 /**
  * Turns anything thrown beneath it into a response; see ErrorResponse.
  * Failures are logged, with the request's id when it has one; an
- * HttpException below 500 is an answer, not a failure. Details of a failure
+ * HttpError below 500, such as an HttpException, is an answer, not a failure. Details of a failure
  * are shown only in debug mode.
  */
 final readonly class ErrorHandler implements Middleware
@@ -32,7 +33,7 @@ final readonly class ErrorHandler implements Middleware
             // The request is already over; the engine ends it.
             throw $cancelled;
         } catch (\Throwable $error) {
-            $status = $error instanceof HttpException ? $error->status : 500;
+            $status = $error instanceof HttpError ? $error->status : 500;
             if ($status >= 500) {
                 $context = [
                     'method' => $request->getMethod(),
@@ -47,7 +48,7 @@ final readonly class ErrorHandler implements Middleware
                 }
                 $this->logger->error('{method} {path} failed: {message}', $context);
             }
-            $shown = $error instanceof HttpException || $this->debug;
+            $shown = $error instanceof HttpError || $this->debug;
             return ErrorResponse::make(
                 $request,
                 $status,

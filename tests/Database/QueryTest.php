@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Crab\Tests\Database;
 
 use Crab\Contracts\Database\Connection;
+use Crab\Contracts\Database\InvalidCursor;
 use Crab\Contracts\Database\Page;
 use Crab\Contracts\Database\Query as QueryContract;
 use Crab\Database\Database;
@@ -705,6 +706,310 @@ final class QueryTest extends TestCase
             self::assertSame('select * from `no_such_table` where `secret` = ?', $error->sql);
             self::assertStringNotContainsString('hunter2', $error->getMessage());
         }
+    }
+
+    public function testAQueryInsideAnotherIsWrittenWhereItStandsWithItsValuesInOrder(): void
+    {
+        $db = $this->database('sqlite');
+        $grammar = new SqliteGrammar();
+        $posts = new Query($db, 'posts as p', $grammar);
+        $posts->selectRaw('count(*)')->whereColumn('p.user_id', 'users.id')->where('p.title', 'like', 'N%');
+        $totals = new Query($db, 'posts', $grammar);
+        $totals->select('user_id')->selectRaw('count(*) as posts')->groupBy('user_id')->having('posts', '>', 1);
+        $average = new Query($db, 'users', $grammar);
+        $average->selectRaw('avg(age)')->where('active', true);
+        $drafts = new Query($db, 'drafts', $grammar);
+        $drafts->whereColumn('drafts.user_id', 'users.id')->where('drafts.kind', 'note');
+        $query = new Query($db, 'users', $grammar);
+        $query
+            ->select('name')
+            ->selectSub($posts, 'notes')
+            ->joinSub($totals, 'totals', 'totals.user_id', '=', 'users.id')
+            ->where('votes', '>=', 0)
+            ->where('age', '>', $average)
+            ->whereNotExists($drafts)
+            ->whereIn('users.id', new Query($db, 'roles', $grammar)
+                ->select('user_id')
+                ->where('name', 'admin'))
+            ->groupByRaw('length(name) > ?', [3])
+            ->orderBy('name');
+
+        self::assertSame(
+            'select `name`, (select count(*) from `posts` as `p` where `p`.`user_id` = `users`.`id` and `p`.`title` like ?) as `notes`'
+            . ' from `users` inner join (select `user_id`, count(*) as posts from `posts` group by `user_id` having `posts` > ?) as `totals`'
+            . ' on `totals`.`user_id` = `users`.`id`'
+            . ' where `votes` >= ? and `age` > (select avg(age) from `users` where `active` = ?)'
+            . ' and not exists (select * from `drafts` where `drafts`.`user_id` = `users`.`id` and `drafts`.`kind` = ?)'
+            . ' and `users`.`id` in (select `user_id` from `roles` where `name` = ?)'
+            . ' group by length(name) > ? order by `name` asc',
+            $query->toSql(),
+        );
+        self::assertSame(['N%', 1, 0, true, 'note', 'admin', 3], $query->bindings());
+    }
+
+    #[DataProvider('drivers')]
+    public function testAnotherQueryStandsForAValueAColumnOrATable(string $driver): void
+    {
+        $db = $this->seeded($driver);
+        $posts = static fn(): QueryContract => $db->table('posts as p')->whereColumn('p.user_id', 'users.id');
+
+        // Rebit's recently played: the latest of each, among those that have any.
+        $recent = $db
+            ->table('users')
+            ->select('users.id', 'name')
+            ->selectSub($posts()->selectRaw('max(p.id)'), 'last_post')
+            ->whereExists($posts())
+            ->orderByDesc('last_post')
+            ->orderByDesc('users.id');
+        self::assertSame(
+            [['name' => 'Grace', 'last_post' => 3], ['name' => 'Ada', 'last_post' => 2]],
+            array_map(static fn(array $row): array => [
+                'name' => $row['name'],
+                'last_post' => (int) $row['last_post'],
+            ], $recent->get()),
+        );
+        self::assertSame(
+            ['Linus', 'Margaret'],
+            $db->table('users')->whereNotExists($posts())->orderBy('id')->pluck('name'),
+        );
+        self::assertSame(
+            ['Grace', 'Linus'],
+            $db
+                ->table('users')
+                ->whereExists($posts()->where('p.title', 'like', 'An%'))
+                ->orWhereNotExists($posts())
+                ->where('age', null)
+                ->orWhere('id', 2)
+                ->orderBy('id')
+                ->pluck('name'),
+        );
+        self::assertSame(
+            ['Margaret'],
+            $db->table('users')->where('age', '>', $db->table('users')->selectRaw('avg(age)'))->pluck('name'),
+        );
+
+        $totals = $db->table('posts')->select('user_id')->selectRaw('count(*) as posts')->groupBy('user_id');
+        self::assertSame(
+            [1],
+            array_map(intval(...), $db->table($totals, 'totals')->where('posts', '>', 1)->pluck('user_id')),
+        );
+        self::assertSame(2, $db->table($totals, 'totals')->count());
+        self::assertSame(
+            [['Ada', 2], ['Grace', 1]],
+            array_map(static fn(array $row): array => [
+                $row['name'],
+                (int) $row['posts'],
+            ], $db->table('users')->joinSub($totals, 'totals', 'totals.user_id', '=', 'users.id')->select('users.name', 'totals.posts')->orderBy('users.id')->get()),
+        );
+        self::assertSame(
+            ['Ada', 'Grace', 'Linus', 'Margaret'],
+            $db
+                ->table('users')
+                ->leftJoinSub($totals, 'totals', 'totals.user_id', '=', 'users.id')
+                ->orderBy('users.id')
+                ->pluck('name'),
+        );
+        self::assertSame(
+            [1, 2],
+            array_map(
+                intval(...),
+                array_column(
+                    $db
+                        ->table('posts')
+                        ->selectRaw('count(*) as posts')
+                        ->groupByRaw('length(title) > ?', [10])
+                        ->orderBy('posts')
+                        ->get(),
+                    'posts',
+                ),
+            ),
+        );
+
+        self::assertSame(2, $db->table('users')->whereExists($posts())->update(['votes' => 5]));
+        self::assertSame(['Ada', 'Grace'], $db->table('users')->where('votes', 5)->orderBy('id')->pluck('name'));
+
+        $this->expectException(\LogicException::class);
+        $this->expectExceptionMessage('reads the rows of another query');
+        $db->table($totals, 'totals')->delete();
+    }
+
+    #[DataProvider('drivers')]
+    public function testAJsonColumnIsReadAtAPath(string $driver): void
+    {
+        $db = $this->database($driver);
+        $db->execute('drop table if exists events');
+        $db->execute(
+            $driver === 'sqlite'
+                ? 'create table events (id integer primary key, data text not null)'
+                : 'create table events (id int primary key, data json not null) engine=InnoDB',
+        );
+        $db->table('events')->insertMany([
+            ['id' => 1, 'data' => '{"actor":{"id":2,"name":"Grace"},"campaign":"pro","seen":true,"tags":["a","b"]}'],
+            ['id' => 2, 'data' => '{"actor":{"id":3},"campaign":null,"seen":false,"tags":[]}'],
+            ['id' => 3, 'data' => '{"actor":null,"seen":false}'],
+            ['id' => 4, 'data' => '{"commenter":{"id":2}}'],
+        ]);
+        $ids = static fn(QueryContract $query): array => array_map(intval(...), $query->orderBy('id')->pluck('id'));
+        $events = static fn(): QueryContract => $db->table('events');
+
+        self::assertSame([1], $ids($events()->where('data->actor->id', 2)));
+        self::assertSame([1, 4], $ids($events()->where('data->actor->id', 2)->orWhere('data->commenter->id', 2)));
+        self::assertSame([1], $ids($events()->where('data->actor->name', 'like', 'G%')));
+        // Missing, or JSON's null, alike.
+        self::assertSame([3, 4], $ids($events()->whereNull('data->actor->id')));
+        self::assertSame([2, 3, 4], $ids($events()->whereNull('data->campaign')));
+        self::assertSame([1], $ids($events()->whereNotNull('data->campaign')));
+        self::assertSame([1], $ids($events()->where('data->seen', true)));
+        self::assertSame([2, 3], $ids($events()->where('data->seen', false)));
+        self::assertSame(
+            [2, 3, 4],
+            $ids($events()->where(static fn(QueryContract $q) => $q->whereNull(
+                'data->actor->id',
+            )->orWhereNotIn('data->actor->id', [2]))),
+        );
+        self::assertSame(
+            ['tag' => 'b', 'campaign' => 'pro'],
+            $events()->select('data->tags[1] as tag', 'data->campaign as campaign')->where('id', 1)->first(),
+        );
+
+        foreach ([
+            'which a query reads but does not write' => static fn() => $events()
+                ->where('id', 1)
+                ->update(['data->seen' => true]),
+            'is not a key of a JSON path' => static fn() => $events()->where("data->x') or 1=1 --", 1)->get(),
+        ] as $expected => $mistake) {
+            try {
+                $mistake();
+                self::fail("Not refused: {$expected}");
+            } catch (\InvalidArgumentException $error) {
+                self::assertStringContainsString($expected, $error->getMessage());
+            }
+        }
+        $db->execute('drop table events');
+    }
+
+    #[DataProvider('drivers')]
+    public function testACursorPagesThroughTheOrderWithoutSkippingOrRepeating(string $driver): void
+    {
+        $db = $this->database($driver);
+        $db->execute('drop table if exists games');
+        $db->execute(
+            $driver === 'sqlite'
+                ? 'create table games (id integer primary key, title text null, played int null)'
+                : 'create table games (id int primary key, title varchar(100) null, played int null) engine=InnoDB',
+        );
+        $titles = ['Zelda', 'zelda', ' ', null, 'Mario', 'mario', '', 'Metroid', 'Kirby', 'Zelda'];
+        $played = [5, null, 5, 2, null, 9, 5, null, 1, 9];
+        $rows = [];
+        foreach ($titles as $index => $title) {
+            $rows[] = ['id' => $index + 1, 'title' => $title, 'played' => $played[$index]];
+        }
+        $db->table('games')->insertMany($rows);
+
+        $walk = static function (QueryContract $query, int $perPage = 3, string $unique = 'id'): array {
+            $ids = [];
+            $cursor = null;
+            do {
+                $page = $query->cursorPaginate($perPage, $cursor, $unique);
+                self::assertLessThanOrEqual($perPage, count($page));
+                array_push($ids, ...array_map(static fn(array $row): int => (int) $row['id'], $page->items));
+                $cursor = $page->nextCursor;
+            } while ($cursor !== null);
+            return $ids;
+        };
+        $all = static fn(QueryContract $query): array => array_map(intval(...), array_column($query->get(), 'id'));
+
+        // Rebit's alphabetical library: blank and missing titles alike, ties broken by id.
+        $alphabetical = $db
+            ->table('games')
+            ->select('id', 'title')
+            ->selectRaw("lower(coalesce(nullif(trim(title), ''), '')) as sort_title")
+            ->orderBy('sort_title')
+            ->orderBy('id');
+        self::assertSame([3, 4, 7, 9, 5, 6, 8, 1, 2, 10], $all($alphabetical));
+        self::assertSame($all($alphabetical), $walk($alphabetical));
+        self::assertSame($all($alphabetical), $walk($alphabetical, 1));
+
+        foreach ([
+            $db->table('games')->orderByDesc('played')->orderByDesc('id'),
+            $db->table('games')->orderBy('played')->orderBy('id'),
+            $db->table('games')->orderBy('played')->orderByDesc('id'),
+            $db->table('games')->orderByDesc('played')->orderBy('id'),
+            $db->table('games')->where('played', '>', 1)->orWhere('title', null)->orderByDesc('played')->orderBy('id'),
+        ] as $order) {
+            self::assertSame($all($order), $walk($order, 2));
+            self::assertSame($all($order), $walk($order, 4));
+        }
+        self::assertSame(range(1, 10), $walk($db->table('games')), 'Unordered, it is by the unique column.');
+        $grouped = $db
+            ->table('games')
+            ->select('played')
+            ->selectRaw('count(*) as games')
+            ->whereNotNull('played')
+            ->groupBy('played')
+            ->orderByDesc('games')
+            ->orderBy('played');
+        self::assertSame([5, 9, 1, 2], array_map(static fn(array $row): int => (int) $row['played'], [
+            ...$grouped->cursorPaginate(2, null, 'played'),
+            ...$grouped->cursorPaginate(2, $grouped->cursorPaginate(2, null, 'played')->nextCursor, 'played'),
+        ]));
+
+        // A row added while the client scrolls does not shift what follows.
+        $newest = $db->table('games')->orderByDesc('id');
+        $first = $newest->cursorPaginate(3);
+        self::assertSame([10, 9, 8], array_map(intval(...), array_column($first->items, 'id')));
+        $db->table('games')->insert(['id' => 11, 'title' => 'Tetris', 'played' => null]);
+        self::assertSame(
+            [7, 6, 5],
+            array_map(intval(...), array_column($newest->cursorPaginate(3, $first->nextCursor)->items, 'id')),
+        );
+
+        $last = $db->table('games')->where('id', '>', 9)->orderBy('id')->cursorPaginate(5);
+        self::assertSame([false, null], [$last->hasMore, $last->nextCursor]);
+        self::assertSame(
+            ['data' => [['id' => 10], ['id' => 11]], 'per_page' => 5, 'next_cursor' => null, 'has_more' => false],
+            json_decode(
+                (string) json_encode($db->table('games')->select('id')->where('id', '>', 9)->cursorPaginate(5)),
+                true,
+            ),
+        );
+
+        // A cursor is only good for the order that gave it.
+        $alphabeticalCursor = $alphabetical->cursorPaginate(3)->nextCursor;
+        foreach (['not a cursor', '', base64_encode('[1,2]'), (string) $alphabeticalCursor] as $cursor) {
+            try {
+                $newest->cursorPaginate(3, $cursor);
+                self::fail("The cursor \"{$cursor}\" was read.");
+            } catch (InvalidCursor $invalid) {
+                self::assertSame(422, $invalid->status);
+            }
+        }
+
+        foreach ([
+            'must end with a column no two rows share' => static fn() => $db
+                ->table('games')
+                ->orderBy('title')
+                ->cursorPaginate(),
+            'order by the alias' => static fn() => $db
+                ->table('games')
+                ->orderByRaw('lower(title)')
+                ->orderBy('id')
+                ->cursorPaginate(),
+            'does not select it' => static fn() => $db
+                ->table('games')
+                ->select('title')
+                ->orderBy('id')
+                ->cursorPaginate(2),
+            'A page holds at least one row' => static fn() => $db->table('games')->cursorPaginate(0),
+        ] as $expected => $mistake) {
+            try {
+                $mistake();
+                self::fail("Not refused: {$expected}");
+            } catch (\InvalidArgumentException|\LogicException $error) {
+                self::assertStringContainsString($expected, $error->getMessage());
+            }
+        }
+        $db->execute('drop table games');
     }
 
     /**

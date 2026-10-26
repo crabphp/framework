@@ -35,4 +35,10 @@ final class SqliteGrammar extends Grammar
         // SQLite locks the whole database for a writing transaction; it has no row locks to ask for.
         return '';
     }
+
+    protected function json(string $column, string $path): string
+    {
+        // A string comes out as text, a number as a number, true and false as 1 and 0, and JSON's null as null.
+        return "json_extract({$column}, {$path})";
+    }
 }

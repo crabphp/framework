@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Crab\Tests\Database\Mysql;
 
 use Crab\Contracts\Database\Connection as ConnectionContract;
+use Crab\Contracts\Database\Query as QueryContract;
 use Crab\Database\DatabaseException;
 use Crab\Database\ManagedConnection;
 use Crab\Database\Migrator;
@@ -387,9 +388,9 @@ final class LockLossConnection implements ManagedConnection
         return $this->delegate->driver();
     }
 
-    public function table(string $table): Query
+    public function table(string|QueryContract $table, ?string $as = null): Query
     {
-        return new Query($this, $table);
+        return new Query($this, $table, as: $as);
     }
 
     public function select(string $sql, array $bindings = []): array

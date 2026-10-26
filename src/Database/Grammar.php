@@ -64,6 +64,31 @@ abstract class Grammar
      */
     abstract protected function lock(): string;
 
+    /**
+     * The value at a path of a JSON column, as it is compared and read.
+     *
+     * @param string $column Quoted.
+     * @param string $path A JSON path as an SQL string, '$."actor"."id"'.
+     */
+    abstract protected function json(string $column, string $path): string;
+
+    /**
+     * Whether a path of a JSON column holds nothing, or JSON's null.
+     */
+    protected function jsonNull(string $column, string $path, bool $not): string
+    {
+        return $this->json($column, $path) . ($not ? ' is not null' : ' is null');
+    }
+
+    /**
+     * A path of a JSON column compared with true or false, which JSON
+     * holds as its own kind of value.
+     */
+    protected function jsonBool(string $column, string $path, string $operator, bool $value): string
+    {
+        return $this->json($column, $path) . " {$operator} " . ($value ? '1' : '0');
+    }
+
     public function select(Query $query): Statement
     {
         $bindings = [];
@@ -182,11 +207,58 @@ abstract class Grammar
         if ($alias !== false) {
             return $this->wrap(substr($name, 0, $alias)) . ' as ' . $this->quote(trim(substr($name, $alias + 4)));
         }
+        $json = $this->jsonPath($name);
+        if ($json !== null) {
+            return $this->json(...$json);
+        }
         $parts = [];
         foreach (explode('.', trim($name)) as $part) {
             $parts[] = $part === '*' ? '*' : $this->quote($part);
         }
         return implode('.', $parts);
+    }
+
+    /**
+     * A column named with a path into its JSON, "data->actor->id", as the
+     * column quoted and the path as an SQL string; null for any other name.
+     * The path is written into the SQL, so each key is held to letters,
+     * digits, _ and -, with [0] for an element of a list.
+     *
+     * @return array{string, string}|null
+     */
+    private function jsonPath(string $name): ?array
+    {
+        if (!str_contains($name, '->')) {
+            return null;
+        }
+        $keys = explode('->', trim($name));
+        $column = array_shift($keys);
+        $path = '$';
+        foreach ($keys as $key) {
+            if (preg_match('/^([A-Za-z0-9_-]+)((?:\[\d+\])*)$/', $key, $match) !== 1) {
+                throw new \InvalidArgumentException(
+                    "\"{$key}\" in \"{$name}\" is not a key of a JSON path: "
+                    . 'letters, digits, _ and -, then [0] for an element of a list.',
+                );
+            }
+            $path .= ".\"{$match[1]}\"{$match[2]}";
+        }
+        return [$this->wrap($column), "'{$path}'"];
+    }
+
+    /**
+     * A query inside this one, in parentheses, its values bound where it stands.
+     *
+     * @param list<mixed> $bindings
+     */
+    private function subquery(QueryContract $query, array &$bindings): string
+    {
+        if ($query instanceof Query) {
+            // Written in this statement's dialect, whichever connection it was started from.
+            return '(' . $this->selectSql($query, $bindings) . ')';
+        }
+        array_push($bindings, ...$query->bindings());
+        return '(' . $query->toSql() . ')';
     }
 
     /**
@@ -205,7 +277,7 @@ abstract class Grammar
     }
 
     /**
-     * @param list<string|Expression> $columns
+     * @param list<string|Expression|Subquery> $columns
      * @param list<mixed> $bindings
      */
     private function columns(array $columns, array &$bindings): string
@@ -227,17 +299,32 @@ abstract class Grammar
      */
     private function from(Query $query, array &$bindings): string
     {
-        $sql = ' from ' . $this->wrap($query->table);
+        $sql =
+            ' from '
+            . (
+                $query->source === null
+                    ? $this->wrap($query->table)
+                    : $this->subquery($query->source, $bindings) . ' as ' . $this->quote($query->table)
+            );
         foreach ($query->joins as $join) {
+            $table = $join['table'];
             $sql .=
                 " {$join['type']} join "
-                . $this->wrap($join['table'])
+                . (
+                    $table instanceof Subquery
+                        ? $this->subquery($table->query, $bindings) . ' as ' . $this->quote($table->as)
+                        : $this->wrap($table)
+                )
                 . ' on '
                 . $this->conditions($join['wheres'], $bindings);
         }
         $sql .= $this->wheres($query->wheres, $bindings);
         if ($query->groups !== []) {
-            $sql .= ' group by ' . implode(', ', array_map($this->wrap(...), $query->groups));
+            $groups = [];
+            foreach ($query->groups as $group) {
+                $groups[] = $this->written($group, $bindings);
+            }
+            $sql .= ' group by ' . implode(', ', $groups);
         }
         if ($query->havings !== []) {
             $sql .= ' having ' . $this->conditions($query->havings, $bindings);
@@ -278,13 +365,31 @@ abstract class Grammar
     {
         switch ($condition['type']) {
             case 'basic':
+                $json = is_bool($condition['value']) ? $this->jsonPath($condition['column']) : null;
+                if ($json !== null) {
+                    return $this->jsonBool($json[0], $json[1], $condition['operator'], $condition['value']);
+                }
                 $bindings[] = $condition['value'];
                 return $this->wrap($condition['column']) . " {$condition['operator']} ?";
+            case 'sub':
+                return (
+                    $this->wrap($condition['column'])
+                    . " {$condition['operator']} "
+                    . $this->subquery($condition['query'], $bindings)
+                );
+            case 'exists':
+                return (
+                    ($condition['not'] ? 'not exists ' : 'exists ') . $this->subquery($condition['query'], $bindings)
+                );
             case 'column':
                 return (
                     $this->wrap($condition['first']) . " {$condition['operator']} " . $this->wrap($condition['second'])
                 );
             case 'null':
+                $json = $this->jsonPath($condition['column']);
+                if ($json !== null) {
+                    return $this->jsonNull($json[0], $json[1], $condition['not']);
+                }
                 return $this->wrap($condition['column']) . ($condition['not'] ? ' is not null' : ' is null');
             case 'between':
                 $bindings[] = $condition['from'];
@@ -312,8 +417,7 @@ abstract class Grammar
         $values = $condition['values'];
         $keyword = $condition['not'] ? ' not in (' : ' in (';
         if ($values instanceof QueryContract) {
-            array_push($bindings, ...$values->bindings());
-            return $this->wrap($condition['column']) . $keyword . $values->toSql() . ')';
+            return $this->wrap($condition['column']) . rtrim($keyword, '(') . $this->subquery($values, $bindings);
         }
         if ($values === []) {
             // "in ()" is not SQL: nothing is in an empty list, and everything is outside it.
@@ -382,10 +486,13 @@ abstract class Grammar
      *
      * @param list<mixed> $bindings
      */
-    private function written(string|Expression $column, array &$bindings): string
+    private function written(string|Expression|Subquery $column, array &$bindings): string
     {
         if (is_string($column)) {
             return $this->wrap($column);
+        }
+        if ($column instanceof Subquery) {
+            return $this->subquery($column->query, $bindings) . ' as ' . $this->quote($column->as);
         }
         array_push($bindings, ...$column->bindings);
         return $column->sql;

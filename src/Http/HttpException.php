@@ -4,11 +4,13 @@ declare(strict_types=1);
 
 namespace Crab\Http;
 
+use Crab\Contracts\Http\HttpError;
+
 /**
  * Thrown to answer a request with an error status, for example 404 or 403.
  * Its message is shown to the client.
  */
-class HttpException extends \RuntimeException
+class HttpException extends \RuntimeException implements HttpError
 {
     /**
      * @param array<string, string|list<string>> $headers

@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Crab\Database;
 
+use Crab\Contracts\Database\Query as QueryContract;
+
 /**
  * One PDO connection, opened when it is first used. PDO blocks: while a
  * statement runs, its worker serves nothing else.
@@ -68,9 +70,9 @@ final class PdoConnection implements ManagedConnection
         $this->scope = new SessionScope();
     }
 
-    public function table(string $table): Query
+    public function table(string|QueryContract $table, ?string $as = null): Query
     {
-        return new Query($this, $table);
+        return new Query($this, $table, as: $as);
     }
 
     public function driver(): string

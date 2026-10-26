@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Crab\Database\Mysql;
 
+use Crab\Contracts\Database\Query as QueryContract;
 use Crab\Database\DatabaseException;
 use Crab\Database\ManagedConnection;
 use Crab\Database\Query;
@@ -67,9 +68,9 @@ final class Connection implements ManagedConnection
         return 'mysql';
     }
 
-    public function table(string $table): Query
+    public function table(string|QueryContract $table, ?string $as = null): Query
     {
-        return new Query($this, $table);
+        return new Query($this, $table, as: $as);
     }
 
     public function select(string $sql, array $bindings = []): array

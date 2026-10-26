@@ -34,4 +34,24 @@ final class MySqlGrammar extends Grammar
     {
         return ' for update';
     }
+
+    protected function json(string $column, string $path): string
+    {
+        return "json_unquote(json_extract({$column}, {$path}))";
+    }
+
+    protected function jsonNull(string $column, string $path, bool $not): string
+    {
+        // A JSON null is a value to MySQL, unlike a key that is not there; both are null here.
+        $value = "json_extract({$column}, {$path})";
+        return $not
+            ? "({$value} is not null and json_type({$value}) <> 'NULL')"
+            : "({$value} is null or json_type({$value}) = 'NULL')";
+    }
+
+    protected function jsonBool(string $column, string $path, string $operator, bool $value): string
+    {
+        // Unquoted, true is the text "true"; compared as JSON, it is true.
+        return "json_extract({$column}, {$path}) {$operator} " . ($value ? 'true' : 'false');
+    }
 }

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Crab\Tests\Http;
 
+use Crab\Contracts\Database\InvalidCursor;
 use Crab\Engine\Async\CancelledException;
 use Crab\Http\ClosureHandler;
 use Crab\Http\ErrorHandler;
@@ -185,6 +186,17 @@ final class ErrorHandlerTest extends TestCase
 
         $this->expectException(\InvalidArgumentException::class);
         new HttpException(200);
+    }
+
+    public function testAnyHttpErrorIsAnAnswer(): void
+    {
+        // The database marks a client's bad cursor without depending on HTTP.
+        $response = $this->handle(static fn() => throw new InvalidCursor());
+        self::assertSame([422, "422 The cursor is not one this list gave; start again without it.\n", ''], [
+            $response->getStatusCode(),
+            (string) $response->getBody(),
+            $this->logged(),
+        ]);
     }
 
     public function testCancellationIsNotAnswered(): void

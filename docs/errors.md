@@ -54,6 +54,8 @@ throw new HttpException(429, 'Slow down.', ['Retry-After' => '30']);  // with he
 
 A status below `500` is an answer, not a failure, and is not logged. Use `4xx` for what the client can fix and let real failures be `500`.
 
+`HttpException` is one `Crab\Contracts\Http\HttpError`: an exception that carries the status it is answered with, in `$status`, and whose message is shown. Where a class of yours must not depend on HTTP but its mistake can only be the client's, implement `HttpError` on its own exception, as the database's `InvalidCursor` does with `422`.
+
 Middleware inside the error handler may throw `HttpException`; middleware prepended outside it must return an error response or catch its own failures:
 
 ```php
@@ -148,7 +150,7 @@ What it may rely on:
 
 - **It runs after all middleware**, even middleware in front of the error handler, such as CORS. The headers they gave the error (`Allow`, `WWW-Authenticate`, `Retry-After`, CORS) are kept unless your response sets the same one.
 - **The status is yours.** It is usually `$problem->status`, but you may answer a status of your own.
-- **`$problem->cause` is the exception the request was answered for**, when there was one. Map your own exceptions to codes with it; extend `HttpException` for answers below `500`, so they are not logged as failures. Show the cause itself only when `$problem->debug` is on.
+- **`$problem->cause` is the exception the request was answered for**, when there was one. Map your own exceptions to codes with it; extend `HttpException`, or implement `HttpError`, for answers below `500`, so they are not logged as failures. Show the cause itself only when `$problem->debug` is on.
 - **Crab's own format is at hand** for anything you do not write yourself: `ErrorResponse::render($problem, $request)`.
 - **If it throws,** the failure is logged and the client gets the error in Crab's format.
 
@@ -161,6 +163,7 @@ The error handler is the middleware `Crab\Http\ErrorHandler`: it logs failures a
 ```php
 use Crab\Contracts\Http\Middleware;
 use Crab\Engine\Async\CancelledException;
+use Crab\Contracts\Http\HttpError;
 use Crab\Http\ErrorResponse;
 use Crab\Http\HttpException;
 use Psr\Http\Message\ResponseInterface;
@@ -181,7 +184,7 @@ final readonly class ReportedErrors implements Middleware
         } catch (CancelledException $cancelled) {
             throw $cancelled;
         } catch (\Throwable $error) {
-            $status = $error instanceof HttpException ? $error->status : 500;
+            $status = $error instanceof HttpError ? $error->status : 500;
             if ($status >= 500) {
                 $this->logger->error('Request failed: {message}', ['message' => $error->getMessage(), 'exception' => $error]);
                 $this->reporter->report($error);
@@ -190,7 +193,7 @@ final readonly class ReportedErrors implements Middleware
             return ErrorResponse::make(
                 $request,
                 $status,
-                $error instanceof HttpException ? $error->getMessage() : '',
+                $error instanceof HttpError ? $error->getMessage() : '',
                 $error instanceof HttpException ? $error->headers : [],
                 cause: $error,
             );
