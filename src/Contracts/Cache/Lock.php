@@ -14,4 +14,14 @@ interface Lock
      * Returns false after release or expiry, so a later holder keeps its lock.
      */
     public function release(): bool;
+
+    /**
+     * Gives the lock this long to live from now, only while this caller
+     * still holds it, so work that runs longer than it first said keeps
+     * it. Returns false when the lock has expired or was released, and
+     * then whoever took it since keeps it.
+     *
+     * @throws \InvalidArgumentException When the time to live is zero or less.
+     */
+    public function refresh(int|\DateInterval $ttl): bool;
 }

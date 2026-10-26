@@ -135,7 +135,7 @@ final class TicketTest extends TestCase
         $store = $this->app->container->get(Store::class);
         self::assertSame(
             serialize('0007'),
-            $store->get('auth.ticket.' . hash('sha256', $ticket), $this->clock->now()->getTimestamp()),
+            $store->get('value:auth.ticket.' . hash('sha256', $ticket), $this->clock->now()->getTimestamp()),
         );
         self::assertNull($store->get($ticket, $this->clock->now()->getTimestamp()));
         self::assertSame(

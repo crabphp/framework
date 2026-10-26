@@ -19,9 +19,20 @@ use Psr\Clock\ClockInterface;
  *
  * A value that is null cannot be told from a missing one by get(); use
  * has(), or do not cache null.
+ *
+ * Values and locks are kept apart in the store, under "{prefix}value:"
+ * and "{prefix}lock:", so that clear() can remove the one and leave the
+ * other, and leave every other prefix's entries too.
  */
 final readonly class Cache implements CacheContract
 {
+    /**
+     * What a value's key and a lock's key start with, after the prefix.
+     * A key cannot contain a colon, so neither can be taken for the other.
+     */
+    private const VALUES = 'value:';
+    private const LOCKS = 'lock:';
+
     /**
      * @param string $prefix Put before every key, to keep two applications apart in one store.
      * @param int|null $ttl Seconds an entry lives when no time to live is given; forever when null.
@@ -32,13 +43,7 @@ final readonly class Cache implements CacheContract
         private string $prefix = '',
         private ?int $ttl = null,
         private ?ClockInterface $clock = null,
-    ) {
-        if (str_contains($prefix, ':lock:')) {
-            throw new \InvalidArgumentException(
-                "A cache prefix cannot contain :lock: because that text is kept for the cache's locks. Choose another prefix.",
-            );
-        }
-    }
+    ) {}
 
     public function get(string $key, mixed $default = null): mixed
     {
@@ -87,19 +92,14 @@ final readonly class Cache implements CacheContract
 
     public function lock(string $key, int|\DateInterval $ttl): ?LockContract
     {
-        $key = $this->key($key, ':lock:');
+        $key = $this->key($key, self::LOCKS);
         $now = $this->now();
-        $expiresAt = $this->expiresAt($ttl, $now);
-        if ($expiresAt <= $now) {
-            throw new \InvalidArgumentException(
-                'A cache lock needs a positive time to live. Give seconds or a DateInterval that expires in the future.',
-            );
-        }
+        $expiresAt = $this->lockExpiresAt($ttl, $now);
         $token = bin2hex(random_bytes(16));
         if (!$this->store->add($key, $token, $expiresAt, $now)) {
             return null;
         }
-        return new Lock($this->store, $key, $token, $this->now(...));
+        return new Lock($this->store, $key, $token, $this->now(...), $this->lockExpiresAt(...));
     }
 
     public function remember(string $key, int|\DateInterval|null $ttl, \Closure $make): mixed
@@ -121,8 +121,13 @@ final readonly class Cache implements CacheContract
 
     public function clear(): bool
     {
-        $this->store->clear();
+        $this->store->clear($this->prefix . self::VALUES);
         return true;
+    }
+
+    public function clearLocks(): void
+    {
+        $this->store->clear($this->prefix . self::LOCKS);
     }
 
     public function has(string $key): bool
@@ -159,7 +164,7 @@ final readonly class Cache implements CacheContract
         return true;
     }
 
-    private function key(mixed $key, string $namespace = ''): string
+    private function key(mixed $key, string $namespace = self::VALUES): string
     {
         if (!is_string($key) || $key === '' || strpbrk($key, '{}()/\\@:') !== false) {
             $shown = is_string($key) ? "\"{$key}\"" : get_debug_type($key);
@@ -168,6 +173,20 @@ final readonly class Cache implements CacheContract
             );
         }
         return $this->prefix . $namespace . $key;
+    }
+
+    /**
+     * When a lock taken or refreshed now runs out, which must be later than now.
+     */
+    private function lockExpiresAt(int|\DateInterval $ttl, int $now): int
+    {
+        $expiresAt = $this->expiresAt($ttl, $now);
+        if ($expiresAt === null || $expiresAt <= $now) {
+            throw new \InvalidArgumentException(
+                'A cache lock needs a positive time to live. Give seconds or a DateInterval that expires in the future.',
+            );
+        }
+        return $expiresAt;
     }
 
     private function expiresAt(int|\DateInterval|null $ttl, int $now): ?int

@@ -19,6 +19,7 @@ final class Task implements TaskContract
      */
     private ?float $seconds = null;
     private bool $oneServer = false;
+    private bool $withoutOverlapping = false;
 
     /**
      * @param string $name What the task is listed and logged as.
@@ -102,6 +103,12 @@ final class Task implements TaskContract
         return $this;
     }
 
+    public function withoutOverlapping(): static
+    {
+        $this->withoutOverlapping = true;
+        return $this;
+    }
+
     public function named(): string
     {
         return $this->name;
@@ -127,6 +134,14 @@ final class Task implements TaskContract
     public function runsOnOneServer(): bool
     {
         return $this->oneServer;
+    }
+
+    /**
+     * Whether a run is not started while another runs, on any server.
+     */
+    public function preventsOverlaps(): bool
+    {
+        return $this->withoutOverlapping;
     }
 
     /**

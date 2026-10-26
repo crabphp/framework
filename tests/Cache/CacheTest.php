@@ -564,32 +564,79 @@ final class CacheTest extends TestCase
         self::assertTrue($second->release());
     }
 
-    public function testACachePrefixCannotReachTheReservedLockNamespace(): void
+    #[DataProvider('stores')]
+    public function testClearingRemovesThisCachesValuesAndLeavesItsLocksAndOtherPrefixes(string $kind): void
     {
-        $this->expectException(\InvalidArgumentException::class);
-        $this->expectExceptionMessage("that text is kept for the cache's locks");
-        new Cache(new ArrayStore(), 'orders.:lock:');
+        $store = $this->store($kind);
+        $one = new Cache($store, 'one.', clock: $this->clock);
+        $two = new Cache($store, 'two.', clock: $this->clock);
+        $bare = new Cache($store, clock: $this->clock);
+        $one->set('entry', 'one');
+        $two->set('entry', 'two');
+        $bare->set('entry', 'bare');
+        $held = $two->lock('report', 60);
+        self::assertInstanceOf(Lock::class, $held);
+
+        self::assertTrue($two->clear());
+        self::assertNull($two->get('entry'));
+        self::assertSame('one', $one->get('entry'), "Another prefix's values stay.");
+        self::assertSame('bare', $bare->get('entry'));
+        self::assertNull($two->lock('report', 60), 'A lock outlives clearing the values.');
+
+        $bare->clear();
+        self::assertNull($bare->get('entry'));
+        self::assertSame('one', $one->get('entry'), 'Clearing a cache with no prefix leaves the prefixed ones.');
+        self::assertNull($two->lock('report', 60));
     }
 
     #[DataProvider('stores')]
-    public function testClearingASharedStoreRemovesEveryPrefixAndItsLiveLocks(string $kind): void
+    public function testClearingLocksFreesALockLeftBehindAndOnlyThisCaches(string $kind): void
     {
         $store = $this->store($kind);
         $one = new Cache($store, 'one.', clock: $this->clock);
         $two = new Cache($store, 'two.', clock: $this->clock);
         $one->set('entry', 'one');
-        $two->set('entry', 'two');
-        $first = $one->lock('report', 60);
-        self::assertInstanceOf(Lock::class, $first);
+        $left = $one->lock('report', 3600);
+        $other = $two->lock('report', 3600);
+        self::assertInstanceOf(Lock::class, $left);
+        self::assertInstanceOf(Lock::class, $other);
 
-        self::assertTrue($two->clear());
-        self::assertNull($one->get('entry'));
-        self::assertNull($two->get('entry'));
-        $second = $one->lock('report', 60);
-        self::assertInstanceOf(Lock::class, $second);
-        self::assertFalse($first->release());
-        self::assertNull($one->lock('report', 60));
-        self::assertTrue($second->release());
+        $one->clearLocks();
+        self::assertSame('one', $one->get('entry'), 'Clearing locks leaves values.');
+        $taken = $one->lock('report', 60);
+        self::assertInstanceOf(Lock::class, $taken);
+        self::assertFalse($left->release(), 'The old holder can no longer release the new lock.');
+        self::assertFalse($left->refresh(60));
+        self::assertNull($two->lock('report', 60), "Another prefix's lock stays.");
+        self::assertTrue($taken->release());
+        self::assertTrue($other->release());
+    }
+
+    #[DataProvider('stores')]
+    public function testARefreshedLockOutlivesItsFirstTimeAndOnlyItsHolderCanRefreshIt(string $kind): void
+    {
+        $cache = new Cache($this->store($kind), clock: $this->clock);
+        $lock = $cache->lock('report', 60);
+        self::assertInstanceOf(Lock::class, $lock);
+
+        $this->clock->advance('+50 seconds');
+        self::assertTrue($lock->refresh(60));
+        $this->clock->advance('+50 seconds');
+        self::assertNull($cache->lock('report', 60), 'Past its first time to live, the refreshed lock is still held.');
+
+        $this->clock->advance('+11 seconds');
+        self::assertFalse($lock->refresh(60), 'A lock that ran out is not taken back by refreshing it.');
+        $next = $cache->lock('report', 60);
+        self::assertInstanceOf(Lock::class, $next);
+        self::assertFalse($lock->refresh(60), "Nor is another holder's.");
+        self::assertTrue($next->refresh(new \DateInterval('PT2M')));
+        $this->clock->advance('+100 seconds');
+        self::assertNull($cache->lock('report', 60));
+        self::assertTrue($next->release());
+        self::assertFalse($next->refresh(60), 'A released lock is not refreshed into being again.');
+
+        $this->expectExceptionMessage('A cache lock needs a positive time to live.');
+        $cache->lock('other', 60)?->refresh(0);
     }
 
     public function testEverySuccessfulFileLockAcquisitionHasItsOwnSuccessfulReleaseAcrossProcesses(): void
@@ -988,7 +1035,7 @@ final class CacheTest extends TestCase
         $folder = $root . '/' . substr($hash, 0, 2);
         mkdir($folder);
         chmod($folder, 0o777);
-        file_put_contents($folder . '/' . $hash, "0\n" . serialize(1));
+        file_put_contents($folder . '/' . $hash, '0 ' . bin2hex('ticket') . "\n" . serialize(1));
         foreach ([
             static fn(): ?string => $store->get('ticket', 100),
             static fn(): ?string => $store->take('ticket', 100),
@@ -1059,7 +1106,7 @@ final class CacheTest extends TestCase
                 self::assertInstanceOf(\RuntimeException::class, $error);
                 self::assertStringContainsString('cannot be written to', $error->getMessage());
                 self::assertStringContainsString($folder, $error->getMessage());
-                self::assertSame("100\nexpired", file_get_contents($file));
+                self::assertSame('100 ' . bin2hex('old') . "\nexpired", file_get_contents($file));
             }
         } finally {
             chmod($folder, 0o700);
@@ -1382,7 +1429,8 @@ final class CacheTest extends TestCase
         $app = new App(new Config(['cache' => ['directory' => $this->directory . '/files']]));
         $app->register(CacheProvider::class);
         $app->container->get(CacheContract::class)->set('key', 'value');
-        self::assertFileExists($this->directory . '/files/' . substr(sha1('key'), 0, 2) . '/' . sha1('key'));
+        $hash = sha1('value:key');
+        self::assertFileExists($this->directory . '/files/' . substr($hash, 0, 2) . '/' . $hash);
     }
 
     public function testTheDatabaseStoreIsInstalledByAMigrationTheApplicationOwns(): void

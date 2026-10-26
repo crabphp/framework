@@ -76,6 +76,20 @@ interface Task
     public function onOneServer(): static;
 
     /**
+     * Does not start a run while another is still running, on this
+     * server or another, or in the generation a reload is replacing. A
+     * run is always skipped while one runs in the same scheduler; this
+     * extends that to every scheduler sharing the cache, which must then
+     * be one they share.
+     *
+     * The run holds a lease that lasts a minute and is renewed while it
+     * runs, so a run of any length keeps it, and one whose scheduler died
+     * gives it up within the minute. A due run that finds the lease held
+     * is skipped, not made up for.
+     */
+    public function withoutOverlapping(): static;
+
+    /**
      * The name it is listed and logged under.
      */
     public function named(): string;

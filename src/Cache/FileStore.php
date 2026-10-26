@@ -9,9 +9,10 @@ use Crab\Contracts\Cache\Store;
 /**
  * Entries kept as files in a directory, one per key, shared by every
  * worker on the machine. The directory is made when the first entry is
- * written. A file holds the time it expires on its first line and the
- * entry after it; it is named after a hash of the key, so any key is a
- * safe file name.
+ * written. A file holds the time it expires and its key, in hex, on its
+ * first line, and the entry after it; it is named after a hash of the
+ * key, so any key is a safe file name, and the key it keeps lets clear()
+ * remove the entries of one prefix.
  *
  * Folders and entries can be read and written by the server's user only,
  * and a link, whether at an entry, its folder or the directory itself,
@@ -61,7 +62,7 @@ final readonly class FileStore implements Store
     {
         $handle = $this->lock($this->file($key));
         try {
-            self::write($handle, $value, $expiresAt);
+            self::write($handle, $key, $value, $expiresAt);
         } finally {
             flock($handle, LOCK_UN);
             fclose($handle);
@@ -79,7 +80,7 @@ final readonly class FileStore implements Store
                     return false;
                 }
             }
-            self::write($handle, $value, $expiresAt);
+            self::write($handle, $key, $value, $expiresAt);
             return true;
         } finally {
             flock($handle, LOCK_UN);
@@ -121,7 +122,7 @@ final readonly class FileStore implements Store
                 }
             }
             $count = Counter::read($entry) + $by;
-            self::write($handle, Counter::write($count), Counter::is($entry) ? $existing : $expiresAt);
+            self::write($handle, $key, Counter::write($count), Counter::is($entry) ? $existing : $expiresAt);
             return $count;
         } finally {
             flock($handle, LOCK_UN);
@@ -151,6 +152,29 @@ final readonly class FileStore implements Store
                 return false;
             }
             self::remove($handle, $file);
+            return true;
+        } finally {
+            flock($handle, LOCK_UN);
+            fclose($handle);
+        }
+    }
+
+    public function extendIf(string $key, string $value, int $expiresAt, int $now): bool
+    {
+        $handle = $this->lock($this->file($key), create: false);
+        if ($handle === null) {
+            return false;
+        }
+        try {
+            $contents = (string) stream_get_contents($handle);
+            if ($contents === '') {
+                return false;
+            }
+            [$existingExpiry, $existing] = self::parse($contents);
+            if ($existingExpiry !== null && $existingExpiry <= $now || $existing !== $value) {
+                return false;
+            }
+            self::write($handle, $key, $value, $expiresAt);
             return true;
         } finally {
             flock($handle, LOCK_UN);
@@ -196,8 +220,12 @@ final readonly class FileStore implements Store
         return $removed;
     }
 
-    public function clear(): void
+    public function clear(string $prefix = ''): void
     {
+        if ($prefix !== '') {
+            $this->clearPrefix($prefix);
+            return;
+        }
         // Only what this store wrote: two-letter folders of hash-named files.
         foreach (glob($this->directory() . '/[0-9a-f][0-9a-f]', GLOB_ONLYDIR) ?: [] as $folder) {
             if (is_link($folder)) {
@@ -215,6 +243,39 @@ final readonly class FileStore implements Store
                 throw new \RuntimeException(
                     "The cache directory {$this->directory} cannot be written to. Check its permissions.",
                 );
+            }
+        }
+    }
+
+    /**
+     * Removes the entries whose key, kept on the first line, starts with
+     * the prefix. Each is checked under the writer's lock, so an entry
+     * written meanwhile under another key is never removed.
+     */
+    private function clearPrefix(string $prefix): void
+    {
+        foreach (glob($this->directory() . '/[0-9a-f][0-9a-f]', GLOB_ONLYDIR) ?: [] as $folder) {
+            if (is_link($folder)) {
+                continue;
+            }
+            foreach (glob($folder . '/*') ?: [] as $file) {
+                if (preg_match('/^[0-9a-f]{40}$/D', basename($file)) !== 1 || is_link($file) || !is_file($file)) {
+                    continue;
+                }
+                $handle = $this->lock($file, create: false);
+                if ($handle === null) {
+                    continue;
+                }
+                try {
+                    $head = fgets($handle);
+                    $key = $head === false ? null : self::key($head);
+                    if ($key !== null && str_starts_with($key, $prefix)) {
+                        self::remove($handle, $file);
+                    }
+                } finally {
+                    flock($handle, LOCK_UN);
+                    fclose($handle);
+                }
             }
         }
     }
@@ -383,11 +444,11 @@ final readonly class FileStore implements Store
     /**
      * @param resource $handle The entry's file, locked.
      */
-    private static function write(mixed $handle, string $value, ?int $expiresAt): void
+    private static function write(mixed $handle, string $key, string $value, ?int $expiresAt): void
     {
         ftruncate($handle, 0);
         rewind($handle);
-        fwrite($handle, ($expiresAt ?? 0) . "\n" . $value);
+        fwrite($handle, ($expiresAt ?? 0) . ' ' . bin2hex($key) . "\n" . $value);
         fflush($handle);
     }
 
@@ -407,11 +468,24 @@ final readonly class FileStore implements Store
     private static function parse(string $contents): array
     {
         $break = strpos($contents, "\n");
-        if ($break === false) {
-            // Not a file this store wrote whole; treated as expired.
+        $space = strpos($contents, ' ');
+        if ($break === false || $space === false || $space > $break) {
+            // Not a file this store wrote whole, or one written before it kept keys; treated as expired.
             return [0, ''];
         }
-        $expiresAt = (int) substr($contents, 0, $break);
+        $expiresAt = (int) substr($contents, 0, $space);
         return [$expiresAt === 0 ? null : $expiresAt, substr($contents, $break + 1)];
+    }
+
+    /**
+     * The key an entry's first line names, or null for a line this store did not write.
+     */
+    private static function key(string $head): ?string
+    {
+        if (preg_match('/^-?\d+ ((?:[0-9a-f]{2})*)\n?$/D', $head, $match) !== 1) {
+            return null;
+        }
+        $key = hex2bin($match[1]);
+        return $key === false ? null : $key;
     }
 }

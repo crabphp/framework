@@ -120,7 +120,7 @@ final class DescribeTest extends TestCase
         $app->console->add('shop:sync', static fn(): int => 0, "Sync the shop\n\nRuns nightly.");
         $app->register(\Crab\Events\EventsProvider::class, \Crab\Schedule\ScheduleProvider::class);
         $schedule = $app->container->get(\Crab\Contracts\Schedule\Schedule::class);
-        $schedule->command('shop:sync')->daily('03:00')->onOneServer();
+        $schedule->command('shop:sync')->daily('03:00')->onOneServer()->withoutOverlapping();
         $schedule
             ->call(static fn() => null)
             ->name('heartbeat')
@@ -137,8 +137,13 @@ final class DescribeTest extends TestCase
         );
         self::assertSame(
             [
-                ['task' => 'command shop:sync', 'when' => '0 3 * * *', 'one_server' => true],
-                ['task' => 'heartbeat', 'when' => 'every 5s', 'one_server' => false],
+                [
+                    'task' => 'command shop:sync',
+                    'when' => '0 3 * * *',
+                    'one_server' => true,
+                    'without_overlapping' => true,
+                ],
+                ['task' => 'heartbeat', 'when' => 'every 5s', 'one_server' => false, 'without_overlapping' => false],
             ],
             $described['schedule'],
         );

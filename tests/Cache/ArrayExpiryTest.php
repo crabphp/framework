@@ -49,7 +49,7 @@ final class ArrayExpiryTest extends TestCase
             };
             // Reading old keys here would hide their retention until revisited.
             foreach (array_keys($this->entries($store)) as $retained) {
-                self::assertStringStartsNotWith('old.', $retained, 'Expired keys must leave worker memory.');
+                self::assertStringStartsNotWith('value:old.', $retained, 'Expired keys must leave worker memory.');
             }
         }
         self::assertSame('kept', $cache->get('permanent'));
@@ -97,7 +97,10 @@ final class ArrayExpiryTest extends TestCase
             $clock->advance('+6 seconds');
         }
         $cache->set('final', 'live', 60);
-        self::assertSame(['final' => ['s:4:"live";', $clock->now()->getTimestamp() + 60]], $this->entries($store));
+        self::assertSame(
+            ['value:final' => ['s:4:"live";', $clock->now()->getTimestamp() + 60]],
+            $this->entries($store),
+        );
     }
 
     public function testAutomaticPruningIsPeriodicAndExplicitPruningStillCountsItsRemovals(): void
@@ -108,7 +111,7 @@ final class ArrayExpiryTest extends TestCase
         $cache->set('old', 'value', 1);
         $clock->advance('+2 seconds');
         $cache->get('missing');
-        self::assertArrayHasKey('old', $this->entries($store), 'Ordinary reads do not scan on every call.');
+        self::assertArrayHasKey('value:old', $this->entries($store), 'Ordinary reads do not scan on every call.');
         self::assertSame(1, $store->prune($clock->now()->getTimestamp()));
         self::assertSame(0, $store->prune($clock->now()->getTimestamp()));
 
@@ -118,7 +121,7 @@ final class ArrayExpiryTest extends TestCase
         $cache->set('expired', 'gone', 1);
         $clock->advance('+6 seconds');
         $cache->get('another');
-        self::assertArrayNotHasKey('expired', $this->entries($store));
+        self::assertArrayNotHasKey('value:expired', $this->entries($store));
         self::assertSame('new', $cache->get('renewed'));
     }
 

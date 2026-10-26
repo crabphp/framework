@@ -169,13 +169,16 @@ final class DescribeText
     }
 
     /**
-     * @param list<array{task: string, when: string, one_server: bool}> $tasks
+     * @param list<array{task: string, when: string, one_server: bool, without_overlapping: bool}> $tasks
      */
     private static function schedule(array $tasks): string
     {
         $lines = ['schedule'];
         foreach ($tasks as $task) {
-            $lines[] = "  {$task['when']}: {$task['task']}" . ($task['one_server'] ? ', on one server' : '');
+            $lines[] =
+                "  {$task['when']}: {$task['task']}"
+                . ($task['one_server'] ? ', on one server' : '')
+                . ($task['without_overlapping'] ? ', without overlapping' : '');
         }
         if ($tasks === []) {
             $lines[] = '  nothing';

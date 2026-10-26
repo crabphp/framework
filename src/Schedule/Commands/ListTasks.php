@@ -9,6 +9,7 @@ use Crab\Contracts\Console\Input;
 use Crab\Contracts\Console\Output;
 use Crab\Schedule\Schedule;
 use Crab\Schedule\Scheduler;
+use Crab\Schedule\Task;
 
 final readonly class ListTasks implements Command
 {
@@ -36,12 +37,24 @@ final readonly class ListTasks implements Command
         foreach ($tasks as $task) {
             $rows[] = [
                 $task->expression(),
-                $task->named() . ($task->runsOnOneServer() ? ' (one server)' : ''),
+                $task->named() . self::marks($task),
                 // A task that runs by an interval counts from when the scheduler starts, which is not known here.
                 $task->interval() === null ? $task->next($now)->format('Y-m-d H:i T') : 'while schedule:work runs',
             ];
         }
         $output->table($rows);
         return 0;
+    }
+
+    /**
+     * What the task is marked with, in brackets: " (one server, without overlapping)".
+     */
+    private static function marks(Task $task): string
+    {
+        $marks = array_keys(array_filter([
+            'one server' => $task->runsOnOneServer(),
+            'without overlapping' => $task->preventsOverlaps(),
+        ]));
+        return $marks === [] ? '' : ' (' . implode(', ', $marks) . ')';
     }
 }

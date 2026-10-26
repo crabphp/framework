@@ -56,13 +56,22 @@ interface Store
     public function deleteIf(string $key, string $value, int $now): bool;
 
     /**
+     * Gives a live entry a new expiry only while its text is exactly the
+     * given value, as one step with respect to every other caller of the
+     * same store. Returns whether this call extended it; an entry that
+     * is missing, expired or holds other text is left as it is.
+     */
+    public function extendIf(string $key, string $value, int $expiresAt, int $now): bool;
+
+    /**
      * Removes every expired entry of this store and returns how many
      * were removed. Entries that never expire are kept.
      */
     public function prune(int $now): int;
 
     /**
-     * Removes every entry of this store.
+     * Removes every entry whose key starts with the prefix, expired or
+     * not; every entry of this store when the prefix is empty.
      */
-    public function clear(): void;
+    public function clear(string $prefix = ''): void;
 }

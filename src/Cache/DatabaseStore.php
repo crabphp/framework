@@ -144,13 +144,48 @@ final readonly class DatabaseStore implements Store
         });
     }
 
+    public function extendIf(string $key, string $value, int $expiresAt, int $now): bool
+    {
+        return $this->connection->transaction(function (Connection $connection) use (
+            $key,
+            $value,
+            $expiresAt,
+            $now,
+        ): bool {
+            $row = $connection
+                ->table($this->table)
+                ->select('value', 'expires_at')
+                ->where('key', $key)
+                ->lockForUpdate()
+                ->first();
+            if ($row === null || $row['expires_at'] !== null && (int) $row['expires_at'] <= $now) {
+                return false;
+            }
+            // Compare bytes here: a database's text collation may treat different base64 strings as equal.
+            if (base64_decode((string) $row['value'], true) !== $value) {
+                return false;
+            }
+            $connection->table($this->table)->where('key', $key)->update(['expires_at' => $expiresAt]);
+            return true;
+        });
+    }
+
     public function prune(int $now): int
     {
         return $this->connection->table($this->table)->where('expires_at', '<=', $now)->delete();
     }
 
-    public function clear(): void
+    public function clear(string $prefix = ''): void
     {
-        $this->connection->table($this->table)->delete();
+        $query = $this->connection->table($this->table);
+        if ($prefix !== '') {
+            // The start of the key compared with the prefix, which a LIKE pattern would need escaped;
+            // MySQL and SQLite both read `key` as the column's name.
+            $query = $query->whereRaw('SUBSTR(`key`, 1, ?) = ?', [
+                strlen($prefix),
+                $prefix,
+            ]);
+        }
+        $query->delete();
     }
 }

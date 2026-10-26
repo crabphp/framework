@@ -43,8 +43,9 @@ interface Cache extends CacheInterface
 
     /**
      * Takes a lock, or returns null when another caller holds it. The
-     * lock uses its own keys, apart from ordinary cached values.
-     * Give a positive time to live so a crashed process cannot hold it forever.
+     * lock uses its own keys, apart from ordinary cached values, and
+     * clear() leaves it. Give a positive time to live so a crashed
+     * process cannot hold it forever; refresh() it to hold it longer.
      *
      * @throws \InvalidArgumentException When the time to live is zero or less.
      */
@@ -64,4 +65,19 @@ interface Cache extends CacheInterface
      * @return int The number now at the key.
      */
     public function increment(string $key, int $by = 1, int|\DateInterval|null $ttl = null): int;
+
+    /**
+     * Removes every value of this cache, as PSR-16 says, and nothing
+     * else: locks stay, and so does anything another cache keeps in the
+     * same store under another prefix.
+     */
+    public function clear(): bool;
+
+    /**
+     * Removes every lock of this cache, whether its holder is still at
+     * work or long gone. Work that holds one goes on, and no longer
+     * keeps another caller out; it is for a lock left behind by a
+     * process that died, which would otherwise wait out its time.
+     */
+    public function clearLocks(): void;
 }

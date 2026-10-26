@@ -5,11 +5,13 @@ declare(strict_types=1);
 namespace Crab\Schedule;
 
 use Crab\Contracts\Cache\Cache;
+use Crab\Contracts\Cache\Lock;
 use Crab\Contracts\Schedule\Schedule as ScheduleContract;
 use Crab\Contracts\Schedule\TaskRan;
 use Crab\Engine\Async\Async;
 use Crab\Engine\Async\Cancellation;
 use Crab\Engine\Async\CancelledException;
+use Crab\Engine\EventLoop;
 use Crab\Engine\Process\Worker;
 use Psr\Clock\ClockInterface;
 use Psr\Container\ContainerInterface;
@@ -21,7 +23,9 @@ use Psr\Log\LoggerInterface;
  * each minute and starts every task due in it, each in a fiber of its
  * own, so a slow task delays no other. A task that fails is logged and
  * runs again when it is next due. A task still running from an earlier
- * minute is not started a second time.
+ * minute is not started a second time; one set withoutOverlapping() is
+ * not started while it runs on another server or in another generation
+ * of this one either.
  *
  * A task set with everySeconds() is not part of that: it has a timer of
  * its own on the worker's loop, which counts from when the scheduler
@@ -40,22 +44,20 @@ final class Scheduler
      */
     private array $running = [];
     /**
-     * What this scheduler signs with when it keeps a task for one server.
-     */
-    private readonly string $owner;
-    /**
-     * When this scheduler last signed each task it keeps for one server, by the entry's key.
+     * The lock on each task set with everySeconds() that this scheduler
+     * keeps for one server, by the lock's key.
      *
-     * @var array<string, float>
+     * @var array<string, Lock>
      */
     private array $kept = [];
 
     /**
      * @param ContainerInterface|null $container Makes task classes, and holds the console and the queue that commands and jobs go to.
      * @param ClockInterface|null $clock The real time when left out.
-     * @param Cache|null $cache Through which servers agree who runs a task marked onOneServer().
+     * @param Cache|null $cache Through which servers agree who runs a task marked onOneServer() or withoutOverlapping().
      * @param \DateTimeZone|null $timezone The zone the tasks' times are in; the clock's when left out.
      * @param EventDispatcherInterface|null $events Told of each run of a task, with a TaskRan.
+     * @param int $lease Seconds a lease on a run of a task set withoutOverlapping() lasts unless renewed; it is renewed every third of that, so a scheduler that dies leaves the task to others within a lease.
      */
     public function __construct(
         private readonly ScheduleContract $schedule,
@@ -65,8 +67,13 @@ final class Scheduler
         private readonly ?Cache $cache = null,
         private readonly ?\DateTimeZone $timezone = null,
         private readonly ?EventDispatcherInterface $events = null,
+        private readonly int $lease = 60,
     ) {
-        $this->owner = bin2hex(random_bytes(8));
+        if ($lease < 3) {
+            throw new \InvalidArgumentException(
+                'A lease on a scheduled run lasts at least 3 seconds, so it can be renewed in time.',
+            );
+        }
     }
 
     /**
@@ -123,9 +130,21 @@ final class Scheduler
             return false;
         }
         $this->running[$name] = true;
+        $lease = null;
+        $renewal = null;
         try {
             if ($task->runsOnOneServer() && !$this->claim($task, $minute)) {
                 return false;
+            }
+            if ($task->preventsOverlaps()) {
+                $lease = $this->lease($task);
+                if ($lease === null) {
+                    $this->logger?->info('Scheduled task {task} is still running on another server, so it was not started here.', [
+                        'task' => $name,
+                    ]);
+                    return false;
+                }
+                $renewal = $this->renew($lease, $name);
             }
             $started = hrtime(true);
             try {
@@ -145,6 +164,10 @@ final class Scheduler
             return false;
         } finally {
             unset($this->running[$name]);
+            if ($renewal !== null) {
+                EventLoop::current()->cancel($renewal);
+            }
+            $this->release($lease, $name);
         }
     }
 
@@ -239,13 +262,14 @@ final class Scheduler
                     "The scheduled task {$task->named()} is marked onOneServer(), which servers agree on through the cache, and there is none: register the cache provider, CacheProvider, with a store they share.",
                 );
             }
+            if ($task->preventsOverlaps() && $this->cache === null) {
+                throw new \LogicException(
+                    "The scheduled task {$task->named()} is marked withoutOverlapping(), which servers agree on through the cache, and there is none: register the cache provider, CacheProvider, with a store they share.",
+                );
+            }
         }
     }
 
-    /**
-     * Tells the application's listeners of a run. What a listener throws
-     * is logged and goes no further.
-     */
     /**
      * Tells the listeners of a run, and counts it in the worker's "runs",
      * and a failure in its "failed", which `status` shows.
@@ -275,37 +299,92 @@ final class Scheduler
         if ($task->interval() !== null) {
             return $this->keep($task, $task->interval());
         }
-        // Kept for an hour: long enough that no server's clock is still in this minute.
-        return $this->cache->add('schedule.' . sha1($task->named()) . '.' . $minute->format('YmdHi'), true, 3600);
+        // A lock on this minute's run, never released: kept for an hour, long enough that no server's clock is still in it.
+        return $this->cache->lock('schedule.' . sha1($task->named()) . '.' . $minute->format('YmdHi'), 3600) !== null;
     }
 
     /**
      * Whether this server is the one that runs a task set with
      * everySeconds(). Servers started at different moments share no name
      * for a run, as they do for a minute, so one of them keeps the task
-     * instead: it signs an entry that lasts three intervals and signs it
-     * again at every run. When it stops, the entry runs out and the next
-     * server to ask takes the task.
+     * instead: it holds a lock lasting three intervals and refreshes it at
+     * every run. When it stops, the lock runs out and the next server to
+     * ask takes the task; a refresh after that fails, so two never both
+     * think they have it.
      */
     private function keep(Task $task, float $interval): bool
     {
         $key = 'schedule.' . sha1($task->named()) . '.kept';
         $seconds = max(2, (int) ceil($interval * 3));
-        $now = hrtime(true) / 1e9;
-        if ($this->cache->add($key, $this->owner, $seconds)) {
-            $this->kept[$key] = $now;
+        if (isset($this->kept[$key]) && $this->kept[$key]->refresh($seconds)) {
             return true;
         }
-        // Signed again only while the last signing cannot have run out. After a pause longer than
-        // that, another server may have taken the task, and writing over its entry would give
-        // the task to two: it is asked for afresh, which only one of them can win.
-        $fresh = isset($this->kept[$key]) && ($now - $this->kept[$key]) < (($seconds * 2) / 3);
-        if (!$fresh || $this->cache->get($key) !== $this->owner) {
-            unset($this->kept[$key]);
+        unset($this->kept[$key]);
+        $lock = $this->cache->lock($key, $seconds);
+        if ($lock === null) {
             return false;
         }
-        $this->cache->set($key, $this->owner, $seconds);
-        $this->kept[$key] = $now;
+        $this->kept[$key] = $lock;
         return true;
+    }
+
+    /**
+     * A lease on running a task set withoutOverlapping(), or null when
+     * another scheduler holds it.
+     */
+    private function lease(Task $task): ?Lock
+    {
+        if ($this->cache === null) {
+            $this->check();
+        }
+        return $this->cache->lock('schedule.' . sha1($task->named()) . '.running', $this->lease);
+    }
+
+    /**
+     * Renews a lease while its task runs, so that a run of any length
+     * keeps it and one whose scheduler died gives it up within a lease.
+     * A renewal that fails, because the lease ran out or its lock was
+     * cleared, is logged: the run goes on, and no longer keeps others out.
+     *
+     * @return string The timer, to cancel when the run ends.
+     */
+    private function renew(Lock $lease, string $name): string
+    {
+        $lost = false;
+        return EventLoop::current()->repeat($this->lease / 3, function () use ($lease, $name, &$lost): void {
+            if ($lost) {
+                return;
+            }
+            try {
+                if ($lease->refresh($this->lease)) {
+                    return;
+                }
+                $lost = true;
+                $problem = 'its lease ran out or was cleared';
+            } catch (\Throwable $error) {
+                // The store did not answer; the next renewal tries again.
+                $problem = $error->getMessage();
+            }
+            $this->logger?->error('Scheduled task {task} could not renew its lease, so another server may start it while it runs: {message}', [
+                'task' => $name,
+                'message' => $problem,
+            ]);
+        });
+    }
+
+    /**
+     * Gives up a lease when its run ends, whatever the end.
+     */
+    private function release(?Lock $lease, string $name): void
+    {
+        try {
+            $lease?->release();
+        } catch (\Throwable $error) {
+            $this->logger?->error('Scheduled task {task} could not give up its lease, which runs out by itself: {message}', [
+                'task' => $name,
+                'message' => $error->getMessage(),
+                'exception' => $error,
+            ]);
+        }
     }
 }

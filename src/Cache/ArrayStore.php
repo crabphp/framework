@@ -93,6 +93,16 @@ final class ArrayStore implements Store
         return true;
     }
 
+    public function extendIf(string $key, string $value, int $expiresAt, int $now): bool
+    {
+        $entry = $this->entries[$key] ?? null;
+        if ($entry === null || $entry[1] !== null && $entry[1] <= $now || $entry[0] !== $value) {
+            return false;
+        }
+        $this->entries[$key] = [$value, $expiresAt];
+        return true;
+    }
+
     public function prune(int $now): int
     {
         $this->prunedAt = $now;
@@ -108,9 +118,18 @@ final class ArrayStore implements Store
         return $removed;
     }
 
-    public function clear(): void
+    public function clear(string $prefix = ''): void
     {
-        $this->entries = [];
         $this->prunedAt = null;
+        if ($prefix === '') {
+            $this->entries = [];
+            return;
+        }
+        foreach (array_keys($this->entries) as $key) {
+            if (!str_starts_with((string) $key, $prefix)) {
+                continue;
+            }
+            unset($this->entries[$key]);
+        }
     }
 }

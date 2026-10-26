@@ -171,7 +171,7 @@ final readonly class Describe implements Command
     }
 
     /**
-     * @return list<array{task: string, when: string, one_server: bool}>
+     * @return list<array{task: string, when: string, one_server: bool, without_overlapping: bool}>
      */
     private function schedule(): array
     {
@@ -186,6 +186,7 @@ final readonly class Describe implements Command
                 'task' => $task->named(),
                 'when' => $interval === null ? $task->expression() : "every {$interval}s",
                 'one_server' => $task->runsOnOneServer(),
+                'without_overlapping' => $task->preventsOverlaps(),
             ];
         }
         return $tasks;

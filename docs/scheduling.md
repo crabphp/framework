@@ -186,6 +186,19 @@ Each due task runs in its own fiber: waits through the engine let other tasks ru
 
 So a task set for every minute that takes three minutes runs every third minute. If you see the warning often, the task belongs on the queue.
 
+That holds within one scheduler. A run can still overlap another on a second server, or in the old generation a `reload` is replacing while it finishes a long task. For a task that must never run twice at once, such as a purge, say so:
+
+```php
+$schedule->job(PurgeDeletedAccounts::class)->daily('03:00')->onOneServer()->withoutOverlapping();
+```
+
+The run holds a lease in the [cache](cache.md#locks) while it lasts. The lease is for a minute and is renewed every twenty seconds, so a run of any length keeps it, and one whose scheduler died gives it up within the minute. A run that comes due while the lease is held anywhere is skipped and logged, and is not made up for. Like `onOneServer()`, it needs a cache that every scheduler shares, and a schedule that uses it without one is refused when `schedule:work` starts.
+
+`onOneServer()` and `withoutOverlapping()` answer different questions. `onOneServer()` lets one server take each due run: of the servers at 03:00, one runs it. `withoutOverlapping()` keeps a run from starting while the last one goes on: Tuesday's run waits for nothing, but it is skipped if Monday's is still at work. A task can use either or both.
+
+> [!NOTE]
+> If the lease cannot be renewed, because the cache was down or `cache:clear --locks` removed it, the run is not stopped. The scheduler logs an error saying another server may start the task meanwhile.
+
 ## Several servers
 
 When more than one machine runs `schedule:work`, each would run every task. Mark the tasks that must run once:
@@ -194,7 +207,7 @@ When more than one machine runs `schedule:work`, each would run every task. Mark
 $schedule->job(SendDailyDigest::class)->daily('08:00')->onOneServer();
 ```
 
-The servers agree through the [cache](cache.md), which must then be one they share: the `database` store, not files. Whichever asks first runs the task. A schedule that uses `onOneServer()` without a cache is refused when `schedule:work` starts.
+The servers agree through the [cache](cache.md), which must then be one they share: the `database` store, not files. Whichever asks first runs the task. Its claim is a lock, so `cache:clear` does not hand the run to a second server. A schedule that uses `onOneServer()` without a cache is refused when `schedule:work` starts.
 
 With a single server, or a single machine running the scheduler, you do not need it.
 

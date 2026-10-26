@@ -383,6 +383,156 @@ final class ScheduleTest extends TestCase
         new Scheduler($schedule)->check();
     }
 
+    public function testATaskWithoutOverlappingIsNotStartedOnAnotherServerWhileItRuns(): void
+    {
+        $schedule = new Schedule();
+        $shared = new ArrayStore();
+        $first = new Scheduler($schedule, new Container(), $this->log, cache: new Cache($shared));
+        $second = new Scheduler($schedule, new Container(), $this->log, cache: new Cache($shared));
+        $minute = new \DateTimeImmutable('2026-03-10 03:00:00');
+        $runs = 0;
+
+        WorkerHarness::run([], static function (Worker $worker) use (
+            $schedule,
+            $first,
+            $second,
+            $minute,
+            &$runs,
+        ): void {
+            $release = false;
+            $task = $schedule
+                ->call(static function () use ($worker, &$runs, &$release): void {
+                    ++$runs;
+                    Wait::until(
+                        $worker->loop,
+                        static function () use (&$release): bool {
+                            return $release;
+                        },
+                        'release of the long purge',
+                    );
+                })
+                ->name('purge')
+                ->daily('03:00')
+                ->withoutOverlapping();
+
+            $worker->spawn(static fn(): bool => $first->run($task, $minute));
+            Wait::until(
+                $worker->loop,
+                static function () use (&$runs): bool {
+                    return $runs === 1;
+                },
+                'the first server to start the purge',
+            );
+            try {
+                // Tomorrow's run comes while today's is still going, on another server.
+                self::assertFalse($second->run($task, $minute->modify('+1 day')));
+                self::assertSame(1, $runs);
+            } finally {
+                $release = true;
+            }
+            Wait::until(
+                $worker->loop,
+                static fn(): bool => $second->run($task, $minute->modify('+2 days')),
+                'the purge to be free again',
+            );
+        });
+
+        self::assertSame(2, $runs);
+        self::assertContains(
+            ['info', 'Scheduled task purge is still running on another server, so it was not started here.'],
+            $this->log->records,
+        );
+
+        $this->expectExceptionMessage('purge is marked withoutOverlapping(), which servers agree on through the cache');
+        new Scheduler($schedule)->check();
+    }
+
+    public function testALeaseIsRenewedWhileItsRunLastsAndALostOneIsReported(): void
+    {
+        $schedule = new Schedule();
+        $shared = new ArrayStore();
+        $clock = new FrozenClock('2026-03-10 03:00:00');
+        $cache = new Cache($shared, clock: $clock);
+        $first = new Scheduler($schedule, new Container(), $this->log, cache: $cache, lease: 3);
+        $second = new Scheduler(
+            $schedule,
+            new Container(),
+            $this->log,
+            cache: new Cache($shared, clock: $clock),
+            lease: 3,
+        );
+        $log = $this->log;
+
+        WorkerHarness::run([], static function (Worker $worker) use (
+            $schedule,
+            $shared,
+            $first,
+            $second,
+            $clock,
+            $cache,
+            $log,
+        ): void {
+            $release = false;
+            $running = false;
+            $task = $schedule
+                ->call(static function () use ($worker, &$release, &$running): void {
+                    $running = true;
+                    Wait::until(
+                        $worker->loop,
+                        static function () use (&$release): bool {
+                            return $release;
+                        },
+                        'release of the long report',
+                    );
+                })
+                ->name('report')
+                ->withoutOverlapping();
+            $worker->spawn(static fn(): bool => $first->run($task, $clock->now()));
+            try {
+                Wait::until(
+                    $worker->loop,
+                    static function () use (&$running): bool {
+                        return $running;
+                    },
+                    'the report to start',
+                );
+                // Each renewal, every second, gives the lease three more seconds from the clock's now.
+                for ($step = 0; $step < 3; ++$step) {
+                    $clock->advance('+2 seconds');
+                    Wait::until(
+                        $worker->loop,
+                        static function () use ($shared, $clock): bool {
+                            // Read as stored: asking the store with a later time would prune the lease.
+                            $entries = new \ReflectionProperty($shared, 'entries')->getValue($shared);
+                            $lease = $entries['lock:schedule.' . sha1('report') . '.running'] ?? null;
+                            return $lease !== null && $lease[1] > ($clock->now()->getTimestamp() + 2);
+                        },
+                        'a renewal of the lease past its first time',
+                    );
+                    self::assertFalse(
+                        $second->run($task, $clock->now()),
+                        'A renewed lease keeps the report to the first server.',
+                    );
+                }
+                $cache->clearLocks();
+                Wait::until(
+                    $worker->loop,
+                    static fn(): bool => in_array(
+                        [
+                            'error',
+                            'Scheduled task report could not renew its lease, so another server may start it while it runs: its lease ran out or was cleared',
+                        ],
+                        $log->records,
+                        true,
+                    ),
+                    'the lost lease to be reported',
+                );
+            } finally {
+                $release = true;
+            }
+        });
+    }
+
     public function testTheSchedulerWakesAtTheMinuteAndStopsWhenCancelled(): void
     {
         $schedule = new Schedule();

@@ -49,7 +49,7 @@ return [
 | `cache.prefix` | none | Put before every key, to keep two applications apart in one store |
 | `cache.ttl` | `null` | Seconds an entry lives when you give none; forever when null |
 
-A `cache.prefix` cannot contain `:lock:`: that text is kept for the cache's locks.
+Under the prefix, values and locks are kept apart, as `value:` and `lock:` keys, so that clearing the one leaves the other. Give two applications sharing a store prefixes that do not start one another, such as `shop.` and `blog.`.
 
 ### Choosing a store
 
@@ -137,10 +137,7 @@ php cua cache:clear
 
 empties the cache from the command line, for example after a deploy that changes what is cached. An `array` store lives inside each worker and is emptied by restarting the server.
 
-`cache.prefix` does not scope `clear()` or `cache:clear` on the array, file and database stores: they remove every entry in the shared store. Redis clears only entries under its store's own prefix.
-
-> [!WARNING]
-> `clear()` and `cache:clear` remove active locks too. Do not clear a store whose locks are in use: another worker could take the same lock while its first holder is still working.
+`clear()` and `cache:clear` remove this cache's values and nothing else: its [locks](#locks) stay, so work that holds one goes on keeping others out, and so does what another application keeps in the same store under another `cache.prefix`. This holds on every store.
 
 ### Taking a value once
 
@@ -209,9 +206,30 @@ try {
 }
 ```
 
-A positive time to live is required, in seconds or as a `DateInterval`. Give it longer than the work takes: expiry lets another worker start, even if the first is still running. If the process dies, the lock still expires. A late `release()` returns `false` and leaves a new holder's lock alone. Locks use keys of their own, so storing or deleting a value with the same key does not affect them.
+A positive time to live is required, in seconds or as a `DateInterval`. Expiry lets another worker start, even if the first is still running, so either give it longer than the work takes or keep it with `refresh()`. If the process dies, the lock still expires. A late `release()` returns `false` and leaves a new holder's lock alone. Locks use keys of their own, so storing or deleting a value with the same key does not affect them, and clearing the cache leaves them.
 
-Clearing the store removes its locks as well. Do not run `clear()` or `cache:clear` while work relies on those locks.
+Work whose length you cannot know takes a short lock and refreshes it as it goes:
+
+```php
+$lock = $cache->lock('imports.catalogue', 60);
+
+foreach ($batches as $batch) {
+    $this->import($batch);
+    if (!$lock->refresh(60)) {
+        throw new \RuntimeException('The import lost its lock; another worker may have started it.');
+    }
+}
+```
+
+`refresh()` gives the lock that long from now, only while you still hold it, and returns `false` once it has run out or been released: whoever took it since keeps it.
+
+A lock left by a process that died waits out its time. To free it sooner:
+
+```sh
+php cua cache:clear --locks
+```
+
+removes the cache's locks with its values. Work that still holds one goes on, no longer keeping others out, so use it only when you know the holder is gone. In code it is `$cache->clearLocks()`.
 
 Across machines, use a shared database or Redis store. An array store coordinates only callers inside one worker. `add()` remains available to set an ordinary value only when its key holds nothing, returning whether it did.
 
@@ -243,7 +261,7 @@ use Crab\Contracts\Cache\Store;
 $container->singleton(Store::class, CacheStore::class);
 ```
 
-A store only stores text by key with an expiry time: `get()`, `take()`, `set()`, `add()`, `increment()`, `delete()`, `deleteIf()`, `prune()` and `clear()`. Checking keys, serializing values and reading the clock stay with the cache in front of it. `add()`, `take()`, `increment()` and `deleteIf()` must each be one step with respect to every other caller, or the credentials, locks and limits built on them do not hold. `take(string $key, int $now): ?string` returns and removes a live entry atomically, or returns null when missing or expired; never implement it as separate unlocked get and delete calls. `deleteIf()` removes only a live entry holding the exact given text; `prune()` removes expired entries and returns the count.
+A store only stores text by key with an expiry time: `get()`, `take()`, `set()`, `add()`, `increment()`, `delete()`, `deleteIf()`, `extendIf()`, `prune()` and `clear()`. Checking keys, serializing values and reading the clock stay with the cache in front of it. `add()`, `take()`, `increment()`, `deleteIf()` and `extendIf()` must each be one step with respect to every other caller, or the credentials, locks and limits built on them do not hold. `take(string $key, int $now): ?string` returns and removes a live entry atomically, or returns null when missing or expired; never implement it as separate unlocked get and delete calls. `deleteIf()` removes only a live entry holding the exact given text, and `extendIf()` gives such an entry a new expiry, each as one step; `prune()` removes expired entries and returns the count; `clear(string $prefix)` removes every entry whose key starts with the prefix, and every entry when it is empty.
 
 ## In tests
 
