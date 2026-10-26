@@ -22,7 +22,9 @@ final class ErrorResponse
      *
      * @param string $message Shown to the client; the status's reason phrase when empty.
      * @param array<string, string|list<string>> $headers
-     * @param array<string, list<string>> $fields What is wrong with the request's data, by field.
+     * @param array<string, list<string>> $fields What is wrong with the request's body, by field.
+     * @param array<string, list<string>> $query What is wrong with its query string, by field.
+     * @param array<string, list<string>> $path What is wrong with the parameters of its path, by name.
      * @param \Throwable|null $cause The exception the request is answered for.
      * @param bool $debug Whether a failure's cause may be described in full, without its calls' arguments.
      */
@@ -32,6 +34,8 @@ final class ErrorResponse
         string $message = '',
         array $headers = [],
         array $fields = [],
+        array $query = [],
+        array $path = [],
         ?\Throwable $cause = null,
         bool $debug = false,
     ): Response {
@@ -39,6 +43,8 @@ final class ErrorResponse
             $status,
             $message === '' ? EngineResponse::reason($status) : $message,
             $fields,
+            $query,
+            $path,
             $cause,
             $debug,
         );
@@ -60,8 +66,11 @@ final class ErrorResponse
         $detail = $problem->debug && $status >= 500 ? $problem->cause : null;
         if (str_contains($request->getHeaderLine('Accept'), 'json')) {
             $body = ['error' => ['status' => $status, 'message' => $message]];
-            if ($fields !== []) {
-                $body['error']['fields'] = $fields;
+            foreach (['fields' => $fields, 'query' => $problem->query, 'path' => $problem->path] as $key => $problems) {
+                if ($problems === []) {
+                    continue;
+                }
+                $body['error'][$key] = $problems;
             }
             if ($detail !== null) {
                 $body['error'] += [
@@ -76,6 +85,13 @@ final class ErrorResponse
             return Response::json($body, $status, $headers, JSON_INVALID_UTF8_SUBSTITUTE);
         }
         $body = $status . ' ' . $message . "\n";
+        // A query field as it is written in the address, ?page; a parameter of the path as in its pattern, {id}.
+        foreach ($problem->path as $name => $problems) {
+            $body .= "{{$name}} " . implode(', ', $problems) . "\n";
+        }
+        foreach ($problem->query as $field => $problems) {
+            $body .= "?{$field} " . implode(', ', $problems) . "\n";
+        }
         foreach ($fields as $field => $problems) {
             $body .= "{$field} " . implode(', ', $problems) . "\n";
         }

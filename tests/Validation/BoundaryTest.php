@@ -110,7 +110,9 @@ final class BoundaryTest extends TestCase
         $this->expectException(\LogicException::class);
         $this->expectExceptionMessageMatches('~(?s)(?=.*/signup)(?=.*\$email)(?=.*MissingEmail)~');
 
-        $app->router->post('/signup', static fn(#[MissingEmail] string $email): array => ['email' => $email]);
+        $app->router->get('/signup', static fn(#[\Crab\Routing\FromQuery, MissingEmail] string $email): array => [
+            'email' => $email,
+        ]);
     }
 
     public function testAnExistingUnrelatedAttributeDoesNotDisableValidation(): void
@@ -127,7 +129,12 @@ final class BoundaryTest extends TestCase
     public function testAResolvedEmailRuleStillAnswersWithValidationErrors(): void
     {
         $app = new App();
-        $app->router->post('/signup', static fn(#[Email] string $email): array => ['email' => $email]);
+        $app->router->post('/signup', static fn(
+            #[\Crab\Validation\Fields(['email' => ['string', new Email()]])]
+            \Crab\Validation\Data $user,
+        ): array => [
+            'email' => $user->email,
+        ]);
         $response = $app->handle(
             new Request('POST', '/signup', ['Content-Type' => 'application/json'], '{"email":"invalid"}'),
         );

@@ -172,8 +172,9 @@ $db->table('users')->where('active', false)->delete();          // rows affected
 
 ```php
 use Crab\Contracts\Database\Page;
+use Crab\Routing\FromQuery;
 
-Route::get('/users', static function (int $page = 1) use ($db): Page {
+Route::get('/users', static function (#[FromQuery] int $page = 1) use ($db): Page {
     return $db->table('users')->orderBy('id')->paginate(20, $page);
 });
 ```
@@ -182,7 +183,7 @@ It returns a `Crab\Contracts\Database\Page` with `items`, `total`, `perPage`, `c
 
 `simplePaginate()` skips the count and knows only `hasMore`. Use it on a large table, where counting every row costs more than the page.
 
-The page number is an argument, taken from the action's signature. Nothing reads the request behind your back.
+The page number is an argument, a [query field](actions.md#query-fields) of the action's signature. Nothing reads the request behind your back.
 
 ## Large tables
 

@@ -127,7 +127,9 @@ use App\Events\UserRegistered;
 use Crab\Contracts\Database\Database;
 use Crab\Contracts\Events\Dispatcher;
 use Crab\Http\Response;
+use Crab\Validation\Data;
 use Crab\Validation\Email;
+use Crab\Validation\Fields;
 
 final readonly class RegisterUser
 {
@@ -135,11 +137,11 @@ final readonly class RegisterUser
     {
     }
 
-    public function handle(#[Email] string $email, string $name): Response
+    public function handle(#[Fields(['email' => ['string', new Email()], 'name' => 'string'])] Data $input): Response
     {
-        $id = $this->db->table('users')->insert(['email' => $email, 'name' => $name]);
+        $id = $this->db->table('users')->insert(['email' => $input->email, 'name' => $input->name]);
 
-        $this->events->dispatch(new UserRegistered($id, $email));
+        $this->events->dispatch(new UserRegistered($id, $input->email));
 
         return Response::created(['id' => $id], "/users/{$id}");
     }

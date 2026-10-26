@@ -6,9 +6,11 @@
     - [A class](#a-class)
     - [A class with several methods](#a-class-with-several-methods)
 - [What an action takes](#what-an-action-takes)
-    - [Fields as parameters](#fields-as-parameters)
+    - [Path parameters](#path-parameters)
+    - [Query fields](#query-fields)
     - [An input class](#an-input-class)
     - [Described fields](#described-fields)
+    - [The query string as one object](#the-query-string-as-one-object)
     - [The request itself](#the-request-itself)
     - [The logged-in user](#the-logged-in-user)
     - [Services](#services)
@@ -26,10 +28,21 @@ use Crab\Route;
 use Crab\Validation\Email;
 use Crab\Validation\Length;
 
-Route::post('/users', static function (#[Email] string $email, #[Length(min: 2, max: 50)] string $name): Response {
-    // $email and $name are already checked.
+final readonly class CreateUser
+{
+    public function __construct(
+        #[Email]
+        public string $email,
+        #[Length(min: 2, max: 50)]
+        public string $name,
+    ) {
+    }
+}
 
-    return Response::created(['email' => $email, 'name' => $name]);
+Route::post('/users', static function (CreateUser $input): Response {
+    // $input->email and $input->name are already checked.
+
+    return Response::created(['email' => $input->email, 'name' => $input->name]);
 });
 ```
 
@@ -113,34 +126,73 @@ An action class extends nothing. Each route retains its resolved action callable
 
 ## What an action takes
 
+Each parameter says where its value comes from, by its name, its type or a mark:
+
 | Parameter | Is |
 | --- | --- |
-| Named as in the route's pattern | That route parameter, as `string`, `int`, `float` or `bool` |
-| Any other `int`, `float`, `string`, `bool`, `array`, enum or `DateTimeImmutable` | A field of the request's data, by its name |
-| `UploadedFileInterface` | A file the form carries, by its field's name; see [Uploaded files](requests.md#uploaded-files) |
-| One class | The input: all the fields in one object |
+| Named as in the route's pattern | That path parameter, as `string`, `int`, `float` or `bool` |
+| Marked `#[FromQuery]`: an `int`, `float`, `string`, `bool`, `array`, enum or `DateTimeImmutable` | That field of the query string, by its name |
+| A class, or `Data` described with `#[Fields]` | The body: JSON, or a form with its files |
+| Marked `#[FromQuery]`: a class, or `Data` described with `#[Fields]` | The whole query string |
 | Typed as a PSR-7 server request | The request itself |
 | A class that implements `Identity` | The logged-in user |
 
-The request's data is the body, JSON or a form with its files, or the query string for `GET`, `HEAD` and `DELETE`. Anything else in a signature is refused when the route is added.
+```php
+use Crab\Routing\FromQuery;
 
-### Fields as parameters
+Route::patch('/posts/{id}', static function (
+    int $id,                                // the path: /posts/7
+    UpdatePost $input,                      // the body
+    User $user,                             // the logged-in user
+    #[FromQuery] bool $notify = false,      // the query string: ?notify=true
+): array {
+    // ...
+});
+```
 
-Take a few flat fields as parameters, one each:
+A field of the body is never a parameter of its own: the body is one object, an input class or `Data`. A query string is a set of independent options, page and sort and search, so its fields may be taken one at a time. Anything else in a signature is refused when the route is added, with what to write instead:
+
+| Signature | Refused, because |
+| --- | --- |
+| `Route::post('/login', fn (string $email) => ...)` | `$email` is not in the path; mark it `#[FromQuery]`, or put it in the body's input class |
+| `Route::get('/users', fn (UserFilter $filter) => ...)` | a `GET` request has no body; mark it `#[FromQuery]` |
+| `Route::post('/orders', fn (CreateOrder $order, Address $billing) => ...)` | a request has one body; make `$billing` a field of `CreateOrder` |
+| `Route::get('/users/{id}', fn (#[FromQuery] int $id) => ...)` | `$id` is in the path; drop the mark |
+
+`GET`, `HEAD`, `DELETE` and a [socket upgrade](websockets.md) have no body. Every parameter has a type: one without is refused, since nothing says what it is.
+
+> [!NOTE]
+> Laravel reads `$request->input('email')` from the body and the query string alike. Crab reads a value from the one place its parameter names, so a password in a `POST` body is never taken from the address, and a field of the body cannot be set by adding it to the URL.
+
+### Path parameters
+
+A parameter named as in the route's pattern is that part of the path:
 
 ```php
-Route::get('/users', static function (int $page = 1, ?string $search = null): array {
+Route::get('/users/{id}/posts/{slug}', static fn (int $id, string $slug): array => [$id, $slug]);
+```
+
+Rules hold for it as for any field: `#[Range(min: 1)] int $id` answers `/users/0` with `422`. See [Routing](routing.md).
+
+### Query fields
+
+Mark a parameter `#[FromQuery]` to take one field of the query string:
+
+```php
+use Crab\Routing\FromQuery;
+
+Route::get('/users', static function (#[FromQuery] int $page = 1, #[FromQuery] ?string $search = null): array {
     // GET /users?page=2&search=ada
 
     return ['page' => $page, 'search' => $search];
 });
 ```
 
-Every parameter has a type: one without is refused when the route is added, since nothing says what it is. A parameter with a default or a nullable type may be left out of the request. Fields the action does not declare are ignored and never reach it.
+A parameter with a default or a nullable type may be left out of the request. Fields the action does not declare are ignored and never reach it. A query string is text, so `page=3` is read as the number `3` and `active=true` as a boolean; see [Validation](validation.md#types-are-rules).
 
 ### An input class
 
-Use a class when there are many fields, when they nest, or when several routes take the same ones. Its constructor declares every field:
+The body is one object. Use a class when there are many fields, when they nest, or when several routes take the same ones. Its constructor declares every field:
 
 ```php
 // app/Http/CreateOrder.php
@@ -165,11 +217,15 @@ final readonly class CreateOrder
 }
 ```
 
-An action takes either separate fields or one input, never both. [Validation](validation.md) lists the types and rules.
+```php
+Route::post('/orders', static fn (CreateOrder $input): Response => ...);
+```
+
+A file of a form is a field of the class too, typed `UploadedFileInterface`; see [Uploaded files](requests.md#uploaded-files). [Validation](validation.md) lists the types and rules.
 
 ### Described fields
 
-When the data nests and you would rather not write a class for it, describe its fields on the parameter with `#[Fields]`. The parameter is typed `Data`, and receives the whole of the request's data, checked:
+When the body is small, or nests and you would rather not write a class for it, describe its fields on the parameter with `#[Fields]`. The parameter is typed `Data`, and receives the whole body, checked:
 
 ```php
 use Crab\Validation\Data;
@@ -215,13 +271,35 @@ An empty object, or one containing only undeclared fields, changes nothing and r
 
 It is validated before the action runs, as an input class is, and a problem is reported the same way: `lines.0.quantity`. A description that makes no sense stops the server from starting. Reading a field you did not describe throws, so a slip of the hand shows in the first test.
 
-For a list of objects among other fields, `#[ListOf]` takes the same description:
+Use an [input class](#an-input-class) when several routes take the same data, or when you want your editor to know the fields. [Validation](validation.md#describing-fields) lists how a field is described.
+
+### The query string as one object
+
+When a list takes many filters, or several lists share them, mark a class or described `Data` `#[FromQuery]` to take the whole query string:
 
 ```php
-public function handle(string $name, #[ListOf(['productId' => 'int', 'quantity' => '?int'])] array $lines): array
+use Crab\Routing\FromQuery;
+use Crab\Validation\ListOf;
+use Crab\Validation\Range;
+
+final readonly class OrderFilter
+{
+    public function __construct(
+        public ?OrderStatus $status = null,     // ?status=paid
+        public ?\DateTimeImmutable $since = null,
+        #[ListOf('string')]
+        public array $tags = [],                // ?tags[]=gift&tags[]=rush
+        #[Range(min: 1, max: 100)]
+        public int $perPage = 20,
+    ) {
+    }
+}
+
+Route::get('/orders', static fn (#[FromQuery] OrderFilter $filter): array => ...);
+Route::get('/search', static fn (#[FromQuery, Fields(['q' => 'string', 'page?' => 'int'])] Data $query): array => ...);
 ```
 
-Use an [input class](#an-input-class) when several routes take the same data, or when you want your editor to know the fields. [Validation](validation.md#describing-fields) lists how a field is described.
+An action takes the query string either field by field or as one object, not both.
 
 ### The request itself
 

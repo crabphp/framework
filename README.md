@@ -24,18 +24,25 @@ Save it as `app.php` and run `php bin/crab app.php start --single`. `Route::get(
 
 ## Actions
 
-A route's action says in its signature what it takes, and the framework checks the request against it before the action runs.
+A route's action says in its signature what it takes, and the framework checks the request against it before the action runs. Each parameter says where it comes from: a name in the pattern is the path, `#[FromQuery]` the query string, and a class or described `Data` the body.
 
 ~~~php
 use Crab\Http\Response;
+use Crab\Routing\FromQuery;
+use Crab\Validation\Data;
 use Crab\Validation\Email;
+use Crab\Validation\Fields;
 use Crab\Validation\Length;
 
-// A few fields: take them as parameters.
-Route::get('/users', static fn (int $page = 1, ?string $search = null): array => $users->page($page, $search));
+// Fields of the query string: one parameter each, marked.
+Route::get('/users', static fn (#[FromQuery] int $page = 1, #[FromQuery] ?string $search = null): array => $users->page($page, $search));
 
-Route::post('/users', static function (#[Email] string $email, #[Length(min: 2, max: 50)] string $name) use ($users): Response {
-    $user = $users->create($email, $name);
+// A small body: its fields described where they are used.
+Route::post('/users', static function (
+    #[Fields(['email' => ['string', new Email()], 'name' => ['string', new Length(min: 2, max: 50)]])]
+    Data $input,
+) use ($users): Response {
+    $user = $users->create($input->email, $input->name);
 
     return Response::created($user, "/users/{$user->id}");
 });
@@ -59,7 +66,7 @@ final readonly class OrderController
         return new Order($row['id'], $row['total']);
     }
 
-    public function store(CreateOrder $input): Order               // many fields: one class
+    public function store(CreateOrder $input): Order               // the body, as one class
     {
         ...
     }
@@ -96,15 +103,16 @@ A name is unique, and a missing or refused parameter throws naming the route. `U
 
 | Parameter | Is |
 | --- | --- |
-| Named as in the pattern, `string`, `int`, `float` or `bool` | That route parameter, as that type |
-| Any other `int`, `float`, `string`, `bool`, `array`, enum or `DateTimeImmutable` | A field of the request's data, by its name |
-| One class | The input: all the fields in one object, in place of separate parameters |
+| Named as in the pattern, `string`, `int`, `float` or `bool` | That path parameter, as that type |
+| Marked `#[FromQuery]`: an `int`, `float`, `string`, `bool`, `array`, enum or `DateTimeImmutable` | That field of the query string, by its name |
+| A class, or `Data` described with `#[Fields]` | The body, JSON or a form with its files, in one object |
+| Marked `#[FromQuery]`: a class, or described `Data` | The whole query string, in one object |
 | Typed as a PSR-7 server request | The request itself |
 | A class that implements `Contracts\Auth\Identity` | The logged-in user; see [Authentication](#authentication) |
 
-The request's data is the JSON body, or the query string for `GET`, `HEAD` and `DELETE`. Fields the action does not name are ignored and never reach it; to read them, or the raw body, take the request as well and call `getParsedBody()`.
+A field of the body is never a parameter of its own, and a value is read only from the part of the request its parameter names: a plain `string $email` that is not in the pattern is refused, with what to write instead. `GET`, `HEAD` and `DELETE` have no body. Fields the action does not name are ignored and never reach it; to read them, or the raw body, take the request as well and call `getParsedBody()`.
 
-Take a few flat fields as parameters. Use a class when there are many, when they nest, or when several routes take the same ones. Services are not parameters; they belong in the constructor of an action class. Anything else in a signature is refused when the route is added, so a mistake stops the application from starting.
+Services are not parameters; they belong in the constructor of an action class. Anything else in a signature is refused when the route is added, so a mistake stops the application from starting. See [Actions](docs/actions.md#what-an-action-takes).
 
 ### What an action returns
 
@@ -401,7 +409,7 @@ Route::post('/users/{id}/avatar', UploadAvatar::class);
 ~~~
 
 - **Parsed body:** `input()` and `getParsedBody()` read urlencoded forms, `multipart/form-data` and JSON objects or arrays. A body that claims one of these and is malformed is answered with 400.
-- **Uploads:** an action takes a file as a field, `#[FileSize(max: 2 * 1024 * 1024)] #[MediaType('image/png')] UploadedFileInterface $avatar`, checked before it runs, with the kind read from the content. `getUploadedFiles()` returns the PSR-7 tree; `photos[]` fields nest as in PHP. A form may have at most 1,000 parts, and its fields together 1 MiB; a file may be as large as a body may.
+- **Uploads:** a file is a field of the body's input class, `#[FileSize(max: 2 * 1024 * 1024)] #[MediaType('image/png')] public UploadedFileInterface $avatar`, checked before the action runs, with the kind read from the content. `getUploadedFiles()` returns the PSR-7 tree; `photos[]` fields nest as in PHP. A form may have at most 1,000 parts, and its fields together 1 MiB; a file may be as large as a body may.
 - **Large uploads:** a request body may be 1 MiB unless `server.max_body` says more, in bytes, and a client has `server.body_timeout` seconds to send it (30). A file is never held in memory: the engine keeps a large body on disk, the file is read from where it lies in it, and `moveTo()` copies it out. A 40 MiB upload is read and stored within a few megabytes. Copying a large file takes the worker's time while it lasts, as any reading or writing of a file does.
 - **Responses:** `Response::text()`, `html()` and `json()`, or `new Response($status, $headers, $body)`. `withCookie()` adds a `Set-Cookie`; with a response from another library use `withAddedHeader('Set-Cookie', (string) $cookie)`.
 - **Cookies:** `new Cookie($name, $value, maxAge: ..., path: ..., domain: ..., secure: ..., httpOnly: ..., sameSite: ...)` defaults to `HttpOnly` and `SameSite=Lax`; `Cookie::forget($name)` deletes one. Read one with `$request->cookie('theme', 'light')`.
@@ -427,6 +435,8 @@ final readonly class ShowWeather
         return $weather->ok() ? $weather->json() : ['error' => $weather->getStatusCode()];
     }
 }
+
+Route::get('/weather/{city}', ShowWeather::class);
 ~~~
 
 While a request waits for its answer the worker serves other requests, which a call with `file_get_contents()` or cURL does not allow: either holds the whole worker until the other server answers. That holds for every step: finding the server's address, connecting, agreeing on encryption, sending and waiting.

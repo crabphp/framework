@@ -22,11 +22,17 @@ A client that accepts JSON gets JSON:
 {"error": {"status": 404, "message": "No such user."}}
 ```
 
-A validation failure adds the problems by field:
+A validation failure adds the problems by field, each under the part of the request it was in: `fields` for the body, `query` for the query string and `path` for a parameter of the path. A body's field and a query field may share a name, so they are never mixed:
 
 ```json
-{"error": {"status": 422, "message": "The request is invalid.", "fields": {"email": ["must be an email address"]}}}
+{"error": {"status": 422, "message": "The request is invalid.",
+  "fields": {"email": ["must be an email address"]},
+  "query": {"perPage": ["must be at most 100"]},
+  "path": {"id": ["must be a whole number"]}
+}}
 ```
+
+A part with no problem is left out. As plain text, a query field is written `?perPage` and a parameter of the path `{id}`.
 
 Any other client gets the same as plain text. Send `Accept: application/json` from your API client to always receive JSON.
 
@@ -106,7 +112,7 @@ use Crab\Contracts\Http\ErrorRenderer;
 $container->singleton(ErrorRenderer::class, Errors::class);
 ```
 
-It is given a `Problem`, with the status, the message safe for the client and the problems by field, and returns the response:
+It is given a `Problem`, with the status, the message safe for the client and the problems by field: `$problem->fields` for the body's, `$problem->query` and `$problem->path` for the others. It returns the response:
 
 ```php
 // app/Http/Errors.php
@@ -122,7 +128,10 @@ final readonly class Errors implements ErrorRenderer
 {
     public function render(Problem $problem, ServerRequestInterface $request): ResponseInterface
     {
-        return Response::json(['message' => $problem->message, 'errors' => $problem->fields], $problem->status);
+        // One list of errors, wherever the field was, as a Laravel client expects.
+        $errors = [...$problem->path, ...$problem->query, ...$problem->fields];
+
+        return Response::json(['message' => $problem->message, 'errors' => $errors], $problem->status);
     }
 }
 ```

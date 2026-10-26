@@ -62,6 +62,8 @@ final readonly class ShowWeather
         return $weather->ok() ? $weather->json() : ['error' => $weather->getStatusCode()];
     }
 }
+
+Route::get('/weather/{city}', ShowWeather::class);
 ```
 
 ```php

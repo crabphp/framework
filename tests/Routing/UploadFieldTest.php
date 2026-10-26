@@ -6,6 +6,7 @@ namespace Crab\Tests\Routing;
 
 use Crab\App;
 use Crab\Contracts\HttpClient\File;
+use Crab\Routing\FromQuery;
 use Crab\Testing\Api;
 use Crab\Validation\FileSize;
 use Crab\Validation\Length;
@@ -15,7 +16,7 @@ use PHPUnit\Framework\TestCase;
 use Psr\Http\Message\UploadedFileInterface;
 
 /**
- * A file the request carries is a field of the action like any other:
+ * A file the request carries is a field of the body like any other:
  * typed, required unless nullable, checked by rules, and refused with 422
  * before the action runs.
  */
@@ -154,24 +155,38 @@ final class UploadFieldTest extends TestCase
         );
     }
 
-    public function testARouteReadFromTheQueryStringCannotTakeAFile(): void
+    public function testAFileIsAFieldOfTheBodyAndNeverAParameterOfItsOwn(): void
     {
         $app = App::configure()->create();
-
-        $this->expectExceptionMessage(
-            'The action of GET /avatar takes the file $avatar, but its data is the query string, which carries no file. Upload with POST, PUT or PATCH.',
-        );
-        $app->router->get('/avatar', static fn(UploadedFileInterface $avatar): int => (int) $avatar->getSize());
+        $refused = [
+            'The action of POST /avatar takes the file $avatar. A file is a field of the body: declare it in the body\'s input class, public UploadedFileInterface $avatar.' =>
+                static fn() => $app->router->post('/avatar', static fn(UploadedFileInterface $avatar): null => null),
+            'The action of GET /avatar takes the file $avatar from the query string, which carries no file.' =>
+                static fn() => $app->router->get(
+                    '/avatar',
+                    static fn(#[FromQuery] UploadedFileInterface $avatar): null => null,
+                ),
+            'The action of GET /avatar takes Crab\Tests\Routing\Avatar $input as its body, and a GET request has none.' =>
+                static fn() => $app->router->get('/avatar', static fn(Avatar $input): null => null),
+        ];
+        foreach ($refused as $message => $attempt) {
+            try {
+                $attempt();
+                self::fail("Not refused: {$message}");
+            } catch (\LogicException $error) {
+                self::assertStringContainsString($message, $error->getMessage());
+            }
+        }
     }
 
     public function testTheRouteDescribesItsFiles(): void
     {
         $app = App::configure()->create();
-        $app->router->post('/avatar', static fn(#[FileSize(max: 1024)]
-            #[MediaType('image/*')] UploadedFileInterface $avatar, ?UploadedFileInterface $thumbnail): null => null);
+        $app->router->post('/avatar', static fn(Thumbnailed $input): null => null);
 
         self::assertSame(
             [
+                'x-class' => Thumbnailed::class,
                 'type' => 'object',
                 'properties' => [
                     'avatar' => [
@@ -199,29 +214,59 @@ final class UploadFieldTest extends TestCase
     private function api(): Api
     {
         $app = App::configure()->create();
-        $app->router->post('/avatar', static fn(string $caption, #[FileSize(max: 2048)]
-            #[MediaType(
-                'image/png',
-                'image/gif',
-            )] UploadedFileInterface $avatar, int $rotate = 0): array => [
-            'caption' => $caption,
-            'rotate' => $rotate,
-            'size' => $avatar->getSize(),
-            'name' => $avatar->getClientFilename(),
-            'same' => (string) $avatar->getStream() === base64_decode(self::PNG, true),
+        $app->router->post('/avatar', static fn(Avatar $input): array => [
+            'caption' => $input->caption,
+            'rotate' => $input->rotate,
+            'size' => $input->avatar->getSize(),
+            'name' => $input->avatar->getClientFilename(),
+            'same' => (string) $input->avatar->getStream() === base64_decode(self::PNG, true),
         ]);
-        $app->router->post('/note', static fn(string $text, ?UploadedFileInterface $attachment): array => [
-            'attached' => $attachment !== null,
+        $app->router->post('/note', static fn(Note $input): array => ['attached' => $input->attachment !== null]);
+        $app->router->post('/gallery', static fn(Gallery $input): array => [
+            count($input->photos),
+            $input->photos[1]->getClientFilename(),
         ]);
-        $app->router->post('/gallery', static fn(#[ListOf(UploadedFileInterface::class)]
-            #[Length(min: 1, max: 5)]
-            #[MediaType('image/png')] array $photos): array => [count($photos), $photos[1]->getClientFilename()]);
         $app->router->post('/documents', static fn(NewDocument $input): array => [
             $input->title,
             (string) $input->document->getStream(),
         ]);
         return new Api($app);
     }
+}
+
+final readonly class Avatar
+{
+    public function __construct(
+        public string $caption,
+        #[FileSize(max: 2048), MediaType('image/png', 'image/gif')]
+        public UploadedFileInterface $avatar,
+        public int $rotate = 0,
+    ) {}
+}
+
+final readonly class Thumbnailed
+{
+    public function __construct(
+        #[FileSize(max: 1024), MediaType('image/*')]
+        public UploadedFileInterface $avatar,
+        public ?UploadedFileInterface $thumbnail,
+    ) {}
+}
+
+final readonly class Note
+{
+    public function __construct(
+        public string $text,
+        public ?UploadedFileInterface $attachment,
+    ) {}
+}
+
+final readonly class Gallery
+{
+    public function __construct(
+        #[ListOf(UploadedFileInterface::class), Length(min: 1, max: 5), MediaType('image/png')]
+        public array $photos,
+    ) {}
 }
 
 final readonly class NewDocument

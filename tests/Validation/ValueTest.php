@@ -6,6 +6,9 @@ namespace Crab\Tests\Validation;
 
 use Crab\App;
 use Crab\Http\Request;
+use Crab\Routing\FromQuery;
+use Crab\Validation\Data;
+use Crab\Validation\Fields;
 use Crab\Validation\ValidationException;
 use Crab\Validation\Validator;
 use PHPUnit\Framework\Attributes\DataProvider;
@@ -69,13 +72,20 @@ final class ValueTest extends TestCase
     ): void {
         $app = new App();
         $seen = [];
-        $action = static function (float $amount) use (&$seen): array {
+        $app->router->get('/amount/{amount}', static function (float $amount) use (&$seen): array {
             $seen[] = $amount;
             return ['accepted' => true];
-        };
-        $app->router->get('/amount/{amount}', $action);
-        $app->router->get('/amount', $action);
-        $app->router->post('/amount', $action);
+        });
+        $app->router->get('/amount', static function (#[FromQuery] float $amount) use (&$seen): array {
+            $seen[] = $amount;
+            return ['accepted' => true];
+        });
+        $app->router->post('/amount', static function (#[Fields(['amount' => 'float'])] Data $body) use (
+            &$seen,
+        ): array {
+            $seen[] = $body->amount;
+            return ['accepted' => true];
+        });
         $request = match ($source) {
             'route' => new Request('GET', '/amount/' . $text, ['Accept' => 'application/json']),
             'query' => new Request('GET', '/amount?amount=' . $text, ['Accept' => 'application/json']),
@@ -91,7 +101,11 @@ final class ValueTest extends TestCase
             self::assertSame(422, $response->getStatusCode());
             self::assertSame(
                 ['must be a number'],
-                json_decode((string) $response->getBody(), true)['error']['fields']['amount'],
+                json_decode((string) $response->getBody(), true)['error'][[
+                    'route' => 'path',
+                    'query' => 'query',
+                    'json' => 'fields',
+                ][$source]]['amount'],
             );
             self::assertSame([], $seen);
         } else {

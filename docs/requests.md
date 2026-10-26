@@ -94,16 +94,34 @@ A proxy passes the client's address on in `X-Forwarded-For`, a header anyone can
 
 ## Uploaded files
 
-A file the client uploads is a field of the action, like any other, typed as PSR-7's `UploadedFileInterface`. It is checked before the action runs:
+A file the client uploads is a field of the body, like any other, typed as PSR-7's `UploadedFileInterface` in the action's [input class](actions.md#an-input-class). It is checked before the action runs:
+
+```php
+// app/Http/NewAvatar.php
+namespace App\Http;
+
+use Crab\Validation\FileSize;
+use Crab\Validation\MediaType;
+use Psr\Http\Message\UploadedFileInterface;
+
+final readonly class NewAvatar
+{
+    public function __construct(
+        #[FileSize(max: 2 * 1024 * 1024)]
+        #[MediaType('image/png')]
+        public UploadedFileInterface $avatar,
+        public int $rotate = 0,
+    ) {
+    }
+}
+```
 
 ```php
 // app/Actions/ReplaceAvatar.php
 namespace App\Actions;
 
+use App\Http\NewAvatar;
 use Crab\Contracts\Storage\Disk;
-use Crab\Validation\FileSize;
-use Crab\Validation\MediaType;
-use Psr\Http\Message\UploadedFileInterface;
 
 final readonly class ReplaceAvatar
 {
@@ -111,13 +129,9 @@ final readonly class ReplaceAvatar
     {
     }
 
-    public function handle(
-        User $user,
-        #[FileSize(max: 2 * 1024 * 1024)]
-        #[MediaType('image/png')]
-        UploadedFileInterface $avatar,
-    ): array {
-        $this->disk->write("avatars/{$user->id}.png", $avatar->getStream(), 'image/png');
+    public function handle(User $user, NewAvatar $input): array
+    {
+        $this->disk->write("avatars/{$user->id}.png", $input->avatar->getStream(), 'image/png');
 
         return ['avatar' => "avatars/{$user->id}.png"];
     }
@@ -129,13 +143,13 @@ final readonly class ReplaceAvatar
 Route::post('/me/avatar', ReplaceAvatar::class)->middleware(TokenAuth::class);
 ```
 
-The client sends a `multipart/form-data` form with a file field named `avatar`. The form's other fields are fields too, read from text as a query string's are, so `int $rotate` takes `rotate=90`. The file is named after the logged-in [user](authentication.md), not an id in the URL, so no one can replace someone else's picture; [file storage](storage.md#storing-an-upload) keeps it on a disk, local or on S3.
+The client sends a `multipart/form-data` form with a file field named `avatar`. The form's other fields are fields of the class too, read from text as a query string's are, so `int $rotate` takes `rotate=90`. The file is named after the logged-in [user](authentication.md), not an id in the URL, so no one can replace someone else's picture; [file storage](storage.md#storing-an-upload) keeps it on a disk, local or on S3.
 
-- A file is required unless the parameter is nullable, `?UploadedFileInterface $attachment`, which is null when none was sent. A file input the user left empty counts as none.
+- A file is required unless the property is nullable, `?UploadedFileInterface $attachment`, which is null when none was sent. A file input the user left empty counts as none.
 - `#[FileSize]` bounds its bytes and `#[MediaType]` its kind, `'image/png'` or `'image/*'`. The kind is read from the file's first bytes, never from what the client says, so a script named `me.png` is refused; it needs PHP's `fileinfo` extension, and a route that uses it without one stops the server from starting.
-- Several files under one name, `photos[]`, are `#[ListOf(UploadedFileInterface::class)] array $photos`. `#[Length]` bounds how many; `#[FileSize]` and `#[MediaType]` hold for each file, and a problem is reported as `photos.1`.
-- An [input class](actions.md#an-input-class) takes files the same way.
-- JSON carries no file: a field typed as a file is refused in a JSON body. A route whose data is the query string, `GET`, `HEAD` or `DELETE`, cannot take one, and says so when it is added.
+- Several files under one name, `photos[]`, are `#[ListOf(UploadedFileInterface::class)] public array $photos`. `#[Length]` bounds how many; `#[FileSize]` and `#[MediaType]` hold for each file, and a problem is reported as `photos.1`.
+- `Data` described with `#[Fields]` takes a file the same way: `'avatar' => UploadedFileInterface::class`.
+- JSON carries no file: a field typed as a file is refused in a JSON body. A file is never an action's parameter of its own, and never a query field; either is refused when the route is added.
 
 `$request->file('avatar')` returns the same file, or null, and `getUploadedFiles()` the whole tree, for an action that reads the request itself. A form may have at most 1,000 parts, and its fields together 1 MiB.
 

@@ -37,20 +37,23 @@ Ask for the logger in a constructor:
 
 ```php
 use Crab\Contracts\Log\Logger;
+use Crab\Validation\Data;
+use Crab\Validation\Fields;
 
+// POST /orders/{orderId}/charge
 final readonly class ChargeCard
 {
     public function __construct(private Logger $logger)
     {
     }
 
-    public function handle(int $orderId, int $amount): array
+    public function handle(int $orderId, #[Fields(['amount' => 'int'])] Data $charge): array
     {
-        $this->logger->info('Charging order {order}', ['order' => $orderId, 'amount' => $amount]);
+        $this->logger->info('Charging order {order}', ['order' => $orderId, 'amount' => $charge->amount]);
 
         // ...
 
-        return ['orderId' => $orderId, 'amount' => $amount];
+        return ['orderId' => $orderId, 'amount' => $charge->amount];
     }
 }
 ```

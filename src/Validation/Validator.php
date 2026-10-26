@@ -32,9 +32,10 @@ final class Validator implements ValidatorContract
      */
     private array $classes = [];
     /**
-     * The same for each function whose parameters were validated.
+     * The same for each function whose parameters were validated, by the
+     * names of the parameters read.
      *
-     * @var \WeakMap<\ReflectionFunctionAbstract, array<string, Property>>
+     * @var \WeakMap<\ReflectionFunctionAbstract, array<string, array<string, Property>>>
      */
     private \WeakMap $functions;
 
@@ -418,7 +419,8 @@ final class Validator implements ValidatorContract
      */
     private function parameters(\ReflectionFunctionAbstract $function, array $names): array
     {
-        if (!isset($this->functions[$function])) {
+        $key = implode(',', $names);
+        if (!isset($this->functions[$function][$key])) {
             $where = $function instanceof \ReflectionMethod ? "{$function->class}::{$function->name}()" : 'A closure';
             $properties = [];
             foreach ($function->getParameters() as $parameter) {
@@ -431,9 +433,9 @@ final class Validator implements ValidatorContract
                     $parameter,
                 );
             }
-            $this->functions[$function] = $properties;
+            $this->functions[$function] = [...($this->functions[$function] ?? []), $key => $properties];
         }
-        return $this->functions[$function];
+        return $this->functions[$function][$key];
     }
 
     /**

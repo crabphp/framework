@@ -54,26 +54,19 @@ final class RuleTest extends TestCase
     {
         $app = new App(new Config(['log' => ['path' => 'php://memory']]));
         $called = false;
-        $app->router->post('/date', static function (#[Length(max: 30)] \DateTimeImmutable $day) use (&$called): void {
+        $app->router->get('/date', static function (
+            #[\Crab\Routing\FromQuery, Length(max: 30)]
+            \DateTimeImmutable $day,
+        ) use (&$called): void {
             $called = true;
         });
 
-        $response = $app->handle(
-            new Request(
-                'POST',
-                '/date',
-                [
-                    'Content-Type' => 'application/json',
-                    'Accept' => 'application/json',
-                ],
-                '{"day":"2026-01-31"}',
-            ),
-        );
+        $response = $app->handle(new Request('GET', '/date?day=2026-01-31', ['Accept' => 'application/json']));
 
         self::assertSame(422, $response->getStatusCode());
         self::assertSame(
             ['day' => ['must be text or a list']],
-            json_decode((string) $response->getBody(), true, flags: JSON_THROW_ON_ERROR)['error']['fields'],
+            json_decode((string) $response->getBody(), true, flags: JSON_THROW_ON_ERROR)['error']['query'],
         );
         self::assertFalse($called);
     }

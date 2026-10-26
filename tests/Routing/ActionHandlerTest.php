@@ -11,6 +11,7 @@ use Crab\Contracts\Http\Request as RequestContract;
 use Crab\Contracts\Validation\Validator as ValidatorContract;
 use Crab\Http\Request;
 use Crab\Http\Response;
+use Crab\Routing\FromQuery;
 use Crab\Routing\Router;
 use Crab\Validation\Data;
 use Crab\Validation\Email;
@@ -46,6 +47,18 @@ final readonly class ListUsers
         #[Range(min: 1)]
         public int $page = 1,
         public ?string $search = null,
+    ) {}
+}
+
+/**
+ * A list of described objects is a field like any other, beside other fields.
+ */
+final readonly class Basket
+{
+    public function __construct(
+        public string $name,
+        #[ListOf(['productId' => 'int', 'quantity' => '?int']), Length(min: 1)]
+        public array $lines,
     ) {}
 }
 
@@ -110,7 +123,7 @@ final readonly class UserController
         ++$names->made;
     }
 
-    public function index(int $page = 1): array
+    public function index(#[FromQuery] int $page = 1): array
     {
         return [$this->show($page)];
     }
@@ -215,7 +228,7 @@ final class ActionHandlerTest extends TestCase
         $router = new Router();
         $actions = [
             static fn(UntypedInput $input): array => [],
-            static fn(#[ListOf(UntypedInput::class)] array $inputs): array => [],
+            static fn(#[FromQuery, ListOf(UntypedInput::class)] array $inputs): array => [],
             static fn(#[Fields(['customer' => UntypedInput::class])] Data $input): array => [],
             static fn(#[Fields(['customers' => [[UntypedInput::class]]])] Data $input): array => [],
         ];
@@ -291,13 +304,14 @@ final class ActionHandlerTest extends TestCase
             #[Fields(['id' => 'int'])]
             Data $order,
         ): array => [$shop, $order->id]);
-        // A list of described objects is a field like any other, beside other fields.
-        $router->post('/baskets', static fn(
-            string $name,
-            #[ListOf(['productId' => 'int', 'quantity' => '?int']), Length(min: 1)]
-            array $lines,
-        ): array => [$name, array_map(static fn(Data $line): array => [$line->productId, $line->quantity], $lines)]);
-        $router->get('/search', static fn(#[Fields(['q' => 'string', 'page' => '?int'])] Data $query): array => [
+        $router->post('/baskets', static fn(Basket $basket): array => [
+            $basket->name,
+            array_map(static fn(Data $line): array => [$line->productId, $line->quantity], $basket->lines),
+        ]);
+        $router->get('/search', static fn(
+            #[FromQuery, Fields(['q' => 'string', 'page' => '?int'])]
+            Data $query,
+        ): array => [
             $query->q,
             $query->page,
         ]);
@@ -407,7 +421,10 @@ final class ActionHandlerTest extends TestCase
         )));
 
         // A form carries everything as text, as a query string does, and is read as the types described.
-        $router->post('/form', static fn(int $quantity, bool $gift = false): array => [$quantity, $gift]);
+        $router->post('/form', static fn(#[Fields(['quantity' => 'int', 'gift?' => 'bool'])] Data $form): array => [
+            $form->quantity,
+            $form->gift ?? false,
+        ]);
         $form = new Request(
             'POST',
             '/form',
@@ -442,14 +459,19 @@ final class ActionHandlerTest extends TestCase
                 #[Fields(['lines' => [['n' => 'number']]])]
                 Data $order,
             ) => '',
-            'takes two inputs' => static fn(
+            'takes two bodies' => static fn(
                 #[Fields(['a' => 'int'])]
                 Data $one,
                 #[Fields(['b' => 'int'])]
                 Data $two,
             ) => '',
             'takes $email with no type' => static fn($email) => '',
-            'and also the field $name' => static fn(string $name, #[Fields(['a' => 'int'])] Data $order) => '',
+            'and also its field $name' => static fn(
+                #[FromQuery]
+                string $name,
+                #[FromQuery, Fields(['a' => 'int'])]
+                Data $order,
+            ) => '',
         ];
         $n = 0;
         foreach ($mistakes as $says => $action) {
@@ -469,7 +491,7 @@ final class ActionHandlerTest extends TestCase
             '/users',
             static fn(CreateUser $input): User => new User(1, $input->email, $input->name, $input->plan),
         );
-        $router->get('/users', static fn(ListUsers $query): array => [
+        $router->get('/users', static fn(#[FromQuery] ListUsers $query): array => [
             'page' => $query->page,
             'search' => $query->search,
         ]);
@@ -533,7 +555,7 @@ final class ActionHandlerTest extends TestCase
             ++$calls;
             return [];
         });
-        $router->get('/users', static function (ListUsers $query) use (&$calls): array {
+        $router->get('/users', static function (#[FromQuery] ListUsers $query) use (&$calls): array {
             ++$calls;
             return [];
         });
@@ -546,11 +568,12 @@ final class ActionHandlerTest extends TestCase
                     'status' => 422,
                     'message' => 'The request is invalid.',
                     'fields' => [
-                        'id' => ['must be a whole number'],
                         'email' => ['must be an email address'],
                         'name' => ['is required'],
                         'plan' => ['must be one of: free, paid'],
                     ],
+                    // Said apart, since a field of the body and a parameter of the path may share a name.
+                    'path' => ['id' => ['must be a whole number']],
                 ],
             ],
             json_decode((string) $response->getBody(), true),
@@ -559,10 +582,10 @@ final class ActionHandlerTest extends TestCase
         $query = $router->handle(new Request('GET', '/users?page=0', ['Accept' => 'application/json']));
         self::assertSame(
             ['page' => ['must be at least 1']],
-            json_decode((string) $query->getBody(), true)['error']['fields'],
+            json_decode((string) $query->getBody(), true)['error']['query'],
         );
         $plain = $router->handle(new Request('GET', '/users?page=first'));
-        self::assertSame([422, "422 The request is invalid.\npage must be a whole number\n"], [
+        self::assertSame([422, "422 The request is invalid.\n?page must be a whole number\n"], [
             $plain->getStatusCode(),
             (string) $plain->getBody(),
         ]);
@@ -636,62 +659,69 @@ final class ActionHandlerTest extends TestCase
         )));
     }
 
-    public function testTheRequestsDataCanBeTakenAsSeparateParameters(): void
+    public function testTheQueryStringsFieldsCanBeTakenAsSeparateParameters(): void
     {
         $router = new Router();
         $router->get('/users', static fn(
+            #[FromQuery]
             int $page = 1,
+            #[FromQuery]
             ?string $search = null,
+            #[FromQuery]
             Plan $plan = Plan::Free,
+            #[FromQuery]
             bool $active = true,
         ): array => [$page, $search, $plan, $active]);
-        $router->post('/users', static fn(
-            #[Email]
-            string $email,
-            #[Length(min: 2)]
-            string $name,
-            ?int $age = null,
-        ): array => [$email, $name, $age]);
         $router->patch('/users/{id}', static fn(
             int $id,
             ServerRequestInterface $request,
-            ?string $name = null,
-            #[ListOf('string')]
-            array $tags = [],
-            ?\DateTimeImmutable $seen = null,
-        ): array => [$id, $name, $tags, $seen?->format('Y'), $request->getMethod()]);
+            #[Fields(['name' => '?string', 'tags?' => [['string']]])]
+            Data $changes,
+            #[FromQuery, ListOf('string')]
+            array $notify = [],
+            #[FromQuery]
+            ?\DateTimeImmutable $at = null,
+        ): array => [$id, $changes->name, $changes->tags, $notify, $at?->format('Y'), $request->getMethod()]);
 
         self::assertSame('[1,null,"free",true]', $this->body($router, new Request('GET', '/users')));
         self::assertSame('[3,"ada","paid",false]', $this->body(
             $router,
             new Request('GET', '/users?page=3&search=ada&plan=paid&active=0&unknown=x'),
         ));
-        self::assertSame('["ada@example.com","Ada",null]', $this->body($router, $this->json('POST', '/users', [
-            'email' => 'ada@example.com',
-            'name' => 'Ada',
-            'is_admin' => true,
-        ])));
-        self::assertSame('["ada@example.com","Ada",36]', $this->body($router, $this->json('POST', '/users', [
-            'age' => 36,
-            'name' => 'Ada',
-            'email' => 'ada@example.com',
-        ])));
-        self::assertSame('[7,null,[],null,"PATCH"]', $this->body($router, $this->json('PATCH', '/users/7', [])));
-        self::assertSame('[7,"Ada",["a","b"],"2026","PATCH"]', $this->body($router, $this->json('PATCH', '/users/7', [
-            'name' => 'Ada',
-            'tags' => ['a', 'b'],
-            'seen' => '2026-01-31T12:00:00Z',
-        ])));
+        self::assertSame('[7,null,null,[],null,"PATCH"]', $this->body($router, $this->json('PATCH', '/users/7', [])));
+        // The body and the query string are read each for its own fields: a name in one is not taken from the other.
+        self::assertSame('[7,"Ada",["a","b"],["ops"],"2026","PATCH"]', $this->body($router, $this->json(
+            'PATCH',
+            '/users/7?notify[]=ops&at=2026-01-31T12:00:00Z&name=Grace',
+            ['name' => 'Ada', 'tags' => ['a', 'b'], 'notify' => ['everyone']],
+        )));
 
-        $invalid = $router->handle($this->json('POST', '/users', ['email' => 'nope', 'age' => '36']));
+        $invalid = $router->handle($this->json('PATCH', '/users/x?at=soon', ['tags' => ['a', 1]]));
         self::assertSame(
-            ['email' => ['must be an email address'], 'name' => ['is required'], 'age' => ['must be a whole number']],
-            json_decode((string) $invalid->getBody(), true)['error']['fields'],
+            [
+                'fields' => ['tags.1' => ['must be text']],
+                'query' => ['at' => ['must be a date or a date and time, such as 2026-01-31 or 2026-01-31T12:00:00Z']],
+                'path' => ['id' => ['must be a whole number']],
+            ],
+            array_intersect_key(json_decode((string) $invalid->getBody(), true)['error'], [
+                'fields' => true,
+                'query' => true,
+                'path' => true,
+            ]),
         );
-        $invalid = $router->handle($this->json('PATCH', '/users/x', ['tags' => ['a', 1]]));
+        // As text, each part is told by how it is written in the address.
         self::assertSame(
-            ['id' => ['must be a whole number'], 'tags.1' => ['must be text']],
-            json_decode((string) $invalid->getBody(), true)['error']['fields'],
+            "422 The request is invalid.\n{id} must be a whole number\n?at must be a date or a date and time, such as 2026-01-31 or 2026-01-31T12:00:00Z\ntags.1 must be text\n",
+            (string) $router
+                ->handle(
+                    new Request(
+                        'PATCH',
+                        '/users/x?at=soon',
+                        ['Content-Type' => 'application/json'],
+                        '{"tags":["a",1]}',
+                    ),
+                )
+                ->getBody(),
         );
         self::assertSame(422, $router->handle(new Request('GET', '/users?page=first'))->getStatusCode());
     }
@@ -744,8 +774,8 @@ final class ActionHandlerTest extends TestCase
         $file = sys_get_temp_dir() . '/crab-download-' . bin2hex(random_bytes(4)) . '.txt';
         file_put_contents($file, str_repeat('0123456789', 10_000));
         $router = new Router();
-        $router->post('/events', static fn(string $title): Response => Response::created(
-            new Event($title, $at),
+        $router->post('/events', static fn(#[Fields(['title' => 'string'])] Data $event): Response => Response::created(
+            new Event($event->title, $at),
             '/events/1',
         ));
         $router->post('/empty', static fn(): Response => Response::created());
@@ -841,23 +871,49 @@ final class ActionHandlerTest extends TestCase
     {
         $router = new Router();
         $refused = [
-            'takes Crab\Contracts\Validation\Validator $validator, which is neither the request, the user, a parameter of the pattern, a field nor an input class' =>
+            'takes Crab\Contracts\Validation\Validator $validator, which is neither a parameter of the path, a query field, the body, the request nor the user' =>
                 static fn() => $router->get('/a', static fn(ValidatorContract $validator) => ''),
             'Services belong in the constructor of an action class' => static fn() => $router->get(
                 '/a',
                 static fn(ValidatorContract $validator) => '',
             ),
             "cannot take the request's data: Crab\\Database\\Database::\$connect is declared as Closure" =>
-                static fn() => $router->get('/a', static fn(\Crab\Database\Database $db) => ''),
-            'If it is a service, it belongs in the constructor of an action class' => static fn() => $router->get(
+                static fn() => $router->post('/a', static fn(\Crab\Database\Database $db) => ''),
+            'If it is a service, it belongs in the constructor of an action class' => static fn() => $router->post(
                 '/a',
                 static fn(\Crab\Database\Database $db) => '',
             ),
+            'has none. Mark it #[FromQuery] to read the query string; if it is a service, it belongs in the constructor of an action class' =>
+                static fn() => $router->get('/a', static fn(\Crab\Database\Database $db) => ''),
+            'takes Crab\Tests\Routing\ListUsers $query as its body, and a GET request has none' =>
+                static fn() => $router->get('/a', static fn(ListUsers $query) => ''),
+            'a DELETE request has none' => static fn() => $router->delete('/a', static fn(CreateUser $input) => ''),
             'takes the route parameter $id as array; it can be string, int, float or bool' =>
                 static fn() => $router->get('/a/{id}', static fn(array $id) => ''),
-            'takes two inputs' => static fn() => $router->post('/a', static fn(CreateUser $a, ListUsers $b) => ''),
-            'takes the input Crab\Tests\Routing\CreateUser and also the field $force; put every field in the class, or take them all as parameters' =>
+            'takes two bodies, Crab\Tests\Routing\CreateUser and Crab\Tests\Routing\ListUsers, and a request has one; put their fields in one class' =>
+                static fn() => $router->post('/a', static fn(CreateUser $a, ListUsers $b) => ''),
+            'takes bool $force, which is not a parameter of the path /a. A field of the query string is marked #[FromQuery] bool $force; a field of the body belongs in the body\'s input class' =>
                 static fn() => $router->post('/a', static fn(CreateUser $input, bool $force = false) => ''),
+            'takes string $email, which is not a parameter of the path /a/{id}' => static fn() => $router->post(
+                '/a/{id}',
+                static fn(int $id, string $email) => '',
+            ),
+            'takes the query string twice, as Crab\Tests\Routing\ListUsers and Crab\Tests\Routing\CreateUser' =>
+                static fn() => $router->get(
+                    '/a',
+                    static fn(#[FromQuery] ListUsers $a, #[FromQuery] CreateUser $b) => '',
+                ),
+            'takes the query string as Crab\Tests\Routing\ListUsers $query and also its field $force' =>
+                static fn() => $router->get(
+                    '/a',
+                    static fn(#[FromQuery] ListUsers $query, #[FromQuery] bool $force = false) => '',
+                ),
+            'marks $id #[FromQuery], but it is a parameter of the path /a/{id}, which is not read from the query string; drop the mark' =>
+                static fn() => $router->get('/a/{id}', static fn(#[FromQuery] int $id) => ''),
+            'marks $request #[FromQuery], but it is the request' => static fn() => $router->get(
+                '/a',
+                static fn(#[FromQuery] ServerRequestInterface $request) => '',
+            ),
             'takes $id, which must have one plain type' => static fn() => $router->get(
                 '/a/{id}',
                 static fn(int|string $id) => '',
@@ -870,8 +926,10 @@ final class ActionHandlerTest extends TestCase
                 '/a',
                 static fn(\Crab\Tests\Routing\Ambiguous $input) => '',
             ),
-            'A closure takes $tags, which has #[ListOf] but is not declared as an array' =>
-                static fn() => $router->post('/a', static fn(#[ListOf('int')] string $tags) => ''),
+            'A closure takes $tags, which has #[ListOf] but is not declared as an array' => static fn() => $router->get(
+                '/a',
+                static fn(#[FromQuery, ListOf('int')] string $tags) => '',
+            ),
             "is an array, which must be a class and the name of its method: [Users::class, 'show']" =>
                 static fn() => $router->get('/a', [UserController::class]),
             'names the class App\Missing, which does not exist' => static fn() => $router->get('/a', [

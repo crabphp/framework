@@ -238,7 +238,7 @@ routes
 
 A field written `name?:` may be left out, and `| null` may be null. Limits are inclusive and apply to what they follow: `(minItems=1, maxItems=20)` after `Array<...>` is how many lines there may be. A route that takes nothing says `takes nothing`, and one whose action is a PSR-15 handler of its own says `input not declared`. A command shows the first line of its description; `php cua <command> --help` has the rest.
 
-With `--json`, a route's input is JSON Schema: `parameters` for those of its pattern, `body` or `query` for the fields of the request's data, and `user` for the logged-in user, with whether one is required. Rules are given in JSON Schema's words, `#[Range(min: 1)]` as `"minimum": 1` and `#[Email]` as `"format": "email"`; a rule of your own is named under `x-rules`.
+With `--json`, a route's input is JSON Schema: `parameters` for those of its pattern, `query` for the fields of its query string and `body` for those of its body, and `user` for the logged-in user, with whether one is required. Rules are given in JSON Schema's words, `#[Range(min: 1)]` as `"minimum": 1` and `#[Email]` as `"format": "email"`; a rule of your own is named under `x-rules`.
 
 Settings whose names end in `password`, `secret`, `token`, `private` or `key` are printed as `(hidden)` when they are set. Any other value is printed as it is, so a secret kept under another name is printed too.
 

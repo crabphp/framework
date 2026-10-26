@@ -9,6 +9,7 @@ use Crab\Config\Config;
 use Crab\Console\Output;
 use Crab\Contracts\Auth\Identity;
 use Crab\Http\Cors;
+use Crab\Routing\FromQuery;
 use Crab\Validation\Data;
 use Crab\Validation\Email;
 use Crab\Validation\Fields;
@@ -28,17 +29,11 @@ final class DescribeTest extends TestCase
         $app->router->get('/posts/{id}', static fn(#[Range(min: 1)] int $id, ?DescribedUser $user): array => []);
         $app
             ->router
-            ->post('/users', static fn(
-                #[Email]
-                string $email,
-                #[Length(min: 2)]
-                string $name,
-                DescribedRole $role = DescribedRole::Reader,
-            ): array => [])
+            ->post('/users', static fn(DescribedSignup $signup, #[FromQuery] bool $invite = false): array => [])
             ->name('users.create');
         $app->router->post('/orders', static fn(DescribedOrder $order, DescribedUser $user): array => []);
         $app->router->get('/search', static fn(
-            #[Fields(['q' => 'string', 'page?' => 'int'])]
+            #[FromQuery, Fields(['q' => 'string', 'page?' => 'int'])]
             Data $search,
         ): array => []);
 
@@ -54,6 +49,14 @@ final class DescribeTest extends TestCase
         self::assertSame('users.create', $routes['POST /users']['name']);
         self::assertSame(
             [
+                'type' => 'object',
+                'properties' => ['invite' => ['type' => 'boolean', 'default' => false]],
+            ],
+            $routes['POST /users']['input']['query'],
+        );
+        self::assertSame(
+            [
+                'x-class' => DescribedSignup::class,
                 'type' => 'object',
                 'properties' => [
                     'email' => ['type' => 'string', 'format' => 'email'],
@@ -177,10 +180,10 @@ final class DescribeTest extends TestCase
             ->router
             ->post('/orders', static fn(DescribedOrder $order, DescribedUser $user): array => [])
             ->name('orders.place');
-        $app->router->post('/photos', static fn(string $title, #[ListOf(UploadedFileInterface::class)]
-            #[Length(max: 5)]
-            #[FileSize(max: 1_048_576)]
-            #[MediaType('image/*')] array $photos): null => null);
+        $app->router->post(
+            '/albums/{id}/photos',
+            static fn(int $id, DescribedPhotos $photos, #[FromQuery] bool $notify = false): null => null,
+        );
         $app->router->get('/', static fn(): string => 'hi');
         $stream = fopen('php://memory', 'w+b');
         self::assertSame(0, $app->console->run(['describe', 'routes'], new Output($stream, $stream)));
@@ -200,7 +203,9 @@ final class DescribeTest extends TestCase
               POST /orders -> Closure name=orders.place
                 body { lines: Array<{ sku: string; quantity: int (minimum=1) }> (minItems=1); note?: string | null (default=null) }
                 user: {$user}
-              POST /photos -> Closure
+              POST /albums/{id}/photos -> Closure
+                {id}: int
+                query { notify?: bool (default=false) }
                 body { title: string; photos: Array<file (maxBytes=1048576, mediaTypes=["image/*"])> (maxItems=5) }
               GET / -> Closure
                 takes nothing
@@ -250,6 +255,26 @@ final class DescribeTest extends TestCase
             fclose($stream);
         }
     }
+}
+
+final readonly class DescribedSignup
+{
+    public function __construct(
+        #[Email]
+        public string $email,
+        #[Length(min: 2)]
+        public string $name,
+        public DescribedRole $role = DescribedRole::Reader,
+    ) {}
+}
+
+final readonly class DescribedPhotos
+{
+    public function __construct(
+        public string $title,
+        #[ListOf(UploadedFileInterface::class), Length(max: 5), FileSize(max: 1_048_576), MediaType('image/*')]
+        public array $photos,
+    ) {}
 }
 
 final readonly class DescribedUser implements Identity

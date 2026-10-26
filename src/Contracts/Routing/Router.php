@@ -56,7 +56,8 @@ interface Router extends RequestHandlerInterface
 
     /**
      * An action taking a WebSocket Socket, the user, pattern parameters
-     * and typed query fields; all are resolved before the upgrade.
+     * and the query string, by fields marked #[FromQuery] or as one marked
+     * object; all are resolved before the upgrade. An upgrade has no body.
      */
     public function websocket(string $pattern, \Closure|string|array $action): DeclaredRoute;
 
@@ -82,7 +83,7 @@ interface Router extends RequestHandlerInterface
 
     /**
      * What a route's action takes, as JSON Schema: "parameters", those of
-     * its pattern; "query" or "body", the fields of the request's data; and
+     * its pattern; "query", the fields of its query string; "body", those of its body; and
      * "user", the class of the logged-in user, with whether one is required.
      * Null when the action is a handler of its own, whose input is not declared.
      *

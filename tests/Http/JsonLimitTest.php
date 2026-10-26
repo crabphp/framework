@@ -7,6 +7,8 @@ namespace Crab\Tests\Http;
 use Crab\App;
 use Crab\Http\HttpException;
 use Crab\Http\Request;
+use Crab\Validation\Data;
+use Crab\Validation\Fields;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 
@@ -108,9 +110,9 @@ final class JsonLimitTest extends TestCase
     {
         $ran = false;
         $app = new App();
-        $app->router->post('/json', static function (int $id = 1) use (&$ran): array {
+        $app->router->post('/json', static function (#[Fields(['id?' => 'int'])] Data $body) use (&$ran): array {
             $ran = true;
-            return ['id' => $id];
+            return ['id' => $body->id ?? 1];
         });
         $body = '{' . implode(',', array_fill(0, 1001, '"unused":0')) . '}';
         $response = $app->handle(new Request('POST', '/json', ['Content-Type' => 'application/json'], $body));

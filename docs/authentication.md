@@ -293,16 +293,16 @@ Route::prefix('/admin')->middleware(TokenAuth::class, new RequireRole('admin'))-
 For "only the owner may change this post", a check in the action, where the record is at hand:
 
 ```php
-public function update(int $id, User $user, string $title): array
+public function update(int $id, User $user, #[Fields(['title' => 'string'])] Data $changes): array
 {
     $post = $this->db->table('posts')->find($id) ?? throw new HttpException(404);
     if ($post['user_id'] !== $user->id) {
         throw new HttpException(403);
     }
 
-    $this->db->table('posts')->where('id', $id)->update(['title' => $title]);
+    $this->db->table('posts')->where('id', $id)->update(['title' => $changes->title]);
 
-    return [...$post, 'title' => $title];
+    return [...$post, 'title' => $changes->title];
 }
 ```
 

@@ -67,7 +67,7 @@ final class DocumentationTest extends TestCase
                 return (object) ['id' => 7, 'email' => $email, 'name' => $name];
             }
         };
-        $example = $this->example('../README.md', 'php', '// A few fields:', '~~~');
+        $example = $this->example('../README.md', 'php', '// Fields of the query string:', '~~~');
         $routes = explode('// Several routes', $example)[0];
         file_put_contents($this->directory . '/readme-routes.php', "<?php\nuse Crab\\Route;\n" . $routes);
         require $this->directory . '/readme-routes.php';
@@ -284,7 +284,10 @@ final class DocumentationTest extends TestCase
         require $this->directory . '/renderer.php';
         $app = App::configure()->create();
         $app->container->singleton(\Crab\Contracts\Http\ErrorRenderer::class, $namespace . '\\Errors');
-        $app->router->get('/invite', static fn(#[\Crab\Validation\Email] string $email): string => $email);
+        $app->router->get(
+            '/invite',
+            static fn(#[\Crab\Routing\FromQuery, \Crab\Validation\Email] string $email): string => $email,
+        );
 
         $missing = $app->handle(new Request('GET', '/nothing'));
         self::assertSame(404, $missing->getStatusCode());

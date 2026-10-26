@@ -14,10 +14,13 @@ use Crab\Contracts\HttpClient\File;
 use Crab\Http\ClosureHandler;
 use Crab\Http\HttpException;
 use Crab\Http\Response;
+use Crab\Routing\FromQuery;
 use Crab\Testing\Api;
 use Crab\Testing\ApiResponse;
 use Crab\Testing\FrozenClock;
+use Crab\Validation\Data;
 use Crab\Validation\Email;
+use Crab\Validation\Fields;
 use PHPUnit\Framework\AssertionFailedError;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
@@ -230,13 +233,18 @@ final class ApiTest extends TestCase
     public function testRequestsAreSentAsAClientWouldAndAnswersAreEasyToCheck(): void
     {
         $app = new App();
-        $app->router->get('/items', static fn(int $page = 1, string $q = ''): array => [
+        $app->router->get('/items', static fn(#[FromQuery] int $page = 1, #[FromQuery] string $q = ''): array => [
             'page' => $page,
             'q' => $q,
             'data' => [['name' => 'mug']],
         ]);
-        $app->router->post('/users', static fn(#[Email] string $email): array => ['email' => $email]);
-        $app->router->patch('/users/{id}', static fn(int $id, string $name): array => [$id, $name]);
+        $app->router->post('/users', static fn(#[Fields(['email' => ['string', new Email()]])] Data $user): array => [
+            'email' => $user->email,
+        ]);
+        $app->router->patch('/users/{id}', static fn(int $id, #[Fields(['name' => 'string'])] Data $user): array => [
+            $id,
+            $user->name,
+        ]);
         $app->router->delete('/users/{id}', static function (int $id): void {});
         $app->router->get('/echo', static fn(\Psr\Http\Message\ServerRequestInterface $request): array => [
             $request->getHeaderLine('X-Tenant'),

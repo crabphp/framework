@@ -155,15 +155,15 @@ final readonly class ExportReport
 Pass the upload's stream, which is copied as it is read and never held in memory whole:
 
 ```php
-public function handle(User $user, #[MediaType('image/png')] UploadedFileInterface $avatar): array
+public function handle(User $user, NewAvatar $input): array
 {
-    $this->disk->write("avatars/{$user->id}.png", $avatar->getStream(), 'image/png');
+    $this->disk->write("avatars/{$user->id}.png", $input->avatar->getStream(), 'image/png');
 
     return ['avatar' => "avatars/{$user->id}.png"];
 }
 ```
 
-The path is made from the logged-in user's id, never from the client's file name. [Uploaded files](requests.md#uploaded-files) has the whole action, the rules for a file, and the limits on what a client may send.
+`NewAvatar` is the body's input class, whose `avatar` is the file. The path is made from the logged-in user's id, never from the client's file name. [Uploaded files](requests.md#uploaded-files) has the whole action and its input class, the rules for a file, and the limits on what a client may send.
 
 ## Reading files
 

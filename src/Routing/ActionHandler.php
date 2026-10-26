@@ -12,6 +12,7 @@ use Crab\Contracts\WebSocket\Socket;
 use Crab\Http\ErrorResponse;
 use Crab\Http\Response;
 use Crab\Validation\Data;
+use Crab\Validation\Fields;
 use Crab\Validation\JsonSchema;
 use Crab\Validation\ValidationException;
 use Crab\WebSocket\Connections;
@@ -24,27 +25,30 @@ use Psr\Http\Server\RequestHandlerInterface;
 /**
  * The PSR-15 handler of a route whose action is a closure, a class with
  * handle() or a method of a class. It calls the action with what its
- * signature asks for. Each parameter is one of these:
+ * signature asks for. Each parameter is one of these, and says which by
+ * its name, its type or its mark:
  *
+ *     a route parameter    named as in the pattern: string, int, float or bool
+ *     a query field        marked #[FromQuery]: an int, float, string, bool,
+ *                          array, enum or date of the query string, by its name
+ *     the query            marked #[FromQuery] on a class, or on Data described
+ *                          with #[Fields]: the whole query string
+ *     the body             a class, or Data described with #[Fields]: the
+ *                          whole body, JSON or a form with its files
  *     the request          typed as a PSR-7 server request
  *     the user             typed as a class that implements Identity: whoever
  *                          middleware put on the request's "user" attribute
- *     a route parameter    named as in the pattern: string, int, float or bool
- *     a field              any other int, float, string, bool, array, enum,
- *                          date or uploaded file: one value of the request's
- *                          data, by its name
- *     the input            one class holding all the fields instead
  *
- * The request's data is the body, JSON or a form with its files, or the
- * query string for GET, HEAD and DELETE. A request whose data does not fit is answered with 422 and
- * the problems by field, and one with no user where the action takes one
- * with 401; in neither case is the action called.
+ * A request whose path, query or body does not fit is answered with 422
+ * and the problems by field, and one with no user where the action takes
+ * one with 401; in neither case is the action called.
  *
  * What the action returns is the response: a PSR-7 response as it is, a
  * string as plain text, nothing as 204, anything else as JSON.
  *
  * The signature is read once, when the route is added, so an action that
- * asks for something else stops the application from starting.
+ * asks for something else, or for a body on a request that has none,
+ * stops the application from starting.
  */
 final class ActionHandler implements RequestHandlerInterface
 {
@@ -79,18 +83,28 @@ final class ActionHandler implements RequestHandlerInterface
      */
     private array $users = [];
     /**
-     * Parameters that are fields of the request's data.
+     * Parameters that are fields of the query string, one each.
      *
      * @var list<string>
      */
-    private array $fields = [];
+    private array $query = [];
     /**
-     * The parameter that is the input class, and that class.
+     * The parameter that is the whole query string, and its class.
      *
      * @var array{string, class-string}|null
      */
-    private ?array $input = null;
-    private readonly bool $fromQuery;
+    private ?array $queryInput = null;
+    /**
+     * The parameter that is the body, and its class.
+     *
+     * @var array{string, class-string}|null
+     */
+    private ?array $body = null;
+    /**
+     * Whether a request of the route's method has a body: GET, HEAD,
+     * DELETE and a socket upgrade do not.
+     */
+    private readonly bool $hasBody;
     private ?string $socket = null;
     private readonly string $route;
     /**
@@ -127,34 +141,32 @@ final class ActionHandler implements RequestHandlerInterface
             $name = $this->method[1] === 'handle' ? $this->method[0] : implode('::', $this->method);
         }
         $this->name = $name;
-        $this->fromQuery = in_array($method, ['GET', 'HEAD', 'DELETE', 'WS'], true);
+        $this->hasBody = !in_array($method, ['GET', 'HEAD', 'DELETE', 'WS'], true);
 
         foreach ($this->signature->getParameters() as $parameter) {
-            $this->read($parameter, $names, $route);
+            $this->read($parameter, $names, $route, $pattern);
         }
         if ($method === 'WS' && $this->socket === null) {
             throw new \LogicException(
                 "The action of {$route} needs a " . Socket::class . ' parameter. Declare handle(Socket $socket, ...).',
             );
         }
-        if ($method === 'WS' && $this->input !== null) {
+        if ($this->queryInput !== null && $this->query !== []) {
             throw new \LogicException(
-                "The action of {$route} takes an input class. A socket upgrade has no request body; take query fields as typed parameters instead.",
-            );
-        }
-        if ($this->input !== null && $this->fields !== []) {
-            throw new \LogicException(
-                "The action of {$route} takes the input {$this->input[1]} and also the field \${$this->fields[0]}; put every field in the class, or take them all as parameters.",
+                "The action of {$route} takes the query string as {$this->queryInput[1]} \${$this->queryInput[0]} and also its field \${$this->query[0]}; put every query field in the one, or take them all as fields.",
             );
         }
         try {
             // Read now, so that a field or class that cannot be validated is reported at startup.
-            if ($this->input !== null && $this->input[1] === Data::class) {
-                $validator->inspectParameters($this->signature, [$this->input[0]]);
-            } elseif ($this->input !== null) {
-                $validator->inspect($this->input[1]);
-            } elseif ($this->fields !== []) {
-                $validator->inspectParameters($this->signature, $this->fields);
+            foreach ([$this->queryInput, $this->body] as $input) {
+                if ($input !== null && ($input[1] === Data::class || !class_exists($input[1]))) {
+                    $validator->inspectParameters($this->signature, [$input[0]]);
+                } elseif ($input !== null) {
+                    $validator->inspect($input[1]);
+                }
+            }
+            if ($this->query !== []) {
+                $validator->inspectParameters($this->signature, $this->query);
             }
         } catch (\LogicException $error) {
             throw new \LogicException(
@@ -167,6 +179,8 @@ final class ActionHandler implements RequestHandlerInterface
     public function handle(ServerRequestInterface $request): ResponseInterface
     {
         $arguments = [];
+        $pathErrors = [];
+        $queryErrors = [];
         $errors = [];
         foreach ($this->requests as $name) {
             $arguments[$name] = $request;
@@ -182,46 +196,58 @@ final class ActionHandler implements RequestHandlerInterface
             $arguments[$name] = $user;
         }
         foreach ($this->parameters as $name => $type) {
-            $arguments[$name] = self::parameter((string) $request->getAttribute($name), $type, $name, $errors);
+            $arguments[$name] = self::parameter((string) $request->getAttribute($name), $type, $name, $pathErrors);
             foreach ($arguments[$name] === null ? [] : $this->rules[$name] ?? [] as $rule) {
                 $problem = $rule->check($arguments[$name]);
                 if ($problem !== null) {
-                    $errors[$name][] = $problem;
+                    $pathErrors[$name][] = $problem;
                 }
             }
         }
-        if ($this->input !== null || $this->fields !== []) {
-            $data = $this->fromQuery ? $request->getQueryParams() : $request->getParsedBody();
+        if ($this->query !== [] || $this->queryInput !== null) {
+            // A query string carries everything as text, "3" for 3.
+            $query = $request->getQueryParams();
+            try {
+                if ($this->queryInput === null) {
+                    $arguments += $this->validator->validateParameters($this->signature, $this->query, $query, true);
+                } else {
+                    $arguments += $this->whole($this->queryInput, $query, true);
+                }
+            } catch (ValidationException $invalid) {
+                $queryErrors = $invalid->errors;
+            }
+        }
+        if ($this->body !== null) {
+            $data = $request->getParsedBody();
             if (!is_array($data)) {
                 // No body at all: every field is missing, and is reported as that.
                 $data = [];
             }
-            // A query string and a form carry everything as text, "3" for 3; JSON says what each value is.
+            // A form carries everything as text, "3" for 3; JSON says what each value is.
             $form =
-                !$this->fromQuery
-                && preg_match(
+                preg_match(
                     '~^(?:application/x-www-form-urlencoded|multipart/form-data)\b~i',
                     $request->getHeaderLine('Content-Type'),
                 ) === 1;
-            $text = $this->fromQuery || $form;
             if ($form) {
                 // A form's files are its fields too, where its text fields would be: "photos[]" beside "title".
                 $data = array_replace_recursive($data, $request->getUploadedFiles());
             }
             try {
-                if ($this->input !== null && $this->input[1] === Data::class) {
-                    $arguments += $this->described($data, $text);
-                } elseif ($this->input !== null) {
-                    $arguments[$this->input[0]] = $this->validator->validate($this->input[1], $data, $text);
-                } else {
-                    $arguments += $this->validator->validateParameters($this->signature, $this->fields, $data, $text);
-                }
+                $arguments += $this->whole($this->body, $data, $form);
             } catch (ValidationException $invalid) {
-                $errors += $invalid->errors;
+                $errors = $invalid->errors;
             }
         }
-        if ($errors !== []) {
-            return ErrorResponse::make($request, 422, 'The request is invalid.', fields: $errors);
+        if ($errors !== [] || $queryErrors !== [] || $pathErrors !== []) {
+            return ErrorResponse::make(
+                $request,
+                422,
+                'The request is invalid.',
+                fields: $errors,
+                query: $queryErrors,
+                path: $pathErrors,
+            );
         }
         // By name, so that a field the request leaves out takes the default the action gives it.
         if ($this->socket !== null) {
@@ -276,17 +302,13 @@ final class ActionHandler implements RequestHandlerInterface
             ];
         }
         $input = ['parameters' => $parameters === [] ? new \stdClass() : $parameters];
-        $data = match (true) {
-            $this->input !== null && $this->input[1] === Data::class => $this->validator->parameterSchema(
-                $this->signature,
-                [$this->input[0]],
-            )['properties'][$this->input[0]],
-            $this->input !== null => $this->validator->schema($this->input[1]),
-            $this->fields !== [] => $this->validator->parameterSchema($this->signature, $this->fields),
-            default => null,
-        };
-        if ($data !== null) {
-            $input[$this->fromQuery ? 'query' : 'body'] = $data;
+        if ($this->query !== []) {
+            $input['query'] = $this->validator->parameterSchema($this->signature, $this->query);
+        } elseif ($this->queryInput !== null) {
+            $input['query'] = $this->schema($this->queryInput);
+        }
+        if ($this->body !== null) {
+            $input['body'] = $this->schema($this->body);
         }
         $user = null;
         foreach ($this->users as [$class, $optional]) {
@@ -297,16 +319,35 @@ final class ActionHandler implements RequestHandlerInterface
     }
 
     /**
-     * The request's data as the Data its parameter describes. The data
-     * as a whole stands for that one parameter, so a problem is reported
-     * by the field's own name, "lines.0.quantity", without the parameter's.
+     * The schema of a parameter that is a whole query string or body.
      *
-     * @param array<mixed> $data
-     * @return array<string, Data>
+     * @param array{string, class-string} $input
+     * @return array<string, mixed>
      */
-    private function described(array $data, bool $text): array
+    private function schema(array $input): array
     {
-        $name = $this->input[0];
+        [$name, $class] = $input;
+        return $class === Data::class
+            ? $this->validator->parameterSchema($this->signature, [$name])['properties'][$name]
+            : $this->validator->schema($class);
+    }
+
+    /**
+     * A whole query string or body as the parameter that takes it: an
+     * object of its class, or the Data it describes. The data as a whole
+     * stands for that one parameter, so a problem is reported by the
+     * field's own name, "lines.0.quantity", without the parameter's.
+     *
+     * @param array{string, class-string} $input
+     * @param array<mixed> $data
+     * @return array<string, object>
+     */
+    private function whole(array $input, array $data, bool $text): array
+    {
+        [$name, $class] = $input;
+        if ($class !== Data::class) {
+            return [$name => $this->validator->validate($class, $data, $text)];
+        }
         try {
             return $this->validator->validateParameters($this->signature, [$name], [$name => $data], $text);
         } catch (ValidationException $invalid) {
@@ -323,14 +364,14 @@ final class ActionHandler implements RequestHandlerInterface
      *
      * @param list<string> $names The pattern's parameter names.
      */
-    private function read(\ReflectionParameter $parameter, array $names, string $route): void
+    private function read(\ReflectionParameter $parameter, array $names, string $route, string $pattern): void
     {
         $name = $parameter->getName();
         $type = $parameter->getType();
         if ($type === null) {
             // Check before route names, since a name alone cannot declare the parameter's type.
             throw new \LogicException(
-                "The action {$this->name} of {$route} takes \${$name} with no type. Say what it is: a field by its type, such as string \${$name}, or the request, as "
+                "The action {$this->name} of {$route} takes \${$name} with no type. Say what it is: a parameter of the path or a query field by its type, such as string \${$name}, the body by its class, or the request, as "
                 . ServerRequestInterface::class
                 . '.',
             );
@@ -339,7 +380,16 @@ final class ActionHandler implements RequestHandlerInterface
             throw new \LogicException("The action of {$route} takes \${$name}, which must have one plain type.");
         }
         $typeName = $type->getName();
+        $fromQuery = $parameter->getAttributes(FromQuery::class) !== [];
+        $marked = static function (string $what) use ($route, $name): \LogicException {
+            return new \LogicException(
+                "The action of {$route} marks \${$name} #[FromQuery], but it is {$what}, which is not read from the query string; drop the mark.",
+            );
+        };
         if (is_a($typeName, Socket::class, true)) {
+            if ($fromQuery) {
+                throw $marked('the socket');
+            }
             if ($this->websockets === null) {
                 throw new \LogicException(
                     "The action of {$route} takes a Socket parameter. Declare it with Route::websocket() instead of an HTTP route.",
@@ -357,6 +407,9 @@ final class ActionHandler implements RequestHandlerInterface
             }
             $this->socket = $name;
         } elseif (in_array($name, $names, true)) {
+            if ($fromQuery) {
+                throw $marked("a parameter of the path {$pattern}");
+            }
             if (!in_array($typeName, ['string', 'int', 'float', 'bool'], true)) {
                 throw new \LogicException(
                     "The action of {$route} takes the route parameter \${$name} as {$typeName}; it can be string, int, float or bool.",
@@ -368,34 +421,55 @@ final class ActionHandler implements RequestHandlerInterface
                 $this->rules[$name][] = $attribute->newInstance();
             }
         } elseif (is_a($typeName, ServerRequestInterface::class, true)) {
+            if ($fromQuery) {
+                throw $marked('the request');
+            }
             $this->requests[] = $name;
         } elseif (is_a($typeName, Identity::class, true)) {
+            if ($fromQuery) {
+                throw $marked('the logged-in user');
+            }
             $this->users[$name] = [$typeName, $type->allowsNull()];
-        } elseif (self::isField($typeName)) {
-            if ($typeName === UploadedFileInterface::class && $this->fromQuery) {
+        } elseif ($typeName === UploadedFileInterface::class) {
+            throw new \LogicException(
+                $fromQuery
+                    ? "The action of {$route} takes the file \${$name} from the query string, which carries no file. A file is a field of the body: declare it in the body's input class."
+                    : "The action of {$route} takes the file \${$name}. A file is a field of the body: declare it in the body's input class, public UploadedFileInterface \${$name}.",
+            );
+        } elseif (self::isField($typeName) && $parameter->getAttributes(Fields::class) === []) {
+            if (!$fromQuery) {
                 throw new \LogicException(
-                    "The action of {$route} takes the file \${$name}, but its data is the query string, which carries no file. Upload with POST, PUT or PATCH.",
+                    "The action of {$route} takes {$typeName} \${$name}, which is not a parameter of the path {$pattern}. A field of the query string is marked #[FromQuery] {$typeName} \${$name}; a field of the body belongs in the body's input class, or in Data described with #[Fields].",
                 );
             }
-            $this->fields[] = $name;
-        } elseif ($typeName === Data::class) {
-            // The whole of the request's data, described on the parameter with #[Fields].
-            if ($this->input !== null) {
+            $this->query[] = $name;
+        } elseif ($typeName === Data::class || class_exists($typeName) || self::isField($typeName)) {
+            // Data is the whole of the query string or the body, described on the parameter with #[Fields];
+            // a field's type with #[Fields] is a mistake for it, which the validator names below.
+            $what = $typeName === Data::class ? 'describe their fields in one' : 'put their fields in one class';
+            if ($fromQuery) {
+                if ($this->queryInput !== null) {
+                    throw new \LogicException(
+                        "The action of {$route} takes the query string twice, as {$this->queryInput[1]} and {$typeName}; {$what}.",
+                    );
+                }
+                $this->queryInput = [$name, $typeName];
+            } elseif (!$this->hasBody) {
                 throw new \LogicException(
-                    "The action of {$route} takes two inputs, {$this->input[1]} and {$typeName}; describe their fields in one.",
+                    "The action of {$route} takes {$typeName} \${$name} as its body, and "
+                    . ($this->websockets === null ? 'a ' . strtok($route, ' ') . ' request' : 'a socket upgrade')
+                    . ' has none. Mark it #[FromQuery] to read the query string; if it is a service, it belongs in the constructor of an action class.',
                 );
-            }
-            $this->input = [$name, $typeName];
-        } elseif (class_exists($typeName)) {
-            if ($this->input !== null) {
+            } elseif ($this->body !== null) {
                 throw new \LogicException(
-                    "The action of {$route} takes two inputs, {$this->input[1]} and {$typeName}; put their fields in one class.",
+                    "The action of {$route} takes two bodies, {$this->body[1]} and {$typeName}, and a request has one; {$what}.",
                 );
+            } else {
+                $this->body = [$name, $typeName];
             }
-            $this->input = [$name, $typeName];
         } else {
             throw new \LogicException(
-                "The action of {$route} takes {$typeName} \${$name}, which is neither the request, the user, a parameter of the pattern, a field nor an input class. Services belong in the constructor of an action class.",
+                "The action of {$route} takes {$typeName} \${$name}, which is neither a parameter of the path, a query field, the body, the request nor the user. Services belong in the constructor of an action class.",
             );
         }
     }

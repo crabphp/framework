@@ -106,8 +106,9 @@ final class ListLimitTest extends TestCase
             require $argv[1];
             $app = new Crab\App();
             $app->router->post('/items', static fn(
-                #[Crab\Validation\ListOf('string'), Crab\Validation\Length(max: 5)] array $items
-            ): array => $items);
+                #[Crab\Validation\Fields(['items' => [['string'], new Crab\Validation\Length(max: 5)]])]
+                Crab\Validation\Data $input,
+            ): array => $input->toArray());
             $body = '{"items":[' . str_repeat('0,', 399999) . '0]}';
             $response = $app->handle(new Crab\Http\Request('POST', '/items', [
                 'Content-Type' => 'application/json', 'Accept' => 'application/json',

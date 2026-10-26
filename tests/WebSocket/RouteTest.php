@@ -18,6 +18,7 @@ use Crab\Http\AccessLog;
 use Crab\Http\Concurrency;
 use Crab\Http\HttpException;
 use Crab\Route;
+use Crab\Routing\FromQuery;
 use Crab\Routing\Router;
 use Crab\Testing\Api;
 use Crab\Testing\TestSocket;
@@ -99,19 +100,39 @@ final class RouteTest extends TestCase
     public function testASocketActionCannotDeclareAnInputClass(): void
     {
         $this->expectException(\LogicException::class);
-        $this->expectExceptionMessage('WS /live takes an input class');
+        $this->expectExceptionMessage(
+            'WS /live takes '
+            . LiveInput::class
+            . ' $input as its body, and a socket upgrade has none. Mark it #[FromQuery]',
+        );
         new Router()->websocket('/live', static function (Socket $socket, LiveInput $input): void {});
     }
 
     public function testASocketActionCannotDeclareDescribedBodyFields(): void
     {
         $this->expectException(\LogicException::class);
-        $this->expectExceptionMessage('no request body');
+        $this->expectExceptionMessage('a socket upgrade has none');
         new Router()->websocket('/live', static function (
             Socket $socket,
             #[Fields(['name' => 'string'])]
             Data $input,
         ): void {});
+    }
+
+    public function testASocketActionTakesItsQueryStringAsOneMarkedObject(): void
+    {
+        $app = new App(new Config(['websocket' => ['ping' => 0]]));
+        $app->router->websocket('/live', static function (Socket $socket, #[FromQuery] LiveInput $input): void {
+            $socket->send(['name' => $input->name]);
+        });
+        $api = new Api($app);
+        $this->open($api, '/live', ['name' => 'orders'])->assertReceived(['name' => 'orders'])->assertClosed(1000);
+        try {
+            $api->websocket('/live');
+            self::fail('A missing query field upgraded.');
+        } catch (WebSocketRefused $error) {
+            self::assertSame(['name' => ['is required']], $error->response->assertStatus(422)->json('error.query'));
+        }
     }
 
     public function testASocketActionMustHaveOneNonNullSocketAndTypedFields(): void
@@ -138,8 +159,9 @@ final class RouteTest extends TestCase
             int $id,
             LiveUser $user,
             Request $request,
-            #[Range(min: 1)]
+            #[FromQuery, Range(min: 1)]
             int $page = 1,
+            #[FromQuery]
             bool $active = false,
         ): void {
             $socket->send([
@@ -165,24 +187,24 @@ final class RouteTest extends TestCase
         $app->router->websocket('/orders/{id}', static function (
             Socket $socket,
             int $id,
-            #[Range(min: 1)]
+            #[FromQuery, Range(min: 1)]
             int $page,
         ) use (&$called): void {
             $called = true;
         });
         $api = new Api($app);
         foreach ([
-            ['/orders/no', ['page' => 1], 'id'],
-            ['/orders/1', ['page' => 'no'], 'page'],
-            ['/orders/1', [], 'page'],
-            ['/orders/1', ['page' => 0], 'page'],
-        ] as [$path, $query, $field]) {
+            ['/orders/no', ['page' => 1], 'path', 'id'],
+            ['/orders/1', ['page' => 'no'], 'query', 'page'],
+            ['/orders/1', [], 'query', 'page'],
+            ['/orders/1', ['page' => 0], 'query', 'page'],
+        ] as [$path, $query, $in, $field]) {
             try {
                 $api->websocket($path, $query);
                 self::fail('Invalid data upgraded.');
             } catch (WebSocketRefused $error) {
                 $error->response->assertStatus(422);
-                self::assertArrayHasKey($field, $error->response->json('error.fields'));
+                self::assertArrayHasKey($field, $error->response->json("error.{$in}"));
             }
         }
         self::assertFalse($called);

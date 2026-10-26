@@ -6,6 +6,7 @@ namespace Crab\Tests\Routing;
 
 use Crab\Http\Request;
 use Crab\Http\Response;
+use Crab\Routing\FromQuery;
 use Crab\Routing\Router;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
@@ -396,7 +397,12 @@ final class RouterTest extends TestCase
         $router->get('/users/{id}', static fn(int $id): array => [$id]);
         self::assertSame('[7]', (string) $router->handle(new Request('GET', '/users/007'))->getBody());
         self::assertSame(422, $router->handle(new Request('GET', '/users/9223372036854775808'))->getStatusCode());
-        $router->get('/list', static fn(int $page = 1, ?\DateTimeImmutable $since = null): array => [
+        $router->get('/list', static fn(
+            #[FromQuery]
+            int $page = 1,
+            #[FromQuery]
+            ?\DateTimeImmutable $since = null,
+        ): array => [
             $page,
             $since?->format('Y-m-d'),
         ]);
@@ -415,10 +421,7 @@ final class RouterTest extends TestCase
         self::assertSame('[5,"abc"]', (string) $router->handle(new Request('GET', '/items/5/abc'))->getBody());
         $refused = $router->handle(new Request('GET', '/items/-2/ABCD', ['Accept' => 'application/json']));
         self::assertSame(422, $refused->getStatusCode());
-        self::assertSame(
-            ['id', 'code'],
-            array_keys(json_decode((string) $refused->getBody(), true)['error']['fields']),
-        );
+        self::assertSame(['id', 'code'], array_keys(json_decode((string) $refused->getBody(), true)['error']['path']));
         // The calendar has no February 31st, and it is not read as a day in March.
         self::assertSame(422, $router->handle(new Request('GET', '/list?since=2026-02-31'))->getStatusCode());
     }

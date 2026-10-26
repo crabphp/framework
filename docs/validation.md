@@ -11,20 +11,31 @@
 
 ## Introduction
 
-Crab validates a request against the action's signature before the action runs. You do not call a validator and you do not write a rules array: the parameter's type says what is accepted, and attributes add what a type cannot say.
+Crab validates a request against the action's signature before the action runs. You do not call a validator and you do not write a rules array: a field's type says what is accepted, and attributes add what a type cannot say.
 
 ```php
 use Crab\Validation\Email;
 use Crab\Validation\Length;
 
-Route::post('/users', static function (#[Email] string $email, #[Length(min: 2, max: 50)] string $name): array {
+final readonly class CreateUser
+{
+    public function __construct(
+        #[Email]
+        public string $email,
+        #[Length(min: 2, max: 50)]
+        public string $name,
+    ) {
+    }
+}
+
+Route::post('/users', static function (CreateUser $input): array {
     // Runs only when both are present and fit.
 
-    return ['email' => $email, 'name' => $name];
+    return ['email' => $input->email, 'name' => $input->name];
 });
 ```
 
-A request that does not fit is answered `422` with every problem, by field. The same holds for the constructor of an [input class](actions.md#an-input-class).
+A request that does not fit is answered `422` with every problem, by field. The same rules hold wherever a field is declared: a property of an [input class](actions.md#an-input-class), a field described with [`#[Fields]`](#describing-fields), a [query field](actions.md#query-fields) or a parameter of the path.
 
 ## Types are rules
 
@@ -41,13 +52,18 @@ A request that does not fit is answered `422` with every problem, by field. The 
 JSON is taken as it is: `"36"` is text and is refused for an `int` field. A query string, a route parameter and a form (`application/x-www-form-urlencoded` or `multipart/form-data`) are always text, so there `page=3` is read as the number `3` and `active=true` as a boolean.
 
 ```php
+use Crab\Routing\FromQuery;
+
 enum Status: string
 {
     case Draft = 'draft';
     case Published = 'published';
 }
 
-Route::get('/posts', static function (Status $status = Status::Published, ?\DateTimeImmutable $since = null): array {
+Route::get('/posts', static function (
+    #[FromQuery] Status $status = Status::Published,
+    #[FromQuery] ?\DateTimeImmutable $since = null,
+): array {
     // GET /posts?status=draft&since=2026-01-01T00:00:00Z
 
     return ['status' => $status, 'since' => $since];
@@ -172,8 +188,13 @@ final readonly class Slug implements Rule
 
 ```php
 use App\Rules\Slug;
+use Crab\Validation\Data;
+use Crab\Validation\Fields;
 
-Route::post('/posts', static fn (#[Slug] string $slug, string $title): array => ['slug' => $slug, 'title' => $title]);
+Route::post('/posts', static fn (#[Fields(['slug' => ['string', new Slug()], 'title' => 'string'])] Data $post): array => [
+    'slug' => $post->slug,
+    'title' => $post->title,
+]);
 ```
 
 A rule sees one value. A check that needs the database, such as "this email is not taken", belongs in the action, which throws `HttpException(409)` or returns a `422` of its own.

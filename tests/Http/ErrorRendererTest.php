@@ -14,6 +14,7 @@ use Crab\Http\Request;
 use Crab\Http\Response;
 use Crab\Http\Stream;
 use Crab\Log\Logger;
+use Crab\Routing\FromQuery;
 use Crab\Validation\Email;
 use PHPUnit\Framework\TestCase;
 use Psr\Http\Message\ResponseInterface;
@@ -151,7 +152,7 @@ final class ErrorRendererTest extends TestCase
         $app->router->get('/users/{id}', static fn(int $id): never => throw new HttpException(404, 'No such user.', [
             'X-Cache-For' => '30',
         ]));
-        $app->router->get('/invite', static fn(#[Email] string $email): string => $email);
+        $app->router->get('/invite', static fn(#[FromQuery, Email] string $email): string => $email);
         $app->router->get('/fail', static fn(): never => throw new \RuntimeException('secret'));
         $app->router->get('/replay', static fn(): never => throw new ReplayGone(410));
         $app->router->get('/account', static fn(): string => 'yours')->middleware(new SignInFirst());
@@ -174,7 +175,10 @@ final class LegacyErrors implements ErrorRenderer
 {
     public function render(Problem $problem, ServerRequestInterface $request): ResponseInterface
     {
-        return Response::json(['message' => $problem->message, 'errors' => $problem->fields], $problem->status);
+        // Laravel has one list of errors, wherever the field was.
+        $errors = [...$problem->path, ...$problem->query, ...$problem->fields];
+
+        return Response::json(['message' => $problem->message, 'errors' => $errors], $problem->status);
     }
 }
 

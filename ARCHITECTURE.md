@@ -123,7 +123,7 @@ flowchart LR
     H -->|a response| ASIS[Sent as it is]
 ~~~
 
-- An action takes the request's data as typed parameters, one per field, or as one input class when there are many. It returns data, or a response when it needs to set the status, a header or the body. It extends nothing and builds no response in the common case, so it can be called and tested as an ordinary function.
+- An action takes each part of the request from where its parameter says: a path parameter by name, a query field marked `#[FromQuery]`, and the body as one object, an input class or described `Data`. It returns data, or a response when it needs to set the status, a header or the body. It extends nothing and builds no response in the common case, so it can be called and tested as an ordinary function.
 - The signature is read once, in the parent, when the route is added. An action the router cannot call, or a field that cannot be validated, stops the application from starting.
 - `Validation` builds values from request data by the declared types and rules; it knows nothing of HTTP. `Routing` turns a mismatch into a 422 through `Http\ErrorResponse`, as an ordinary response, so it passes back through middleware.
 - Services are never action parameters. An action class takes them in its constructor, which keeps "what the request sends" and "what the application provides" apart.

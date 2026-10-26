@@ -29,6 +29,8 @@ use Crab\Http\Request;
 use Crab\Http\Response;
 use Crab\Route;
 use Crab\Testing\FrozenClock;
+use Crab\Validation\Data;
+use Crab\Validation\Fields;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 use Psr\Clock\ClockInterface;
@@ -433,11 +435,12 @@ final class AuthTest extends TestCase
                 $user->id,
                 $request->getAttribute('user') === $user,
             ]);
-            Route::post('/notes/{id}', static fn(int $id, Member $user, string $text): array => [
-                $id,
-                $user->id,
-                $text,
-            ]);
+            Route::post('/notes/{id}', static fn(
+                int $id,
+                Member $user,
+                #[Fields(['text' => 'string'])]
+                Data $note,
+            ): array => [$id, $user->id, $note->text]);
             Route::get('/members-only', static fn(Member $user): string => 'members');
         });
         Route::prefix('/internal')

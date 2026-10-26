@@ -124,7 +124,7 @@ Before the first `join()`, `send()`, `sendBinary()`, `receive()`, iteration, or 
 
 Register `TokenAuthProvider` and your identity resolver as shown in [Authentication](authentication.md#installation), and the database provider as shown in [Database](database.md). A client that can set headers sends `Authorization` during the handshake. Missing required Identity receives HTTP 401. For browsers, use a ticket as below.
 
-Socket actions take one non-null `Socket`, typed pattern parameters, typed query fields, and optionally the request or authenticated Identity. A closure or `[WatchOrder::class, 'handle']` also works. Invalid parameters receive HTTP 422 before application code runs. Upgrades have no request body; input classes and `Validation\Data` body fields are refused at declaration. Middleware sees raw pattern attributes, so it must validate any attribute it uses itself.
+Socket actions take one non-null `Socket`, typed pattern parameters, the query string (fields marked `#[FromQuery]`, or one marked class or described `Data`), and optionally the request or authenticated Identity. A closure or `[WatchOrder::class, 'handle']` also works. Invalid parameters receive HTTP 422 before application code runs. Upgrades have no request body; a body, an input class or described `Data` without `#[FromQuery]`, is refused at declaration. Middleware sees raw pattern attributes, so it must validate any attribute it uses itself.
 
 ## Authenticating a browser
 
