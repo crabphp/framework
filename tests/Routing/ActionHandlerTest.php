@@ -57,7 +57,7 @@ final readonly class Basket
 {
     public function __construct(
         public string $name,
-        #[ListOf(['productId' => 'int', 'quantity' => '?int']), Length(min: 1)]
+        #[ListOf(['productId' => 'int', 'quantity?' => 'int']), Length(min: 1)]
         public array $lines,
     ) {}
 }
@@ -280,7 +280,7 @@ final class ActionHandlerTest extends TestCase
             #[Fields([
                 'email' => ['string', new Email()],
                 'plan' => Plan::class,
-                'note' => '?string',
+                'note?' => 'string',
                 'address?' => ['street' => 'string', 'country' => ['string', new Length(min: 2, max: 2)]],
                 'lines' => [
                     ['productId' => 'int', 'quantity' => ['int', new Range(min: 1, max: 20)]],
@@ -309,7 +309,7 @@ final class ActionHandlerTest extends TestCase
             array_map(static fn(Data $line): array => [$line->productId, $line->quantity], $basket->lines),
         ]);
         $router->get('/search', static fn(
-            #[FromQuery, Fields(['q' => 'string', 'page' => '?int'])]
+            #[FromQuery, Fields(['q' => 'string', 'page?' => 'int'])]
             Data $query,
         ): array => [
             $query->q,
@@ -407,7 +407,7 @@ final class ActionHandlerTest extends TestCase
         // An update takes what was sent and nothing else: a field left out is not a field sent as null.
         $router->patch('/users/{id}', static fn(
             int $id,
-            #[Fields(['name' => '?string', 'bio' => '?string', 'age' => '?int'])]
+            #[Fields(['name?' => 'string', 'bio?' => '?string', 'age?' => 'int'])]
             Data $changes,
         ): array => [
             'sent' => $changes->toArray(),
@@ -419,6 +419,13 @@ final class ActionHandlerTest extends TestCase
             '/users/7',
             ['name' => 'Ada', 'bio' => null],
         )));
+        // A name may be left out but not cleared; a bio may be cleared.
+        self::assertSame(
+            ['name' => ['must not be null']],
+            json_decode((string) $router->handle($this->json('PATCH', '/users/7', [
+                'name' => null,
+            ]))->getBody(), true)['error']['fields'],
+        );
 
         // A form carries everything as text, as a query string does, and is read as the types described.
         $router->post('/form', static fn(#[Fields(['quantity' => 'int', 'gift?' => 'bool'])] Data $form): array => [
@@ -675,7 +682,7 @@ final class ActionHandlerTest extends TestCase
         $router->patch('/users/{id}', static fn(
             int $id,
             ServerRequestInterface $request,
-            #[Fields(['name' => '?string', 'tags?' => [['string']]])]
+            #[Fields(['name?' => 'string', 'tags?' => [['string']]])]
             Data $changes,
             #[FromQuery, ListOf('string')]
             array $notify = [],
@@ -922,10 +929,8 @@ final class ActionHandlerTest extends TestCase
                 '/a',
                 static fn(string ...$rest) => '',
             ),
-            'Ambiguous::$id has a union or intersection type' => static fn() => $router->post(
-                '/a',
-                static fn(\Crab\Tests\Routing\Ambiguous $input) => '',
-            ),
+            'Ambiguous::$id is declared as DateTimeImmutable|int, and a union can be validated only when it is of the scalar types' =>
+                static fn() => $router->post('/a', static fn(\Crab\Tests\Routing\Ambiguous $input) => ''),
             'A closure takes $tags, which has #[ListOf] but is not declared as an array' => static fn() => $router->get(
                 '/a',
                 static fn(#[FromQuery, ListOf('int')] string $tags) => '',
@@ -995,6 +1000,6 @@ final class ActionHandlerTest extends TestCase
 final class Ambiguous
 {
     public function __construct(
-        public int|string $id,
+        public int|\DateTimeImmutable $id,
     ) {}
 }

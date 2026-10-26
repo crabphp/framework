@@ -145,7 +145,7 @@ Route::post('/me/avatar', ReplaceAvatar::class)->middleware(TokenAuth::class);
 
 The client sends a `multipart/form-data` form with a file field named `avatar`. The form's other fields are fields of the class too, read from text as a query string's are, so `int $rotate` takes `rotate=90`. The file is named after the logged-in [user](authentication.md), not an id in the URL, so no one can replace someone else's picture; [file storage](storage.md#storing-an-upload) keeps it on a disk, local or on S3.
 
-- A file is required unless the property is nullable, `?UploadedFileInterface $attachment`, which is null when none was sent. A file input the user left empty counts as none.
+- A file is required unless the property has a default, `?UploadedFileInterface $attachment = null`, which is null when none was sent. A file input the user left empty counts as none.
 - `#[FileSize]` bounds its bytes and `#[MediaType]` its kind, `'image/png'` or `'image/*'`. The kind is read from the file's first bytes, never from what the client says, so a script named `me.png` is refused; it needs PHP's `fileinfo` extension, and a route that uses it without one stops the server from starting.
 - Several files under one name, `photos[]`, are `#[ListOf(UploadedFileInterface::class)] public array $photos`. `#[Length]` bounds how many; `#[FileSize]` and `#[MediaType]` hold for each file, and a problem is reported as `photos.1`.
 - `Data` described with `#[Fields]` takes a file the same way: `'avatar' => UploadedFileInterface::class`.

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Crab\Validation;
 
+use Crab\Contracts\Validation\ObjectRule;
 use Crab\Contracts\Validation\Rule;
 use Crab\Contracts\Validation\Validator as ValidatorContract;
 use Psr\Http\Message\UploadedFileInterface;
@@ -18,10 +19,13 @@ use Psr\Http\Message\UploadedFileInterface;
  *     DateTimeImmutable          a date, or a date and time, as ISO 8601 text
  *     another class              an object, validated the same way
  *     UploadedFileInterface      a file the data holds, received whole
- *     ?type                      also null, and the field may be left out
+ *     bool|int|string            one of these scalar types, told by the value
+ *     ?type                      also null
  *
- * A parameter with a default may be left out too. Fields the class does
- * not name are ignored.
+ * A parameter with a default may be left out; one without must be sent,
+ * even when it may be null, as PHP would have it passed. Fields the class
+ * does not name are ignored, unless it is marked #[RejectUnknown]. A rule
+ * on the class, an ObjectRule, checks the object once its fields are valid.
  */
 final class Validator implements ValidatorContract
 {
@@ -31,6 +35,13 @@ final class Validator implements ValidatorContract
      * @var array<class-string, list<Property>>
      */
     private array $classes = [];
+    /**
+     * Whether each class refuses fields it does not declare, and the rules
+     * on it as a whole.
+     *
+     * @var array<class-string, array{bool, list<ObjectRule>}>
+     */
+    private array $shapes = [];
     /**
      * The same for each function whose parameters were validated, by the
      * names of the parameters read.
@@ -56,8 +67,10 @@ final class Validator implements ValidatorContract
 
     public function inspect(string $class): void
     {
+        $properties = $this->properties($class);
+        $this->shape($class);
         $seen = [$class => true];
-        $this->inspectAll($this->properties($class), $seen);
+        $this->inspectAll($properties, $seen);
     }
 
     public function validateParameters(
@@ -82,12 +95,12 @@ final class Validator implements ValidatorContract
 
     public function schema(string $class): array
     {
-        return new JsonSchema($this->properties(...))->ofClass($class);
+        return new JsonSchema($this->properties(...), $this->shape(...))->ofClass($class);
     }
 
     public function parameterSchema(\ReflectionFunctionAbstract $function, array $names): array
     {
-        return new JsonSchema($this->properties(...))->object($this->parameters($function, $names));
+        return new JsonSchema($this->properties(...), $this->shape(...))->object($this->parameters($function, $names));
     }
 
     /**
@@ -99,11 +112,63 @@ final class Validator implements ValidatorContract
     private function build(string $class, array $data, bool $coerce, string $path, array &$errors): ?object
     {
         $found = count($errors);
-        $arguments = $this->values($this->properties($class), $data, $coerce, $path, $errors);
+        $properties = $this->properties($class);
+        [$strict, $rules] = $this->shape($class);
+        $arguments = $this->values($properties, $data, $coerce, $path, $errors);
+        if ($strict) {
+            self::unknown($properties, $data, $path, $errors);
+        }
         if (count($errors) > $found) {
             return null;
         }
-        return new $class(...$arguments);
+        $object = new $class(...$arguments);
+        return self::checked($object, $rules, $path, $errors) ? $object : null;
+    }
+
+    /**
+     * Reports each field the data holds that is not one of the properties.
+     *
+     * @param iterable<Property> $properties
+     * @param array<mixed> $data
+     * @param array<string, list<string>> $errors
+     */
+    private static function unknown(iterable $properties, array $data, string $path, array &$errors): void
+    {
+        $known = [];
+        foreach ($properties as $property) {
+            $known[$property->name] = true;
+        }
+        foreach (array_keys($data) as $key) {
+            if (isset($known[(string) $key])) {
+                continue;
+            }
+            $errors[$path . $key][] = 'is not expected';
+        }
+    }
+
+    /**
+     * Runs the rules on an object as a whole, and reports what they find.
+     *
+     * @param list<ObjectRule> $rules
+     * @param array<string, list<string>> $errors
+     * @return bool Whether it passed them all.
+     */
+    private static function checked(object $object, array $rules, string $path, array &$errors): bool
+    {
+        $passed = true;
+        foreach ($rules as $rule) {
+            foreach ($rule->check($object) as $field => $problem) {
+                if (!is_string($field) || $field === '' || !is_string($problem)) {
+                    throw new \LogicException(
+                        $rule::class
+                        . '::check() must return what is wrong by the name of a field, as in [\'endsAt\' => \'must be after the start\'].',
+                    );
+                }
+                $errors[$path . $field][] = $problem;
+                $passed = false;
+            }
+        }
+        return $passed;
     }
 
     /**
@@ -149,7 +214,8 @@ final class Validator implements ValidatorContract
      */
     private function value(Property $property, mixed $value, bool $coerce, string $field, array &$errors): mixed
     {
-        if ($coerce && $value === '' && $property->nullable && $property->type !== Property::STRING) {
+        $text = $property->type === Property::STRING || in_array(Property::STRING, $property->types, true);
+        if ($coerce && $value === '' && $property->nullable && !$text) {
             // "?age=" in a query string is an age that was not given.
             $value = null;
         }
@@ -192,13 +258,20 @@ final class Validator implements ValidatorContract
                 }
                 $found = count($errors);
                 $values = $this->values($property->fields ?? [], $value, $coerce, $field . '.', $errors);
+                if ($property->strict) {
+                    self::unknown($property->fields ?? [], $value, $field . '.', $errors);
+                }
+                if (count($errors) > $found) {
+                    return null;
+                }
                 // Only what was sent is kept, so that a field left out can be told from one sent as null.
-                return count($errors) > $found
-                    ? null
-                    : new Data(
-                        array_intersect_key($values, $value),
-                        array_map(static fn(Property $described): string => $described->name, $property->fields ?? []),
-                    );
+                $data = new Data(
+                    array_intersect_key($values, $value),
+                    array_map(static fn(Property $described): string => $described->name, $property->fields ?? []),
+                );
+                return self::checked($data, $property->objectRules, $field . '.', $errors) ? $data : null;
+            case Property::UNION:
+                return self::union($property, $value, $coerce, $field, $errors);
             case Property::STRING:
                 if (is_string($value)) {
                     return $value;
@@ -251,6 +324,61 @@ final class Validator implements ValidatorContract
                 return self::file($value, $field, $errors);
         }
         throw new \LogicException("A property has the unknown type \"{$property->type}\".");
+    }
+
+    /**
+     * A value of one of a union's scalar types. JSON says which; text says
+     * nothing, so it stays text where text is one of them, and is otherwise
+     * read as the first of int, float and bool it can be.
+     *
+     * @param array<string, list<string>> $errors
+     */
+    private static function union(
+        Property $property,
+        mixed $value,
+        bool $coerce,
+        string $field,
+        array &$errors,
+    ): int|float|bool|string|null {
+        $types = $property->types;
+        if ($coerce && is_string($value)) {
+            if (in_array(Property::STRING, $types, true)) {
+                return $value;
+            }
+            foreach ($types as $type) {
+                $read = match ($type) {
+                    Property::INT => self::integer($value),
+                    Property::FLOAT => is_numeric($value) && is_finite((float) $value) ? (float) $value : null,
+                    default => in_array($value, ['true', '1', 'false', '0'], true)
+                        ? $value === 'true' || $value === '1'
+                        : null,
+                };
+                if ($read !== null) {
+                    return $read;
+                }
+            }
+        } elseif (is_int($value) && in_array(Property::INT, $types, true)) {
+            return $value;
+        } elseif (
+            (is_int($value) || is_float($value))
+            && in_array(Property::FLOAT, $types, true)
+            && is_finite((float) $value)
+        ) {
+            return (float) $value;
+        } elseif (is_bool($value) && in_array(Property::BOOL, $types, true)) {
+            return $value;
+        } elseif (is_string($value) && in_array(Property::STRING, $types, true)) {
+            return $value;
+        }
+        $words = array_map(static fn(string $type): string => match ($type) {
+            Property::INT => 'a whole number',
+            Property::FLOAT => 'a number',
+            Property::BOOL => 'true or false',
+            default => 'text',
+        }, $types);
+        $last = array_pop($words);
+        $errors[$field][] = 'must be ' . implode(', ', $words) . ' or ' . $last;
+        return null;
     }
 
     /**
@@ -399,7 +527,9 @@ final class Validator implements ValidatorContract
             }
             if ($property->type === Property::OBJECT && !isset($seen[$property->class])) {
                 $seen[$property->class] = true;
-                $this->inspectAll($this->properties($property->class), $seen);
+                $properties = $this->properties($property->class);
+                $this->shape($property->class);
+                $this->inspectAll($properties, $seen);
             }
         }
     }
@@ -411,6 +541,25 @@ final class Validator implements ValidatorContract
     private function properties(string $class): array
     {
         return $this->classes[$class] ??= self::read($class);
+    }
+
+    /**
+     * Whether a class refuses fields it does not declare, and the rules on it as a whole.
+     *
+     * @param class-string $class
+     * @return array{bool, list<ObjectRule>}
+     */
+    private function shape(string $class): array
+    {
+        if (isset($this->shapes[$class])) {
+            return $this->shapes[$class];
+        }
+        $reflection = new \ReflectionClass($class);
+        $rules = [];
+        foreach ($reflection->getAttributes(ObjectRule::class, \ReflectionAttribute::IS_INSTANCEOF) as $attribute) {
+            $rules[] = $attribute->newInstance();
+        }
+        return $this->shapes[$class] = [$reflection->getAttributes(RejectUnknown::class) !== [], $rules];
     }
 
     /**
@@ -467,18 +616,30 @@ final class Validator implements ValidatorContract
         if ($declared === null) {
             throw new \LogicException("{$where} has no type; declare it with one type, such as string \${$name}.");
         }
-        if (!$declared instanceof \ReflectionNamedType) {
+        $union = [];
+        if ($declared instanceof \ReflectionUnionType) {
+            $union = self::unionTypes(array_map(static fn(\ReflectionType $member): string => $member
+                instanceof \ReflectionNamedType
+                    ? $member->getName()
+                    : (string) $member, $declared->getTypes()), $where);
+        } elseif (!$declared instanceof \ReflectionNamedType) {
             throw new \LogicException(
-                "{$where} has a union or intersection type; give it one type so that it can be validated.",
+                "{$where} has an intersection type; give it one type so that it can be validated.",
             );
         }
         if ($parameter->isVariadic()) {
             throw new \LogicException("{$where} is variadic; declare an array with #[ListOf(...)] instead.");
         }
-        $described = $declared->getName() === Data::class;
-        [$type, $typeClass] = $described ? [Property::FIELDS, null] : self::type($declared->getName(), $where);
+        $described = $declared instanceof \ReflectionNamedType && $declared->getName() === Data::class;
+        [$type, $typeClass] = match (true) {
+            $union !== [] => [Property::UNION, null],
+            $described => [Property::FIELDS, null],
+            default => self::type($declared->getName(), $where),
+        };
         $items = null;
-        $fields = null;
+        $description = null;
+        $strict = false;
+        $objectRules = [];
         $rules = [];
         foreach ($parameter->getAttributes() as $attribute) {
             $attributeClass = $attribute->getName();
@@ -511,11 +672,26 @@ final class Validator implements ValidatorContract
                         . ', which is what the described data arrives as.',
                     );
                 }
-                $fields = self::described($attribute->newInstance()->fields, "{$where}, by its #[Fields]");
+                $description = $attribute->newInstance()->fields;
+            } elseif ($attributeClass === RejectUnknown::class || is_a($attributeClass, ObjectRule::class, true)) {
+                if (!$described) {
+                    $shown = $attributeClass === RejectUnknown::class ? 'RejectUnknown' : $attributeClass;
+                    throw new \LogicException(
+                        "{$where} has #[{$shown}], which is for an object: put it on the class, or on a "
+                        . Data::class
+                        . ' described with #[Fields].',
+                    );
+                }
+                if ($attributeClass === RejectUnknown::class) {
+                    $strict = true;
+                } else {
+                    $objectRules[] = $attribute->newInstance();
+                }
             } elseif (is_a($attributeClass, Rule::class, true)) {
                 $rules[] = $attribute->newInstance();
             }
         }
+        $fields = $description === null ? null : self::described($description, "{$where}, by its #[Fields]", $strict);
         if ($items?->type === Property::FILE) {
             // A file's rules on a list of files are each file's: #[MediaType('image/png')] array $photos.
             $own = static fn(Rule $rule): bool => $rule instanceof FileSize || $rule instanceof MediaType;
@@ -528,18 +704,21 @@ final class Validator implements ValidatorContract
             );
         }
         $hasDefault = $parameter->isDefaultValueAvailable();
-        $nullable = $declared->allowsNull();
+        // As PHP has it: a parameter without a default is passed, even one that may be null.
         return new Property(
             $name,
             $type,
             $typeClass,
-            $nullable,
-            !$hasDefault && !$nullable,
+            $declared->allowsNull(),
+            !$hasDefault,
             $hasDefault,
             $hasDefault ? $parameter->getDefaultValue() : null,
             $rules,
             $items,
             $fields,
+            $union,
+            $strict,
+            $objectRules,
         );
     }
 
@@ -547,9 +726,10 @@ final class Validator implements ValidatorContract
      * The fields a #[Fields] or a #[ListOf] describes, as properties.
      *
      * @param array<mixed> $description Each field's name with its description; see Fields.
+     * @param bool $strict Whether each object described refuses a field it does not describe.
      * @return list<Property>
      */
-    private static function described(array $description, string $where): array
+    private static function described(array $description, string $where, bool $strict = false): array
     {
         if ($description === [] || array_is_list($description)) {
             throw new \LogicException("{$where} must name each field with its description, as in ['id' => 'int'].");
@@ -560,7 +740,7 @@ final class Validator implements ValidatorContract
             // A name ending in "?" is a field that may be left out.
             $optional = str_ends_with($name, '?');
             $name = $optional ? substr($name, 0, -1) : $name;
-            $fields[] = self::field($name, $spec, $optional, "{$where} describes \"{$name}\", which");
+            $fields[] = self::field($name, $spec, $optional, "{$where} describes \"{$name}\", which", $strict);
         }
         return $fields;
     }
@@ -568,7 +748,7 @@ final class Validator implements ValidatorContract
     /**
      * One described field: a type, a type with rules, an object or a list.
      */
-    private static function field(string $name, mixed $spec, bool $optional, string $where): Property
+    private static function field(string $name, mixed $spec, bool $optional, string $where, bool $strict): Property
     {
         if (is_string($spec)) {
             $spec = [$spec];
@@ -583,9 +763,9 @@ final class Validator implements ValidatorContract
             return new Property(
                 $name,
                 Property::FIELDS,
-                nullable: $optional,
                 required: !$optional,
-                fields: self::described($spec, $where),
+                fields: self::described($spec, $where, $strict),
+                strict: $strict,
             );
         }
         $rules = array_slice($spec, 1);
@@ -600,22 +780,49 @@ final class Validator implements ValidatorContract
         }
         if (is_array($spec[0])) {
             // A description inside a list: a list of that, and the rules are the list's.
-            $items = self::field($name, $spec[0], false, "{$where}, in each item,");
-            return new Property(
-                $name,
-                Property::ARRAY,
-                nullable: $optional,
-                required: !$optional,
-                rules: $rules,
-                items: $items,
-            );
+            $items = self::field($name, $spec[0], false, "{$where}, in each item,", $strict);
+            return new Property($name, Property::ARRAY, required: !$optional, rules: $rules, items: $items);
         }
         if (!is_string($spec[0])) {
             throw new \LogicException("{$where} must start with a type such as 'int'.");
         }
-        $nullable = str_starts_with($spec[0], '?');
-        [$type, $class] = self::type(ltrim($spec[0], '?'), $where);
-        return new Property($name, $type, $class, $nullable || $optional, !$nullable && !$optional, rules: $rules);
+        // '?int' may be null; a name ending in "?" may be left out. The two are apart, as in PHP.
+        $members = explode('|', ltrim($spec[0], '?'));
+        $nullable = str_starts_with($spec[0], '?') || in_array('null', $members, true);
+        $members = array_values(array_diff($members, ['null']));
+        if (count($members) > 1) {
+            return new Property(
+                $name,
+                Property::UNION,
+                nullable: $nullable,
+                required: !$optional,
+                rules: $rules,
+                types: self::unionTypes($members, $where),
+            );
+        }
+        [$type, $class] = self::type($members[0] ?? '', $where);
+        return new Property($name, $type, $class, $nullable, !$optional, rules: $rules);
+    }
+
+    /**
+     * The scalar types of a union, in the order text is tried against them.
+     *
+     * @param list<string> $members The union's types, as declared; "null" among them says only that it may be null.
+     * @return list<string>
+     */
+    private static function unionTypes(array $members, string $where): array
+    {
+        $members = array_values(array_diff($members, ['null']));
+        $order = [Property::INT, Property::FLOAT, Property::BOOL, Property::STRING];
+        $unknown = array_diff($members, $order);
+        if ($unknown !== [] || count($members) < 2) {
+            throw new \LogicException(
+                "{$where} is declared as "
+                . implode('|', $members)
+                . ', and a union can be validated only when it is of the scalar types int, float, bool and string; give it one type, or a class with a field for each kind.',
+            );
+        }
+        return array_values(array_intersect($order, $members));
     }
 
     /**

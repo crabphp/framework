@@ -150,7 +150,12 @@ final class DocumentationTest extends TestCase
 
         $omitted = $api->post('/signup', $fields)->assertStatus(200)->json();
         self::assertArrayNotHasKey('shipTo', $omitted);
-        $api->post('/signup', [...$fields, 'shipTo' => null])->assertStatus(200)->assertJson('shipTo', null);
+        self::assertArrayNotHasKey('note', $omitted);
+        $api->post('/signup', [...$fields, 'note' => null])->assertStatus(200)->assertJson('note', null);
+        $api
+            ->post('/signup', [...$fields, 'shipTo' => null])
+            ->assertStatus(422)
+            ->assertJson('error.fields', ['shipTo' => ['must not be null']]);
         $api
             ->post('/signup', [...$fields, 'shipTo' => ['street' => 7, 'country' => 'GB']])
             ->assertStatus(422)

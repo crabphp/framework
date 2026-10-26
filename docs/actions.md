@@ -188,7 +188,7 @@ Route::get('/users', static function (#[FromQuery] int $page = 1, #[FromQuery] ?
 });
 ```
 
-A parameter with a default or a nullable type may be left out of the request. Fields the action does not declare are ignored and never reach it. A query string is text, so `page=3` is read as the number `3` and `active=true` as a boolean; see [Validation](validation.md#types-are-rules).
+A parameter with a default may be left out of the request; see [Required, optional and null](validation.md#required-optional-and-null). Fields the action does not declare are ignored and never reach it. A query string is text, so `page=3` is read as the number `3` and `active=true` as a boolean; see [Validation](validation.md#types-are-rules).
 
 ### An input class
 
@@ -236,7 +236,7 @@ use Crab\Validation\Range;
 public function handle(
     User $user,
     #[Fields([
-        'note' => '?string',
+        'note?' => '?string',
         'shipTo' => ['street' => 'string', 'country' => ['string', new Length(min: 2, max: 2)]],
         'lines' => [['productId' => 'int', 'quantity' => ['int', new Range(min: 1, max: 20)]], new Length(min: 1)],
     ])]
@@ -252,11 +252,11 @@ public function handle(
 }
 ```
 
-It holds what the request sent. A field that may be left out, and was, reads as null; `$order->has('note')` tells that from a null that was sent, and `$order->toArray()` gives only what was sent. That is what an update wants:
+It holds what the request sent. A field that may be left out, and was, reads as null; `$order->has('note')` tells that from a null that was sent, and `$order->toArray()` gives only what was sent. That is what an update wants: `'name?' => 'string'` may be left out but not cleared, and `'bio?' => '?string'` may also be sent as null to clear it:
 
 ```php
 // PATCH /users/7 with {"name": "Ada"} changes the name and leaves the rest alone
-public function handle(int $id, #[Fields(['name' => '?string', 'bio' => '?string'])] Data $changes): void
+public function handle(int $id, #[Fields(['name?' => 'string', 'bio?' => '?string'])] Data $changes): void
 {
     $values = $changes->toArray();
     if ($values === []) {
@@ -267,7 +267,7 @@ public function handle(int $id, #[Fields(['name' => '?string', 'bio' => '?string
 }
 ```
 
-An empty object, or one containing only undeclared fields, changes nothing and returns `204`. A supplied null stays in `toArray()` and writes SQL NULL, so these nullable fields must map to columns that accept NULL. Omit a field to leave its column unchanged.
+An empty object, or one containing only undeclared fields, changes nothing and returns `204`. A supplied null for `bio` stays in `toArray()` and writes SQL NULL, so a nullable field must map to a column that accepts NULL; a null for `name` is refused. Omit a field to leave its column unchanged. Add `#[RejectUnknown]` to refuse undeclared fields; see [Refusing unknown fields](validation.md#refusing-unknown-fields).
 
 It is validated before the action runs, as an input class is, and a problem is reported the same way: `lines.0.quantity`. A description that makes no sense stops the server from starting. Reading a field you did not describe throws, so a slip of the hand shows in the first test.
 

@@ -6,6 +6,7 @@ namespace Crab\Routing;
 
 use Crab\Contracts\Auth\Identity;
 use Crab\Contracts\Http\Request;
+use Crab\Contracts\Validation\ObjectRule;
 use Crab\Contracts\Validation\Rule;
 use Crab\Contracts\Validation\Validator;
 use Crab\Contracts\WebSocket\Socket;
@@ -14,6 +15,7 @@ use Crab\Http\Response;
 use Crab\Validation\Data;
 use Crab\Validation\Fields;
 use Crab\Validation\JsonSchema;
+use Crab\Validation\RejectUnknown;
 use Crab\Validation\ValidationException;
 use Crab\WebSocket\Connections;
 use Psr\Container\ContainerInterface;
@@ -376,11 +378,16 @@ final class ActionHandler implements RequestHandlerInterface
                 . '.',
             );
         }
+        $fromQuery = $parameter->getAttributes(FromQuery::class) !== [];
+        if ($fromQuery && $type instanceof \ReflectionUnionType && !$parameter->isVariadic()) {
+            // A query field of several scalar kinds, int|bool; the validator says whether it can be one.
+            $this->query[] = $name;
+            return;
+        }
         if ($parameter->isVariadic() || !$type instanceof \ReflectionNamedType) {
             throw new \LogicException("The action of {$route} takes \${$name}, which must have one plain type.");
         }
         $typeName = $type->getName();
-        $fromQuery = $parameter->getAttributes(FromQuery::class) !== [];
         $marked = static function (string $what) use ($route, $name): \LogicException {
             return new \LogicException(
                 "The action of {$route} marks \${$name} #[FromQuery], but it is {$what}, which is not read from the query string; drop the mark.",
@@ -447,6 +454,18 @@ final class ActionHandler implements RequestHandlerInterface
             // Data is the whole of the query string or the body, described on the parameter with #[Fields];
             // a field's type with #[Fields] is a mistake for it, which the validator names below.
             $what = $typeName === Data::class ? 'describe their fields in one' : 'put their fields in one class';
+            if ($typeName !== Data::class) {
+                // What shapes a class is said on the class, where every route that takes it sees it.
+                $shaping = [
+                    ...$parameter->getAttributes(RejectUnknown::class),
+                    ...$parameter->getAttributes(ObjectRule::class, \ReflectionAttribute::IS_INSTANCEOF),
+                ];
+                if ($shaping !== []) {
+                    throw new \LogicException(
+                        "The action of {$route} marks \${$name} #[{$shaping[0]->getName()}], which belongs on the class {$typeName} itself.",
+                    );
+                }
+            }
             if ($fromQuery) {
                 if ($this->queryInput !== null) {
                     throw new \LogicException(

@@ -4,12 +4,15 @@ declare(strict_types=1);
 
 namespace Crab\Validation;
 
+use Crab\Contracts\Validation\ObjectRule;
 use Crab\Contracts\Validation\Rule;
 
 /**
  * Writes what the Validator reads from a declaration as JSON Schema, so
  * that what a route takes can be read by a program as well as a person.
- * A rule JSON Schema has no word for is named under "x-rules".
+ * A rule JSON Schema has no word for is named under "x-rules", and so is
+ * an object's rule as a whole; an object that refuses fields it does not
+ * declare has "additionalProperties": false.
  *
  * @internal
  */
@@ -24,16 +27,19 @@ final class JsonSchema
 
     /**
      * @param \Closure(class-string): list<Property> $properties Reads a class's properties.
+     * @param \Closure(class-string): array{bool, list<ObjectRule>} $shape Reads whether a class refuses unknown fields, and its rules as a whole.
      */
     public function __construct(
         private readonly \Closure $properties,
+        private readonly \Closure $shape,
     ) {}
 
     /**
      * @param iterable<Property> $properties
+     * @param list<ObjectRule> $rules
      * @return array<string, mixed>
      */
-    public function object(iterable $properties): array
+    public function object(iterable $properties, bool $strict = false, array $rules = []): array
     {
         $schema = ['type' => 'object', 'properties' => []];
         $required = [];
@@ -48,6 +54,12 @@ final class JsonSchema
         }
         if ($required !== []) {
             $schema['required'] = $required;
+        }
+        if ($strict) {
+            $schema['additionalProperties'] = false;
+        }
+        if ($rules !== []) {
+            $schema['x-rules'] = array_map(static fn(ObjectRule $rule): string => $rule::class, $rules);
         }
         return $schema;
     }
@@ -68,8 +80,18 @@ final class JsonSchema
             Property::ENUM => self::enum((string) $property->class),
             Property::DATE => ['type' => 'string', 'format' => 'date-time'],
             Property::OBJECT => $this->ofClass((string) $property->class),
-            Property::FIELDS => $this->object($property->fields ?? []),
+            Property::FIELDS => $this->object($property->fields ?? [], $property->strict, $property->objectRules),
             Property::FILE => ['type' => 'string', 'format' => 'binary'],
+            Property::UNION => ['type' => array_map(
+                static fn(string $type): string => (
+                    [
+                        Property::INT => 'integer',
+                        Property::FLOAT => 'number',
+                        Property::BOOL => 'boolean',
+                    ][$type] ?? 'string'
+                ),
+                $property->types,
+            )],
             default => [],
         };
         $schema = [...$schema, ...self::rules($property->rules, $property->items !== null)];
@@ -135,7 +157,8 @@ final class JsonSchema
         }
         $this->writing[$class] = true;
         try {
-            return ['x-class' => $class, ...$this->object(($this->properties)($class))];
+            [$strict, $rules] = ($this->shape)($class);
+            return ['x-class' => $class, ...$this->object(($this->properties)($class), $strict, $rules)];
         } finally {
             unset($this->writing[$class]);
         }

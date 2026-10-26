@@ -2,9 +2,13 @@
 
 - [Introduction](#introduction)
 - [Types are rules](#types-are-rules)
+    - [Required, optional and null](#required-optional-and-null)
+    - [A value of several kinds](#a-value-of-several-kinds)
 - [Rule attributes](#rule-attributes)
 - [Nested objects and lists](#nested-objects-and-lists)
 - [Describing fields](#describing-fields)
+- [Refusing unknown fields](#refusing-unknown-fields)
+- [Rules across fields](#rules-across-fields)
 - [The error response](#the-error-response)
 - [Writing a rule](#writing-a-rule)
 - [Validating by hand](#validating-by-hand)
@@ -42,7 +46,9 @@ A request that does not fit is answered `422` with every problem, by field. The 
 | Declaration | Accepts |
 | --- | --- |
 | `int`, `float`, `string`, `bool` | That value |
-| `?type`, or a default value | May be left out |
+| `?type` | That, or null |
+| A default value, `int $page = 1` | May be left out |
+| `bool\|int\|string` | A value of any of these scalar types; see [A value of several kinds](#a-value-of-several-kinds) |
 | A backed enum | One of its values |
 | `DateTimeImmutable` | A date, or a date and time with an offset, such as `2026-01-31` or `2026-01-31T12:00:00Z`; not a phrase such as `now` |
 | Another class | An object, checked the same way |
@@ -71,6 +77,31 @@ Route::get('/posts', static function (
 ```
 
 Prefer an enum to `#[OneOf]` when the choices are used in more than one place: the type then carries the rule everywhere.
+
+### Required, optional and null
+
+Whether a field may be left out and whether it may be null are two questions, answered as PHP answers them for an argument: a default says it may be left out, `?` says it may be null.
+
+| Declaration | Left out | Sent as null |
+| --- | --- | --- |
+| `string $name` | `is required` | `must not be null` |
+| `?string $note` | `is required` | null |
+| `?string $note = null` | null | null |
+| `int $guests = 1` | 1 | `must not be null` |
+
+So `?string $note` asks the client to say the note, if only to say there is none. A query string and a form have no null: there, a nullable field that is not text reads an empty value, `?age=`, as null.
+
+To take a field that may be left out but never cleared, as an update does, describe it: `'name?' => 'string'`. `Data::has('name')` says whether it was sent; see [Described fields](actions.md#described-fields).
+
+### A value of several kinds
+
+A union of scalar types takes a value of any of them, for a field whose kind depends on another, such as a setting's value:
+
+```php
+public bool|int|string|null $value,
+```
+
+JSON says which kind a value is, and that is the kind it arrives as: `true`, `40` or `"dark"`. A float is taken only where `float` is in the union. Text, from a query string or a form, says nothing of its kind, so it stays text when `string` is in the union, and is otherwise read as the first of `int`, `float` and `bool` it can be. A union may hold only these four, and null; give a field that holds an object or a list one type. Check which kind fits with a [rule across fields](#rules-across-fields).
 
 ## Rule attributes
 
@@ -131,20 +162,22 @@ Every class is read when the route is added, so one that cannot be validated, su
 
 | Description | Accepts |
 | --- | --- |
-| `'int'` | A type: `int`, `float`, `string`, `bool`, `array`, `mixed`, an enum's class or `DateTimeImmutable::class` |
-| `'?int'` | The same, and it may be left out or null |
+| `'int'` | A type: `int`, `float`, `string`, `bool`, `array`, `mixed`, an enum's class, a class, `DateTimeImmutable::class` or `UploadedFileInterface::class` |
+| `'?int'` | The same, or null |
+| `'bool\|int\|string'` | One of these scalar types |
 | `['int', new Range(min: 1)]` | A type, then rules for it |
 | `['street' => 'string', 'city' => 'string']` | An object with these fields |
 | `[['street' => 'string']]` | A list of those objects |
 | `[['int']]` | A list of ints |
 | `[[...], new Length(min: 1)]` | A list, then rules for the list |
 
-A name ending in `?`, as in `'shipTo?' => [...]`, is a field that may be left out or sent as null, whether it describes a scalar, an object or a list. Rules and nested fields are checked only for non-null values. A supplied null stays in `Data::toArray()`; an omitted field does not.
+A name ending in `?`, as in `'shipTo?' => [...]`, is a field that may be left out, whether it describes a scalar, an object or a list. A field described there is sent unless its name says so, and is null only when its type says so: `'note?' => '?string'` may be both. An object or a list described in place is never null; for one that may be, name a class, `'?' . Address::class`. Rules and nested fields are checked only for non-null values. A supplied null stays in `Data::toArray()`; an omitted field does not.
 
 ```php
 #[Fields([
     'email' => ['string', new Email()],
     'plan' => Plan::class,
+    'note?' => '?string',
     'shipTo?' => ['street' => 'string', 'country' => ['string', new Length(min: 2, max: 2)]],
     'tags' => [['string'], new Length(max: 5)],
 ])]
@@ -152,6 +185,66 @@ Data $signup,
 ```
 
 What is described arrives as `Crab\Validation\Data`: read-only, its fields read as properties, an object inside it another `Data`. The rules are the same attribute classes, written with `new`.
+
+## Refusing unknown fields
+
+Fields an input does not declare are ignored, so a client that sends more than you read is not refused. Mark the input `#[RejectUnknown]` to refuse them instead, where an extra field is a client's mistake worth hearing about, such as a settings form whose keys must all be known:
+
+```php
+use Crab\Validation\RejectUnknown;
+
+#[RejectUnknown]
+final readonly class ChangeSetting
+{
+    public function __construct(
+        public Setting $setting,
+        public bool|int|string|null $value,
+    ) {
+    }
+}
+```
+
+```json
+{"error": {"status": 422, "message": "The request is invalid.", "fields": {"theme": ["is not expected"]}}}
+```
+
+On a class it holds for that class's own fields; a nested class refuses what it does not declare only when it is marked too. On described `Data`, `#[Fields([...]), RejectUnknown] Data $changes`, it holds for every object the description has. A query string is refused the same way, by its own names, with a marked query class or described `Data`: `#[FromQuery, Fields(['q' => 'string']), RejectUnknown] Data $search`. `describe` shows it as `additionalProperties: false`.
+
+## Rules across fields
+
+A rule on one field sees one value. For what only the object as a whole can say, an end after its start, a value whose kind depends on its setting, write an attribute class that implements `Crab\Contracts\Validation\ObjectRule` and put it on the class:
+
+```php
+// app/Rules/EndsAfterStarts.php
+namespace App\Rules;
+
+use Crab\Contracts\Validation\ObjectRule;
+
+#[\Attribute(\Attribute::TARGET_CLASS | \Attribute::TARGET_PARAMETER)]
+final readonly class EndsAfterStarts implements ObjectRule
+{
+    public function check(object $input): array
+    {
+        return $input->endsAt > $input->startsAt ? [] : ['endsAt' => 'must be after the start'];
+    }
+}
+```
+
+```php
+#[EndsAfterStarts]
+final readonly class Booking
+{
+    public function __construct(
+        public \DateTimeImmutable $startsAt,
+        public \DateTimeImmutable $endsAt,
+    ) {
+    }
+}
+```
+
+`check()` receives the object built from the data, an instance of the class or the `Data` it is on (`#[Fields([...]), EndsAfterStarts] Data $booking`), and returns what is wrong by the name of the field it is told against. It runs only once every field of the object is valid, so it never sees a value of the wrong type. A problem inside a nested object is reported by its path, `slot.endsAt`.
+
+A rule like this is a pure check of the data. Whether this user may book this room, or the room is free, needs the database or the user, and belongs in the action, which throws `HttpException(409)` or answers with a `422` of its own.
 
 ## The error response
 

@@ -195,7 +195,7 @@ final class UploadFieldTest extends TestCase
                         'maxBytes' => 1024,
                         'mediaTypes' => ['image/*'],
                     ],
-                    'thumbnail' => ['type' => ['string', 'null'], 'format' => 'binary'],
+                    'thumbnail' => ['type' => ['string', 'null'], 'format' => 'binary', 'default' => null],
                 ],
                 'required' => ['avatar'],
             ],
@@ -249,7 +249,7 @@ final readonly class Thumbnailed
     public function __construct(
         #[FileSize(max: 1024), MediaType('image/*')]
         public UploadedFileInterface $avatar,
-        public ?UploadedFileInterface $thumbnail,
+        public ?UploadedFileInterface $thumbnail = null,
     ) {}
 }
 
@@ -257,7 +257,7 @@ final readonly class Note
 {
     public function __construct(
         public string $text,
-        public ?UploadedFileInterface $attachment,
+        public ?UploadedFileInterface $attachment = null,
     ) {}
 }
 

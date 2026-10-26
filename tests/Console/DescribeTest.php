@@ -103,7 +103,7 @@ final class DescribeTest extends TestCase
         self::assertSame(
             [
                 'type' => 'object',
-                'properties' => ['q' => ['type' => 'string'], 'page' => ['type' => ['integer', 'null']]],
+                'properties' => ['q' => ['type' => 'string'], 'page' => ['type' => 'integer']],
                 'required' => ['q'],
             ],
             $routes['GET /search']['input']['query'],

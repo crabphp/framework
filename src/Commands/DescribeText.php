@@ -14,7 +14,7 @@ namespace Crab\Commands;
  */
 final class DescribeText
 {
-    private const LEGEND = '# The application, from `php cua describe`. Types are TypeScript notation: `name?:` may be omitted, `| null` may be null. Limits in parentheses are JSON Schema keywords and are inclusive; a file adds minBytes, maxBytes and mediaTypes.';
+    private const LEGEND = '# The application, from `php cua describe`. Types are TypeScript notation: `name?:` may be omitted, `| null` may be null. Limits in parentheses are JSON Schema keywords and are inclusive; a file adds minBytes, maxBytes and mediaTypes, and an object that refuses fields it does not declare has additionalProperties=false.';
     private const JSON = JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_PRESERVE_ZERO_FRACTION;
     private const LIMITS = [
         'format',
@@ -28,6 +28,7 @@ final class DescribeText
         'minBytes',
         'maxBytes',
         'mediaTypes',
+        'additionalProperties',
     ];
 
     /**
@@ -126,7 +127,12 @@ final class DescribeText
             $types === ['array'] && isset($schema['items']) => 'Array<' . self::type($schema['items']) . '>',
             $types === ['array', 'object'] => 'array',
             $types === [] => 'mixed',
-            default => ['integer' => 'int', 'number' => 'float', 'boolean' => 'bool'][$types[0]] ?? $types[0],
+            default => implode(' | ', array_map(
+                static fn(string $type): string => (
+                    ['integer' => 'int', 'number' => 'float', 'boolean' => 'bool'][$type] ?? $type
+                ),
+                $types,
+            )),
         };
         $limits = [];
         // A file is its own type, not text of a format.

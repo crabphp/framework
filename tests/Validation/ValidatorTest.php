@@ -122,7 +122,7 @@ final readonly class Node
 final class Union
 {
     public function __construct(
-        public int|string $id,
+        public int|array $id,
     ) {}
 }
 
@@ -466,7 +466,8 @@ final class ValidatorTest extends TestCase
     {
         $validator = new Validator();
         $refused = [
-            'union or intersection type' => static fn() => $validator->inspect(Union::class),
+            'a union can be validated only when it is of the scalar types int, float, bool and string' =>
+                static fn() => $validator->inspect(Union::class),
             'is declared as iterable, which cannot be validated; use int' => static fn() => $validator->inspect(
                 Loose::class,
             ),
@@ -498,7 +499,10 @@ final class ValidatorTest extends TestCase
             new Validator()->inspect(HoldsUnion::class);
             self::fail('A class that cannot be validated was nested unnoticed.');
         } catch (\LogicException $error) {
-            self::assertStringContainsString('union or intersection type', $error->getMessage());
+            self::assertStringContainsString(
+                'a union can be validated only when it is of the scalar types',
+                $error->getMessage(),
+            );
         }
         self::assertNull(new Pattern('^a~b$')->check('a~b'));
     }
