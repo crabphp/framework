@@ -5,7 +5,11 @@ declare(strict_types=1);
 namespace Crab\Testing;
 
 use Crab\Contracts\Auth\Identity;
+use Crab\Contracts\HttpClient\File;
+use Crab\Http\Multipart;
 use Crab\Http\Request;
+use Psr\Http\Message\StreamInterface;
+use Psr\Http\Message\UploadedFileInterface;
 use Psr\Http\Server\RequestHandlerInterface;
 
 /**
@@ -17,10 +21,14 @@ use Psr\Http\Server\RequestHandlerInterface;
  *     $api->post('/login', ['email' => 'ada@example.com', 'password' => 'secret'])->assertStatus(200);
  *     $order = $api->actingAs($ada)->post('/orders', ['lines' => [...]])->assertStatus(201)->json();
  *     $api->actingAs($ada)->get('/orders', ['page' => 2])->json('data');
+ *     $api->actingAs($ada)->post('/me/avatar', files: ['avatar' => File::fromPath($picture)]);
+ *     $api->put('/saves/1', body: $bytes, headers: ['Content-Type' => 'application/octet-stream']);
  *
  * A request goes through the application's middleware, router and
- * validation, as $app->handle() does. Data is sent as JSON and JSON is
- * asked for, so an error comes back as JSON too.
+ * validation, as $app->handle() does, and its body through the same
+ * parsing a request from a client goes through. Data is sent as JSON
+ * unless a form, files or a body is given, and JSON is asked for, so an
+ * error comes back as JSON too.
  */
 final readonly class Api
 {
@@ -114,26 +122,50 @@ final readonly class Api
 
     /**
      * @param array<string, string> $headers
+     * @param array<string, mixed> $form
+     * @param array<string, File|UploadedFileInterface|list<File|UploadedFileInterface>> $files
      */
-    public function post(string $path, mixed $json = null, array $headers = []): ApiResponse
-    {
-        return $this->request('POST', $path, $json, $headers);
+    public function post(
+        string $path,
+        mixed $json = null,
+        array $headers = [],
+        array $form = [],
+        array $files = [],
+        string|StreamInterface|null $body = null,
+    ): ApiResponse {
+        return $this->request('POST', $path, $json, $headers, $form, $files, $body);
     }
 
     /**
      * @param array<string, string> $headers
+     * @param array<string, mixed> $form
+     * @param array<string, File|UploadedFileInterface|list<File|UploadedFileInterface>> $files
      */
-    public function put(string $path, mixed $json = null, array $headers = []): ApiResponse
-    {
-        return $this->request('PUT', $path, $json, $headers);
+    public function put(
+        string $path,
+        mixed $json = null,
+        array $headers = [],
+        array $form = [],
+        array $files = [],
+        string|StreamInterface|null $body = null,
+    ): ApiResponse {
+        return $this->request('PUT', $path, $json, $headers, $form, $files, $body);
     }
 
     /**
      * @param array<string, string> $headers
+     * @param array<string, mixed> $form
+     * @param array<string, File|UploadedFileInterface|list<File|UploadedFileInterface>> $files
      */
-    public function patch(string $path, mixed $json = null, array $headers = []): ApiResponse
-    {
-        return $this->request('PATCH', $path, $json, $headers);
+    public function patch(
+        string $path,
+        mixed $json = null,
+        array $headers = [],
+        array $form = [],
+        array $files = [],
+        string|StreamInterface|null $body = null,
+    ): ApiResponse {
+        return $this->request('PATCH', $path, $json, $headers, $form, $files, $body);
     }
 
     /**
@@ -146,20 +178,50 @@ final readonly class Api
     }
 
     /**
-     * Sends a request with any method.
+     * Sends a request with any method. It has one body: JSON, a form
+     * (form: and files:, which make it multipart/form-data) or the bytes
+     * of body:, as the HTTP client's request() takes them.
      *
      * @param mixed $json What to send as the JSON body; nothing when null.
      * @param array<string, string> $headers
+     * @param array<string, mixed> $form Sent as a form; together with files, as that form's other fields.
+     * @param array<string, File|UploadedFileInterface|list<File|UploadedFileInterface>> $files Sent as the form's file fields.
+     * @param string|StreamInterface|null $body Sent as it is; say its Content-Type in $headers.
      */
-    public function request(string $method, string $path, mixed $json = null, array $headers = []): ApiResponse
-    {
+    public function request(
+        string $method,
+        string $path,
+        mixed $json = null,
+        array $headers = [],
+        array $form = [],
+        array $files = [],
+        string|StreamInterface|null $body = null,
+    ): ApiResponse {
+        if ((($json !== null) + ($form !== [] || $files !== []) + ($body !== null)) > 1) {
+            throw new \LogicException(
+                'A request has one body: give json:, a form (form: and files:) or body:, not several.',
+            );
+        }
         $headers = ['Accept' => 'application/json', ...$this->headers, ...$headers];
-        $body = '';
         if ($json !== null) {
             $headers = ['Content-Type' => 'application/json', ...$headers];
             $body = json_encode($json, JSON_THROW_ON_ERROR);
+        } elseif ($files !== []) {
+            [$body, $type] = Multipart::write($form, $files);
+            // Only this type names the boundary the body was written with.
+            $headers = [
+                ...array_filter(
+                    $headers,
+                    static fn(string $name): bool => strtolower($name) !== 'content-type',
+                    ARRAY_FILTER_USE_KEY,
+                ),
+                'Content-Type' => $type,
+            ];
+        } elseif ($form !== []) {
+            $headers = ['Content-Type' => 'application/x-www-form-urlencoded', ...$headers];
+            $body = http_build_query($form);
         }
-        $request = new Request($method, $path, $headers, $body);
+        $request = new Request($method, $path, $headers, $body ?? '');
         if ($this->user !== null) {
             $request = $request->withAttribute(Identity::ATTRIBUTE, $this->user);
         }

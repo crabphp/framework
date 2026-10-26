@@ -69,6 +69,7 @@ final class JsonSchema
             Property::DATE => ['type' => 'string', 'format' => 'date-time'],
             Property::OBJECT => $this->ofClass((string) $property->class),
             Property::FIELDS => $this->object($property->fields ?? []),
+            Property::FILE => ['type' => 'string', 'format' => 'binary'],
             default => [],
         };
         $schema = [...$schema, ...self::rules($property->rules, $property->items !== null)];
@@ -110,6 +111,12 @@ final class JsonSchema
                     $rule instanceof Url => ['format' => 'uri'],
                     $rule instanceof Pattern => ['pattern' => $rule->expression],
                     $rule instanceof OneOf => ['enum' => $rule->values],
+                    // JSON Schema has no words for a file's size and kinds.
+                    $rule instanceof FileSize => array_filter(
+                        ['minBytes' => $rule->min, 'maxBytes' => $rule->max],
+                        static fn($limit): bool => $limit !== null,
+                    ),
+                    $rule instanceof MediaType => ['mediaTypes' => $rule->types],
                     default => ['x-rules' => [...($schema['x-rules'] ?? []), $rule::class]],
                 },
             ];

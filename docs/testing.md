@@ -78,6 +78,21 @@ $api->delete('/users/1');
 
 `put()` takes data as `post()` does, `request($method, $path, $json, $headers)` sends anything else, and `withHeaders([...])` gives an `Api` that adds those headers to every request.
 
+### Sending forms, files and raw bytes
+
+`post()`, `put()`, `patch()` and `request()` take the body as the [HTTP client](http-client.md) does: `form:` for a form, `files:` beside it for a `multipart/form-data` upload, and `body:` for bytes as they are:
+
+```php
+use Crab\Contracts\HttpClient\File;
+
+$api->post('/me/avatar', files: ['avatar' => File::fromPath(__DIR__ . '/fixtures/me.png', type: 'image/png')]);
+$api->post('/photos', form: ['title' => 'Holiday'], files: ['photos' => [File::fromContents($png, 'a.png')]]);
+$api->post('/login', form: ['email' => 'ada@example.com', 'password' => 'secret']);
+$api->put('/saves/1', body: $bytes, headers: ['Content-Type' => 'application/octet-stream']);
+```
+
+The body goes through the parsing a client's would, so a test of an upload exercises the form's parts, the file's rules and the action together. A request has one body; giving `json:` with `form:`, or either with `body:`, throws.
+
 ### Reading the answer
 
 ```php

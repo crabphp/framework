@@ -36,6 +36,7 @@ A request that does not fit is answered `422` with every problem, by field. The 
 | `DateTimeImmutable` | A date, or a date and time with an offset, such as `2026-01-31` or `2026-01-31T12:00:00Z`; not a phrase such as `now` |
 | Another class | An object, checked the same way |
 | `array` with `#[ListOf(...)]` | A list of the given kind |
+| `Psr\Http\Message\UploadedFileInterface` | A file of a `multipart/form-data` form, received whole; see [Uploaded files](requests.md#uploaded-files) |
 
 JSON is taken as it is: `"36"` is text and is refused for an `int` field. A query string, a route parameter and a form (`application/x-www-form-urlencoded` or `multipart/form-data`) are always text, so there `page=3` is read as the number `3` and `active=true` as a boolean.
 
@@ -66,6 +67,8 @@ Prefer an enum to `#[OneOf]` when the choices are used in more than one place: t
 | `#[Pattern('^[a-z0-9-]+$')]` | A regular expression |
 | `#[OneOf('draft', 'published')]` | One of the listed values |
 | `#[ListOf(Tag::class)]`, `#[ListOf('int')]` | What an `array` holds |
+| `#[FileSize(max: 2 * 1024 * 1024)]` | The bytes of an uploaded file; either bound may be left out |
+| `#[MediaType('image/png', 'image/*')]` | The kind of an uploaded file, read from its content; needs PHP's `fileinfo` extension |
 
 They live in `Crab\Validation`; import each rule you use. An attribute whose class cannot be found stops route registration and names the field and missing class. A rule runs only when the value is present and of the right type, so `#[Email] ?string $email` accepts a missing email and checks one that is given.
 

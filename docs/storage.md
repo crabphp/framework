@@ -155,38 +155,15 @@ final readonly class ExportReport
 Pass the upload's stream, which is copied as it is read and never held in memory whole:
 
 ```php
-// app/Actions/ReplaceAvatar.php
-namespace App\Actions;
-
-use Crab\Contracts\Storage\Disk;
-use Crab\Http\HttpException;
-use Crab\Http\Request;
-
-final readonly class ReplaceAvatar
+public function handle(User $user, #[MediaType('image/png')] UploadedFileInterface $avatar): array
 {
-    public function __construct(private Disk $disk)
-    {
-    }
+    $this->disk->write("avatars/{$user->id}.png", $avatar->getStream(), 'image/png');
 
-    public function handle(User $user, Request $request): array
-    {
-        $file = $request->file('avatar');
-        if ($file === null || $file->getError() !== UPLOAD_ERR_OK) {
-            throw new HttpException(422, 'Send the picture as "avatar".');
-        }
-        $this->disk->write("avatars/{$user->id}.png", $file->getStream(), 'image/png');
-
-        return ['avatar' => "avatars/{$user->id}.png"];
-    }
+    return ['avatar' => "avatars/{$user->id}.png"];
 }
 ```
 
-```php
-// routes/web.php
-Route::post('/me/avatar', ReplaceAvatar::class)->middleware(TokenAuth::class);
-```
-
-The path is made from the logged-in user's id, never from the client's file name. See [Uploaded files](requests.md#uploaded-files) for the limits on what a client may send.
+The path is made from the logged-in user's id, never from the client's file name. [Uploaded files](requests.md#uploaded-files) has the whole action, the rules for a file, and the limits on what a client may send.
 
 ## Reading files
 

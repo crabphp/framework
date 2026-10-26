@@ -18,6 +18,7 @@ use Crab\WebSocket\Connections;
 use Psr\Container\ContainerInterface;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface;
+use Psr\Http\Message\UploadedFileInterface;
 use Psr\Http\Server\RequestHandlerInterface;
 
 /**
@@ -29,12 +30,13 @@ use Psr\Http\Server\RequestHandlerInterface;
  *     the user             typed as a class that implements Identity: whoever
  *                          middleware put on the request's "user" attribute
  *     a route parameter    named as in the pattern: string, int, float or bool
- *     a field              any other int, float, string, bool, array, enum or
- *                          date: one value of the request's data, by its name
+ *     a field              any other int, float, string, bool, array, enum,
+ *                          date or uploaded file: one value of the request's
+ *                          data, by its name
  *     the input            one class holding all the fields instead
  *
- * The request's data is the JSON body, or the query string for GET, HEAD
- * and DELETE. A request whose data does not fit is answered with 422 and
+ * The request's data is the body, JSON or a form with its files, or the
+ * query string for GET, HEAD and DELETE. A request whose data does not fit is answered with 422 and
  * the problems by field, and one with no user where the action takes one
  * with 401; in neither case is the action called.
  *
@@ -195,12 +197,17 @@ final class ActionHandler implements RequestHandlerInterface
                 $data = [];
             }
             // A query string and a form carry everything as text, "3" for 3; JSON says what each value is.
-            $text =
-                $this->fromQuery
-                || preg_match(
+            $form =
+                !$this->fromQuery
+                && preg_match(
                     '~^(?:application/x-www-form-urlencoded|multipart/form-data)\b~i',
                     $request->getHeaderLine('Content-Type'),
                 ) === 1;
+            $text = $this->fromQuery || $form;
+            if ($form) {
+                // A form's files are its fields too, where its text fields would be: "photos[]" beside "title".
+                $data = array_replace_recursive($data, $request->getUploadedFiles());
+            }
             try {
                 if ($this->input !== null && $this->input[1] === Data::class) {
                     $arguments += $this->described($data, $text);
@@ -365,6 +372,11 @@ final class ActionHandler implements RequestHandlerInterface
         } elseif (is_a($typeName, Identity::class, true)) {
             $this->users[$name] = [$typeName, $type->allowsNull()];
         } elseif (self::isField($typeName)) {
+            if ($typeName === UploadedFileInterface::class && $this->fromQuery) {
+                throw new \LogicException(
+                    "The action of {$route} takes the file \${$name}, but its data is the query string, which carries no file. Upload with POST, PUT or PATCH.",
+                );
+            }
             $this->fields[] = $name;
         } elseif ($typeName === Data::class) {
             // The whole of the request's data, described on the parameter with #[Fields].
@@ -397,6 +409,7 @@ final class ActionHandler implements RequestHandlerInterface
             in_array($type, ['int', 'float', 'string', 'bool', 'array', 'mixed'], true)
             || $type === \DateTimeImmutable::class
             || $type === \DateTimeInterface::class
+            || $type === UploadedFileInterface::class
             || enum_exists($type)
         );
     }

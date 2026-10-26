@@ -6,11 +6,11 @@ namespace Crab\HttpClient;
 
 use Crab\Contracts\HttpClient\Client as ClientContract;
 use Crab\Contracts\HttpClient\CookieJar as CookieJarContract;
-use Crab\Contracts\HttpClient\File;
 use Crab\Contracts\HttpClient\Response as ResponseContract;
 use Crab\Engine\Async\Async;
 use Crab\Engine\Async\Cancellation;
 use Crab\Engine\EventLoop;
+use Crab\Http\Multipart;
 use Crab\Http\Request;
 use Crab\Http\Stream;
 use Crab\Http\Uri;
@@ -18,7 +18,6 @@ use Psr\Clock\ClockInterface;
 use Psr\Http\Message\RequestInterface;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\StreamInterface;
-use Psr\Http\Message\UploadedFileInterface;
 use Psr\Http\Message\UriInterface;
 
 /**
@@ -173,7 +172,7 @@ class Client implements ClientContract
             $body = json_encode($json, JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
             $type = 'application/json';
         } elseif ($files !== []) {
-            [$body, $type] = self::multipart($form, $files);
+            [$body, $type] = Multipart::write($form, $files);
         } elseif ($form !== []) {
             $body = http_build_query($form);
             $type = 'application/x-www-form-urlencoded';
@@ -417,117 +416,5 @@ class Client implements ClientContract
             return null;
         }
         return in_array(strtolower($to->getScheme()), ['http', 'https'], true) && $to->getHost() !== '' ? $to : null;
-    }
-
-    /**
-     * A form with files as a multipart/form-data body. It is written to a
-     * temporary stream, which goes to disk when it is large, so that a
-     * file is not held in memory and the body's length is known.
-     *
-     * @param array<string, mixed> $form
-     * @param array<string, mixed> $files
-     * @return array{Stream, string} The body and its Content-Type.
-     */
-    private static function multipart(array $form, array $files): array
-    {
-        $boundary = 'crab-' . bin2hex(random_bytes(12));
-        $body = fopen('php://temp', 'w+b');
-        if ($body === false) {
-            throw new \RuntimeException('Cannot allocate storage for the request body.');
-        }
-        foreach (self::fields($form, '') as [$name, $value]) {
-            fwrite(
-                $body,
-                "--{$boundary}\r\nContent-Disposition: form-data; name=\""
-                . self::quoted($name)
-                . "\"\r\n\r\n{$value}\r\n",
-            );
-        }
-        foreach ($files as $field => $given) {
-            $several = is_array($given);
-            foreach ($several ? $given : [$given] as $file) {
-                if ($file instanceof UploadedFileInterface) {
-                    [$name, $type] = [
-                        (string) $file->getClientFilename(),
-                        $file->getClientMediaType() ?? 'application/octet-stream',
-                    ];
-                } elseif ($file instanceof File) {
-                    [$name, $type] = [$file->name, $file->type];
-                } else {
-                    throw new \LogicException(
-                        "files: takes File::fromPath(), File::fromContents() or an uploaded file for \"{$field}\", not "
-                        . get_debug_type($file)
-                        . '.',
-                    );
-                }
-                $fieldName = self::quoted($several ? "{$field}[]" : (string) $field);
-                fwrite(
-                    $body,
-                    "--{$boundary}\r\nContent-Disposition: form-data; name=\"{$fieldName}\"; filename=\""
-                    . self::quoted($name)
-                    . "\"\r\nContent-Type: {$type}\r\n\r\n",
-                );
-                self::copy($file, $body);
-                fwrite($body, "\r\n");
-            }
-        }
-        fwrite($body, "--{$boundary}--\r\n");
-        return [new Stream($body), "multipart/form-data; boundary={$boundary}"];
-    }
-
-    /**
-     * @param resource $into
-     */
-    private static function copy(File|UploadedFileInterface $file, mixed $into): void
-    {
-        if ($file instanceof File && $file->contents !== null) {
-            fwrite($into, $file->contents);
-            return;
-        }
-        if ($file instanceof File) {
-            $source = is_file((string) $file->path) ? @fopen((string) $file->path, 'rb') : false;
-            if ($source === false) {
-                throw new \RuntimeException("The file to send cannot be read: {$file->path}");
-            }
-            stream_copy_to_stream($source, $into);
-            fclose($source);
-            return;
-        }
-        $stream = $file->getStream();
-        if ($stream->isSeekable()) {
-            $stream->rewind();
-        }
-        while (!$stream->eof()) {
-            fwrite($into, $stream->read(65_536));
-        }
-    }
-
-    /**
-     * A form's fields as names and values, a nested one named as a
-     * browser names it: "user[name]", "tags[0]".
-     *
-     * @param array<mixed> $form
-     * @return list<array{string, string}>
-     */
-    private static function fields(array $form, string $inside): array
-    {
-        $fields = [];
-        foreach ($form as $key => $value) {
-            $name = $inside === '' ? (string) $key : "{$inside}[{$key}]";
-            if (is_array($value)) {
-                $fields = [...$fields, ...self::fields($value, $name)];
-            } else {
-                $fields[] = [$name, is_bool($value) ? (string) (int) $value : (string) $value];
-            }
-        }
-        return $fields;
-    }
-
-    /**
-     * A name as it may stand between quotes in a part's header.
-     */
-    private static function quoted(string $name): string
-    {
-        return str_replace(['"', "\r", "\n"], ['%22', '%0D', '%0A'], $name);
     }
 }

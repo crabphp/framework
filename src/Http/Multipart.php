@@ -4,8 +4,11 @@ declare(strict_types=1);
 
 namespace Crab\Http;
 
+use Crab\Contracts\HttpClient\File;
+use Psr\Http\Message\UploadedFileInterface;
+
 /**
- * Reads a multipart/form-data body into fields and uploaded files, from
+ * Writes a multipart/form-data body, and reads one into fields and uploaded files, from
  * the seekable resource the body is stored in. The body is read once,
  * through a small window, and a file is never held in memory: its
  * UploadedFile reads from the place in the body where the file lies.
@@ -208,6 +211,120 @@ final class Multipart
         }
         $this->window .= $bytes;
         return true;
+    }
+
+    /**
+     * Writes a form with files as a multipart/form-data body, for a request
+     * Crab sends: by the HTTP client, or by a test. It is written to a
+     * temporary stream, which goes to disk when it is large, so that a
+     * file is not held in memory and the body's length is known. A list
+     * of files under one name is sent as "name[]".
+     *
+     * @param array<string, mixed> $form
+     * @param array<string, mixed> $files
+     * @return array{Stream, string} The body and its Content-Type.
+     */
+    public static function write(array $form, array $files): array
+    {
+        $boundary = 'crab-' . bin2hex(random_bytes(12));
+        $body = fopen('php://temp', 'w+b');
+        if ($body === false) {
+            throw new \RuntimeException('Cannot allocate storage for the request body.');
+        }
+        foreach (self::fields($form, '') as [$name, $value]) {
+            fwrite(
+                $body,
+                "--{$boundary}\r\nContent-Disposition: form-data; name=\""
+                . self::quoted($name)
+                . "\"\r\n\r\n{$value}\r\n",
+            );
+        }
+        foreach ($files as $field => $given) {
+            $several = is_array($given);
+            foreach ($several ? $given : [$given] as $file) {
+                if ($file instanceof UploadedFileInterface) {
+                    [$name, $type] = [
+                        (string) $file->getClientFilename(),
+                        $file->getClientMediaType() ?? 'application/octet-stream',
+                    ];
+                } elseif ($file instanceof File) {
+                    [$name, $type] = [$file->name, $file->type];
+                } else {
+                    throw new \LogicException(
+                        "files: takes File::fromPath(), File::fromContents() or an uploaded file for \"{$field}\", not "
+                        . get_debug_type($file)
+                        . '.',
+                    );
+                }
+                $fieldName = self::quoted($several ? "{$field}[]" : (string) $field);
+                fwrite(
+                    $body,
+                    "--{$boundary}\r\nContent-Disposition: form-data; name=\"{$fieldName}\"; filename=\""
+                    . self::quoted($name)
+                    . "\"\r\nContent-Type: {$type}\r\n\r\n",
+                );
+                self::copy($file, $body);
+                fwrite($body, "\r\n");
+            }
+        }
+        fwrite($body, "--{$boundary}--\r\n");
+        return [new Stream($body), "multipart/form-data; boundary={$boundary}"];
+    }
+
+    /**
+     * @param resource $into
+     */
+    private static function copy(File|UploadedFileInterface $file, mixed $into): void
+    {
+        if ($file instanceof File && $file->contents !== null) {
+            fwrite($into, $file->contents);
+            return;
+        }
+        if ($file instanceof File) {
+            $source = is_file((string) $file->path) ? @fopen((string) $file->path, 'rb') : false;
+            if ($source === false) {
+                throw new \RuntimeException("The file to send cannot be read: {$file->path}");
+            }
+            stream_copy_to_stream($source, $into);
+            fclose($source);
+            return;
+        }
+        $stream = $file->getStream();
+        if ($stream->isSeekable()) {
+            $stream->rewind();
+        }
+        while (!$stream->eof()) {
+            fwrite($into, $stream->read(65_536));
+        }
+    }
+
+    /**
+     * A form's fields as names and values, a nested one named as a
+     * browser names it: "user[name]", "tags[0]".
+     *
+     * @param array<mixed> $form
+     * @return list<array{string, string}>
+     */
+    private static function fields(array $form, string $inside): array
+    {
+        $fields = [];
+        foreach ($form as $key => $value) {
+            $name = $inside === '' ? (string) $key : "{$inside}[{$key}]";
+            if (is_array($value)) {
+                $fields = [...$fields, ...self::fields($value, $name)];
+            } else {
+                $fields[] = [$name, is_bool($value) ? (string) (int) $value : (string) $value];
+            }
+        }
+        return $fields;
+    }
+
+    /**
+     * A name as it may stand between quotes in a part's header.
+     */
+    private static function quoted(string $name): string
+    {
+        return str_replace(['"', "\r", "\n"], ['%22', '%0D', '%0A'], $name);
     }
 
     private static function malformed(): HttpException

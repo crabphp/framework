@@ -14,7 +14,7 @@ namespace Crab\Commands;
  */
 final class DescribeText
 {
-    private const LEGEND = '# The application, from `php cua describe`. Types are TypeScript notation: `name?:` may be omitted, `| null` may be null. Limits in parentheses are JSON Schema keywords and are inclusive.';
+    private const LEGEND = '# The application, from `php cua describe`. Types are TypeScript notation: `name?:` may be omitted, `| null` may be null. Limits in parentheses are JSON Schema keywords and are inclusive; a file adds minBytes, maxBytes and mediaTypes.';
     private const JSON = JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_PRESERVE_ZERO_FRACTION;
     private const LIMITS = [
         'format',
@@ -25,6 +25,9 @@ final class DescribeText
         'maxLength',
         'minItems',
         'maxItems',
+        'minBytes',
+        'maxBytes',
+        'mediaTypes',
     ];
 
     /**
@@ -117,6 +120,7 @@ final class DescribeText
         $nullable = in_array('null', $types, true);
         $types = array_values(array_diff($types, ['null']));
         $type = match (true) {
+            ($schema['format'] ?? null) === 'binary' => 'file',
             isset($schema['enum']) => implode(' | ', array_map(self::json(...), $schema['enum'])),
             isset($schema['properties']) => self::object($schema),
             $types === ['array'] && isset($schema['items']) => 'Array<' . self::type($schema['items']) . '>',
@@ -125,7 +129,9 @@ final class DescribeText
             default => ['integer' => 'int', 'number' => 'float', 'boolean' => 'bool'][$types[0]] ?? $types[0],
         };
         $limits = [];
-        foreach (array_intersect_key($schema, array_flip(self::LIMITS)) as $name => $limit) {
+        // A file is its own type, not text of a format.
+        $shown = ($schema['format'] ?? null) === 'binary' ? array_diff_key($schema, ['format' => true]) : $schema;
+        foreach (array_intersect_key($shown, array_flip(self::LIMITS)) as $name => $limit) {
             $limits[] = "{$name}=" . self::json($limit);
         }
         foreach ($schema['x-rules'] ?? [] as $rule) {

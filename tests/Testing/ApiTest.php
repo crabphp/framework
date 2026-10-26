@@ -10,6 +10,7 @@ use Crab\Contracts\Auth\Identity;
 use Crab\Contracts\Auth\IdentityResolver;
 use Crab\Contracts\Auth\TokenStore;
 use Crab\Contracts\Clock\Clock;
+use Crab\Contracts\HttpClient\File;
 use Crab\Http\ClosureHandler;
 use Crab\Http\HttpException;
 use Crab\Http\Response;
@@ -373,6 +374,69 @@ final class ApiTest extends TestCase
      * Shows client options through a handler without needing application
      * wiring or a real authentication store.
      */
+    public function testAFormFilesAndRawBytesAreSentThroughTheRequestParser(): void
+    {
+        $api = new Api(new ClosureHandler(static function (ServerRequestInterface $request): Response {
+            $files = [];
+            foreach ($request->getUploadedFiles() as $name => $file) {
+                $files[$name] = [
+                    $file->getClientFilename(),
+                    $file->getClientMediaType(),
+                    bin2hex((string) $file->getStream()),
+                ];
+            }
+            return Response::json([
+                'type' => explode(';', $request->getHeaderLine('Content-Type'))[0],
+                'fields' => $request->getParsedBody(),
+                'files' => $files,
+                'body' => $request->getHeaderLine('Content-Type') === 'application/octet-stream'
+                    ? bin2hex((string) $request->getBody())
+                    : null,
+            ]);
+        }));
+
+        self::assertSame(
+            [
+                'type' => 'application/x-www-form-urlencoded',
+                'fields' => ['name' => 'Ada', 'tags' => ['a', 'b']],
+                'files' => [],
+                'body' => null,
+            ],
+            $api->post('/', form: ['name' => 'Ada', 'tags' => ['a', 'b']])->json(),
+        );
+        self::assertSame(
+            [
+                'type' => 'multipart/form-data',
+                'fields' => ['name' => 'Ada'],
+                'files' => ['avatar' => ['me.png', 'image/png', '89504e47']],
+                'body' => null,
+            ],
+            // The boundary is the body's own, whatever Content-Type the test says.
+            $api->put(
+                '/',
+                headers: ['Content-Type' => 'text/plain'],
+                form: ['name' => 'Ada'],
+                files: [
+                    'avatar' => File::fromContents("\x89PNG", 'me.png', 'image/png'),
+                ],
+            )->json(),
+        );
+        self::assertSame(
+            '00ff0d0a',
+            $api->patch('/', headers: ['Content-Type' => 'application/octet-stream'], body: "\x00\xFF\r\n")->json(
+                'body',
+            ),
+        );
+    }
+
+    public function testARequestHasOneBody(): void
+    {
+        $this->expectExceptionMessage(
+            'A request has one body: give json:, a form (form: and files:) or body:, not several.',
+        );
+        self::echoApi()->post('/', ['name' => 'Ada'], body: 'raw');
+    }
+
     private static function echoApi(): Api
     {
         $handler = new ClosureHandler(static function (ServerRequestInterface $request): Response {

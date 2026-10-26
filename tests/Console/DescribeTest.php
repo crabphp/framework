@@ -12,10 +12,13 @@ use Crab\Http\Cors;
 use Crab\Validation\Data;
 use Crab\Validation\Email;
 use Crab\Validation\Fields;
+use Crab\Validation\FileSize;
 use Crab\Validation\Length;
 use Crab\Validation\ListOf;
+use Crab\Validation\MediaType;
 use Crab\Validation\Range;
 use PHPUnit\Framework\TestCase;
+use Psr\Http\Message\UploadedFileInterface;
 
 final class DescribeTest extends TestCase
 {
@@ -169,6 +172,10 @@ final class DescribeTest extends TestCase
             ->router
             ->post('/orders', static fn(DescribedOrder $order, DescribedUser $user): array => [])
             ->name('orders.place');
+        $app->router->post('/photos', static fn(string $title, #[ListOf(UploadedFileInterface::class)]
+            #[Length(max: 5)]
+            #[FileSize(max: 1_048_576)]
+            #[MediaType('image/*')] array $photos): null => null);
         $app->router->get('/', static fn(): string => 'hi');
         $stream = fopen('php://memory', 'w+b');
         self::assertSame(0, $app->console->run(['describe', 'routes'], new Output($stream, $stream)));
@@ -188,6 +195,8 @@ final class DescribeTest extends TestCase
               POST /orders -> Closure name=orders.place
                 body { lines: Array<{ sku: string; quantity: int (minimum=1) }> (minItems=1); note?: string | null (default=null) }
                 user: {$user}
+              POST /photos -> Closure
+                body { title: string; photos: Array<file (maxBytes=1048576, mediaTypes=["image/*"])> (maxItems=5) }
               GET / -> Closure
                 takes nothing
 

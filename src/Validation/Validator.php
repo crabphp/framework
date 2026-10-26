@@ -6,6 +6,7 @@ namespace Crab\Validation;
 
 use Crab\Contracts\Validation\Rule;
 use Crab\Contracts\Validation\Validator as ValidatorContract;
+use Psr\Http\Message\UploadedFileInterface;
 
 /**
  * Reads a class's constructor once and from then on builds objects of it
@@ -16,6 +17,7 @@ use Crab\Contracts\Validation\Validator as ValidatorContract;
  *     a backed enum              one of its values
  *     DateTimeImmutable          a date, or a date and time, as ISO 8601 text
  *     another class              an object, validated the same way
+ *     UploadedFileInterface      a file the data holds, received whole
  *     ?type                      also null, and the field may be left out
  *
  * A parameter with a default may be left out too. Fields the class does
@@ -118,7 +120,14 @@ final class Validator implements ValidatorContract
         $values = [];
         foreach ($properties as $property) {
             $field = $path . $property->name;
-            if (!array_key_exists($property->name, $data)) {
+            // A form's file input left empty is sent as a file that is not there.
+            $sent =
+                array_key_exists($property->name, $data)
+                && !(
+                    $data[$property->name] instanceof UploadedFileInterface
+                    && $data[$property->name]->getError() === UPLOAD_ERR_NO_FILE
+                );
+            if (!$sent) {
                 if ($property->required) {
                     $errors[$field][] = 'is required';
                 } elseif (!$property->hasDefault) {
@@ -237,8 +246,33 @@ final class Validator implements ValidatorContract
                 return $this->build($property->class, $value, $coerce, $field . '.', $errors);
             case Property::ARRAY:
                 return $this->list($property, $value, $coerce, $field, $errors);
+            case Property::FILE:
+                return self::file($value, $field, $errors);
         }
         throw new \LogicException("A property has the unknown type \"{$property->type}\".");
+    }
+
+    /**
+     * @param array<string, list<string>> $errors
+     */
+    private static function file(mixed $value, string $field, array &$errors): ?UploadedFileInterface
+    {
+        if (!$value instanceof UploadedFileInterface) {
+            $errors[$field][] = 'must be a file, sent as multipart/form-data';
+            return null;
+        }
+        $problem = match ($value->getError()) {
+            UPLOAD_ERR_OK => null,
+            UPLOAD_ERR_INI_SIZE, UPLOAD_ERR_FORM_SIZE => 'is larger than the server accepts',
+            UPLOAD_ERR_PARTIAL => 'was not received whole',
+            UPLOAD_ERR_NO_FILE => 'is required',
+            default => 'could not be received',
+        };
+        if ($problem !== null) {
+            $errors[$field][] = $problem;
+            return null;
+        }
+        return $value;
     }
 
     /**
@@ -316,6 +350,16 @@ final class Validator implements ValidatorContract
         if (!array_is_list($value)) {
             $errors[$field][] = 'must be a list';
             return null;
+        }
+        if ($property->items->type === Property::FILE) {
+            // A form's multiple file input left empty sends one file that is not there: no files.
+            $value = array_values(array_filter(
+                $value,
+                static fn(mixed $item): bool => !(
+                    $item instanceof UploadedFileInterface
+                    && $item->getError() === UPLOAD_ERR_NO_FILE
+                ),
+            ));
         }
         foreach ($property->rules as $rule) {
             if (!$rule instanceof Length) {
@@ -470,6 +514,12 @@ final class Validator implements ValidatorContract
                 $rules[] = $attribute->newInstance();
             }
         }
+        if ($items?->type === Property::FILE) {
+            // A file's rules on a list of files are each file's: #[MediaType('image/png')] array $photos.
+            $own = static fn(Rule $rule): bool => $rule instanceof FileSize || $rule instanceof MediaType;
+            $items = new Property($name, Property::FILE, rules: array_values(array_filter($rules, $own)));
+            $rules = array_values(array_filter($rules, static fn(Rule $rule): bool => !$own($rule)));
+        }
         if ($described && $fields === null) {
             throw new \LogicException(
                 "{$where} is declared as " . Data::class . ' and has no #[Fields] to say what its fields are.',
@@ -581,6 +631,9 @@ final class Validator implements ValidatorContract
         if ($name === \DateTimeInterface::class || $name === \DateTimeImmutable::class) {
             return [Property::DATE, \DateTimeImmutable::class];
         }
+        if ($name === UploadedFileInterface::class) {
+            return [Property::FILE, null];
+        }
         if (enum_exists($name)) {
             if (!is_subclass_of($name, \BackedEnum::class)) {
                 throw new \LogicException(
@@ -594,7 +647,9 @@ final class Validator implements ValidatorContract
             return [Property::OBJECT, $name];
         }
         throw new \LogicException(
-            "{$where} is declared as {$name}, which cannot be validated; use int, float, string, bool, array, an enum, DateTimeImmutable or a class.",
+            "{$where} is declared as {$name}, which cannot be validated; use int, float, string, bool, array, an enum, DateTimeImmutable, "
+            . UploadedFileInterface::class
+            . ' or a class.',
         );
     }
 }

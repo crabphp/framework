@@ -85,7 +85,8 @@
 - A signature is read when the route is added, never on a request, and one that cannot be honoured throws there, naming the route and saying what to do instead.
 - A route keeps the action it resolved for the worker's life, even when the container binding is `bind()`: an action holds no request state.
 - Data that does not fit is a 422 built by `Http\ErrorResponse` with every problem by field, returned and not thrown. JSON is taken as it is; only text sources (query string, route parameters) are converted to numbers and booleans. Fields an action does not declare are ignored and never reach it.
-- `Validation` knows nothing of HTTP or routing. A rule is an attribute implementing `Contracts\Validation\Rule`, which checks a value and says what is wrong with it.
+- `Validation` knows nothing of HTTP or routing, except PSR-7's `UploadedFileInterface` as a type. A rule is an attribute implementing `Contracts\Validation\Rule`, which checks a value and says what is wrong with it.
+- An uploaded file is a field typed `UploadedFileInterface`: the router puts a form's files among its fields, an empty file input counts as absent, and a route read from the query string refuses one when it is added. Its kind is read from its content (`MediaType`), never from what the client claims. On a list of files, `FileSize` and `MediaType` hold for each file and `Length` for the list.
 - A rule that cannot read a value refuses it with a message; it never treats an unreadable value as empty. `Pattern`'s `$` is the end of the text. A `float` refuses a value that is not finite, and a date accepts only the forms its message names (`2026-01-31`, `2026-01-31T12:00:00Z`), never a relative phrase such as `now`.
 - A typed list's `Length` bounds are checked after its shape and before any item is validated or made, so an oversized list costs one error, not one per item.
 - An action's input class, and every class inside it, is read when the route is added (`Validator::inspect()`), so one that cannot be validated stops startup.
@@ -177,6 +178,7 @@
 
 - A file in a request is never read into memory by the framework. The engine keeps a large body on disk, `Multipart` reads it through a window, and an `UploadedFile` is a `StreamSlice` of the place the file lies in. Do not turn an upload into a string to parse or to move it.
 - What is kept in memory is bounded: a form's fields together, the number of its parts, and the headers of one part.
+- A multipart body Crab sends, from the HTTP client or from `Testing\Api`, is written by `Http\Multipart::write()`. `Api` takes a body as the client does (`json:`, `form:` and `files:`, or `body:`, one of them), so a test sends what a client would and it goes through the same parser.
 - JSON from outside (a request body, a socket message, an answer the client reads) is refused before decoding when any object has more than 1,000 members, repeated names included, at any depth: a request is answered 413, a socket closes with 1009, and the client's `json()` throws `LengthException`.
 - The size a body may be and the time a client has to send it are settings, `server.max_body` and `server.body_timeout`, with the engine's defaults.
 

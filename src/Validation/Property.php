@@ -25,6 +25,10 @@ final readonly class Property
      * An object described field by field with #[Fields], which becomes a Data.
      */
     public const FIELDS = 'fields';
+    /**
+     * A file the request carries, as a PSR-7 uploaded file.
+     */
+    public const FILE = 'file';
 
     /**
      * @param string $type One of the constants above.

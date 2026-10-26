@@ -117,11 +117,12 @@ An action class extends nothing. Each route retains its resolved action callable
 | --- | --- |
 | Named as in the route's pattern | That route parameter, as `string`, `int`, `float` or `bool` |
 | Any other `int`, `float`, `string`, `bool`, `array`, enum or `DateTimeImmutable` | A field of the request's data, by its name |
+| `UploadedFileInterface` | A file the form carries, by its field's name; see [Uploaded files](requests.md#uploaded-files) |
 | One class | The input: all the fields in one object |
 | Typed as a PSR-7 server request | The request itself |
 | A class that implements `Identity` | The logged-in user |
 
-The request's data is the JSON body, or the query string for `GET`, `HEAD` and `DELETE`. Anything else in a signature is refused when the route is added.
+The request's data is the body, JSON or a form with its files, or the query string for `GET`, `HEAD` and `DELETE`. Anything else in a signature is refused when the route is added.
 
 ### Fields as parameters
 

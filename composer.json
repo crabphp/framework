@@ -22,6 +22,7 @@
         "crabphp/engine": "self.version"
     },
     "suggest": {
+        "ext-fileinfo": "The MediaType rule, which reads an uploaded file's kind from its content",
         "ext-pcntl": "Supervised parallel workers and Unix signals",
         "ext-posix": "Supervised worker termination and lifecycle control"
     },
