@@ -156,4 +156,43 @@ final class ContainerTest extends TestCase
         $container->bind(NeedsScalar::class, static fn() => new NeedsScalar('sqlite::memory:'));
         self::assertSame('sqlite::memory:', $container->get(NeedsScalar::class)->dsn);
     }
+
+    public function testAProblemIsFoundAlongWhatAnEntryNeedsWithoutMakingAnything(): void
+    {
+        $container = new Container();
+        $made = 0;
+        $container->singleton(Clock::class, static function () use (&$made): SystemClock {
+            ++$made;
+            return new SystemClock();
+        });
+        self::assertNull($container->problem(Mailer::class), 'An optional entry with no binding is passed over.');
+        self::assertSame(0, $made, 'A closure is not run to find out.');
+
+        self::assertSame(
+            'Crab\Tests\Container\NeedsMissing needs Crab\Tests\Container\Missing, which has no binding and is not a class that can be constructed.',
+            $container->problem(NeedsMissing::class),
+        );
+        self::assertSame(
+            'Crab\Tests\Container\NeedsScalar takes $dsn, which cannot be autowired; bind Crab\Tests\Container\NeedsScalar with a closure.',
+            $container->problem(NeedsScalar::class),
+        );
+        self::assertSame(
+            'Crab\Tests\Container\First needs Crab\Tests\Container\Second, which needs Crab\Tests\Container\First, which depends on itself.',
+            $container->problem(First::class),
+        );
+        $container->singleton('shape', Shape::class);
+        self::assertSame(
+            'shape is bound to Crab\Tests\Container\Shape, which has no binding and is not a class that can be constructed.',
+            $container->problem('shape'),
+        );
+
+        // What was sound is asked again once a binding changes.
+        $container->singleton(Missing::class, Shape::class);
+        self::assertStringContainsString(
+            'is bound to Crab\Tests\Container\Shape',
+            (string) $container->problem(NeedsMissing::class),
+        );
+        $container->instance(Missing::class, new class implements Missing {});
+        self::assertNull($container->problem(NeedsMissing::class));
+    }
 }

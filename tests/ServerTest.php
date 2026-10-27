@@ -42,7 +42,7 @@ final class ServerTest extends TestCase
         $autoload = dirname(__DIR__) . '/vendor/autoload.php';
         file_put_contents(
             $this->directory . '/cua',
-            "<?php\nrequire '{$autoload}';\n\$app = require __DIR__ . '/app.php';\n\$arguments = array_slice(\$argv, 1);\n\$status = \$app->console->run(\$arguments);\nexit(\$status);\n",
+            "<?php\nrequire '{$autoload}';\nexit(Crab\\Cua::run(__DIR__ . '/app.php', array_slice(\$argv, 1)));\n",
         );
         file_put_contents(
             $this->directory . '/app.php',
@@ -1485,6 +1485,35 @@ final class ServerTest extends TestCase
         self::assertSame(0, $this->cua('status')[0]);
     }
 
+    public function testABrokenReleaseKeepsTheServerInReachOfStatusAndStop(): void
+    {
+        self::assertSame(0, $this->cua('start', '--daemon', "--address={$this->address}")[0]);
+        $pid = $this->pid();
+        file_put_contents($this->directory . '/app.php', '<?php this is not PHP');
+
+        [$status, $output] = $this->cua('reload');
+        self::assertSame(1, $status);
+        self::assertStringStartsWith('The application cannot be loaded: ParseError: ', $output);
+        self::assertStringContainsString('A server running in the background is not affected', $output);
+        self::assertSame([$pid, 'one'], [$this->pid(), $this->get()]);
+
+        [$status, $output] = $this->cua('status');
+        self::assertSame(0, $status, $output);
+        self::assertStringContainsString('so this is from the files in storage/ alone: ParseError: ', $output);
+        self::assertStringContainsString("In the background on {$this->url}, pid {$pid}, up ", $output);
+        self::assertStringContainsString('Show the servers that are running', $this->cua('status', '--help')[1]);
+        self::assertSame(
+            1,
+            $this->cua('status', '--pid=storage/elsewhere.pid')[0],
+            'Another pid file names no server.',
+        );
+
+        [$status, $output] = $this->cua('stop');
+        self::assertSame(0, $status, $output);
+        self::assertStringContainsString("Stopped the server, pid {$pid}.\n", $output);
+        self::assertFalse(\Crab\Engine\Process\PidFile::running($pid));
+    }
+
     public function testARestartStopsAndStartsAndForceEndsOneThatWillNotStop(): void
     {
         $this->observeProcesses();
@@ -1556,7 +1585,7 @@ final class ServerTest extends TestCase
 
         file_put_contents($this->directory . '/app/routes.php', '<?php this is not PHP');
         $until("Restarted: app/routes.php changed.\n");
-        $until("The server stopped (status 255). Save a file to start it again.\n");
+        $until("The server stopped (status 1). Save a file to start it again.\n");
         self::assertNull($this->get());
 
         $this->version('three');

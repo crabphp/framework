@@ -54,6 +54,16 @@ final class MiddlewareStack implements MiddlewareStackContract, RequestHandlerIn
             : $layer::class, $this->middleware);
     }
 
+    /**
+     * The middleware given by name, which the container makes.
+     *
+     * @return list<string>
+     */
+    public function named(): array
+    {
+        return array_values(array_filter($this->middleware, is_string(...)));
+    }
+
     public function handle(ServerRequestInterface $request): ResponseInterface
     {
         return ($this->pipeline ?? $this->assemble())->handle($request);

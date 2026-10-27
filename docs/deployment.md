@@ -6,6 +6,8 @@
     - [In a container](#in-a-container)
     - [On a server you manage](#on-a-server-you-manage)
 - [Deploying new code](#deploying-new-code)
+    - [Services that cannot be made](#services-that-cannot-be-made)
+    - [When the new code does not load](#when-the-new-code-does-not-load)
 - [Finishing requests on stop](#finishing-requests-on-stop)
 - [How many workers](#how-many-workers)
 - [How many connections](#how-many-connections)
@@ -58,6 +60,47 @@ CMD ["php", "cua", "start", "--address=tcp://0.0.0.0:8080"]
 A container is replaced, not reloaded: a deploy starts new containers and stops the old ones, and the platform moves traffic between them. On SIGTERM the server gives its requests up to `server.drain` seconds to finish, then cuts remaining connections and stops.
 
 Point the platform's health check at the [health path](configuration.md#a-health-check), `GET /up`, after asking for it with `withRouting(health: '/up')` in `app.php`.
+
+#### Ready for traffic
+
+A platform that tells *alive* from *ready* restarts a container that fails the first check, and only stops sending traffic to one that fails the second. Keep the two apart. `/up` says the worker answers. A readiness action can also ask the database and the cache:
+
+```php
+namespace App\Actions;
+
+use Crab\Contracts\Cache\Cache;
+use Crab\Contracts\Database\Database;
+use Crab\Http\HttpException;
+
+final readonly class Ready
+{
+    public function __construct(
+        private Database $db,
+        private Cache $cache,
+    ) {}
+
+    public function handle(): array
+    {
+        try {
+            $this->db->select('SELECT 1');
+            $this->cache->get('ready');
+        } catch (\Throwable $error) {
+            // Logged with its cause; the client is told no more than this.
+            throw new HttpException(503, 'Not ready.', previous: $error);
+        }
+        return ['status' => 'ready'];
+    }
+}
+```
+
+```php
+// routes/web.php
+Route::get('/ready', Ready::class);
+```
+
+Point the readiness probe at `GET /ready` and the liveness probe at `GET /up`. When the database is down, every container stops taking traffic and none is restarted, since restarting would not bring the database back. Ask only what every request needs: a mail provider or a payment API that is down should fail the requests that use it, not take the whole service out of rotation.
+
+Give the probe a short timeout of its own, a second or two. The database's `timeout` setting bounds connecting and waiting for a free connection; a query has no deadline of its own, so a database that accepts the connection and then hangs is caught by the probe's timeout.
 
 ### On a server you manage
 
@@ -133,7 +176,7 @@ php cua reload
 The server starts a new process, with the code and configuration as they are now, on the socket it already listens on. When every worker of the new process accepts connections, the old process gives its requests up to its `server.drain` limit to finish and stops.
 
 - **Connections keep being accepted.** The old and the new process accept from the same socket. Requests already in flight finish within the old workers' `server.drain` limit; connections still open at that limit are cut.
-- **A reload that fails at startup leaves the old process serving.** Settings that do not fit are refused before the running server is touched; syntax errors, middleware construction and provider start hooks can fail here; lazily made action services can still fail after takeover.
+- **A reload that fails at startup leaves the old process serving.** Settings that do not fit are refused before the running server is touched. So is a service the code names and the container cannot make, as described in [Services that cannot be made](#services-that-cannot-be-made). Syntax errors, middleware construction and provider start hooks fail here too. What a constructor or a closure binding does when it runs is still found by the first request that needs it.
 - **It starts the server as it was started.** An `--address` or `--workers` typed to `start` is kept by every `reload` and `restart` after it; one left to `server.address` or `server.workers` follows the configuration as it is now. Typing one to `reload` changes it without refusing a connection, and it is kept from then on:
 
 ```sh
@@ -144,7 +187,46 @@ php cua reload --workers=8           # eight from now on, with no gap
 
 A new `--address` is bound before the new process starts, and the old one lets the old address go when it stops.
 
-The console loads the application before running a command. If broken files prevent that bootstrap, `reload`, `status`, `stop` and help cannot contact the existing server. Restore the last working application files and retry; with release directories, run the command from the previous working release using the same shared `storage/`. A bootstrap error does not mean the running server stopped.
+### Services that cannot be made
+
+Before a server starts, and before a reload hands over, the framework follows what each piece of unattended code needs from the container, without making any of it:
+
+- each route's action, and the middleware given by name;
+- every listener;
+- every scheduled task, job and command.
+
+An interface nothing binds, a class that no longer exists, or a constructor parameter that cannot be autowired stops the start or the reload. Every problem is listed at once, each with where it is named:
+
+```text
+The server was not reloaded, and goes on serving as it was: 2 services cannot be made:
+  Route POST /roms: App\Actions\ImportRom needs App\RomScanner, which has no binding and is not a class that can be constructed.
+  A listener for App\Events\RomImported: App\Listeners\IndexRom needs App\Search\Index, which is bound to App\Search\Engine, which takes $url, which cannot be autowired; bind App\Search\Engine with a closure.
+```
+
+`php cua describe app` lists the same problems, so a CI step can find them before a deploy. Nothing is constructed, so no constructor runs and nothing opens a connection. A closure binding is taken on trust, since only running it would tell. A job pushed from code is not named anywhere until it is pushed, so it is not checked. Commands typed at the console are not checked either: they fail in front of whoever typed them.
+
+### When the new code does not load
+
+`php cua` loads the application before it runs a command. When the new code cannot be loaded, because of a syntax error or a provider that throws, `status` and `stop` still run, from the files the server keeps in `storage/`:
+
+```sh
+php cua status
+# The application cannot be loaded, so this is from the files in storage/ alone: ParseError: ...
+# In the background on http://127.0.0.1:8080, pid 4120, up 2h 5m
+```
+
+Every other command, `reload` among them, says why the application did not load and stops. The server in the background is not touched: it goes on serving the code it started with until you fix the files and `reload`, or `stop` it.
+
+Without the application, `status` and `stop` cannot read `server.pid`, so they look in `storage/crab.pid`. When the setting puts the file elsewhere, give the path with `--pid`:
+
+```sh
+php cua stop --pid=/srv/api/shared/crab.pid
+```
+
+Both commands check that the process named in the file is the server it recorded, started at the time it recorded. A stale file whose number now belongs to another process is refused, not signalled.
+
+> [!NOTE]
+> An application whose `cua` predates this still loads the application first, and `status` fails with it. Replace the last line of `cua` with `exit(Crab\Cua::run(__DIR__ . '/app.php', array_slice($argv, 1)));`.
 
 > [!NOTE]
 > Sending the server SIGUSR1 replaces its workers one at a time with the code it already has. It does not load new code; `reload` does.

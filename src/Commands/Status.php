@@ -4,17 +4,18 @@ declare(strict_types=1);
 
 namespace Crab\Commands;
 
-use Crab\App;
 use Crab\Contracts\Console\Command;
 use Crab\Contracts\Console\Input;
 use Crab\Contracts\Console\Output;
 use Crab\Server;
+use Crab\ServerFiles;
 
 /**
  * Shows every server of the application that is running, in the
  * foreground or the background, from the file each keeps of itself: its
  * workers, how long they have been up, what they have handled, and
- * whether any has had to be started again.
+ * whether any has had to be started again. It needs only those files,
+ * and runs when the application cannot be loaded; see Cua.
  */
 final readonly class Status implements Command
 {
@@ -24,7 +25,7 @@ final readonly class Status implements Command
     private const SILENT = 5.0;
 
     public function __construct(
-        private App $app,
+        private ServerFiles $files,
     ) {}
 
     public function description(): string
@@ -33,19 +34,21 @@ final readonly class Status implements Command
             Show the servers that are running, their workers and what they have handled
 
             Options:
-              --json   Print what each server says of itself, as JSON
+              --json                   Print what each server says of itself, as JSON
+              --pid=storage/crab.pid   The server whose process id file this is; default "server.pid"
 
             Lists the servers in the foreground and the background, `queue:work`
             and `schedule:work` too. The exit status is 0 when one is running
-            and 1 when none is.
+            and 1 when none is. It runs when the application cannot be loaded, as
+            after a deploy of broken code, from the files the servers keep in storage/.
             TEXT;
     }
 
     public function handle(Input $input, Output $output): int
     {
-        $server = new Server($this->app);
-        $background = $server->running();
-        $servers = $server->stats();
+        $files = Stop::files($this->files, $input);
+        $background = $files->running();
+        $servers = $files->stats();
         if ($input->flag('json')) {
             $output->line((string) json_encode(
                 ['background' => $background, 'servers' => $servers],
@@ -60,7 +63,7 @@ final readonly class Status implements Command
             }
             // Started by a version that kept no stats, or with nowhere to keep them.
             $output->line("A server is running in the background, pid {$background}.");
-            $output->line("Its output goes to {$server->logFile()}.");
+            $output->line("Its output goes to {$files->log}.");
             return 0;
         }
         $now = microtime(true);
@@ -68,12 +71,12 @@ final readonly class Status implements Command
             if ($i > 0) {
                 $output->line();
             }
-            $output->line($this->heading($server, $running, $now));
+            $output->line($this->heading($files, $running, $now));
             $output->line();
             $output->table(self::rows($running['workers'] ?? [], $now), '  ');
             if (($running['about']['mode'] ?? null) === 'background') {
                 $output->line();
-                $output->line("  Its output goes to {$server->logFile()}.");
+                $output->line("  Its output goes to {$files->log}.");
             }
         }
         return 0;
@@ -84,7 +87,7 @@ final readonly class Status implements Command
      *
      * @param array<string, mixed> $running
      */
-    private function heading(Server $server, array $running, float $now): string
+    private function heading(ServerFiles $files, array $running, float $now): string
     {
         $about = $running['about'] ?? [];
         $mode = $about['mode'] ?? 'foreground';
@@ -103,7 +106,7 @@ final readonly class Status implements Command
             // The keeper's pid is the one `stop` and `reload` act on, and it was started with the service;
             // this process is the latest a reload put under it.
             $pid = $about['keeper'];
-            $kept = $server->pidFile()->started($pid);
+            $kept = $files->pidFile()->started($pid);
             if ($kept !== null && ($started - $kept) > 1.0) {
                 $reloaded = $started;
                 $started = $kept;

@@ -374,6 +374,30 @@ final class Router implements RouterContract
         return $this->add('DELETE', $pattern, $action);
     }
 
+    /**
+     * By route, "GET /orders", what the container makes for a request to
+     * it: its action's class or the entry that handles it, and the
+     * middleware around it that is given by name, its groups' first.
+     *
+     * @return array<string, list<string>>
+     */
+    public function entries(): array
+    {
+        $entries = [];
+        foreach ($this->declared as $key => [$handler, $around]) {
+            $entry = match (true) {
+                $handler instanceof ActionHandler => $handler->entry(),
+                $handler instanceof ContainerHandler => $handler->id,
+                default => null,
+            };
+            $entries[$key] = [
+                ...($entry === null ? [] : [$entry]),
+                ...array_values(array_filter($around, is_string(...))),
+            ];
+        }
+        return $entries;
+    }
+
     public function routes(): array
     {
         return array_values($this->routes);

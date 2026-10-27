@@ -113,7 +113,7 @@ $ php cua start
   cache.stroe is not a setting; cache takes store, directory, table, database, prefix and ttl. Did you mean cache.store?
 ```
 
-The same check runs for `reload` and `restart` before they touch the running server, so a deploy with a broken setting leaves the old server serving. `queue:work` and `schedule:work` run it too, and a component checks its own section when its service is first made, so a console command or a test meets the same message. `php cua describe` lists the problems under the application's name.
+The same check runs for `reload` and `restart` before they touch the running server, so a deploy with a broken setting leaves the old server serving. `queue:work` and `schedule:work` run it too, and a component checks its own section when its service is first made, so a console command or a test meets the same message. `php cua describe` lists the problems under the application's name, with any [service that cannot be made](deployment.md#services-that-cannot-be-made).
 
 What the check takes:
 

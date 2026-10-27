@@ -60,7 +60,7 @@ final readonly class Start implements Command
                 $output->error('--single serves in this process, so it cannot be combined with --daemon.');
                 return 1;
             }
-            $running = $server->running();
+            $running = $server->files()->running();
             if ($running !== null) {
                 $output->error(
                     "A server is already running in the background, pid {$running}. Use `reload` to give it new code, or `stop` to end it.",

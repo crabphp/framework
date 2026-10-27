@@ -23,11 +23,13 @@ use Crab\Commands\Stop;
 use Crab\Config\Config;
 use Crab\Console\Console;
 use Crab\Container\Container;
+use Crab\Container\ServicesException;
 use Crab\Contracts\Broadcast\Broadcaster;
 use Crab\Contracts\Clock\Clock as ClockContract;
 use Crab\Contracts\Config\Config as ConfigContract;
 use Crab\Contracts\Console\Console as ConsoleContract;
 use Crab\Contracts\Container\Container as ContainerContract;
+use Crab\Contracts\Events\Dispatcher as DispatcherContract;
 use Crab\Contracts\Http\ErrorRenderer;
 use Crab\Contracts\Http\Factory as FactoryContract;
 use Crab\Contracts\Http\MiddlewareStack as MiddlewareStackContract;
@@ -36,6 +38,7 @@ use Crab\Contracts\Provider;
 use Crab\Contracts\Routing\Router as RouterContract;
 use Crab\Contracts\Routing\Urls as UrlsContract;
 use Crab\Contracts\Runner;
+use Crab\Contracts\Schedule\Schedule as ScheduleContract;
 use Crab\Contracts\Servers as ServersContract;
 use Crab\Contracts\Validation\Validator as ValidatorContract;
 use Crab\Contracts\WebSocket\Channels as SocketChannels;
@@ -63,6 +66,7 @@ use Crab\Queue\QueueProvider;
 use Crab\Routing\Router;
 use Crab\Routing\Urls;
 use Crab\Schedule\ScheduleProvider;
+use Crab\Schedule\Task;
 use Crab\Storage\StorageProvider;
 use Crab\Validation\Validator;
 use Crab\WebSocket\Connections;
@@ -202,8 +206,8 @@ final class App implements RequestHandlerInterface, Runner
                 'drain' => 5.0,
                 'max_connections' => 512,
                 'loop' => 'select',
-                'pid' => 'storage/crab.pid',
-                'log' => 'storage/logs/server.log',
+                'pid' => ServerFiles::PID,
+                'log' => ServerFiles::LOG,
             ],
             [
                 'address' => [
@@ -238,6 +242,8 @@ final class App implements RequestHandlerInterface, Runner
         $container->instance(self::class, $this);
         // What runs workers that serve no requests, for a provider's commands.
         $container->instance(Runner::class, $this);
+        // What `status` and `stop` act on, where the settings put it.
+        $container->singleton(ServerFiles::class, fn(): ServerFiles => new Server($this)->files());
         $this->servers = new Servers();
         $container->instance(ServersContract::class, $this->servers);
         $container->singleton(Servers::class, ServersContract::class);
@@ -418,6 +424,69 @@ final class App implements RequestHandlerInterface, Runner
     }
 
     /**
+     * What the application names for the container to make and the
+     * container could not make, each said with where it is named: "Route
+     * GET /roms: App\Actions\ImportRom needs App\RomScanner, which has no
+     * binding and is not a class that can be constructed." It covers what
+     * runs with no one watching: each route's action and the middleware
+     * given by name, every listener, and every scheduled task, job and
+     * command. A command typed at the console says its own failure to
+     * whoever typed it. Nothing is made, so a constructor's work is not done
+     * here, and an entry bound to a closure is taken as one that can be
+     * made. A job pushed only from code is not named until it is pushed,
+     * and is not covered.
+     *
+     * @return list<string>
+     */
+    public function unmade(): array
+    {
+        if (!$this->container instanceof Container) {
+            // Another container keeps its own counsel.
+            return [];
+        }
+        // Each entry once, where it is first named.
+        $named = [];
+        foreach ($this->stack->named() as $middleware) {
+            $named[$middleware] ??= 'The middleware around every request';
+        }
+        foreach ($this->routes->entries() as $route => $entries) {
+            foreach ($entries as $entry) {
+                $named[$entry] ??= "Route {$route}";
+            }
+        }
+        if ($this->container->has(DispatcherContract::class)) {
+            foreach ($this->container->get(DispatcherContract::class)->listeners() as $event => $listeners) {
+                foreach ($listeners as $listener) {
+                    if ($listener === 'Closure') {
+                        continue;
+                    }
+                    $named[$listener] ??= "A listener for {$event}";
+                }
+            }
+        }
+        if ($this->container->has(ScheduleContract::class)) {
+            $commands = $this->console instanceof Console ? $this->console->entries() : [];
+            foreach ($this->container->get(ScheduleContract::class)->tasks() as $task) {
+                if (!$task instanceof Task) {
+                    continue;
+                }
+                $entry = $task->entry() ?? $commands[(string) $task->command()] ?? null;
+                if ($entry !== null) {
+                    $named[$entry] ??= "The scheduled task {$task->named()}";
+                }
+            }
+        }
+        $problems = [];
+        foreach ($named as $entry => $where) {
+            $problem = $this->container->problem((string) $entry);
+            if ($problem !== null) {
+                $problems[] = "{$where}: {$problem}";
+            }
+        }
+        return $problems;
+    }
+
+    /**
      * A runtime serving this application over HTTP; the `start` command
      * runs it. Each worker assembles its middleware and starts the worker
      * providers as it starts, so a misconfigured application fails then
@@ -493,6 +562,8 @@ final class App implements RequestHandlerInterface, Runner
                 'The local broadcast carrier reaches one HTTP process only. Set broadcast.carrier to redis and register RedisProvider before serving multiple workers or queue/schedule servers.',
             );
         }
+        // Every service that cannot be made, at once, after what is said more precisely above.
+        $this->checkServices();
         $groups = $this->alongside($with);
         // Long enough for the slowest of them to finish what it has in hand.
         $runtime = new Runtime(
@@ -543,6 +614,14 @@ final class App implements RequestHandlerInterface, Runner
             })
             ->onFailure($this->report(...));
         return $runtime;
+    }
+
+    private function checkServices(): void
+    {
+        $problems = $this->unmade();
+        if ($problems !== []) {
+            throw new ServicesException($problems);
+        }
     }
 
     /**
@@ -894,8 +973,10 @@ final class App implements RequestHandlerInterface, Runner
         if ($single && $workers !== 1) {
             throw new \InvalidArgumentException('Work that runs in this one process has one worker.');
         }
-        // Before anything starts, so that every setting that does not fit is said at once.
+        // Before anything starts, so that every setting that does not fit, and every service that
+        // cannot be made, is said at once.
         $this->config->check();
+        $this->checkServices();
         $runtime = new Runtime(shutdownTimeout: $shutdownTimeout);
         $this->group($runtime, new Workers($group, $work, $workers));
         new Server($this)->keepStats($runtime, ['mode' => $single ? 'single' : 'foreground']);
@@ -907,8 +988,10 @@ final class App implements RequestHandlerInterface, Runner
         if ($groups === []) {
             throw new \InvalidArgumentException('There is no group of workers to run.');
         }
-        // Before anything starts, so that every setting that does not fit is said at once.
+        // Before anything starts, so that every setting that does not fit, and every service that
+        // cannot be made, is said at once.
         $this->config->check();
+        $this->checkServices();
         $runtime = new Runtime(shutdownTimeout: $shutdownTimeout);
         foreach ($groups as $workers) {
             $this->group($runtime, $workers);

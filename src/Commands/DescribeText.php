@@ -60,7 +60,7 @@ final class DescribeText
     {
         $problems = '';
         foreach ($app['problems'] ?? [] as $problem) {
-            $problems .= "\n  does not fit: {$problem}";
+            $problems .= "\n  problem: {$problem}";
         }
         return implode(', ', [
             'app ' . self::json($app['name']),

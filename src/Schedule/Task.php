@@ -24,12 +24,32 @@ final class Task implements TaskContract
     /**
      * @param string $name What the task is listed and logged as.
      * @param \Closure(?ContainerInterface): void $run Does the task's work.
+     * @param string|null $entry The class the container makes to do it, a task's or a job's.
+     * @param string|null $command The name of the console command it runs.
      */
     public function __construct(
         private string $name,
         private readonly \Closure $run,
+        private readonly ?string $entry = null,
+        private readonly ?string $command = null,
     ) {
         $this->cron = new Cron('* * * * *');
+    }
+
+    /**
+     * The class the container makes to do the task; null for a closure or a command.
+     */
+    public function entry(): ?string
+    {
+        return $this->entry;
+    }
+
+    /**
+     * The name of the console command the task runs; null for any other task.
+     */
+    public function command(): ?string
+    {
+        return $this->command;
     }
 
     public function cron(string $expression): static

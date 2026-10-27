@@ -537,6 +537,14 @@ final class ActionHandler implements RequestHandlerInterface
     }
 
     /**
+     * The class the container makes for the action; null for a closure.
+     */
+    public function entry(): ?string
+    {
+        return $this->method[0] ?? null;
+    }
+
+    /**
      * The action class's method as a closure, made in the worker on the
      * first request so that its services are the worker's own.
      */

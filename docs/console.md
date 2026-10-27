@@ -197,6 +197,8 @@ Print results with `line()` and problems with `error()`, so that a script can pi
 | `config:publish` | Writes a framework section's complete configuration file into `config/` |
 | `describe` | Prints the whole application for coding agents, as text or `--json` |
 
+`status` and `stop` run even when the application cannot be loaded, as described in [When the new code does not load](deployment.md#when-the-new-code-does-not-load); `--pid` points them at another server's process id file.
+
 `stop` and the stop phase of `restart` use the running server's remaining allowance, even after its configuration changes. `--timeout` overrides the graceful wait. To cut in-flight requests and end every server process immediately, use:
 
 ```sh
@@ -224,6 +226,8 @@ php cua describe                  # everything, as text
 php cua describe routes commands  # some sections
 php cua describe --json           # the same as JSON
 ```
+
+Before anything else, under the application's name, it lists what `start` would refuse: settings that do not fit, and services the code names that the container cannot make. A CI step can run `php cua describe app` and fail the build on a `problem:` line. See [Services that cannot be made](deployment.md#services-that-cannot-be-made).
 
 The text is one thing to a line, with each route's input in TypeScript notation and its limits by JSON Schema's names. Agents read it as well as JSON or TOML, in fewer tokens:
 

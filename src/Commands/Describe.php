@@ -106,7 +106,7 @@ final readonly class Describe implements Command
             'framework' => $version,
         ];
         // What `start` would refuse, said first, since nothing runs until it is fixed.
-        $problems = $this->app->config->problems();
+        $problems = [...$this->app->config->problems(), ...$this->app->unmade()];
         if ($problems !== []) {
             $described['problems'] = $problems;
         }

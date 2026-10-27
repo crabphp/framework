@@ -26,7 +26,15 @@ try {
             "Application file \"{$argv[1]}\" does not exist. Pass an existing application file returning Crab\\App or Crab\\Engine\\Runtime.",
         );
     }
-    $runtime = require $file;
+    try {
+        $runtime = require $file;
+    } catch (Throwable $error) {
+        if (!isset($argv[2]) || $argv[2] === '--single') {
+            throw $error;
+        }
+        // A command of an application that cannot be loaded: `status` and `stop` still run.
+        exit(Crab\Cua::unloaded(dirname($file), $error, array_slice($argv, 2)));
+    }
     if ($runtime instanceof App) {
         exit($runtime->console->run(array_slice($argv, 2)));
     }

@@ -228,7 +228,7 @@ final class DescribeTest extends TestCase
         self::assertSame(0, $app->console->run(['describe', 'app'], new Output($stream, $stream)));
         rewind($stream);
         self::assertStringContainsString(
-            "path none\n  does not fit: log.level is \"loud\"; it takes",
+            "path none\n  problem: log.level is \"loud\"; it takes",
             (string) stream_get_contents($stream),
         );
     }

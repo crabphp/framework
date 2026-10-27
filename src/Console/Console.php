@@ -9,6 +9,7 @@ use Crab\Contracts\Console\Command;
 use Crab\Contracts\Console\Console as ConsoleContract;
 use Crab\Contracts\Console\Input as InputContract;
 use Crab\Contracts\Console\Output as OutputContract;
+use Crab\Contracts\Container\MissingServices;
 use Psr\Container\ContainerInterface;
 
 /**
@@ -59,6 +60,24 @@ final class Console implements ConsoleContract
         return $this;
     }
 
+    /**
+     * By name, the commands given as a class that the container has not made yet.
+     *
+     * @return array<string, string>
+     */
+    public function entries(): array
+    {
+        $entries = [];
+        foreach ($this->commands as $name => $command) {
+            // One already made, by a run or a description, was made.
+            if (!is_string($command)) {
+                continue;
+            }
+            $entries[(string) $name] = $command;
+        }
+        return $entries;
+    }
+
     public function has(string $name): bool
     {
         return isset($this->commands[$name]);
@@ -94,7 +113,7 @@ final class Console implements ConsoleContract
                 return 0;
             }
             return $this->resolve($name)->handle(new Input($arguments), $output);
-        } catch (InvalidSettings $error) {
+        } catch (InvalidSettings|MissingServices $error) {
             // Written for whoever runs the command; where it was thrown would only hide it.
             $output->error($error->getMessage());
             return 1;

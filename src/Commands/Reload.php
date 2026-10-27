@@ -41,7 +41,7 @@ final readonly class Reload implements Command
         Start::checkTyped($this->app, $input);
         $server = new Server($this->app);
         // As the server was started, but for what is typed now.
-        $kept = $server->given();
+        $kept = $server->files()->given();
         $address = Start::address($this->app, $input, $kept['address'] ?? null);
         $workers = Start::workers($this->app, $input, $kept['workers'] ?? null);
         $this->app->config->check();

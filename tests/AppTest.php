@@ -59,6 +59,29 @@ final readonly class CountActionConstruction
     }
 }
 
+interface RomScanner {}
+
+final readonly class ImportRom
+{
+    public function __construct(
+        private RomScanner $scanner,
+    ) {}
+
+    public function handle(): array
+    {
+        return ['scanner' => $this->scanner::class];
+    }
+}
+
+final readonly class IndexRoms
+{
+    public function __construct(
+        public RomScanner $scanner,
+    ) {}
+
+    public function handle(object $event): void {}
+}
+
 final class GreetHandler implements RequestHandlerInterface
 {
     public function __construct(
@@ -215,6 +238,50 @@ final class AppTest extends TestCase
         }
         $this->expectException(\LogicException::class);
         $app->register(Greeter::class);
+    }
+
+    public function testServicesThatCannotBeMadeAreRefusedBeforeAWorkerStarts(): void
+    {
+        $app = new App()->register(
+            \Crab\Events\EventsProvider::class,
+            \Crab\Queue\QueueProvider::class,
+            \Crab\Schedule\ScheduleProvider::class,
+        );
+        $app->router->post('/roms', ImportRom::class);
+        $app->router->get('/greet/{name}', GreetHandler::class)->middleware(TagMiddleware::class);
+        $app->container->get(\Crab\Contracts\Events\Dispatcher::class)->listen(\stdClass::class, IndexRoms::class);
+        $app
+            ->container
+            ->get(\Crab\Contracts\Schedule\Schedule::class)
+            ->job(ImportRom::class)
+            ->everyMinute();
+        $missing = 'Crab\\Tests\\ImportRom needs Crab\\Tests\\RomScanner, which has no binding and is not a class that can be constructed.';
+        $problems = [
+            "Route POST /roms: {$missing}",
+            'Route GET /greet/{name}: Crab\\Tests\\GreetHandler needs Crab\\Tests\\Greeter, which takes $greeting, which cannot be autowired; bind Crab\\Tests\\Greeter with a closure.',
+            'A listener for stdClass: Crab\\Tests\\IndexRoms needs Crab\\Tests\\RomScanner, which has no binding and is not a class that can be constructed.',
+        ];
+        self::assertSame($problems, $app->unmade(), 'The job is named by the route first; each is said once.');
+
+        try {
+            $app->runtime('tcp://127.0.0.1:0');
+            self::fail('An application whose services cannot be made was given a runtime.');
+        } catch (\Crab\Contracts\Container\MissingServices $error) {
+            self::assertSame($problems, $error->problems());
+            self::assertStringStartsWith("3 services cannot be made:\n  Route POST /roms: ", $error->getMessage());
+        }
+        try {
+            $app->run('import', static function (): void {}, single: true);
+            self::fail('Workers that serve no requests were run.');
+        } catch (\Crab\Contracts\Container\MissingServices) {
+        }
+
+        $app->register(GreeterProvider::class);
+        $app->container->singleton(
+            RomScanner::class,
+            static fn(): RomScanner => throw new \LogicException('Not made.'),
+        );
+        self::assertSame([], $app->unmade(), 'A closure is trusted, and not run.');
     }
 
     public function testFailuresAreAnsweredAndLoggedThroughConfiguration(): void

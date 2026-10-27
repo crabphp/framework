@@ -35,10 +35,14 @@ final class Schedule implements ScheduleContract
                 "{$task} was scheduled, and it is not a class with a handle() method. Give a closure, or a class whose constructor takes services and whose handle() does the work.",
             );
         }
-        return $this->tasks[] = new Task($task, static function (?ContainerInterface $container) use ($task): void {
-            $object = $container?->has($task) ? $container->get($task) : new $task();
-            $object->handle();
-        });
+        return $this->tasks[] = new Task(
+            $task,
+            static function (?ContainerInterface $container) use ($task): void {
+                $object = $container?->has($task) ? $container->get($task) : new $task();
+                $object->handle();
+            },
+            $task,
+        );
     }
 
     public function command(string $name, string ...$arguments): Task
@@ -57,6 +61,7 @@ final class Schedule implements ScheduleContract
                     throw new \RuntimeException("The scheduled command \"{$name}\" ended with status {$status}.");
                 }
             },
+            command: $name,
         );
     }
 
@@ -65,17 +70,18 @@ final class Schedule implements ScheduleContract
         if (!class_exists($job) || !method_exists($job, 'handle')) {
             throw new \LogicException("{$job} was scheduled as a job, and it is not a class with a handle() method.");
         }
-        return $this->tasks[] = new Task("job {$job}", static function (?ContainerInterface $container) use (
+        return $this->tasks[] = new Task(
+            "job {$job}",
+            static function (?ContainerInterface $container) use ($job, $data): void {
+                if ($container === null || !$container->has(Queue::class)) {
+                    throw new \LogicException(
+                        "The scheduled job {$job} is pushed onto the queue, and there is none: register the queue provider, QueueProvider, or schedule the work with call().",
+                    );
+                }
+                $container->get(Queue::class)->push($job, ...$data);
+            },
             $job,
-            $data,
-        ): void {
-            if ($container === null || !$container->has(Queue::class)) {
-                throw new \LogicException(
-                    "The scheduled job {$job} is pushed onto the queue, and there is none: register the queue provider, QueueProvider, or schedule the work with call().",
-                );
-            }
-            $container->get(Queue::class)->push($job, ...$data);
-        });
+        );
     }
 
     /**

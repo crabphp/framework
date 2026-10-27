@@ -70,10 +70,17 @@ final class ValueOptionsTest extends TestCase
                 throw new \RuntimeException('The command reached the server pid setting.');
             }
         };
+        if ($command === 'stop') {
+            // `stop` is given the server's files as it is made, and needs nothing else of the application;
+            // the boundary is then the file, naming this process, which is no server to stop.
+            $pid = $this->directory . '/crab.pid';
+            file_put_contents($pid, getmypid() . "\n");
+        }
         $app = new App(new Config(['server' => ['pid' => $pid]]));
         [$status, $output] = $this->command($app, [$command, ...$arguments]);
 
-        self::assertSame(0, $pid->reads, $output);
+        self::assertSame(0, is_string($pid) ? 0 : $pid->reads, $output);
+        self::assertStringNotContainsString('No server is running', $output);
         self::assertSame(1, $status, $output);
         self::assertStringContainsString($message, $output);
         self::assertStringContainsString('--timeout=', $output);

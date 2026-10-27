@@ -39,12 +39,12 @@ final readonly class Restart implements Command
         $seconds = Stop::timeout($input);
         $server = new Server($this->app);
         // As the server was started, but for what is typed now.
-        $kept = $server->given();
+        $kept = $server->files()->given();
         $address = Start::address($this->app, $input, $kept['address'] ?? null);
         $workers = Start::workers($this->app, $input, $kept['workers'] ?? null);
         $this->app->config->check();
         try {
-            $old = $server->stop($seconds, $input->flag('force'));
+            $old = $server->files()->stop($seconds, $input->flag('force'));
             if ($old !== null) {
                 $output->line("Stopped the server, pid {$old}.");
             }
