@@ -134,7 +134,7 @@ final class SettingsTest extends TestCase
                 'cache.stroe is not a setting; cache takes store, directory, table, database, prefix and ttl. Did you mean cache.store?',
                 'queue.backoff.1 is "soon"; it takes a whole number, at least 0.',
                 'queue.supervisors.mail.queues is empty; it takes a non-empty list of non-empty strings.',
-                'queue.supervisors.mail.workres is not a setting; queue.supervisors.mail takes queues, tries, backoff, retry_after, workers, concurrency and sleep. Did you mean queue.supervisors.mail.workers?',
+                'queue.supervisors.mail.workres is not a setting; queue.supervisors.mail takes queues, tries, backoff, retry_after, timeout, workers, concurrency and sleep. Did you mean queue.supervisors.mail.workers?',
             ],
             $problems,
         );

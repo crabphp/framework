@@ -13,11 +13,16 @@ use Crab\Contracts\Database\Table;
 use Crab\Contracts\Queue\JobRan;
 use Crab\Contracts\Queue\Queue as QueueContract;
 use Crab\Contracts\Queue\Store;
+use Crab\Contracts\Queue\TimedOut;
 use Crab\Database\Database;
 use Crab\Database\DatabaseProvider;
 use Crab\Database\Schema;
+use Crab\Engine\Async\Async;
 use Crab\Engine\Async\Cancellation;
+use Crab\Engine\Async\CancelledException;
+use Crab\Engine\Async\Task;
 use Crab\Engine\Crab;
+use Crab\Engine\EventLoop;
 use Crab\Engine\EventLoop\StreamSelectEventLoop;
 use Crab\Engine\Process\Worker;
 use Crab\Events\Dispatcher;
@@ -28,6 +33,7 @@ use Crab\Queue\Queue;
 use Crab\Queue\QueueProvider;
 use Crab\Queue\Retry;
 use Crab\Queue\Supervisor;
+use Crab\Queue\Timeout;
 use Crab\Testing\FrozenClock;
 use Crab\Testing\WorkerHarness;
 use Crab\Tests\Support\Wait;
@@ -328,6 +334,39 @@ final readonly class RepeatedRetryJob
 }
 
 final class NotAJob {}
+
+/**
+ * Waits, as a job that calls another server does, for as long as it is let.
+ */
+#[Timeout(seconds: 1)]
+final class BoundedJob
+{
+    public static ?EventLoop $loop = null;
+
+    public function handle(Cancellation $stop, float $seconds = 5.0): void
+    {
+        Ledger::$lines[] = 'started';
+        Async::sleep(self::$loop ?? EventLoop::current(), $seconds, $stop);
+        Ledger::$lines[] = 'finished';
+    }
+}
+
+/**
+ * Runs what a test gives it to do, with the cancellation it was given.
+ */
+final class SteppedJob
+{
+    /**
+     * @var (\Closure(Cancellation): void)|null
+     */
+    public static ?\Closure $steps = null;
+
+    public function handle(int $id, Cancellation $cancellation): void
+    {
+        (self::$steps)($cancellation);
+        Ledger::$lines[] = "stepped {$id}";
+    }
+}
 
 final class Records extends AbstractLogger
 {
@@ -739,7 +778,7 @@ final class QueueTest extends TestCase
         self::assertSame([], Ledger::$lines);
         self::assertCount(1, $store->failed());
         self::assertSame([$id, 2], [$store->failed()[0]->id, $store->failed()[0]->attempts]);
-        $reason = 'The retry limit of 1 is exhausted; the job was taken once before this check. This can happen without a recorded failure when a worker stopped while running it or it ran longer than 90 seconds (queue.retry_after). It can also happen when its limit was lowered. Review the job before retrying it with queue:retry.';
+        $reason = 'The retry limit of 1 is exhausted; the job was taken once before this check. This can happen without a recorded failure when a worker stopped while running it, its process was ended because it ran past its timeout, or it blocked its process longer than 90 seconds (queue.retry_after). It can also happen when its limit was lowered. Review the job before retrying it with queue:retry.';
         self::assertSame(\RuntimeException::class . ': ' . $reason, $store->failed()[0]->error);
         self::assertSame(1, $this->log->contexts[0]['attempt']);
         self::assertCount(1, $heard);
@@ -777,7 +816,7 @@ final class QueueTest extends TestCase
         self::assertSame([], Ledger::$lines);
         self::assertCount(1, $store->failed());
         self::assertSame([$id, 5], [$store->failed()[0]->id, $store->failed()[0]->attempts]);
-        $reason = 'The retry limit of 2 is exhausted; the job was taken 4 times before this check. This can happen without a recorded failure when a worker stopped while running it or it ran longer than 90 seconds (queue.retry_after). It can also happen when its limit was lowered. Review the job before retrying it with queue:retry.';
+        $reason = 'The retry limit of 2 is exhausted; the job was taken 4 times before this check. This can happen without a recorded failure when a worker stopped while running it, its process was ended because it ran past its timeout, or it blocked its process longer than 90 seconds (queue.retry_after). It can also happen when its limit was lowered. Review the job before retrying it with queue:retry.';
         self::assertSame(\RuntimeException::class . ': ' . $reason, $store->failed()[0]->error);
         self::assertSame(4, $this->log->contexts[0]['attempt']);
         self::assertSame(
@@ -1363,6 +1402,155 @@ final class QueueTest extends TestCase
         self::assertStringContainsString('renamed or removed', (string) $store->failed()[0]->error);
     }
 
+    #[DataProvider('stores')]
+    public function testARenewedJobStaysItsWorkersUntilItGoesUnrenewedTooLong(string $kind): void
+    {
+        $store = $this->store($kind);
+        $now = 1_000;
+        $store->push('default', GreetJob::class, ['name' => 'x'], $now, $now);
+        $held = $store->reserve(['default'], $now, 90);
+        self::assertNotNull($held);
+
+        // Within the second it was taken in, as well as later.
+        self::assertTrue($store->renew($held, $now));
+        self::assertTrue($store->renew($held, $now + 60));
+        self::assertSame($now + 60, $store->jobs('default', 'processing', $now + 60)[0]->reservedAt);
+        self::assertNull($store->reserve(['default'], $now + 149, 90));
+
+        // Ninety seconds without a renewal: another worker has it, and the first is told so.
+        $next = $store->reserve(['default'], $now + 150, 90);
+        self::assertSame([$held->id, 2], [$next?->id, $next?->attempts]);
+        self::assertFalse($store->renew($held, $now + 151));
+        self::assertTrue($store->renew($next, $now + 151));
+        $store->release($next, $now + 200);
+        self::assertFalse($store->renew($next, $now + 152));
+    }
+
+    #[DataProvider('stores')]
+    public function testARunningJobKeepsItsReservationLongerThanRetryAfter(string $kind): void
+    {
+        $store = $this->store($kind);
+        new Queue($store, clock: $this->clock)->push(SteppedJob::class, id: 1);
+        $consumer = $this->consumer($store);
+        $taken = [];
+
+        $run = function (Worker $worker) use ($consumer, $store, &$taken): void {
+            SteppedJob::$steps = function () use ($worker, $store, &$taken): void {
+                // Four seconds pass in all, past the three a reservation lasts unrenewed.
+                foreach ([1, 2] as $step) {
+                    $this->clock->advance('2 seconds');
+                    Async::sleep($worker->loop, 1.1);
+                    $taken[] = $store->reserve(['default'], $this->clock->now()->getTimestamp(), 3);
+                }
+            };
+            $consumer->within(new Supervisor('queue', ['default'], retryAfter: 3), $worker)->runNext();
+        };
+        // The asynchronous driver's tests already run in a worker.
+        $this->matrixWorker === null ? WorkerHarness::run([], $run) : $run($this->matrixWorker);
+
+        self::assertSame([null, null], $taken, 'No other worker is given a job that is still running.');
+        self::assertSame(['stepped 1'], Ledger::$lines);
+        self::assertSame(0, $store->size('default'));
+    }
+
+    public function testAJobPastItsTimeoutIsToldToStopAndItsTryFails(): void
+    {
+        $store = new MemoryStore();
+        $events = new Dispatcher();
+        $heard = [];
+        $events->listen(JobRan::class, static function (JobRan $event) use (&$heard): void {
+            $heard[] = [$event->error, $event->gaveUp];
+        });
+        new Queue($store, clock: $this->clock)->push(BoundedJob::class);
+        // The worker's end of the stream its supervisor reads.
+        [$worker, $supervisor] = stream_socket_pair(STREAM_PF_UNIX, STREAM_SOCK_STREAM, STREAM_IPPROTO_IP);
+        $loop = new StreamSelectEventLoop();
+        BoundedJob::$loop = $loop;
+        $consumer = new Consumer(
+            $store,
+            new Container(),
+            $this->log,
+            $this->clock,
+            tries: 1,
+            events: $events,
+            worker: new Worker($loop, new Crab('queue'), 0, ['tcp' => [], 'udp' => []], 1.0, $worker),
+            grace: 5.0,
+        );
+
+        $started = microtime(true);
+        try {
+            Task::spawn($loop, static fn(): bool => $consumer->runNext());
+            $loop->run();
+        } finally {
+            BoundedJob::$loop = null;
+        }
+
+        self::assertLessThan(3.0, microtime(true) - $started);
+        self::assertSame(['started'], Ledger::$lines);
+        self::assertSame(TimedOut::class . ': The job ran past its timeout of 1 second.', $store->failed()[0]->error);
+        self::assertInstanceOf(TimedOut::class, $heard[0][0]);
+        self::assertTrue($heard[0][1]);
+        // The supervisor was asked to end the process past the timeout and its grace, and then not.
+        stream_set_blocking($supervisor, false);
+        self::assertMatchesRegularExpression(
+            '/^deadline (5\.9\d\d|6\.000)\ndeadline none\n$/',
+            (string) stream_get_contents($supervisor),
+        );
+    }
+
+    public function testAJobThatWasGivenToAnotherWorkerIsToldToStop(): void
+    {
+        $store = new MemoryStore();
+        new Queue($store, clock: $this->clock)->push(SteppedJob::class, id: 2);
+        $consumer = $this->consumer($store);
+        $stopped = false;
+
+        WorkerHarness::run([], function (Worker $worker) use ($consumer, $store, &$stopped): void {
+            SteppedJob::$steps = function (Cancellation $cancellation) use ($worker, $store, &$stopped): void {
+                // As if this worker had been blocked past retry_after: another takes the job.
+                self::assertNotNull($store->reserve(['default'], $this->clock->now()->getTimestamp() + 10, 3));
+                try {
+                    Async::sleep($worker->loop, 3.0, $cancellation);
+                } catch (CancelledException $cancelled) {
+                    $stopped = true;
+                    throw $cancelled;
+                }
+            };
+            $consumer->within(new Supervisor('queue', ['default'], retryAfter: 3), $worker)->runNext();
+        });
+
+        self::assertTrue($stopped);
+        self::assertSame([], Ledger::$lines);
+        // The other worker's: what this one said of it changed nothing.
+        self::assertSame(
+            [[2, 2]],
+            array_map(
+                static fn($message): array => [$message->data['id'], $message->attempts],
+                $store->jobs('default', 'processing', $this->clock->now()->getTimestamp()),
+            ),
+        );
+        self::assertContains(
+            [
+                'warning',
+                'Job '
+                    . SteppedJob::class
+                    . " is no longer this worker's; it was given to another after {seconds} seconds without a renewal, and is told to stop.",
+            ],
+            $this->log->records,
+        );
+    }
+
+    public function testTheCancellationAJobTakesIsTheWorkersToGiveAndNotData(): void
+    {
+        $queue = new Queue(new MemoryStore());
+
+        self::assertSame(1, $queue->push(BoundedJob::class, seconds: 0.5));
+        $this->expectExceptionMessage(
+            'BoundedJob was pushed with "stop", which its handle() has no parameter for; it takes seconds.',
+        );
+        $queue->push(BoundedJob::class, stop: true);
+    }
+
     public function testAConsumerWorksUntilCancelledAndOutlastsAStoreThatFails(): void
     {
         $store = new MemoryStore();
@@ -1409,6 +1597,11 @@ final class QueueTest extends TestCase
             {
                 ++$this->asked;
                 throw new \RuntimeException('database has gone away');
+            }
+
+            public function renew(\Crab\Contracts\Queue\Message $message, int $now): bool
+            {
+                return true;
             }
 
             public function complete(\Crab\Contracts\Queue\Message $message): void {}
@@ -1588,6 +1781,7 @@ final class QueueTest extends TestCase
                 'tries' => 3,
                 'backoff' => [10, 60],
                 'retry_after' => 90,
+                'timeout' => 600,
                 'sleep' => 1.0,
                 'supervisors' => [
                     'mail' => [
@@ -1596,6 +1790,8 @@ final class QueueTest extends TestCase
                         'tries' => 5,
                         'backoff' => [1],
                         'retry_after' => 30,
+                        // No limit, for these, whatever the queue's own.
+                        'timeout' => null,
                         'sleep' => 0.2,
                     ],
                     'rest' => ['queues' => ['high', 'default'], 'concurrency' => 10],
@@ -1607,7 +1803,7 @@ final class QueueTest extends TestCase
 
         self::assertSame(['mail', 'rest'], array_keys($supervisors));
         $mail = $supervisors['mail'];
-        self::assertSame([['mail'], 4, 1, 5, [1], 30, 0.2], [
+        self::assertSame([['mail'], 4, 1, 5, [1], 30, 0.2, null], [
             $mail->queues,
             $mail->workers,
             $mail->concurrency,
@@ -1615,9 +1811,10 @@ final class QueueTest extends TestCase
             $mail->backoff,
             $mail->retryAfter,
             $mail->sleep,
+            $mail->timeout,
         ]);
         $rest = $supervisors['rest'];
-        self::assertSame([['high', 'default'], 2, 10, 3, [10, 60], 90, 1.0], [
+        self::assertSame([['high', 'default'], 2, 10, 3, [10, 60], 90, 1.0, 600], [
             $rest->queues,
             $rest->workers,
             $rest->concurrency,
@@ -1625,6 +1822,7 @@ final class QueueTest extends TestCase
             $rest->backoff,
             $rest->retryAfter,
             $rest->sleep,
+            $rest->timeout,
         ]);
         self::assertSame([], Supervisor::all(new Config(['queue' => ['supervisors' => []]])));
 

@@ -409,6 +409,35 @@ final class RuntimeTest extends TestCase
 
     #[RequiresPhpExtension('pcntl')]
     #[RequiresPhpExtension('posix')]
+    public function testAWorkerBlockedPastADeadlineItSetIsEndedAndReplaced(): void
+    {
+        $fixture = $this->startFixture('supervised');
+        try {
+            $initial = $this->ready($fixture, 2);
+            $socket = $this->connectTo($fixture->port);
+            fwrite($socket, "deadline\n");
+            $blocked = (int) explode(':', $this->readLine($socket))[0];
+            $start = microtime(true);
+            $replacement = $this->ready($fixture, 1)[0];
+            $elapsed = microtime(true) - $start;
+            fclose($socket);
+            self::assertContains($blocked, $initial);
+            self::assertNotContains($replacement, $initial);
+            self::assertLessThan(2.0, $elapsed, 'The supervisor must end a worker blocked past its deadline.');
+            self::assertFalse(posix_kill($blocked, 0), 'The blocked worker must be ended and reaped.');
+            // A withdrawn deadline, or none, ends nothing: the other worker still answers.
+            $other = $this->connectTo($fixture->port);
+            fwrite($other, "still\n");
+            self::assertStringEndsWith(":still\n", $this->readLine($other));
+            fclose($other);
+        } finally {
+            $result = $this->finishFixture($fixture);
+        }
+        $this->assertFixtureExit($result);
+    }
+
+    #[RequiresPhpExtension('pcntl')]
+    #[RequiresPhpExtension('posix')]
     public function testSignalDuringStartupDrainsAllSpawnedWorkers(): void
     {
         $fixture = $this->startFixture('startup-stop');

@@ -59,7 +59,7 @@ A group's `onStop(Worker)` callbacks run in a worker after it has drained or rea
 
 SIGINT/SIGTERM stop admission and initiate drain. HTTP finishes its active response, WebSocket starts a close handshake, raw TCP flushes accepted output, and UDP finishes its bounded local send queue. Pending connects and worker tasks receive cancellation. The worker cancels its watchers when it exits.
 
-Worker and parent enforce the shutdown deadline, default five seconds. The parent can kill and reap a blocked child; single-process deadlines are cooperative. A control/wakeup stream keeps intended live workers alive without a polling statistics timer.
+Worker and parent enforce the shutdown deadline, default five seconds. The parent can kill and reap a blocked child; single-process deadlines are cooperative. A worker can also ask its parent for a deadline of its own with `Worker::deadline($seconds)`, sent over the control stream as the earliest one not withdrawn; the parent kills a child still running past it, reports it, and restarts the slot as after any unexpected exit. It is the bound for work that may block PHP, such as a queue job past its timeout; alone, without a parent, it does nothing. A control/wakeup stream keeps intended live workers alive without a polling statistics timer.
 
 Unexpected exits receive exponential backoff and at most five restarts per slot in sixty seconds. Readiness has a ten-second deadline. SIGUSR1 starts one replacement at a time, draining its predecessor only after readiness. A failed replacement preserves a healthy previous worker. Fresh-code deployment requires a new parent because loaded classes survive fork.
 

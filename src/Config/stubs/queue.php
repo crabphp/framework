@@ -18,14 +18,18 @@ return [
     'tries' => 3,
     'backoff' => [10, 60],
 
-    // Seconds after which an unfinished reservation is recovered; the job runs again only if tries remain.
+    // Seconds a taken job may go unrenewed, its worker dead or blocked, before another worker is given it.
     'retry_after' => 90,
+
+    // Seconds one try of a job may run, unless the job says with #[Timeout]; null for no limit.
+    'timeout' => null,
 
     // Worker processes `queue:work` starts, and jobs one worker runs at a time.
     'workers' => env('QUEUE_WORKERS', 1),
     'concurrency' => 1,
 
-    // Seconds a worker waits before looking again when no job was due, and is given to finish its job when told to stop.
+    // Seconds a worker waits before looking again when no job was due, and is given to finish its job when
+    // told to stop, or a job past its timeout to stop before its process is ended.
     'sleep' => 1.0,
     'grace' => 30.0,
 

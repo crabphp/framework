@@ -32,11 +32,12 @@ use Psr\Log\LoggerInterface;
  *     queue         the name jobs are pushed under and taken from when none is given; "default"
  *     tries         how many times a job is started before it is given up on; 3
  *     backoff       seconds to wait before the second try, the third, and so on; [10, 60]
- *     retry_after   seconds after which a job that was taken and never finished is given to another worker; 90
+ *     retry_after   seconds after which a job that was taken and neither renewed nor finished is given to another worker; 90
+ *     timeout       seconds one try of a job may run, unless it says with #[Timeout]; no limit when null, the default
  *     workers       worker processes `queue:work` starts; 1
  *     concurrency   jobs one worker runs at a time; 1
  *     sleep         seconds a worker waits before looking again when no job was due; 1
- *     grace         seconds a worker is given to finish its job when it is told to stop; 30
+ *     grace         seconds a worker is given to finish its job when it is told to stop, or a job to stop once it is past its timeout; 30
  *     supervisors   named sets of workers, each with its queues and limits; see Supervisor. None unless set
  *
  * To keep jobs somewhere else, bind Contracts\Queue\Store to a store of
@@ -56,6 +57,7 @@ final class QueueProvider implements Provider
                 'tries' => 3,
                 'backoff' => [10, 60],
                 'retry_after' => 90,
+                'timeout' => null,
                 'workers' => 1,
                 'concurrency' => 1,
                 'sleep' => 1.0,
@@ -139,6 +141,8 @@ final class QueueProvider implements Provider
                 $container->has(EventDispatcherInterface::class)
                     ? $container->get(EventDispatcherInterface::class)
                     : null,
+                timeout: $retry['timeout'],
+                grace: (float) $config->get('queue.grace'),
             );
         });
         if ($container->has(Servers::class)) {

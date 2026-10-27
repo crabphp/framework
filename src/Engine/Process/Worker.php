@@ -53,6 +53,13 @@ final class Worker
      * A report the control stream has not yet taken all of.
      */
     private string $unsent = '';
+    /**
+     * The deadlines set and not withdrawn, as hrtime seconds, by id.
+     *
+     * @var array<int, float>
+     */
+    private array $deadlines = [];
+    private int $nextDeadline = 0;
 
     /**
      * Under a supervisor, the worker reports its stats() over the control
@@ -306,6 +313,34 @@ final class Worker
         $this->counts[$name] = ($this->counts[$name] ?? 0) + $by;
     }
 
+    /**
+     * Asks the supervisor to end this worker's process if it still runs
+     * $seconds from now and the closure returned has not been called by
+     * then. It is the one limit that holds when code blocks the process,
+     * so that no timer of the worker's own can fire; everything else the
+     * process is doing ends with it, and the supervisor starts another in
+     * its place. A worker run alone, without a supervisor, is never ended
+     * this way.
+     *
+     * @return \Closure(): void Withdraws the deadline.
+     */
+    public function deadline(float $seconds): \Closure
+    {
+        if (!is_resource($this->control)) {
+            return static function (): void {};
+        }
+        $id = $this->nextDeadline++;
+        $this->deadlines[$id] = (hrtime(true) / 1e9) + max(0.0, $seconds);
+        $this->sendDeadline();
+        return function () use ($id): void {
+            if (!isset($this->deadlines[$id])) {
+                return;
+            }
+            unset($this->deadlines[$id]);
+            $this->sendDeadline();
+        };
+    }
+
     public function stats(): array
     {
         return [
@@ -343,19 +378,40 @@ final class Worker
                 ($this->report)($this->stats());
                 return;
             }
-            if (!is_resource($this->control)) {
-                return;
-            }
             if ($this->unsent === '') {
                 $this->unsent = 'stats ' . json_encode($this->stats(), JSON_PRESERVE_ZERO_FRACTION) . "\n";
             }
-            $written = @fwrite($this->control, $this->unsent);
-            if (is_int($written) && $written > 0) {
-                $this->unsent = (string) substr($this->unsent, $written);
-            }
+            $this->flush();
         };
         $send();
         $this->loop->unreference($this->loop->repeat(1.0, $send));
+    }
+
+    /**
+     * Writes what the control stream will take of the lines not yet sent.
+     */
+    private function flush(): void
+    {
+        if (!is_resource($this->control)) {
+            $this->unsent = '';
+            return;
+        }
+        $written = @fwrite($this->control, $this->unsent);
+        if (is_int($written) && $written > 0) {
+            $this->unsent = (string) substr($this->unsent, $written);
+        }
+    }
+
+    /**
+     * Tells the supervisor the earliest deadline still set, in seconds from now.
+     */
+    private function sendDeadline(): void
+    {
+        $seconds = $this->deadlines === []
+            ? 'none'
+            : sprintf('%.3F', max(0.0, min($this->deadlines) - (hrtime(true) / 1e9)));
+        $this->unsent .= "deadline {$seconds}\n";
+        $this->flush();
     }
 
     private function track(Connection $connection): void

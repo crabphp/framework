@@ -57,6 +57,15 @@ final class MemoryStore implements Store
         return null;
     }
 
+    public function renew(Message $message, int $now): bool
+    {
+        if (!$this->held($message)) {
+            return false;
+        }
+        $this->jobs[$message->id]['reserved'] = $now;
+        return true;
+    }
+
     public function complete(Message $message): void
     {
         unset($this->jobs[$message->id]);

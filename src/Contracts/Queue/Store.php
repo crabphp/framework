@@ -20,15 +20,24 @@ interface Store
     /**
      * Takes the next job that may run from the first of the queues that
      * has one, and counts the attempt. No other worker is given the same
-     * job until it is released, or until it has been held longer than
-     * $retryAfter seconds, which is taken to mean its worker died.
+     * job until it is released, or until it has gone $retryAfter seconds
+     * without being taken or renewed, which is taken to mean its worker died.
      *
      * @param list<string> $queues Queue names, the most urgent first.
      */
     public function reserve(array $queues, int $now, int $retryAfter): ?Message;
 
     /**
-     * The job is done and is forgotten.
+     * The worker still has the job: it counts as taken from $now. Only
+     * while it is still this worker's, as with release().
+     *
+     * @return bool Whether it was; false once the job has been given to another worker, released, failed or done.
+     */
+    public function renew(Message $message, int $now): bool;
+
+    /**
+     * The job is done and is forgotten, whichever worker did it: one that
+     * finished late, after the job was given to another, still did it.
      */
     public function complete(Message $message): void;
 

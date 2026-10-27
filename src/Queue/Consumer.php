@@ -7,9 +7,11 @@ namespace Crab\Queue;
 use Crab\Contracts\Queue\JobRan;
 use Crab\Contracts\Queue\Message;
 use Crab\Contracts\Queue\Store;
+use Crab\Contracts\Queue\TimedOut;
 use Crab\Engine\Async\Async;
 use Crab\Engine\Async\Cancellation;
 use Crab\Engine\Async\CancelledException;
+use Crab\Engine\Async\Task;
 use Crab\Engine\EventLoop;
 use Crab\Engine\Process\Worker;
 use Psr\Clock\ClockInterface;
@@ -26,6 +28,16 @@ use Psr\Log\LoggerInterface;
  * A job is resolved for each try: the container determines whether it
  * is kept, and without a container it is constructed each time. Its
  * constructor takes services and it holds nothing of one run.
+ *
+ * In a worker, a job that runs keeps its reservation: the consumer
+ * renews it every third of $retryAfter, so another worker is given the
+ * job only when this one has died or is blocked that long. A job with a
+ * timeout is told by the Cancellation its handle() may take, under any
+ * name, when the time is up; one that has not stopped within $grace
+ * after that has its worker's process ended by the supervisor, as one
+ * that blocks the process does. Every other job of that process ends
+ * with it and is given to another worker later, so a supervisor whose
+ * jobs have a timeout is best run at concurrency 1.
  */
 final readonly class Consumer
 {
@@ -33,9 +45,11 @@ final readonly class Consumer
      * @param ContainerInterface|null $container Makes the job classes; without one a job is made with `new`.
      * @param int $tries How many times a job is started before it is given up on.
      * @param list<int> $backoff Seconds to wait before the second try, the third, and so on; the last is used for every later one.
-     * @param int $retryAfter Seconds after which a job that was taken and neither finished nor failed is given to another worker. Longer than the longest job takes.
+     * @param int $retryAfter Seconds after which a job that was taken and neither renewed nor finished is given to another worker. Longer than a job may block its process.
      * @param EventDispatcherInterface|null $events Told of each try of a job, with a JobRan.
-     * @param Worker|null $worker Counts each try in its "jobs" and each that failed in its "failed", which `status` shows.
+     * @param Worker|null $worker Counts each try in its "jobs" and each that failed in its "failed", which `status` shows; runs the renewals and timeouts, which a consumer without one does not have.
+     * @param int|null $timeout Seconds one try may run, unless the job says otherwise with #[Timeout]; null for no limit.
+     * @param float $grace Seconds a job past its timeout is given to stop before its process is ended.
      */
     public function __construct(
         private Store $store,
@@ -47,10 +61,12 @@ final readonly class Consumer
         private int $retryAfter = 90,
         private ?EventDispatcherInterface $events = null,
         private ?Worker $worker = null,
+        private ?int $timeout = null,
+        private float $grace = 30.0,
     ) {
-        if ($tries < 1 || $retryAfter < 1) {
+        if ($tries < 1 || $retryAfter < 1 || $timeout !== null && $timeout < 1) {
             throw new \InvalidArgumentException(
-                'A queue consumer needs at least one try for a job and a positive number of seconds to retry after.',
+                'A queue consumer needs at least one try for a job, a positive number of seconds to retry after, and a timeout of at least one second or none.',
             );
         }
     }
@@ -71,6 +87,8 @@ final readonly class Consumer
             $supervisor->retryAfter,
             $this->events,
             $worker ?? $this->worker,
+            $supervisor->timeout,
+            $this->grace,
         );
     }
 
@@ -89,6 +107,7 @@ final readonly class Consumer
         $started = hrtime(true);
         try {
             $retry = Retry::for($message->job);
+            $timeout = Timeout::for($message->job)->seconds ?? $this->timeout;
         } catch (\InvalidArgumentException $error) {
             // An older producer may have stored a job whose declaration is now invalid.
             $this->giveUp($message, $error, $message->attempts);
@@ -102,18 +121,29 @@ final readonly class Consumer
             $attempts = $message->attempts - 1;
             $taken = $attempts === 1 ? 'once' : "{$attempts} times";
             $error = new \RuntimeException(
-                "The retry limit of {$tries} is exhausted; the job was taken {$taken} before this check. This can happen without a recorded failure when a worker stopped while running it or it ran longer than {$this->retryAfter} seconds (queue.retry_after). It can also happen when its limit was lowered. Review the job before retrying it with queue:retry.",
+                "The retry limit of {$tries} is exhausted; the job was taken {$taken} before this check. This can happen without a recorded failure when a worker stopped while running it, its process was ended because it ran past its timeout, or it blocked its process longer than {$this->retryAfter} seconds (queue.retry_after). It can also happen when its limit was lowered. Review the job before retrying it with queue:retry.",
             );
             $this->giveUp($message, $error, $attempts);
             $this->tell(new JobRan($message, (hrtime(true) - $started) / 1e9, $error, true));
             return true;
         }
+        $run = new Cancellation();
+        $end = $this->watch($message, $run, $timeout);
         try {
-            $job = $this->container?->has($message->job)
-                ? $this->container->get($message->job)
-                : self::make($message->job);
-            $job->handle(...$message->data);
+            try {
+                $job = $this->container?->has($message->job)
+                    ? $this->container->get($message->job)
+                    : self::make($message->job);
+                $given = self::cancellationParameter($message->job);
+                $job->handle(...$message->data, ...$given === null ? [] : [$given => $run]);
+            } finally {
+                // Before the store hears how it ended, so that no renewal follows.
+                $end();
+            }
         } catch (\Throwable $error) {
+            if ($error instanceof CancelledException && $error->getPrevious() instanceof TimedOut) {
+                $error = $error->getPrevious();
+            }
             $seconds = (hrtime(true) - $started) / 1e9;
             $gaveUp = $message->attempts >= $tries;
             if ($gaveUp) {
@@ -139,6 +169,109 @@ final readonly class Consumer
         $this->store->complete($message);
         $this->tell(new JobRan($message, (hrtime(true) - $started) / 1e9));
         return true;
+    }
+
+    /**
+     * Keeps the job this worker's while it runs, and times it: renews the
+     * reservation, cancels $run when the job is past its timeout or the
+     * reservation was lost after all, and sets the process's deadline.
+     *
+     * @return \Closure(): void Ends it all, once the job has returned.
+     */
+    private function watch(Message $message, Cancellation $run, ?int $timeout): \Closure
+    {
+        $worker = $this->worker;
+        if ($worker === null) {
+            return static function (): void {};
+        }
+        $loop = $worker->loop;
+        $ended = new Cancellation();
+        Task::spawn($loop, function () use ($loop, $ended, $message, $run): void {
+            $every = max(1.0, $this->retryAfter / 3);
+            while (true) {
+                try {
+                    Async::sleep($loop, $every, $ended);
+                } catch (CancelledException) {
+                    return;
+                }
+                try {
+                    $kept = $this->store->renew($message, $this->now());
+                } catch (\Throwable $error) {
+                    // Tried again at the next turn; a reservation lasts three of them.
+                    $this->logger?->warning('Job {job} could not be renewed: {message}', [
+                        'job' => $message->job,
+                        'id' => $message->id,
+                        'queue' => $message->queue,
+                        'message' => $error->getMessage(),
+                        'exception' => $error,
+                    ]);
+                    continue;
+                }
+                if ($ended->isCancelled()) {
+                    return;
+                }
+                if (!$kept) {
+                    $this->logger?->warning(
+                        'Job {job} is no longer this worker\'s; it was given to another after {seconds} seconds without a renewal, and is told to stop.',
+                        [
+                            'job' => $message->job,
+                            'id' => $message->id,
+                            'queue' => $message->queue,
+                            'seconds' => $this->retryAfter,
+                        ],
+                    );
+                    $run->cancel(new \RuntimeException('The job was given to another worker.'));
+                    return;
+                }
+            }
+        });
+        $timer = null;
+        $withdraw = static function (): void {};
+        if ($timeout !== null) {
+            $timer = $loop->delay($timeout, static function () use ($run, $timeout): void {
+                $run->cancel(new TimedOut($timeout));
+            });
+            $withdraw = $worker->deadline($timeout + $this->grace);
+        }
+        return static function () use ($ended, $loop, $timer, $withdraw): void {
+            $ended->cancel();
+            if ($timer !== null) {
+                $loop->cancel($timer);
+            }
+            $withdraw();
+        };
+    }
+
+    /**
+     * Whether a parameter of a job's handle() is for the cancellation the
+     * worker gives it, and so is not the job's data.
+     *
+     * @internal
+     */
+    public static function isCancellation(\ReflectionParameter $parameter): bool
+    {
+        $type = $parameter->getType();
+        return $type instanceof \ReflectionNamedType && $type->getName() === Cancellation::class;
+    }
+
+    /**
+     * The name of the parameter a job's handle() takes its cancellation
+     * by, once per process; null when it takes none.
+     */
+    private static function cancellationParameter(string $job): ?string
+    {
+        /** @var array<string, string|null> $names */
+        static $names = [];
+        if (array_key_exists($job, $names)) {
+            return $names[$job];
+        }
+        foreach (new \ReflectionMethod($job, 'handle')->getParameters() as $parameter) {
+            if (!self::isCancellation($parameter)) {
+                continue;
+            }
+            return $names[$job] = $parameter->getName();
+        }
+        return $names[$job] = null;
     }
 
     /**

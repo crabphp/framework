@@ -241,6 +241,8 @@ final class Supervisor
             'ready' => false,
             'started' => self::now(),
             'deadline' => null,
+            // The time the worker asked to be ended at if it still runs then; see Worker::deadline().
+            'limit' => null,
             'retiring' => false,
             'replaces' => $replaces,
             'stats' => [],
@@ -280,6 +282,16 @@ final class Supervisor
             if (!$child['ready'] && !$child['retiring'] && ($now - $child['started']) >= $this->startupTimeout) {
                 FailureReporter::report("Worker {$pid} exceeded its startup deadline");
                 $this->retire($pid, intentional: false);
+            }
+            if ($child['limit'] !== null && $now >= $child['limit'] && $child['deadline'] !== INF) {
+                $group = $this->slots[$child['slot']]['group'];
+                FailureReporter::report(
+                    "Worker {$pid} in group \"{$group}\" ran past a deadline it set and is taken to be stuck; ending it.",
+                );
+                posix_kill($pid, SIGKILL);
+                $this->children[$pid]['limit'] = null;
+                $this->children[$pid]['deadline'] = INF;
+                continue;
             }
             if ($child['deadline'] !== null && $now >= $child['deadline']) {
                 $group = $this->slots[$child['slot']]['group'];
@@ -376,6 +388,9 @@ final class Supervisor
                     if ($this->replacement === $pid) {
                         $this->replacement = null;
                     }
+                } elseif (str_starts_with($line, 'deadline ')) {
+                    $seconds = substr($line, 9);
+                    $child['limit'] = is_numeric($seconds) ? self::now() + max(0.0, (float) $seconds) : null;
                 } elseif (str_starts_with($line, 'stats ')) {
                     $stats = json_decode(substr($line, 6), true);
                     if (is_array($stats)) {

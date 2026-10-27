@@ -100,6 +100,12 @@ final readonly class DatabaseStore implements TransactionalStore
         return null;
     }
 
+    public function renew(Message $message, int $now): bool
+    {
+        // MySQL counts the rows an update changes, not those it finds: renewed within the second, it is still held.
+        return $this->held($message)->update(['reserved_at' => $now]) === 1 || $this->held($message)->exists();
+    }
+
     public function complete(Message $message): void
     {
         $this->connection->table($this->table)->where('id', $message->id)->delete();

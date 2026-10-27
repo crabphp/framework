@@ -24,11 +24,11 @@ use Crab\Engine\Process\Worker;
  *
  * What one leaves out is taken from the queue's own settings:
  * "queue.workers", "queue.concurrency", "queue.tries", "queue.backoff",
- * "queue.retry_after" and "queue.sleep".
+ * "queue.retry_after", "queue.timeout" and "queue.sleep".
  */
 final readonly class Supervisor
 {
-    private const KEYS = ['queues', 'workers', 'concurrency', 'tries', 'backoff', 'retry_after', 'sleep'];
+    private const KEYS = ['queues', 'workers', 'concurrency', 'tries', 'backoff', 'retry_after', 'timeout', 'sleep'];
 
     /**
      * What the settings a supervisor may override take, as "queue.*" and under each of "queue.supervisors".
@@ -37,6 +37,7 @@ final readonly class Supervisor
         'tries' => ['type' => 'integer', 'minimum' => 1],
         'backoff' => ['type' => 'array', 'items' => ['type' => 'integer', 'minimum' => 0]],
         'retry_after' => ['type' => 'integer', 'minimum' => 1],
+        'timeout' => ['type' => ['integer', 'null'], 'minimum' => 1],
         'workers' => ['type' => 'integer', 'minimum' => 1],
         'concurrency' => ['type' => 'integer', 'minimum' => 1],
         'sleep' => ['type' => 'number', 'minimum' => 0],
@@ -48,8 +49,9 @@ final readonly class Supervisor
      * @param int $concurrency Jobs one worker runs at a time.
      * @param int $tries How many times a job is started before it is given up on.
      * @param list<int> $backoff Seconds to wait before the second try, the third, and so on.
-     * @param int $retryAfter Seconds after which a job that was taken and never finished is given to another worker.
+     * @param int $retryAfter Seconds after which a job that was taken and neither renewed nor finished is given to another worker.
      * @param float $sleep Seconds a worker waits before looking again when no job was due.
+     * @param int|null $timeout Seconds one try of a job may run, unless the job says otherwise with #[Timeout]; null for no limit.
      */
     public function __construct(
         public string $name,
@@ -60,6 +62,7 @@ final readonly class Supervisor
         public array $backoff = [10, 60],
         public int $retryAfter = 90,
         public float $sleep = 1.0,
+        public ?int $timeout = null,
     ) {
         if ($queues === []) {
             throw new \LogicException("The queue supervisor \"{$name}\" names no queue to take jobs from.");
@@ -69,6 +72,7 @@ final readonly class Supervisor
             'concurrency' => $concurrency,
             'tries' => $tries,
             'retry_after' => $retryAfter,
+            'timeout' => $timeout ?? 1,
         ] as $setting => $value) {
             if ($value < 1) {
                 throw new \LogicException(
@@ -199,6 +203,7 @@ final readonly class Supervisor
             $retry['backoff'],
             $retry['retry_after'],
             (float) $sleep,
+            $retry['timeout'],
         );
     }
 
@@ -209,7 +214,7 @@ final readonly class Supervisor
      *
      * @internal
      * @param array<string, mixed> $settings Supervisor overrides.
-     * @return array{tries: int, backoff: list<int>, retry_after: int}
+     * @return array{tries: int, backoff: list<int>, retry_after: int, timeout: int|null}
      */
     public static function retrySettings(Config $config, string $name = 'queue', array $settings = []): array
     {
@@ -228,7 +233,14 @@ final readonly class Supervisor
         foreach ($backoff as $index => $value) {
             $pauses[] = self::integer($value, 'backoff.' . $index, $name, 0);
         }
-        return ['tries' => $counts['tries'], 'backoff' => $pauses, 'retry_after' => $counts['retry_after']];
+        $timeout = array_key_exists('timeout', $settings) ? $settings['timeout'] : $config->get('queue.timeout');
+        return [
+            'tries' => $counts['tries'],
+            'backoff' => $pauses,
+            'retry_after' => $counts['retry_after'],
+            // Null is a setting of its own here: no limit.
+            'timeout' => $timeout === null ? null : self::integer($timeout, 'timeout', $name),
+        ];
     }
 
     /**

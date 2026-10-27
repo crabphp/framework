@@ -141,6 +141,7 @@ final class Queue implements QueueContract
             );
         }
         Retry::for($job);
+        Timeout::for($job);
         $handle = new \ReflectionMethod($job, 'handle');
         if (!$handle->isPublic() || $handle->isStatic() || $handle->isAbstract()) {
             throw new \LogicException(
@@ -161,6 +162,10 @@ final class Queue implements QueueContract
                 throw new \LogicException(
                     "{$job}::handle() takes a variable number of arguments (...\${$parameter->getName()}). Name each value a job takes, so that what is pushed can be checked.",
                 );
+            }
+            // Given by the worker that runs it, not pushed: see Consumer.
+            if (Consumer::isCancellation($parameter)) {
+                continue;
             }
             $names[] = $parameter->getName();
             if (!$parameter->isOptional()) {

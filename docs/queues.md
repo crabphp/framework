@@ -62,11 +62,12 @@ return [
 | `queue.queue` | `default` | The queue jobs are pushed to and taken from when none is named |
 | `queue.tries` | `3` | How many times a job is started before it is given up on, unless its `#[Retry]` sets tries |
 | `queue.backoff` | `[10, 60]` | Seconds to wait before the second try, the third, and so on; the last repeats. A job's `#[Retry]` may set its own |
-| `queue.retry_after` | `90` | Seconds after which an unfinished reservation is recovered; the handler runs again only if tries remain |
+| `queue.retry_after` | `90` | Seconds a taken job may go without its worker renewing it before another worker is given it; the handler runs again only if tries remain |
+| `queue.timeout` | `null` | Seconds one try of a job may run, unless its `#[Timeout]` says otherwise; no limit when null. See [A job that takes too long](#a-job-that-takes-too-long) |
 | `queue.workers` | `1` | Worker processes `queue:work` starts |
 | `queue.concurrency` | `1` | Jobs one worker runs at a time |
 | `queue.sleep` | `1.0` | Seconds a worker waits before looking again when no job was due |
-| `queue.grace` | `30.0` | Seconds a worker is given to finish its job when it is told to stop |
+| `queue.grace` | `30.0` | Seconds a worker is given to finish its job when it is told to stop, and a job past its timeout to stop before its process is ended |
 | `queue.supervisors` | none | Named sets of workers, each with its own queues and limits; see [Supervisors](#supervisors) |
 
 ## Writing a job
@@ -261,7 +262,7 @@ webhooks: running jobs from webhooks
 | `queues` | The queues it takes from, the most urgent first; defaults to `[queue.queue]`. An empty list is refused |
 | `workers` | Worker processes |
 | `concurrency` | Jobs one worker runs at a time |
-| `tries`, `backoff`, `retry_after` | As the settings of the same name, for this supervisor's jobs; a job's `#[Retry]` overrides tries and backoff when given |
+| `tries`, `backoff`, `retry_after`, `timeout` | As the settings of the same name, for this supervisor's jobs; a job's `#[Retry]` overrides tries and backoff, and its `#[Timeout]` the timeout, when given. `'timeout' => null` lifts the queue's limit for this supervisor |
 | `sleep` | Seconds a worker waits before looking again when no job was due |
 
 What a supervisor leaves out is taken from the setting of the same name, such as `queue.workers`. A key that is not in this table is refused when `queue:work` starts.
@@ -379,12 +380,37 @@ public function handle(int $orderId): void
 
 ### A job that takes too long
 
-A job that was taken and has neither finished nor failed after `queue.retry_after` seconds can be recovered by another worker. Its earlier reservation already counts as a try. The worker runs its handler again only while its current retry limit permits; otherwise it keeps the job as failed. A job with `#[Retry(tries: 1)]` whose worker dies is therefore failed after recovery without another handler run.
+A worker renews the reservation of the job it runs every third of `queue.retry_after`, so a job may run for as long as it needs, and no other worker is given it meanwhile. `retry_after` is how long a job may go unrenewed before its worker is taken to have died. Set it above the longest time a job blocks its process: a loop that computes, or a library that does its I/O without the engine, keeps the renewal from running.
+
+A recovered job's earlier reservation already counts as a try. The worker runs its handler again only while its retry limit permits; otherwise it keeps the job as failed. A job with `#[Retry(tries: 1)]` whose worker dies is therefore failed after recovery without another handler run.
+
+To bound a job, give it a timeout. `queue.timeout` sets one for every job, a supervisor's `timeout` for its own, and `#[Timeout]` for one job class:
+
+```php
+use Crab\Engine\Async\Cancellation;
+use Crab\Queue\Retry;
+use Crab\Queue\Timeout;
+
+#[Timeout(seconds: 1300), Retry(tries: 2)]
+final readonly class ImportRom
+{
+    public function __construct(private RomImporter $imports)
+    {
+    }
+
+    public function handle(int $userId, int $romId, Cancellation $cancellation): void
+    {
+        $this->imports->import($userId, $romId, $cancellation);
+    }
+}
+```
+
+When the time is up, the `Cancellation` its `handle()` takes is cancelled. Any parameter typed `Cancellation` gets it, whatever its name; it is the worker's to give, so it is not pushed with the data. Pass it to whatever waits: an `Async::sleep()`, an HTTP call, a database query. The wait throws, and the try counts as failed with a `Crab\Contracts\Queue\TimedOut` error, tried again while tries remain. A long loop can check it with `$cancellation->throwIfCancelled()`. The same cancellation is also cancelled if the job's reservation is lost after all, so a job that was given to another worker stops and does not run beside it.
+
+A job that ignores the cancellation, or blocks its process, cannot be stopped from inside the process. So when a timed job is still running `queue.grace` seconds after its timeout, the worker's parent process ends the worker and starts a new one. The job is then recovered after `retry_after`, as if its worker had died. Every other job that worker was running ends with it, so run jobs with a timeout under a supervisor of their own, with `concurrency` 1. A worker run with `--single` or `--stop-when-empty` has no parent to end it, and only the cancellation applies.
 
 > [!WARNING]
-> Set `queue.retry_after` above the time your longest job takes. If tries remain, a job still running when it is reached is started a second time, beside the first.
-
-A job cannot be interrupted from outside. Give slow calls a timeout of their own, as `$http->timeout(10)` does, so that a job ends by throwing.
+> A job that runs out of time may already have done some of its work: downloaded a file, stored half an import. Its next try must be able to resume or redo that safely; see [Jobs run at least once](#jobs-run-at-least-once).
 
 ## A store of your own
 
@@ -396,7 +422,7 @@ use Crab\Contracts\Queue\Store;
 $container->singleton(Store::class, static fn (): Store => new SqsStore(/* ... */));
 ```
 
-A store keeps each job until a worker says it is done, and gives a job to one worker at a time. A job travels as a `Crab\Contracts\Queue\Message`: its id, queue, class, data and attempts.
+A store keeps each job until a worker says it is done, and gives a job to one worker at a time. It renews a job for the worker that still holds it, on the try that worker was given, and ignores what a worker says of a job it no longer holds, except that a job done is done. A job travels as a `Crab\Contracts\Queue\Message`: its id, queue, class, data and attempts.
 
 ## In tests
 

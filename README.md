@@ -902,7 +902,8 @@ $queue->on('emails')->push(SendWelcomeEmail::class, userId: 7);          // on a
 - **A job runs at least once.** One that throws is tried again, `queue.tries` times in all (3), after `queue.backoff` seconds (10, then 60); then it is kept as failed. A job sets its own with `#[Retry(tries: 5, backoff: [5, 30])]`. `queue:failed` lists those, `queue:retry <id|all>` puts them back and `queue:forget <id|all>` deletes them.
 - **Workers are processes of their own**, so a slow job never holds up a request. Each is started and stopped as an HTTP worker is, and every failure reaches the log.
 - **Supervisors keep kinds of work apart.** `queue.supervisors` names sets of workers, each with its own queues, number of workers and retries, and `queue:work` runs them all: `'mail' => ['queues' => ['mail'], 'workers' => 2]`. A flood of one kind of job then cannot take the workers of another.
-- **`queue.retry_after`** (90) is how long a job may take before it is taken to have died with its worker and is given to another. Set it above your longest job.
+- **A running job stays its worker's:** the worker renews it, and `queue.retry_after` (90) is how long it may go unrenewed, its worker dead or blocked, before another is given it.
+- **A timeout bounds a try:** `queue.timeout`, or `#[Timeout(seconds: 300)]` on the job, cancels the `Cancellation` its `handle()` takes; a job still running `queue.grace` later has its worker's process ended and replaced.
 
 See [docs/queues.md](docs/queues.md).
 
