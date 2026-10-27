@@ -18,6 +18,7 @@ use Crab\HttpClient\Hpack;
 use Crab\HttpClient\Http2Session;
 use Crab\HttpClient\Network;
 use Crab\HttpClient\NetworkException;
+use Crab\HttpClient\Receiving;
 use Crab\HttpClient\TimedOut;
 use Crab\Tests\Support\Wait;
 use PHPUnit\Framework\TestCase;
@@ -71,7 +72,7 @@ final class NetworkTest extends TestCase
     {
         $request = new Request('GET', 'http://late.invalid/');
         try {
-            $this->network->exchange($request, (hrtime(true) / 1e9) - 1, 1, null);
+            $this->network->exchange($request, (hrtime(true) / 1e9) - 1, 1, null, new Receiving(Client::MAX_BYTES));
             self::fail('A call past its deadline was sent.');
         } catch (NetworkException $error) {
             self::assertTrue($error->unsent);

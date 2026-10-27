@@ -27,4 +27,7 @@ return [
 
     // Whether HTTP/2 is used with servers that offer it.
     'http2' => true,
+
+    // The most bytes of body an answer may have, 64 MiB, unless a request gives its own maxBytes:.
+    'max_bytes' => 67_108_864,
 ];

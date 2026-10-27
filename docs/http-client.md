@@ -9,6 +9,8 @@
 - [Timeouts](#timeouts)
 - [Trying again](#trying-again)
 - [Sending files](#sending-files)
+- [Downloading files](#downloading-files)
+- [Limiting the size of an answer](#limiting-the-size-of-an-answer)
 - [A client for one API](#a-client-for-one-api)
 - [Cookies](#cookies)
 - [A proxy](#a-proxy)
@@ -39,6 +41,7 @@ The HTTP client is registered by default by `App::configure()`, so it needs noth
 | `http_client.retries` | `0` | More tries for a request that may be tried again |
 | `http_client.http2` | `true` | `false` to speak HTTP/1.1 with every server |
 | `http_client.tls` | `[]` | PHP's `ssl` context options, such as `['cafile' => '/path/ca.pem']` |
+| `http_client.max_bytes` | `67108864` (64 MiB) | The most bytes of body an answer may have; see [Limiting the size of an answer](#limiting-the-size-of-an-answer) |
 
 `https` needs PHP's `openssl` extension.
 
@@ -123,6 +126,7 @@ $user = $http->get($url)->throw()->json();
 | `Crab\HttpClient\ResponseException` | `throw()` met a status that is not `2xx`. `$error->response` is the answer. |
 | `Crab\HttpClient\NetworkException` | The server could not be reached, or took too long |
 | `Crab\HttpClient\RequestException` | The request itself could not be sent |
+| `Crab\HttpClient\TooLargeException` | The answer's body was longer than allowed. `$error->limit` is the limit. |
 
 No answer always throws. All three are a `Psr\Http\Client\ClientExceptionInterface`, and no message holds the query string or a header, so they are safe to log.
 
@@ -182,6 +186,41 @@ $http->post($url, form: ['title' => 'Q3'], files: [
 
 Files are copied in chunks into a temporary body stream, which spills to disk when large; small bodies may stay in memory.
 
+## Downloading files
+
+Give `sink:` a path and the body goes straight into that file as it arrives, never into memory or a temporary copy. Use it for anything you keep as a file: a ROM, an export, a backup.
+
+```php
+$http->timeout(1200)->request('GET', $romUrl,
+    sink: '/srv/roms/7.zip',
+    maxBytes: 4 * 1024 * 1024 * 1024,           // 4 GiB; the default is 64 MiB
+    decode: false,                              // the bytes as the server has them
+    cancellation: $cancellation,
+)->throw();
+```
+
+- **The file appears only when the body is all there.** The body is written to a hidden file beside it and renamed into place at the end. A download that fails, is cut short or is too large leaves nothing behind, and an old file at the path stays until a new one replaces it.
+- **Only a `2xx` answer is written to the file.** Any other answer is kept as usual, so `$response->json()` reads the error the server sent, and `throw()` reports it. A redirect's own body never reaches the file.
+- **The response's body is then the file**, opened for reading.
+- **A retry starts over** with a new file, so nothing is appended twice.
+- The folder must exist and be writable. If it is not, the request is refused before anything is sent.
+
+`sink:` also takes a writable PSR-7 stream, written from where it is, and the response's body is then that stream. A failure leaves what arrived before it in the stream, and the request is not tried again once any of the body went into it. Give a path when a failed download must leave nothing.
+
+`decode: false` sends no `Accept-Encoding` and keeps a compressed body as it came, with its `Content-Encoding` and `Content-Length`. Use it when the bytes are checked against a hash or stored as they are. With the default, `decode: true`, a body sent with gzip or deflate is decompressed and those two headers are removed.
+
+## Limiting the size of an answer
+
+No answer's body may be longer than `http_client.max_bytes`, 64 MiB by default. That holds for every call, `sendRequest()` included, so a server that sends more than you asked for, by mistake or on purpose, cannot fill the memory or the disk. Give one request a different limit with `maxBytes:`:
+
+```php
+$http->request('GET', $reportUrl, maxBytes: 512 * 1024 * 1024);
+```
+
+The limit is checked as the body arrives. An answer whose `Content-Length` is already over the limit is refused before a byte of it is read. Otherwise the body is given up the moment it passes the limit. Either way the client throws `Crab\HttpClient\TooLargeException`, closes the connection or HTTP/2 stream it came on, and leaves no file behind. A compressed body counts both as received and as decompressed, so a small answer that expands to gigabytes is stopped too.
+
+The limit applies to each answer, redirects included. A `TooLargeException` is not retried, since the same answer would come back.
+
 ## A client for one API
 
 Make a client with the API's address and credentials, once, in a provider, and bind it under a name of your own:
@@ -235,7 +274,7 @@ A plaintext HTTP response cannot replace, delete or shadow an unexpired Secure c
 
 - HTTP/3, HTTP/2 without encryption, and server push.
 - Proxies reached over TLS, and SOCKS proxies.
-- Brotli. With PHP's `zlib` extension, answers compressed with gzip or deflate are decompressed for you; without it they remain encoded.
+- Brotli. With PHP's `zlib` extension, answers compressed with gzip or deflate are decompressed for you unless you pass `decode: false`; without it they remain encoded.
 
 HTTP/2 is spoken with every `https` server that offers it: all requests to one server then share one connection and run at once. With the others it is HTTP/1.1 on connections that are kept and reused, up to `http_client.connections` to one server.
 
@@ -264,4 +303,15 @@ self::assertSame('{"amount":500}', (string) $http->requests[0]->getBody());
 
 - A reply is found by method and URL, the first that matches. `*` stands for anything, and the method may be left out. Patterns without `?` ignore the query string; include it and the expected query or wildcards to distinguish query values.
 - A request nothing matches throws, naming it, so a test never reaches the network.
-- Everything else is the real client: base URL, headers, redirects, cookies and `throw()` behave as they do over the network.
+- Everything else is the real client: base URL, headers, redirects, cookies and `throw()` behave as they do over the network. So do `sink:`, `maxBytes:` and `decode:`: a reply longer than the limit throws `TooLargeException`, and a gzip reply is decompressed unless `decode: false` is given.
+
+```php
+use Crab\HttpClient\TooLargeException;
+
+$http = new FakeClient([
+    'GET https://roms.example/7' => FakeClient::response(200, str_repeat('x', 4096)),
+], maxBytes: 1024);
+
+$this->expectException(TooLargeException::class);
+$http->request('GET', 'https://roms.example/7', sink: $path);
+```

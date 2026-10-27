@@ -24,6 +24,13 @@ use Psr\Http\Message\UploadedFileInterface;
  * answer and is returned, and throw() on it turns it into an exception;
  * a request that got no answer always throws. Either way it is a
  * Psr\Http\Client\ClientExceptionInterface.
+ *
+ * No answer's body may be longer than a limit, checked as it arrives, so
+ * a server cannot fill the disk or the memory by sending more than was
+ * asked for. A download goes into a file of its own, and never past the
+ * size it is allowed:
+ *
+ *     $http->timeout(1200)->request('GET', $url, sink: $path, maxBytes: 4 << 30, decode: false)->throw();
  */
 interface Client extends ClientInterface
 {
@@ -36,6 +43,10 @@ interface Client extends ClientInterface
      * @param array<string, File|UploadedFileInterface|list<File|UploadedFileInterface>> $files Sent as the body, as a form's file fields (multipart/form-data). An uploaded file received in a request may be passed on as it is.
      * @param string|StreamInterface|null $body Sent as the body as it is; say its Content-Type in the headers.
      * @param Cancellation|null $cancellation Gives the request up when cancelled: an action passes its request's cancellation() so that a caller who has gone is not worked for.
+     * @param string|StreamInterface|null $sink Where the body of a 2xx answer goes as it arrives, in place of being kept: a file, which appears at its path only once the body is all there and is never left half written; or a writable stream, written from where it is. The response's body is then that file, or that stream. The body of any other answer is kept as usual, to be read.
+     * @param int|null $maxBytes The most bytes of body the answer may have, as received and as decompressed; null for the client's own limit. A longer one throws as soon as that is known.
+     * @param bool $decode Whether a body sent compressed with gzip or deflate is decompressed; false asks for and keeps the bytes as the server has them.
+     * @throws \Psr\Http\Client\ClientExceptionInterface When there is no answer; the component's TooLargeException when its body is longer than allowed.
      */
     public function request(
         string $method,
@@ -47,6 +58,9 @@ interface Client extends ClientInterface
         array $files = [],
         string|StreamInterface|null $body = null,
         ?Cancellation $cancellation = null,
+        string|StreamInterface|null $sink = null,
+        ?int $maxBytes = null,
+        bool $decode = true,
     ): Response;
 
     /**

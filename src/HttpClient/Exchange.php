@@ -6,13 +6,11 @@ namespace Crab\HttpClient;
 
 use Crab\Engine\Async\Cancellation;
 use Crab\Engine\Async\CancelledException;
-use Crab\Http\Stream;
 use Psr\Http\Message\RequestInterface;
 
 /**
  * One request and its answer on a connection, as HTTP/1.1 puts them on
- * the wire. The answer's body is kept in memory while it is small and on
- * disk beyond that.
+ * the wire. The answer's body is kept as the call's Receiving says.
  *
  * @internal
  */
@@ -43,6 +41,7 @@ final class Exchange
     public function __construct(
         private readonly Connection $connection,
         private readonly float $deadline,
+        private readonly Receiving $receiving,
         private readonly ?Cancellation $cancellation = null,
     ) {}
 
@@ -74,18 +73,23 @@ final class Exchange
         $encoding = strtolower(implode(',', $headers['transfer-encoding'] ?? []));
         $length = $headers['content-length'][0] ?? null;
         $bodiless = $method === 'HEAD' || $status === 204 || $status === 304 || $status < 200;
+        $chunked = str_contains($encoding, 'chunked');
+        if (!$bodiless && !$chunked && $length !== null) {
+            if (preg_match('/^\d{1,18}$/D', $length) !== 1) {
+                throw new \RuntimeException('the answer\'s length is not a number');
+            }
+            // Refused before a byte of it is read.
+            $this->receiving->expect((int) $length);
+        }
         // These have no body, whatever their headers say.
-        $sink = new BodySink($bodiless ? '' : $headers['content-encoding'][0] ?? '');
+        $sink = $this->receiving->sink($status, $headers['content-encoding'][0] ?? '', $bodiless);
         $store = $sink->write(...);
         $delimited = true;
         if ($bodiless) {
             // Nothing to read.
-        } elseif (str_contains($encoding, 'chunked')) {
+        } elseif ($chunked) {
             $this->chunks($store);
         } elseif ($length !== null) {
-            if (preg_match('/^\d{1,18}$/D', $length) !== 1) {
-                throw new \RuntimeException('the answer\'s length is not a number');
-            }
             $this->exactly((int) $length, $store);
         } else {
             // Neither a length nor chunks: the body ends when the server closes the connection.
@@ -106,14 +110,7 @@ final class Exchange
             && !$closing($headers['connection'] ?? [])
             && !$closing($request->getHeader('Connection'));
         try {
-            return new Response(
-                $status,
-                $headers,
-                new Stream($sink->stream()),
-                $reason,
-                $version,
-                self::describe($request),
-            );
+            return new Response($status, $headers, $sink->body(), $reason, $version, self::describe($request));
         } catch (\InvalidArgumentException $error) {
             throw new \RuntimeException('the answer is not valid HTTP: ' . $error->getMessage(), previous: $error);
         }
@@ -163,7 +160,7 @@ final class Exchange
         if (!isset($given['accept'])) {
             $head .= "Accept: */*\r\n";
         }
-        if (!isset($given['accept-encoding']) && function_exists('inflate_init')) {
+        if ($this->receiving->decode && !isset($given['accept-encoding']) && function_exists('inflate_init')) {
             $head .= "Accept-Encoding: gzip, deflate\r\n";
         }
         if ($size === null) {

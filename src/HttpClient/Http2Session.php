@@ -7,7 +7,6 @@ namespace Crab\HttpClient;
 use Crab\Engine\Async\Cancellation;
 use Crab\Engine\Async\CancelledException;
 use Crab\Engine\EventLoop;
-use Crab\Http\Stream;
 use Psr\Http\Message\RequestInterface;
 
 /**
@@ -166,6 +165,7 @@ final class Http2Session
     public function exchange(
         RequestInterface $request,
         float $deadline,
+        Receiving $receiving,
         ?Cancellation $cancellation,
         bool &$sent = false,
     ): Response {
@@ -183,10 +183,20 @@ final class Http2Session
             $this->lock($deadline, $cancellation);
             try {
                 $this->alive();
-                $stream = new Http2Stream($this->nextId, $this->streamWindow, $request->getMethod() === 'HEAD');
+                $stream = new Http2Stream(
+                    $this->nextId,
+                    $this->streamWindow,
+                    $request->getMethod() === 'HEAD',
+                    $receiving,
+                );
                 $this->nextId += 2;
                 $this->streams[$stream->id] = $stream;
-                $this->connection->write($this->head($stream->id, $request, $size), $deadline, $cancellation, $sent);
+                $this->connection->write(
+                    $this->head($stream->id, $request, $size, $receiving->decode),
+                    $deadline,
+                    $cancellation,
+                    $sent,
+                );
             } catch (\Throwable $error) {
                 $this->writeFailed($error);
                 throw $error;
@@ -213,19 +223,12 @@ final class Http2Session
             throw $stream->error;
         }
         $headers = $stream->headers;
-        $sink = $stream->body ?? new BodySink();
+        $sink = $stream->body ?? $receiving->sink((int) $stream->status, '', true);
         if ($sink->decoding) {
             unset($headers['content-encoding'], $headers['content-length']);
         }
         try {
-            return new Response(
-                (int) $stream->status,
-                $headers,
-                new Stream($sink->stream()),
-                '',
-                '2',
-                Exchange::describe($request),
-            );
+            return new Response((int) $stream->status, $headers, $sink->body(), '', '2', Exchange::describe($request));
         } catch (\InvalidArgumentException $invalid) {
             throw new \RuntimeException('the answer is not valid HTTP: ' . $invalid->getMessage(), previous: $invalid);
         }
@@ -254,7 +257,7 @@ final class Http2Session
     /**
      * The frames that open a stream: the request's method, address and headers.
      */
-    private function head(int $id, RequestInterface $request, ?int $size): string
+    private function head(int $id, RequestInterface $request, ?int $size, bool $decode): string
     {
         $uri = $request->getUri();
         $target = $request->getRequestTarget();
@@ -287,7 +290,7 @@ final class Http2Session
         if (!isset($given['accept'])) {
             $fields[] = ['accept', '*/*'];
         }
-        if (!isset($given['accept-encoding']) && function_exists('inflate_init')) {
+        if ($decode && !isset($given['accept-encoding']) && function_exists('inflate_init')) {
             $fields[] = ['accept-encoding', 'gzip, deflate'];
         }
         if ($size !== null && ($size > 0 || in_array($method, ['POST', 'PUT', 'PATCH'], true))) {
@@ -562,7 +565,16 @@ final class Http2Session
                 $stream->status = $status;
                 $stream->headers = $headers;
                 $bodiless = $stream->bodiless || $status === 204 || $status === 304;
-                $stream->body = new BodySink($bodiless ? '' : $headers['content-encoding'][0] ?? '');
+                try {
+                    $length = $headers['content-length'][0] ?? '';
+                    if (!$bodiless && preg_match('/^\d{1,18}$/D', $length) === 1) {
+                        // Refused before a byte of it is read.
+                        $stream->receiving->expect((int) $length);
+                    }
+                    $stream->body = $stream->receiving->sink($status, $headers['content-encoding'][0] ?? '', $bodiless);
+                } catch (\RuntimeException $error) {
+                    $stream->error = $error;
+                }
             }
         }
         // Headers after the body are trailers, which nothing here reads.

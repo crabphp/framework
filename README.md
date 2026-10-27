@@ -455,7 +455,8 @@ $http->request('PUT', $url, body: $csv, headers: ['Content-Type' => 'text/csv'])
 - **No answer always throws:** `HttpClient\NetworkException` when the server could not be reached or took too long, `HttpClient\RequestException` when the request itself cannot be sent. All three are a `Psr\Http\Client\ClientExceptionInterface`, and no message holds the query string or a header.
 - **HTTP/2 is spoken with every server that offers it** over `https`, which is most: all the requests to one server then share one connection and run at once, as many as the server allows. With the others it is HTTP/1.1, on connections that are kept and used again, up to 8 to one server; a request beyond that waits its turn.
 - **Redirects are followed,** up to 5. A cross-origin redirect drops only `Authorization` and `Cookie`; other credential headers remain. Use `redirects: 0` for those credentials, or follow redirects only from a base URL you trust. See [A client for one API](docs/http-client.md#a-client-for-one-api).
-- **An answer compressed with gzip or deflate** is handed over as what it says. Brotli is not asked for.
+- **An answer compressed with gzip or deflate** is handed over as what it says, unless `decode: false` asks for the bytes as sent. Brotli is not asked for.
+- **No body may be longer than `http_client.max_bytes`,** 64 MiB, checked as it arrives; `maxBytes:` changes it for one request, and a longer answer throws `HttpClient\TooLargeException`. `sink: $path` streams a download into a file that appears only once it is all there. See [Downloading files](docs/http-client.md#downloading-files).
 - **It is PSR-18's client** under the contract `Contracts\HttpClient\Client`; `sendRequest()` takes any PSR-7 request, and a library that asks for `Psr\Http\Client\ClientInterface` is given the same object.
 
 ### Timeouts

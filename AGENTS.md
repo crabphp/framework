@@ -158,6 +158,7 @@
 ## Calling out
 
 - Code that calls another server asks for `Contracts\HttpClient\Client` and never uses `file_get_contents()`, cURL or a stream wrapper for it: those hold the whole worker until the other side answers.
+- Every answer the HTTP client receives is bounded: its body is counted as it arrives, before and after decompression, against the call's `maxBytes:` or the client's limit, and a body past it is given up at once. There is no unbounded path; a caller that wants the whole of something large, as a disk reading a file, passes a limit it chose. A download goes through `sink:`, into a file that appears only when complete, never through a temporary copy.
 - The client waits on the event loop: a socket is read and written only when it is ready, and the fiber that asked is suspended meanwhile. It names no Revolt type; its loop is `EventLoop::current()`, asked for when a connection is made.
 - An answer with an error status is returned, not thrown. Only a request that got no answer throws, and its message carries the method, host and path, never the query string or a header.
 - Without `retry()`, a request is sent again by itself only when the server cannot have acted on it twice: a kept connection turned out to be closed, nothing came back, and doing it twice is doing it once (`GET`, `HEAD`, `OPTIONS`, `PUT`, `DELETE`); or, on HTTP/2, the server said it did not act on it (a refused stream, or a connection it left before reaching the request). A `POST` is never repeated on a guess.

@@ -37,6 +37,12 @@ use Psr\Http\Message\UriInterface;
  * beyond that waits for one. Redirects are followed, and a compressed
  * answer is handed over as what it says.
  *
+ * No answer's body may be longer than a limit, 64 MiB unless said
+ * otherwise, which is checked as it arrives. A download goes straight
+ * into a file:
+ *
+ *     $http->timeout(1200)->request('GET', $url, sink: '/srv/roms/7.zip', maxBytes: 4 << 30);
+ *
  * In a test, FakeClient is this client with replies written in advance
  * in place of the network.
  */
@@ -46,6 +52,11 @@ class Client implements ClientContract
      * Methods that may be made twice without doing anything twice.
      */
     private const REPEATABLE = ['GET', 'HEAD', 'OPTIONS', 'PUT', 'DELETE'];
+
+    /**
+     * The most bytes of body an answer may have unless a call says otherwise: 64 MiB.
+     */
+    public const MAX_BYTES = 67_108_864;
 
     private float $timeout;
     private int $retries;
@@ -66,6 +77,7 @@ class Client implements ClientContract
      * @param int $retries How many more times a request is tried when it could not be made or the server asked for it later; see retry().
      * @param float $retryDelay Seconds waited before the second try, doubled before each one after.
      * @param bool $http2 Whether HTTP/2 is used with servers that offer it over an encrypted connection.
+     * @param int $maxBytes The most bytes of body an answer may have, unless request() is given its own maxBytes:.
      * @param Transport|null $transport @internal What carries the requests; the network when left out.
      * @param ClockInterface|null $clock Reads Retry-After dates against this time; the real time when left out.
      */
@@ -84,9 +96,11 @@ class Client implements ClientContract
         bool $http2 = true,
         ?Transport $transport = null,
         private readonly ?ClockInterface $clock = null,
+        private readonly int $maxBytes = self::MAX_BYTES,
     ) {
         if (
             $timeout <= 0
+            || $maxBytes < 0
             || $connectTimeout <= 0
             || $redirects < 0
             || $connections < 1
@@ -94,7 +108,7 @@ class Client implements ClientContract
             || $retryDelay < 0
         ) {
             throw new \LogicException(
-                'An HTTP client needs timeouts above zero, at least one connection per server, and numbers of redirects and retries that are not negative.',
+                'An HTTP client needs timeouts above zero, at least one connection per server, and numbers of redirects, retries and bytes that are not negative.',
             );
         }
         $this->timeout = $timeout;
@@ -135,7 +149,7 @@ class Client implements ClientContract
 
     public function sendRequest(RequestInterface $request): ResponseInterface
     {
-        return $this->send($request, null);
+        return $this->send($request, null, new Receiving($this->maxBytes));
     }
 
     public function request(
@@ -148,7 +162,28 @@ class Client implements ClientContract
         array $files = [],
         string|StreamInterface|null $body = null,
         ?Cancellation $cancellation = null,
+        string|StreamInterface|null $sink = null,
+        ?int $maxBytes = null,
+        bool $decode = true,
     ): ResponseContract {
+        if ($maxBytes !== null && $maxBytes < 0) {
+            throw new \LogicException('maxBytes: is a number of bytes, not below zero.');
+        }
+        if (is_string($sink)) {
+            $folder = dirname($sink);
+            if ($sink === '' || str_ends_with($sink, '/') || is_dir($sink)) {
+                throw new \LogicException(
+                    "sink: is the file the body is written to, and \"{$sink}\" is not a file's path.",
+                );
+            }
+            if (!is_dir($folder) || !is_writable($folder)) {
+                throw new \RuntimeException(
+                    "The body cannot be written to {$sink}: {$folder} is not a folder this process may write in.",
+                );
+            }
+        } elseif ($sink !== null && !$sink->isWritable()) {
+            throw new \LogicException('sink: is a stream the body is written to, and the one given cannot be written.');
+        }
         if ((($json !== null) + ($form !== [] || $files !== []) + ($body !== null)) > 1) {
             throw new \LogicException(
                 'A request has one body: give json:, a form (form: and files:) or body:, not several.',
@@ -195,7 +230,11 @@ class Client implements ClientContract
         if ($json !== null && !isset($names['accept'])) {
             $headers['Accept'] = 'application/json';
         }
-        return $this->send(new Request(strtoupper($method), $url, $headers, $body ?? ''), $cancellation);
+        return $this->send(
+            new Request(strtoupper($method), $url, $headers, $body ?? ''),
+            $cancellation,
+            new Receiving($maxBytes ?? $this->maxBytes, $decode, $sink),
+        );
     }
 
     public function get(string $url, array $query = [], array $headers = []): ResponseContract
@@ -251,7 +290,7 @@ class Client implements ClientContract
     /**
      * Sends a request, again when it is to be retried and may be.
      */
-    private function send(RequestInterface $request, ?Cancellation $cancellation): Response
+    private function send(RequestInterface $request, ?Cancellation $cancellation, Receiving $receiving): Response
     {
         $deadline = (hrtime(true) / 1_000_000_000) + $this->timeout;
         $body = $request->getBody();
@@ -261,7 +300,7 @@ class Client implements ClientContract
             $response = null;
             try {
                 $redirected = false;
-                $response = $this->once($request, $deadline, $cancellation, $redirected);
+                $response = $this->once($request, $deadline, $cancellation, $receiving, $redirected);
                 // An answer that redirected means the server acted on the request: what failed was
                 // where it sent us next, and sending a POST again would do its work a second time.
                 $again =
@@ -270,7 +309,11 @@ class Client implements ClientContract
             } catch (NetworkException $error) {
                 $again = $safe || $error->unsent && !$redirected;
             }
-            $wait = $again && $resendable && $tried < $this->retries ? $this->wait($tried, $response) : null;
+            // What went into a stream cannot be taken back, and the request is not made again into it.
+            $wait =
+                $again && $resendable && !$receiving->wrote && $tried < $this->retries
+                    ? $this->wait($tried, $response)
+                    : null;
             if ($wait === null || ((hrtime(true) / 1_000_000_000) + $wait) >= $deadline) {
                 return $response ?? throw $error;
             }
@@ -318,6 +361,7 @@ class Client implements ClientContract
         RequestInterface $request,
         float $deadline,
         ?Cancellation $cancellation,
+        Receiving $receiving,
         bool &$redirected = false,
     ): Response {
         for ($followed = 0;; ++$followed) {
@@ -337,7 +381,7 @@ class Client implements ClientContract
                     unsent: true,
                 );
             }
-            $response = $this->transport->exchange($sending, $deadline, $this->timeout, $cancellation);
+            $response = $this->transport->exchange($sending, $deadline, $this->timeout, $cancellation, $receiving);
             $this->jar?->store($request->getUri(), $response->getHeader('Set-Cookie'));
             $next = $this->redirected($request, $response);
             if ($next === null) {

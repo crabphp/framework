@@ -22,6 +22,7 @@ use Crab\HttpClient\CookieJar;
 use Crab\HttpClient\HttpClientProvider;
 use Crab\HttpClient\Network;
 use Crab\HttpClient\NetworkException;
+use Crab\HttpClient\Receiving;
 use Crab\HttpClient\RequestException;
 use Crab\HttpClient\Response;
 use Crab\HttpClient\ResponseException;
@@ -62,10 +63,11 @@ final class DeadlineTransport implements Transport
         float $deadline,
         float $timeout,
         ?Cancellation $cancellation,
+        Receiving $receiving,
     ): Response {
         $this->deadlines[] = $deadline;
         $this->remaining[] = $deadline - (hrtime(true) / 1_000_000_000);
-        return $this->network->exchange($request, $deadline, $timeout, $cancellation);
+        return $this->network->exchange($request, $deadline, $timeout, $cancellation, $receiving);
     }
 
     public function close(): void

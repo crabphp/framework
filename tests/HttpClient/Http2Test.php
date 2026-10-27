@@ -19,7 +19,9 @@ use Crab\HttpClient\Hpack;
 use Crab\HttpClient\Http2Session;
 use Crab\HttpClient\Network;
 use Crab\HttpClient\NetworkException;
+use Crab\HttpClient\Receiving;
 use Crab\HttpClient\TimedOut;
+use Crab\HttpClient\TooLargeException;
 use Crab\Tests\Support\Wait;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
@@ -299,6 +301,37 @@ final class Http2Test extends TestCase
         self::assertSame(1, $http->get($this->url . '/echo')->json()['session'], 'All of it on the one connection.');
     }
 
+    public function testABodyLongerThanAllowedEndsItsStreamAndNotTheConnection(): void
+    {
+        $http = $this->serve();
+        $folder = sys_get_temp_dir() . '/crab-h2-download-' . bin2hex(random_bytes(6));
+        mkdir($folder);
+        try {
+            try {
+                $http->request('GET', $this->url . '/big', maxBytes: 1024 * 1024, sink: "{$folder}/big.bin");
+                self::fail('A body past its limit was taken whole.');
+            } catch (TooLargeException $error) {
+                self::assertStringContainsString('with more than 1,048,576 bytes of body', $error->getMessage());
+            }
+            self::assertSame(['.', '..'], scandir($folder), 'Nothing was left of the download.');
+
+            $big = $http->request('GET', $this->url . '/big', sink: "{$folder}/big.bin");
+            self::assertSame([80 * 65_536, 80 * 65_536], [filesize("{$folder}/big.bin"), $big->getBody()->getSize()]);
+
+            $raw = $http->request('GET', $this->url . '/gzip', decode: false);
+            self::assertSame(['gzip', '{"compressed":true}'], [
+                $raw->getHeaderLine('Content-Encoding'),
+                gzdecode((string) $raw->getBody()),
+            ]);
+            $seen = $http->request('GET', $this->url . '/echo', decode: false)->json();
+            self::assertArrayNotHasKey('accept-encoding', $seen['headers']);
+            self::assertSame(1, $seen['session'], 'The stream given up did not take the connection with it.');
+        } finally {
+            array_map(unlink(...), array_filter((array) glob("{$folder}/{,.}*", GLOB_BRACE), is_file(...)));
+            rmdir($folder);
+        }
+    }
+
     /**
      * Header preparation can also consume the remaining allowance. A
      * first HTTP/2 write after that must leave the request unsent.
@@ -325,7 +358,7 @@ final class Http2Test extends TestCase
                 return '/late-headers';
             });
         try {
-            $network->exchange($request, $deadline, 0.05, null);
+            $network->exchange($request, $deadline, 0.05, null, new Receiving(Client::MAX_BYTES));
             self::fail('Expired headers opened a request stream.');
         } catch (NetworkException $error) {
             self::assertStringContainsString('it took more than 0.05 seconds, and was sending', $error->getMessage());
@@ -371,6 +404,7 @@ final class Http2Test extends TestCase
                 $deadline,
                 0.05,
                 null,
+                new Receiving(Client::MAX_BYTES),
             );
             self::fail('Expired body bytes were sent as DATA.');
         } catch (NetworkException $error) {
@@ -548,7 +582,7 @@ final class Http2Test extends TestCase
     {
         $this->withWriterSession(function (Http2Session $session, EventLoop $loop): void {
             new \ReflectionMethod($session, 'lock')->invoke($session, INF, null);
-            $stream = new \Crab\HttpClient\Http2Stream(1, 65_535, false);
+            $stream = new \Crab\HttpClient\Http2Stream(1, 65_535, false, new Receiving(Client::MAX_BYTES));
             new \ReflectionProperty($session, 'streams')->setValue($session, [1 => $stream]);
             new \ReflectionMethod($session, 'abandon')->invoke($session, $stream);
             Wait::until(
@@ -614,6 +648,7 @@ final class Http2Test extends TestCase
                     $session->exchange(
                         new Request('POST', 'https://writer.test/body', [], $body),
                         (hrtime(true) / 1e9) + ($ending === 'timeout' ? 0.5 : 10),
+                        new Receiving(Client::MAX_BYTES),
                         $cancellation,
                     );
                 } catch (\Throwable $error) {

@@ -45,6 +45,8 @@ final class HttpClientProvider implements WorkerProvider
                 'retries' => 0,
                 // Whether HTTP/2 is used with servers that offer it.
                 'http2' => true,
+                // The most bytes of body an answer may have, unless a request says otherwise: 64 MiB.
+                'max_bytes' => Client::MAX_BYTES,
             ],
             [
                 'base_url' => ['type' => 'string', 'examples' => ['https://api.example.com/v1/']],
@@ -61,6 +63,7 @@ final class HttpClientProvider implements WorkerProvider
                 ],
                 'retries' => ['type' => 'integer', 'minimum' => 0],
                 'http2' => ['type' => 'boolean'],
+                'max_bytes' => ['type' => 'integer', 'minimum' => 0],
             ],
         );
         $container->singleton(ClientContract::class, static function (Container $container): Client {
@@ -78,6 +81,7 @@ final class HttpClientProvider implements WorkerProvider
                 retries: (int) $config->get('http_client.retries'),
                 http2: (bool) $config->get('http_client.http2'),
                 clock: $container->has(ClockInterface::class) ? $container->get(ClockInterface::class) : null,
+                maxBytes: (int) $config->get('http_client.max_bytes'),
             );
         });
         // The same object for code written against the standard, and by class.

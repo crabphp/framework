@@ -69,6 +69,7 @@ final class FakeClient extends Client implements Transport
         int $redirects = 5,
         ?CookieJarContract $cookies = null,
         int $retries = 0,
+        int $maxBytes = self::MAX_BYTES,
     ) {
         $this->recorder = $this;
         // Retries wait no time in a test.
@@ -80,6 +81,7 @@ final class FakeClient extends Client implements Transport
             retries: $retries,
             retryDelay: 0.0,
             transport: $this,
+            maxBytes: $maxBytes,
         );
     }
 
@@ -141,6 +143,7 @@ final class FakeClient extends Client implements Transport
         float $deadline,
         float $timeout,
         ?Cancellation $cancellation,
+        Receiving $receiving,
     ): Response {
         $cancellation?->throwIfCancelled();
         $record = $request->withBody(self::copyBody($request->getBody()));
@@ -164,15 +167,7 @@ final class FakeClient extends Client implements Transport
             } elseif (!$reply instanceof ResponseInterface) {
                 $reply = self::response(200, $reply);
             }
-            // Made again so that it knows which request it answers, for throw() to name.
-            return new Response(
-                $reply->getStatusCode(),
-                $reply->getHeaders(),
-                new Stream((string) $reply->getBody()),
-                $reply->getReasonPhrase(),
-                $reply->getProtocolVersion(),
-                $what,
-            );
+            return self::receive($reply, $request, $receiving);
         }
         $patterns = array_map(static fn(string $pattern): string => substr(
             $pattern,
@@ -181,6 +176,46 @@ final class FakeClient extends Client implements Transport
         ), array_keys($this->replies));
         $known = $patterns === [] ? 'It has none.' : 'It has: ' . implode(', ', $patterns) . '.';
         throw new \LogicException("Nothing fakes {$what}. Add a reply for it to the FakeClient. {$known}");
+    }
+
+    /**
+     * The reply as the network would hand it over: its body received as
+     * the call says, counted, decompressed and sent where the call said,
+     * and knowing which request it answers, for throw() to name.
+     */
+    private static function receive(ResponseInterface $reply, RequestInterface $request, Receiving $receiving): Response
+    {
+        $status = $reply->getStatusCode();
+        $length = $reply->getHeaderLine('Content-Length');
+        $bodiless = $request->getMethod() === 'HEAD' || $status === 204 || $status === 304 || $status < 200;
+        $body = $reply->getBody();
+        try {
+            if (!$bodiless && preg_match('/^\d{1,18}$/D', $length) === 1) {
+                $receiving->expect((int) $length);
+            }
+            $sink = $receiving->sink($status, $reply->getHeaderLine('Content-Encoding'), $bodiless);
+            if (!$bodiless) {
+                if ($body->isSeekable()) {
+                    $body->rewind();
+                }
+                while (!$body->eof()) {
+                    $sink->write($body->read(65_536));
+                }
+            }
+            if ($sink->decoding) {
+                $reply = $reply->withoutHeader('Content-Encoding')->withoutHeader('Content-Length');
+            }
+            return new Response(
+                $status,
+                $reply->getHeaders(),
+                $sink->body(),
+                $reply->getReasonPhrase(),
+                $reply->getProtocolVersion(),
+                Exchange::describe($request),
+            );
+        } catch (TooLarge $tooLarge) {
+            throw $tooLarge->named(Exchange::describe($request));
+        }
     }
 
     /**

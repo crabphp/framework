@@ -108,6 +108,7 @@ final class Network implements Transport
         float $deadline,
         float $timeout,
         ?Cancellation $cancellation,
+        Receiving $receiving,
     ): Response {
         $what = Exchange::describe($request);
         $uri = $request->getUri();
@@ -174,9 +175,11 @@ final class Network implements Transport
                     $sessionId = spl_object_id($session);
                     $this->http2Calls[$sessionId] = ($this->http2Calls[$sessionId] ?? 0) + 1;
                     try {
-                        return $session->exchange($request, $deadline, $cancellation, $sent);
+                        return $session->exchange($request, $deadline, $receiving, $cancellation, $sent);
                     } catch (CancelledException $cancelled) {
                         throw $cancelled;
+                    } catch (TooLarge $tooLarge) {
+                        throw $tooLarge->named($what);
                     } catch (Unprocessed $error) {
                         // The server says it did not act on the request, so it may be made again, whatever it is.
                         if ($resendable && $attempt < 3) {
@@ -207,13 +210,17 @@ final class Network implements Transport
                         }
                     }
                 }
-                $exchange = new Exchange($connection, $deadline, $cancellation);
+                $exchange = new Exchange($connection, $deadline, $receiving, $cancellation);
                 try {
                     $response = $exchange->run($request);
                 } catch (\Throwable $error) {
                     $pool->discard($slot);
                     if ($error instanceof CancelledException || !$error instanceof \RuntimeException) {
                         throw $error;
+                    }
+                    if ($error instanceof TooLarge) {
+                        // The rest of the body is not read: the connection it is on goes with it.
+                        throw $error->named($what);
                     }
                     // A kept connection the server had closed carried nothing: the request is sent once more, on a new one.
                     if (

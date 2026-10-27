@@ -16,6 +16,7 @@ use Crab\HttpClient\Client;
 use Crab\HttpClient\Connection;
 use Crab\HttpClient\Network;
 use Crab\HttpClient\NetworkException;
+use Crab\HttpClient\Receiving;
 use PHPUnit\Framework\TestCase;
 
 final class NetworkIdleTest extends TestCase
@@ -197,7 +198,13 @@ final class NetworkIdleTest extends TestCase
         }
         $failure = null;
         try {
-            $this->network->exchange(new Request('GET', 'http://old/'), (hrtime(true) / 1e9) - 1, 1, null);
+            $this->network->exchange(
+                new Request('GET', 'http://old/'),
+                (hrtime(true) / 1e9) - 1,
+                1,
+                null,
+                new Receiving(Client::MAX_BYTES),
+            );
         } catch (NetworkException $error) {
             $failure = $error;
         }

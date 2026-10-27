@@ -47,5 +47,6 @@ final class Http2Stream
         public readonly int $id,
         public int $window,
         public readonly bool $bodiless,
+        public readonly Receiving $receiving,
     ) {}
 }
