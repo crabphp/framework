@@ -62,6 +62,10 @@ final class Query implements QueryContract
     public private(set) ?int $limit = null;
     public private(set) ?int $offset = null;
     public private(set) bool $lock = false;
+    /**
+     * The class rows are read into, when into() named one.
+     */
+    private ?RecordMap $record = null;
 
     /**
      * @param string|QueryContract $table A table, or a query whose rows are read as one.
@@ -411,6 +415,12 @@ final class Query implements QueryContract
         return $this;
     }
 
+    public function into(string $class): static
+    {
+        $this->record = RecordMap::of($class);
+        return $this;
+    }
+
     public function when(mixed $condition, \Closure $then, ?\Closure $else = null): static
     {
         if ($condition) {
@@ -423,19 +433,19 @@ final class Query implements QueryContract
 
     public function get(): array
     {
-        $statement = $this->grammar()->select($this);
-        return $this->connection->select($statement->sql, $statement->bindings);
+        return $this->records($this->read());
     }
 
-    public function first(): ?array
+    public function first(): array|object|null
     {
-        $one = clone $this;
+        $one = clone $this->selecting();
         $one->limit = 1;
         $statement = $this->grammar()->select($one);
-        return $this->connection->first($statement->sql, $statement->bindings);
+        $row = $this->connection->first($statement->sql, $statement->bindings);
+        return $row === null || $this->record === null ? $row : $this->record->make($row);
     }
 
-    public function find(int|string $id, string $column = 'id'): ?array
+    public function find(int|string $id, string $column = 'id'): array|object|null
     {
         $query = clone $this;
         return $query->where($column, $id)->first();
@@ -444,6 +454,8 @@ final class Query implements QueryContract
     public function value(string $column): mixed
     {
         $query = clone $this;
+        // A value, not a record.
+        $query->record = null;
         $row = $query->select($column)->first();
         return $row === null ? null : $row[self::name($column)];
     }
@@ -451,6 +463,7 @@ final class Query implements QueryContract
     public function pluck(string $column, ?string $key = null): array
     {
         $query = clone $this;
+        $query->record = null;
         if ($key === null) {
             return array_column($query->select($column)->get(), self::name($column));
         }
@@ -508,8 +521,8 @@ final class Query implements QueryContract
                 }
                 $part->where($column, '>', $last);
             }
-            $rows = $part->orderBy($column)->limit($size)->get();
-            if ($rows === [] || $callback($rows) === false) {
+            $rows = $part->orderBy($column)->limit($size)->read();
+            if ($rows === [] || $callback($this->records($rows)) === false) {
                 return;
             }
             $last = $rows[count($rows) - 1][$key];
@@ -545,9 +558,11 @@ final class Query implements QueryContract
         if ($perPage < 1) {
             throw new \InvalidArgumentException('A page holds at least one row.');
         }
-        $orders = $this->cursorOrder($unique);
+        $selecting = $this->selecting();
+        $orders = $selecting->cursorOrder($unique);
         // Read as a table of its own, so that an order by an alias or a grouped column can be compared in a where.
-        $inner = clone $this;
+        $inner = clone $selecting;
+        $inner->record = null;
         $inner->orders = [];
         $inner->limit = null;
         $inner->offset = null;
@@ -563,15 +578,17 @@ final class Query implements QueryContract
         // One row more than the page holds tells whether another page follows.
         $rows = $page->limit($perPage + 1)->get();
         if (count($rows) <= $perPage) {
-            return new CursorPage($rows, $perPage, null);
+            return new CursorPage($this->records($rows), $perPage, null);
         }
         $rows = array_slice($rows, 0, $perPage);
-        return new CursorPage($rows, $perPage, self::encode($rows[$perPage - 1], $orders));
+        // The cursor is made of the row as read, before it becomes a record.
+        return new CursorPage($this->records($rows), $perPage, self::encode($rows[$perPage - 1], $orders));
     }
 
-    public function insert(array $values): int|string
+    public function insert(array|object $values): int|string
     {
         $this->readsOnly('insert');
+        $values = $this->written($values);
         if ($values === [] || array_is_list($values)) {
             throw new \InvalidArgumentException(
                 'insert() takes one row as column => value; use insertMany() for a list of rows.',
@@ -584,7 +601,7 @@ final class Query implements QueryContract
     public function insertMany(array $rows): int
     {
         $this->readsOnly('insertMany');
-        $rows = self::rows($rows);
+        $rows = self::rows($this->writtenRows($rows));
         if ($rows === []) {
             return 0;
         }
@@ -592,10 +609,10 @@ final class Query implements QueryContract
         return $this->connection->execute($statement->sql, $statement->bindings);
     }
 
-    public function insertOrIgnore(array $rows): int
+    public function insertOrIgnore(array|object $rows): int
     {
         $this->readsOnly('insertOrIgnore');
-        $rows = self::rows($rows);
+        $rows = self::rows($this->writtenRows($rows));
         if ($rows === []) {
             return 0;
         }
@@ -603,10 +620,10 @@ final class Query implements QueryContract
         return $this->connection->execute($statement->sql, $statement->bindings);
     }
 
-    public function upsert(array $rows, string|array $uniqueBy, ?array $update = null): int
+    public function upsert(array|object $rows, string|array $uniqueBy, ?array $update = null): int
     {
         $this->readsOnly('upsert');
-        $rows = self::rows($rows);
+        $rows = self::rows($this->writtenRows($rows));
         if ($rows === []) {
             return 0;
         }
@@ -629,6 +646,7 @@ final class Query implements QueryContract
         if ($values === [] || array_is_list($values)) {
             throw new \InvalidArgumentException('update() takes the new values as column => value.');
         }
+        $values = $this->record?->writeValues($values) ?? $values;
         $this->wheresOnly('update');
         foreach (array_keys($values) as $column) {
             self::wholeColumn((string) $column);
@@ -640,6 +658,7 @@ final class Query implements QueryContract
     public function increment(string $column, int|float $amount = 1, array $extra = []): int
     {
         $this->wheresOnly('increment');
+        $extra = $this->record?->writeValues($extra) ?? $extra;
         self::wholeColumn($column);
         foreach (array_keys($extra) as $other) {
             self::wholeColumn((string) $other);
@@ -662,12 +681,82 @@ final class Query implements QueryContract
 
     public function toSql(): string
     {
-        return $this->grammar()->select($this)->sql;
+        return $this->grammar()->select($this->selecting())->sql;
     }
 
     public function bindings(): array
     {
-        return $this->grammar()->select($this)->bindings;
+        return $this->grammar()->select($this->selecting())->bindings;
+    }
+
+    /**
+     * The rows as the database returned them, whatever into() said.
+     *
+     * @return list<array<string, mixed>>
+     */
+    private function read(): array
+    {
+        $statement = $this->grammar()->select($this->selecting());
+        return $this->connection->select($statement->sql, $statement->bindings);
+    }
+
+    /**
+     * @param list<array<string, mixed>> $rows
+     * @return list<array<string, mixed>|object> The rows, made into records when into() named a class.
+     */
+    private function records(array $rows): array
+    {
+        return $this->record === null ? $rows : array_map($this->record->make(...), $rows);
+    }
+
+    /**
+     * The query as it runs: reading the record's columns, of this table,
+     * when into() named a class and nothing chose the columns.
+     */
+    private function selecting(): self
+    {
+        if ($this->record === null || $this->columns !== []) {
+            return $this;
+        }
+        $alias = stripos($this->table, ' as ');
+        $table = $alias === false ? $this->table : trim(substr($this->table, $alias + 4));
+        $query = clone $this;
+        $query->columns = array_map(
+            static fn(string $column): string => "{$table}.{$column}",
+            $this->record->columns(),
+        );
+        return $query;
+    }
+
+    /**
+     * One row to write, as column to value: a record through the map of
+     * its own class, values through the map of into()'s.
+     *
+     * @param array<string, mixed>|object $row
+     * @return array<string, mixed>
+     */
+    private function written(array|object $row): array
+    {
+        if (is_object($row)) {
+            return RecordMap::of($row::class)->write($row);
+        }
+        return $this->record?->writeValues($row) ?? $row;
+    }
+
+    /**
+     * One row or a list of rows to write, each as written() makes it.
+     *
+     * @param array<mixed>|object $rows
+     * @return array<mixed>
+     */
+    private function writtenRows(array|object $rows): array
+    {
+        if (is_object($rows) || !array_is_list($rows)) {
+            return $this->written($rows);
+        }
+        return array_map(fn(mixed $row): mixed => is_array($row) || is_object($row)
+            ? $this->written($row)
+            : $row, $rows);
     }
 
     private function grammar(): Grammar

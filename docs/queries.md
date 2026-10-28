@@ -3,6 +3,7 @@
 - [Introduction](#introduction)
 - [Reading rows](#reading-rows)
     - [Aggregates](#aggregates)
+    - [Rows as records](#rows-as-records)
 - [Conditions](#conditions)
     - [Groups of conditions](#groups-of-conditions)
     - [Conditional clauses](#conditional-clauses)
@@ -55,6 +56,73 @@ $db->table('orders')->avg('total');             // null when there are no rows
 $db->table('orders')->min('created_at');
 $db->table('orders')->max('total');
 ```
+
+### Rows as records
+
+A row can be read as an object of a class of yours instead of an array. Declare the columns in its constructor, with their types, and name the class with `into()`:
+
+```php
+use Crab\Database\Json;
+
+final readonly class Order
+{
+    public function __construct(
+        public int $id,
+        public OrderStatus $status,           // a backed enum, stored as its value
+        public int $total,
+        public bool $paid,                    // 0 and 1 in SQLite, a bool here
+        #[Json] public array $meta,           // a JSON column, decoded
+        public \DateTimeImmutable $placed_at,
+        public ?string $note,                 // nullable: the column may be null
+    ) {}
+}
+
+$orders = $db->table('orders')->where('paid', true)->into(Order::class)->get();   // list<Order>
+$order  = $db->table('orders')->into(Order::class)->find($id);                     // ?Order
+```
+
+`get()`, `first()`, `find()`, the pages of `paginate()`, `simplePaginate()` and `cursorPaginate()`, and the parts `chunkById()` passes, all hold records then. `value()`, `pluck()` and the aggregates still give plain values. Without `into()` nothing changes: rows are arrays.
+
+- **Each promoted public property is a column of the same name.** Give one another name with `#[ColumnName('created_at')]`.
+- **The types say how a value is read:** `int`, `float`, `string`, `bool`, a backed enum, `DateTimeImmutable`, `mixed` as it comes, and an array only with `#[Json]`. A value is never quietly made another: text that is not a number, a value the enum does not have and null in a property that is not nullable are each refused with the property and the column named, never the value.
+- **The query reads the record's columns,** of the table or its alias, unless `select()` chose them. A column the class does not declare, a password hash for one, is not read at all. A class for each shape you read, `OrderSummary` beside `Order`, keeps every query to what it needs.
+- **A column the query does not select** is refused, unless its parameter has a default.
+- **A class that cannot be a record is refused when `into()` names it,** saying what to change: an untyped or union-typed parameter, an array without `#[Json]`, a `DateTime` (declare `DateTimeImmutable`), a parameter that is not a promoted public property, or two properties on one column.
+
+Writing takes records too. `insert()`, `insertMany()`, `insertOrIgnore()` and `upsert()` accept objects, written as their class maps them, so a class without the id inserts a new row. After `into()`, the arrays given to them, to `update()` and to `increment()` are written as the record's fields would be:
+
+```php
+final readonly class NewOrder
+{
+    public function __construct(
+        public OrderStatus $status,
+        public int $total,
+        #[Json] public array $meta,
+        public \DateTimeImmutable $placed_at,
+    ) {}
+}
+
+$id = $db->table('orders')->insert(new NewOrder(OrderStatus::Pending, 1250, [], $clock->now()));
+
+$db->table('orders')->into(Order::class)->where('id', $id)->update(['status' => OrderStatus::Paid]);
+```
+
+An enum is written as its value, a date as `Y-m-d H:i:s` in PHP's default time zone, which is the zone a date is read in, and a `#[Json]` field as JSON.
+
+For a type of your own, write a cast: an attribute that implements `Crab\Contracts\Database\Cast`, with `read()` from the column and `write()` back. Null never reaches it.
+
+```php
+#[\Attribute(\Attribute::TARGET_PARAMETER)]
+final readonly class AsMoney implements Cast
+{
+    public function read(mixed $value): mixed { return Money::cents((int) $value); }
+    public function write(mixed $value): mixed { return $value->cents; }
+}
+
+public function __construct(#[AsMoney] public Money $price) {}
+```
+
+There are no models: a record does not load or save itself, has no relationships and changes nothing behind your back. A related row is read with a query of its own, a `whereIn()` on the ids you hold.
 
 ## Conditions
 

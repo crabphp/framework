@@ -665,7 +665,7 @@ $db->transaction(function (Connection $tx) use ($from, $to, $amount) {
 - **Failures** throw `Crab\Database\DatabaseException`, whose message and `$sql` hold the SQL but never the bound values.
 - **PDO blocks.** While a statement runs, its worker serves nothing else; run more workers for more concurrent queries.
 
-It works without the framework too: `new Database(fn () => new PDO($dsn, $user, $password))`. MySQL and SQLite are supported: the tests run on SQLite, and on MySQL when `CRAB_TEST_MYSQL_DSN` is set. PostgreSQL is not supported for now. There is no model: rows are arrays, and a class of your own gives them a type where you want one.
+It works without the framework too: `new Database(fn () => new PDO($dsn, $user, $password))`. MySQL and SQLite are supported: the tests run on SQLite, and on MySQL when `CRAB_TEST_MYSQL_DSN` is set. PostgreSQL is not supported for now. There is no model: rows are arrays, or with `->into(Order::class)` objects of a readonly class of yours, its property types saying how each column is read and written.
 
 ### Query builder
 

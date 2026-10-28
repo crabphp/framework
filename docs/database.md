@@ -238,7 +238,7 @@ try {
 
 ## What there is not
 
-There is no ORM: no models, no relationships, no lazy loading. This is deliberate. Rows are arrays, queries are visible where they run, and there is no query you did not write.
+There is no ORM: no models, no relationships, no lazy loading. This is deliberate. Rows are arrays, or records of a class of yours with [`into()`](queries.md#rows-as-records), queries are visible where they run, and there is no query you did not write.
 
 Where you want a type, give a row one yourself:
 

@@ -9,7 +9,7 @@ namespace Crab\Contracts\Database;
  * page after it. It can be looped over and counted like the rows
  * themselves, and returned as JSON.
  *
- * @implements \IteratorAggregate<int, array<string, mixed>>
+ * @implements \IteratorAggregate<int, array<string, mixed>|object>
  */
 final readonly class CursorPage implements \IteratorAggregate, \Countable, \JsonSerializable
 {
@@ -19,7 +19,7 @@ final readonly class CursorPage implements \IteratorAggregate, \Countable, \Json
     public bool $hasMore;
 
     /**
-     * @param list<array<string, mixed>> $items The rows of this page.
+     * @param list<array<string, mixed>|object> $items The rows of this page, records after Query::into().
      * @param string|null $nextCursor What reads the page after this one; null when this is the last.
      */
     public function __construct(
@@ -41,7 +41,7 @@ final readonly class CursorPage implements \IteratorAggregate, \Countable, \Json
     }
 
     /**
-     * @return array{data: list<array<string, mixed>>, per_page: int, next_cursor: string|null, has_more: bool}
+     * @return array{data: list<array<string, mixed>|object>, per_page: int, next_cursor: string|null, has_more: bool}
      */
     public function jsonSerialize(): array
     {

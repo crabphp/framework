@@ -203,7 +203,7 @@
 
 ## Scope
 
-- Crab is a framework for JSON APIs that is long-running by design, not a Laravel on another engine. There is no model layer over the query builder, no session component and no roles or permissions component, and none is to be added without the owner's agreement. Say so plainly where an application developer would look for one.
+- Crab is a framework for JSON APIs that is long-running by design, not a Laravel on another engine. There is no model layer over the query builder, no session component and no roles or permissions component, and none is to be added without the owner's agreement. Say so plainly where an application developer would look for one. Records are not models: `Query::into()` reads rows into readonly classes and writes them back, and nothing more. No active record, static `find()` or `save()`, lazy loading, relationships, identity map or change tracking.
 - Events, cache, queue and scheduling are Crab's own code. A third-party library may stand behind a contract as a store or a driver, wrapped in one place; it does not replace a component.
 
 ## Cache
@@ -261,6 +261,7 @@
 - A migration works through the `Schema` and connection it is given, so a pool of one is enough; one that takes another connection from the pool needs two.
 - An application's databases are configured by name and held by `DatabaseManager`. Asking for the `Database` contract gives the default one, and `Database::connection($name)` another; do not bind a second database in the container under a name of its own. A connection is described by `driver`, `host`, `port`, `database`, `username` and `password`, and `DatabaseManager::dsn()` writes the data source name from them; a `dsn` given in their place is used as it is.
 - The layers are built in order and each works without the one above it: pool, query layer, query builder, schema builder, migrator. Do not make a lower layer depend on a higher one. There is no model layer; see Scope.
+- `RecordMap` is the one place that reads a record class and turns values between columns and properties, both ways; a cast is an attribute implementing `Contracts\Database\Cast`, as a validation rule implements `Rule`. A value is never quietly made another, and an error names the property and the column, never the value. A query without `into()` gives arrays exactly as before.
 - The query builder needs only the `Connection` contract. The one place a lower layer names it is `Connection::table()`, a single `new Query($this, $table, as: $as)`; nothing else in the pool or query layer may know it.
 - `Query` collects what a statement says and holds no SQL; `Grammar` writes it, and a dialect subclass overrides only where its database differs. A new clause is state on `Query` and a method on `Grammar`, never SQL assembled in `Query`.
 - In the builder, values are bound, names are quoted and operators are checked against a fixed list. Only methods ending in `Raw` take SQL as written, and every one of them takes bindings.

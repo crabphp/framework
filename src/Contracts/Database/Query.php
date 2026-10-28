@@ -26,6 +26,9 @@ namespace Crab\Contracts\Database;
  * The methods that build return the query itself, changed. The methods
  * that run (get(), first(), count(), insert(), update(), ...) leave it as
  * it was, so one query can be run several ways; `clone` it to branch.
+ *
+ * Rows are arrays of column to value, or records after into(): objects
+ * of a class whose constructor declares the columns with their types.
  */
 interface Query
 {
@@ -274,19 +277,38 @@ interface Query
     public function when(mixed $condition, \Closure $then, ?\Closure $else = null): static;
 
     /**
-     * @return list<array<string, mixed>> Every matching row, as column name to value.
+     * Reads rows into records of a class: get(), first(), find(), the
+     * pages and chunkById() give objects of it. Its constructor's promoted
+     * public properties are the columns, by name or by #[ColumnName], and
+     * their types say how each value is read: int, float, string, bool,
+     * a backed enum, DateTimeImmutable, #[Json] for an array, or a Cast
+     * attribute. Unless select() chose the columns, the query reads the
+     * record's. The writing methods then take records as well as values,
+     * and write an enum, a date or a cast field's value as the record would.
+     *
+     *     $orders = $db->table('orders')->where('status', 'paid')->into(Order::class)->get();
+     *
+     * value(), pluck() and the aggregates read plain values, as before.
+     *
+     * @param class-string $class
+     * @throws \LogicException When the class cannot be a record, saying what to change.
+     */
+    public function into(string $class): static;
+
+    /**
+     * @return list<array<string, mixed>|object> Every matching row, as column name to value, or as a record after into().
      */
     public function get(): array;
 
     /**
-     * @return array<string, mixed>|null The first matching row, or null when there is none.
+     * @return array<string, mixed>|object|null The first matching row, or null when there is none.
      */
-    public function first(): ?array;
+    public function first(): array|object|null;
 
     /**
-     * @return array<string, mixed>|null The row with this id, or null when there is none.
+     * @return array<string, mixed>|object|null The row with this id, or null when there is none.
      */
-    public function find(int|string $id, string $column = 'id'): ?array;
+    public function find(int|string $id, string $column = 'id'): array|object|null;
 
     /**
      * @return mixed One column of the first matching row, or null when there is none.
@@ -327,7 +349,7 @@ interface Query
      * and passes each part to the callback. Rows added or removed while it
      * runs do not shift the parts. Return false from the callback to stop.
      *
-     * @param \Closure(list<array<string, mixed>>): mixed $callback
+     * @param \Closure(list<array<string, mixed>|object>): mixed $callback
      */
     public function chunkById(int $size, \Closure $callback, string $column = 'id'): void;
 
@@ -369,17 +391,19 @@ interface Query
     public function cursorPaginate(int $perPage = 15, ?string $cursor = null, string $unique = 'id'): CursorPage;
 
     /**
-     * Inserts one row, given as column to value.
+     * Inserts one row, given as column to value or as a record, whose
+     * properties are written as its class maps them. A record need not be
+     * the class into() named: one without the generated id inserts a new row.
      *
-     * @param array<string, mixed> $values
+     * @param array<string, mixed>|object $values
      * @return int|string The id the database generated for it.
      */
-    public function insert(array $values): int|string;
+    public function insert(array|object $values): int|string;
 
     /**
      * Inserts several rows in one statement; each must have the same columns.
      *
-     * @param list<array<string, mixed>> $rows
+     * @param list<array<string, mixed>|object> $rows
      * @return int The number of rows inserted.
      */
     public function insertMany(array $rows): int;
@@ -388,10 +412,10 @@ interface Query
      * Inserts one row or a list of rows, skipping any that would break a
      * unique key.
      *
-     * @param array<string, mixed>|list<array<string, mixed>> $rows
+     * @param array<string, mixed>|object|list<array<string, mixed>|object> $rows
      * @return int The number of rows inserted.
      */
-    public function insertOrIgnore(array $rows): int;
+    public function insertOrIgnore(array|object $rows): int;
 
     /**
      * Inserts one row or a list of rows; a row whose $uniqueBy columns
@@ -399,12 +423,12 @@ interface Query
      * a unique key. $update names the columns to overwrite then, every
      * other column when left out.
      *
-     * @param array<string, mixed>|list<array<string, mixed>> $rows
+     * @param array<string, mixed>|object|list<array<string, mixed>|object> $rows
      * @param string|list<string> $uniqueBy
      * @param list<string>|null $update
      * @return int The affected-row count as the database reports it.
      */
-    public function upsert(array $rows, string|array $uniqueBy, ?array $update = null): int;
+    public function upsert(array|object $rows, string|array $uniqueBy, ?array $update = null): int;
 
     /**
      * Updates the matching rows; every row when the query has no where.
