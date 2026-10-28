@@ -208,13 +208,16 @@ final class DescribeText
     }
 
     /**
-     * @param list<array{id: string, runs: string, on: bool}> $servers
+     * @param list<array{id: string, runs: string, on: bool, reloads?: bool}> $servers
      */
     private static function servers(array $servers): string
     {
         $lines = ['servers'];
         foreach ($servers as $server) {
-            $lines[] = "  {$server['id']} runs {$server['runs']}, " . ($server['on'] ? 'on' : 'off');
+            $lines[] =
+                "  {$server['id']} runs {$server['runs']}, "
+                . ($server['on'] ? 'on' : 'off')
+                . ($server['reloads'] ?? true ? '' : ', kept across reloads');
         }
         return implode("\n", $lines);
     }

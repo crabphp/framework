@@ -36,6 +36,7 @@ final class Crab
 
     /**
      * @param float|null $shutdownTimeout Seconds this group's workers have to drain; null uses the runtime's deadline.
+     * @param bool $reloads Whether SIGUSR1 replaces this group's workers; false keeps them until the runtime stops.
      */
     public function __construct(
         public readonly string $name,
@@ -43,6 +44,7 @@ final class Crab
         public readonly int $maxConnections = 512,
         public readonly int $maxTasks = 1024,
         public readonly ?float $shutdownTimeout = null,
+        public readonly bool $reloads = true,
     ) {
         if ($name === '' || $workers < 1 || $maxConnections < 1 || $maxTasks < 1) {
             throw new \InvalidArgumentException(

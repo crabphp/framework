@@ -53,7 +53,11 @@ final readonly class Start implements Command
 
         if ($input->flag('generation')) {
             // How the keeper of a server in the background starts the server proper; see Server::start().
-            $server->generation(is_string($input->option('address')) ? $address : null, $workers);
+            $server->generation(
+                is_string($input->option('address')) ? $address : null,
+                $workers,
+                held: $input->flag('held'),
+            );
         }
         if ($daemon) {
             if ($single) {

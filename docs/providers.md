@@ -305,7 +305,31 @@ Then switch each on where it should run:
 What a command or a program prints appears in the server's output with its id in front, `[vite] ready in 300 ms`. One that ends is started again. Registering an id a second time takes the place of the first, so your provider, which comes after the framework's, can say what `queue` runs.
 
 > [!WARNING]
-> A server that listens on an address of its own cannot yet be run under `start --daemon`: on `reload` only the HTTP socket is handed from the old server to the new. `start` refuses to start it there and says so. Run `start` in the foreground, kept alive by systemd or a container, where a restart replaces the whole process.
+> A server that listens on an address of its own cannot yet be run under `start --daemon` and reloaded: on `reload` only the HTTP socket is handed from the old server to the new. `start` refuses to start it there and says so. Keep it across reloads, as below, or run `start` in the foreground, kept alive by systemd or a container, where a restart replaces the whole process.
+
+#### Keeping a server across reloads
+
+Some work must not be cut short by a deploy: an agent in the middle of a long task, a process that owns a terminal. Give `reloads: false` to any of the three methods:
+
+```php
+use Crab\Engine\Async\Cancellation;
+use Crab\Engine\Process\Worker;
+
+$servers->command('agent', 'agent:serve', reloads: false);
+
+$servers->add('agent', static fn (): array => [
+    new Workers('agent', work: static function (Worker $worker, Cancellation $cancellation): void {
+        // Take work and carry it out until $cancellation fires.
+    }),
+], grace: 30.0, reloads: false);
+```
+
+Under `start --daemon` such a server runs in a process of its own beside the one that serves HTTP. `reload` gives HTTP and the other servers the new code and leaves this one running the code it started with; `restart` and `stop` end it with the rest. If it ends by itself it is started again, on the code as it is then. In the foreground, `SIGUSR1` replaces every worker but its own.
+
+- **Changing what is kept takes a restart.** A `reload` whose code keeps other servers than the running one, or none, is refused and changes nothing. So is a `reload` to another `--address`.
+- **New code for it takes a restart too.** Make the server stop cleanly when `$cancellation` fires, or on `SIGTERM` for a command or a program, and resume what it had in hand when it starts again.
+- **It may listen on an address of its own,** since nothing hands its socket over.
+- **It holds the old code's connections to the database and other services,** so keep what it shares with HTTP backward compatible across a deploy, as for the moment between a migration and a reload.
 
 A group given to `add()` has a `setup`, which has it listen on an address of its own, or `work`, a loop that runs until it is told to stop, or both. The closure that returns the groups runs when the server starts, so it may read the configuration and what later providers bound.
 

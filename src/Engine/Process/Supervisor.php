@@ -317,7 +317,11 @@ final class Supervisor
         }
         if ($this->reloadRequested && $this->reloadQueue === [] && $this->replacement === null) {
             $this->reloadRequested = false;
-            $this->reloadQueue = array_keys($this->slots);
+            // A group that does not reload keeps its workers until the runtime stops.
+            $this->reloadQueue = array_keys(array_filter(
+                $this->slots,
+                fn(array $slot): bool => $this->groups[$slot['group']]->reloads,
+            ));
         }
         if ($this->replacement === null && $this->reloadQueue !== []) {
             $slot = array_shift($this->reloadQueue);

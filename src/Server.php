@@ -25,6 +25,9 @@ use Crab\Engine\Runtime;
  * "server.pid" and everything printed goes to "server.log"; both default
  * to the storage folder. Finding, reading and stopping a running server
  * needs only those files, and is ServerFiles.
+ *
+ * Servers registered with `reloads: false` run in a second server process
+ * under the keeper, which a reload leaves as it is.
  */
 final class Server
 {
@@ -171,11 +174,15 @@ final class Server
                 );
             }
             $keeper = new Keeper($pidFile, $log, $timeout, $grace);
+            $held = $this->app->held();
             $status = $keeper->run(
                 $address,
                 self::generationCommand($invocation, $given),
                 $directory,
                 static fn() => $daemon->ready((string) getmypid()),
+                $held === []
+                    ? null
+                    : ['command' => self::generationCommand($invocation, $given, held: true), 'names' => $held],
             );
         } catch (\Throwable $error) {
             // Before it was ready this reaches the launcher; afterwards the log is all there is.
@@ -188,9 +195,10 @@ final class Server
     /**
      * Serves as the child of a keeper, on the socket it passed on. This is
      * what `start --generation` runs; a keeper starts it and nothing else
-     * does.
+     * does. With `--held` it is the keeper's other process, which runs the
+     * servers kept across reloads and no HTTP.
      */
-    public function generation(?string $address, int $workers): never
+    public function generation(?string $address, int $workers, bool $held = false): never
     {
         $status = 0;
         $generation = null;
@@ -198,11 +206,13 @@ final class Server
             $generation = Generation::inherit();
             // Without an address of its own on the command line, it serves where the keeper's socket listens.
             $address ??= 'tcp://' . stream_socket_get_name($generation->socket, false);
-            $runtime = $this->keepStats($this->app->runtime($address, $workers, $generation->socket), [
-                'address' => $address,
-                'mode' => 'background',
-                'keeper' => posix_getppid(),
-            ]);
+            $about = $held
+                ? ['mode' => 'background', 'held' => true, 'keeper' => posix_getppid()]
+                : ['address' => $address, 'mode' => 'background', 'keeper' => posix_getppid()];
+            $runtime = $this->keepStats(
+                $this->app->runtime($address, $workers, $generation->socket, held: $held),
+                $about,
+            );
             $generation->attach($runtime);
             $runtime->run();
         } catch (\Throwable $error) {
@@ -247,6 +257,7 @@ final class Server
                 (string) getcwd(),
                 $timeout + 5.0,
                 $this->grace(),
+                $this->app->held(),
             );
         } finally {
             fclose($lock);
@@ -372,11 +383,15 @@ final class Server
      *
      * @param list<string> $invocation
      * @param array{address?: string, workers?: int} $given
+     * @param bool $held True for the process that runs the servers kept across reloads.
      * @return list<string>
      */
-    private static function generationCommand(array $invocation, array $given): array
+    private static function generationCommand(array $invocation, array $given, bool $held = false): array
     {
         $command = [...$invocation, 'start', '--generation'];
+        if ($held) {
+            $command[] = '--held';
+        }
         foreach ($given as $option => $value) {
             $command[] = "--{$option}={$value}";
         }

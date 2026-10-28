@@ -353,7 +353,7 @@ Starting Shop server on http://127.0.0.1:8080
 Press Ctrl+C to stop
 ```
 
-Each server running under `start` has an id: `http`, `queue`, `schedule`. They are started, stopped and reloaded together: `reload` after a deploy gives every one of them the new code, each given its shutdown period to finish the work in hand before remaining workers are ended. Each has processes of its own, so a slow job never holds up a request. When something runs beside HTTP, registered servers that are switched off are listed as `off`. With HTTP alone, `start` prints no server table.
+Each server running under `start` has an id: `http`, `queue`, `schedule`. They are started, stopped and reloaded together: `reload` after a deploy gives every one of them the new code, each given its shutdown period to finish the work in hand before remaining workers are ended. A server registered with `reloads: false` is the exception: `reload` leaves it running, and only `restart` and `stop` end it; see [Keeping a server across reloads](providers.md#keeping-a-server-across-reloads). Each has processes of its own, so a slow job never holds up a request. When something runs beside HTTP, registered servers that are switched off are listed as `off`. With HTTP alone, `start` prints no server table.
 
 | On | Switch on | Why |
 | --- | --- | --- |
@@ -427,11 +427,13 @@ Run the migrations before the reload, and write them so that the old code still 
 
 ```text
 keeper            holds the listening socket; its process id is the server's and never changes
-└─ server         the application, loaded once; a reload starts a new one beside it and retires this one
-   ├─ worker      serves requests
+├─ server         the application, loaded once; a reload starts a new one beside it and retires this one
+│  ├─ worker      serves requests
+│  └─ worker
+└─ held server    only with servers kept across reloads; a reload leaves it, a restart replaces it
    └─ worker
 ```
 
 - **The keeper** binds the address once and passes the socket to each server process it starts. It serves nothing and loads none of your code, so it never needs replacing. Restart it only after upgrading the framework itself.
-- **A server process that dies is started again** by the keeper, on the socket that never closed. Six deaths within a minute and the keeper gives up and stops.
+- **A server process that dies is started again** by the keeper, on the socket that never closed. Six deaths within a minute and the keeper gives up and stops. The held server is looked after the same way, and `status` lists it as `kept across reloads`.
 - **The new process starts in the directory `reload` was run from.** Deploying into a new release folder and reloading from there works, as long as `storage/` is shared between the folders, since the process id file is how `reload` finds the server.

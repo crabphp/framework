@@ -841,6 +841,73 @@ final class ServerTest extends TestCase
         $this->checkRegisteredProgramStop(false, compound: true, reload: true);
     }
 
+    public function testAServerKeptAcrossReloadsRunsOnUntilRestart(): void
+    {
+        mkdir($this->directory . '/config');
+        file_put_contents($this->directory . '/config/server.php', "<?php return ['with' => ['agent']];");
+        $held = <<<'PHP'
+            <?php
+            $app = Crab\App::configure(__DIR__)->withRouting(routes: 'app/routes.php')->create();
+            $app->servers->process('agent', PHP_BINARY . ' ' . escapeshellarg(__DIR__ . '/agent.php'), reloads: false);
+            return $app;
+            PHP;
+        file_put_contents($this->directory . '/app.php', $held);
+        file_put_contents($this->directory . '/agent.php', <<<'PHP'
+            <?php
+            file_put_contents(__DIR__ . '/agent-pids', getmypid() . "\n", FILE_APPEND | LOCK_EX);
+            while (true) { usleep(10_000); }
+            PHP);
+        $agents = function (int $count): array {
+            $file = $this->directory . '/agent-pids';
+            $pids = [];
+            $deadline = microtime(true) + 5.0;
+            do {
+                $pids = is_file($file) ? array_map(intval(...), file($file, FILE_IGNORE_NEW_LINES) ?: []) : [];
+                if (count($pids) >= $count) {
+                    break;
+                }
+                usleep(10_000);
+            } while (microtime(true) < $deadline);
+            self::assertCount($count, $pids, "The agent had not been started {$count} times within five seconds.");
+            return $pids;
+        };
+
+        [$status, $output] = $this->cua('start', '--daemon', "--address={$this->address}");
+        self::assertSame(0, $status, $output);
+        [$agent] = $agents(1);
+        self::assertSame('one', $this->get());
+
+        $this->version('two');
+        [$status, $output] = $this->cua('reload');
+        self::assertSame(0, $status, $output);
+        self::assertSame('two', $this->get(), 'HTTP runs the new code.');
+        self::assertSame([$agent], $agents(1), 'The agent was not started again.');
+        self::assertTrue(\Crab\Engine\Process\PidFile::running($agent), 'The agent runs on through the reload.');
+        self::assertMatchesRegularExpression(
+            '~^In the background, kept across reloads, pid \d+, up \d+s\n\n.+  agent #0 ~ms',
+            $this->cua('status')[1],
+        );
+
+        // The code no longer keeps it: only a restart may change what is kept.
+        file_put_contents($this->directory . '/app.php', str_replace(', reloads: false', '', $held));
+        $this->version('three');
+        [$status, $output] = $this->cua('reload');
+        self::assertSame(1, $status, $output);
+        self::assertStringContainsString(
+            'What is kept across reloads was agent, and the code now keeps nothing. A reload leaves it running as it is; use `restart` to change it.',
+            $output,
+        );
+        self::assertSame('two', $this->get(), 'A refused reload leaves the server as it was.');
+
+        [$status, $output] = $this->cua('restart');
+        self::assertSame(0, $status, $output);
+        self::assertSame('three', $this->get());
+        self::assertFalse(\Crab\Engine\Process\PidFile::running($agent), 'A restart ends the agent.');
+        [, $again] = $agents(2);
+        self::assertSame(0, $this->cua('stop')[0]);
+        self::assertFalse(\Crab\Engine\Process\PidFile::running($again), 'Stopping ends the agent.');
+    }
+
     public function testForceEndsARegisteredProgramWhenItsKeeperIsSuspended(): void
     {
         $this->checkRegisteredProgramStop(true, suspended: true);

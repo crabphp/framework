@@ -241,6 +241,30 @@ final class DescribeTest extends TestCase
         self::assertStringContainsString('Unknown section nope', (string) stream_get_contents($stream));
     }
 
+    public function testAServerKeptAcrossReloadsIsSaidSo(): void
+    {
+        $app = new App();
+        $app->servers->process('agent', 'node agent.js', reloads: false);
+        $app->servers->process('vite', 'npm run dev');
+
+        self::assertSame(
+            [
+                ['id' => 'agent', 'runs' => 'node agent.js', 'on' => false, 'reloads' => false],
+                ['id' => 'vite', 'runs' => 'npm run dev', 'on' => false, 'reloads' => true],
+            ],
+            $this->describe($app, 'servers')['servers'],
+        );
+        $stream = fopen('php://memory', 'w+b');
+        self::assertSame(0, $app->console->run(['describe', 'servers'], new Output($stream, $stream)));
+        rewind($stream);
+        self::assertStringEndsWith(<<<'TEXT'
+            servers
+              agent runs node agent.js, off, kept across reloads
+              vite runs npm run dev, off
+
+            TEXT, (string) stream_get_contents($stream));
+    }
+
     /**
      * @return array<string, mixed>
      */

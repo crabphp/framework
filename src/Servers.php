@@ -13,34 +13,42 @@ use Crab\Contracts\Workers;
 final class Servers implements ServersContract
 {
     /**
-     * By id: what kind it is, what it runs, how long it is given to stop, and how the list names it.
+     * By id: what kind it is, what it runs, how long it is given to stop, how the list names it, and whether a reload replaces it.
      *
-     * @var array<string, array{kind: 'groups'|'command'|'process', runs: \Closure|string, grace: float, label: string}>
+     * @var array<string, array{kind: 'groups'|'command'|'process', runs: \Closure|string, grace: float, label: string, reloads: bool}>
      */
     private array $servers = [];
 
-    public function add(string $id, \Closure $groups, float $grace = 5.0, string $runs = ''): void
+    public function add(string $id, \Closure $groups, float $grace = 5.0, string $runs = '', bool $reloads = true): void
     {
-        $this->register($id, ['kind' => 'groups', 'runs' => $groups, 'grace' => $grace, 'label' => $runs]);
+        $this->register($id, [
+            'kind' => 'groups',
+            'runs' => $groups,
+            'grace' => $grace,
+            'label' => $runs,
+            'reloads' => $reloads,
+        ]);
     }
 
-    public function command(string $id, string $command): void
+    public function command(string $id, string $command, bool $reloads = true): void
     {
         $this->register($id, [
             'kind' => 'command',
             'runs' => self::checked($id, $command),
             'grace' => 30.0,
             'label' => 'php cua ' . trim($command),
+            'reloads' => $reloads,
         ]);
     }
 
-    public function process(string $id, string $command): void
+    public function process(string $id, string $command, bool $reloads = true): void
     {
         $this->register($id, [
             'kind' => 'process',
             'runs' => self::checked($id, $command),
             'grace' => 30.0,
             'label' => trim($command),
+            'reloads' => $reloads,
         ]);
     }
 
@@ -68,6 +76,14 @@ final class Servers implements ServersContract
     public function line(string $id): string
     {
         return (string) $this->servers[$id]['runs'];
+    }
+
+    /**
+     * Whether a reload replaces a server; false for one kept across reloads.
+     */
+    public function reloads(string $id): bool
+    {
+        return $this->servers[$id]['reloads'];
     }
 
     /**
@@ -113,7 +129,7 @@ final class Servers implements ServersContract
     }
 
     /**
-     * @param array{kind: 'groups'|'command'|'process', runs: \Closure|string, grace: float, label: string} $server
+     * @param array{kind: 'groups'|'command'|'process', runs: \Closure|string, grace: float, label: string, reloads: bool} $server
      */
     private function register(string $id, array $server): void
     {

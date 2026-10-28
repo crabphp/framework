@@ -99,6 +99,10 @@ final readonly class Status implements Command
         if (isset($about['address'])) {
             $where .= ' on ' . Server::describe((string) $about['address']);
         }
+        $held = ($about['held'] ?? false) === true;
+        if ($held) {
+            $where .= ', kept across reloads';
+        }
         $pid = $running['pid'];
         $started = (float) $running['started'];
         $reloaded = null;
@@ -107,7 +111,8 @@ final readonly class Status implements Command
             // this process is the latest a reload put under it.
             $pid = $about['keeper'];
             $kept = $files->pidFile()->started($pid);
-            if ($kept !== null && ($started - $kept) > 1.0) {
+            // The held process starts after the other and no reload replaces it: its own time is its age.
+            if (!$held && $kept !== null && ($started - $kept) > 1.0) {
                 $reloaded = $started;
                 $started = $kept;
             }

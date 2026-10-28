@@ -50,7 +50,9 @@ final class Runtime
 
     /**
      * A group may have a shorter drain deadline than the runtime's other
-     * workers; its supervisor still allows time for cleanup and exit.
+     * workers; its supervisor still allows time for cleanup and exit. A
+     * group that does not reload keeps its workers when SIGUSR1 replaces
+     * the others.
      */
     public function group(
         string $name = 'default',
@@ -58,11 +60,12 @@ final class Runtime
         int $maxConnections = 512,
         int $maxTasks = 1024,
         ?float $shutdownTimeout = null,
+        bool $reloads = true,
     ): Crab {
         if ($this->running || isset($this->groups[$name])) {
             throw new \LogicException('Groups must be unique and configured before startup.');
         }
-        return $this->groups[$name] = new Crab($name, $workers, $maxConnections, $maxTasks, $shutdownTimeout);
+        return $this->groups[$name] = new Crab($name, $workers, $maxConnections, $maxTasks, $shutdownTimeout, $reloads);
     }
 
     /**

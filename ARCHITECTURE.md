@@ -232,16 +232,19 @@ flowchart TD
     W1[Worker]
     W2[Worker]
     G2["New generation, started by a reload<br/>on the same socket"]
+    H["Held generation: the servers kept across reloads.<br/>A reload leaves it; a restart replaces it."]
     K --> G1
     G1 --> W1
     G1 --> W2
     K -.-> G2
+    K -.-> H
 ~~~
 
 - **New code is a new process.** PHP cannot redefine a class, and the application is defined in the server process before it forks, so neither a watcher nor a reload tries to change a running process. The watcher stops the old one first, since a moment's gap does not matter in development. A reload overlaps the two.
 - **The keeper is what makes the overlap exact.** It binds the address once and passes the socket to each generation it starts, so the old and the new accept from one queue and no connection is left without a taker. It serves nothing and loads nothing new, so it never needs replacing itself, and what a generation opens is never inherited by the next.
 - **A reload is all or nothing.** The keeper retires the old generation only when the new one reports that every worker accepts connections; otherwise it ends the new one and says why. A generation that dies by itself is started again.
 - **Starting is not done until it works.** `start --daemon` and `reload` return when connections are accepted, or fail with the reason, so a deploy script can trust the exit status.
+- **What a deploy must not cut short is held apart.** Servers registered with `reloads: false` run in a second generation the keeper starts after the first (`start --generation --held`), which runs them and no HTTP. A reload leaves it on its old code; it is revived like the other when it dies, and ended only with the service. The launcher tells the keeper the names it holds, so the keeper still loads no application code; a reload whose code holds other names, or that moves the address, is refused, since only a restart may change the held generation. In the foreground the same servers are worker groups that `SIGUSR1` skips.
 - A background server writes its process id to `server.pid` and what it prints to `server.log`. A foreground server writes neither and is controlled by whatever started it.
 
 ## Extension points
@@ -256,7 +259,7 @@ Small and explicit; there are six, and no others are planned.
 | Commands | `Console` contract, `add()` | today |
 | Reacting to events | The `Events\Dispatcher` contract, PSR-14: `listen()` in a provider's `register()` | today, registered by default by `App::configure()` |
 | Worker processes | The `Runner` contract: `run($group, $work, $workers)` from a command, or `runAll()` for several groups under one parent | today |
-| Servers beside HTTP | The `Servers` contract: `add('chat', fn () => [new Workers(...)])` joins `start` as its own workers, `command()` and `process()` run in a process of their own; `server.with` switches each on | today |
+| Servers beside HTTP | The `Servers` contract: `add('chat', fn () => [new Workers(...)])` joins `start` as its own workers, `command()` and `process()` run in a process of their own; `server.with` switches each on; `reloads: false` keeps one across reloads | today |
 
 No auto-discovery, no `boot()` phase, no global container accessor. `Route::get()` and `Command::add()` are static names for `$app->router` and `$app->console`, for declaring routes and commands before workers start; they are the only ones, and there is none for anything a request or a worker owns.
 

@@ -23,6 +23,11 @@ use Crab\Engine\Network\Listener;
  * A replacement is asked for by another process: it writes a request
  * beside the process id file and sends the keeper SIGUSR2; request() does
  * both and waits for the answer.
+ *
+ * Beside it the keeper may hold a second server process, for what must
+ * not be cut short by a deploy, such as a long-running agent. A reload
+ * leaves that one as it is; it is started again only when it ends by
+ * itself, and stopped with the service.
  */
 final class Keeper
 {
@@ -57,6 +62,27 @@ final class Keeper
      * @var array{process: resource, report: resource|null, pid: int, stopTimeout: float}|null
      */
     private ?array $starting = null;
+    /**
+     * The command of the held generation, and the names of what it holds,
+     * which a reload must ask for as they are; none when nothing is held.
+     *
+     * @var list<string>
+     */
+    private array $heldCommand = [];
+    /**
+     * @var list<string>
+     */
+    private array $heldNames = [];
+    /**
+     * @var array{process: resource, report: resource|null, pid: int, stopTimeout: float}|null
+     */
+    private ?array $held = null;
+    /**
+     * When the held generation ended by itself, lately.
+     *
+     * @var list<float>
+     */
+    private array $heldFailures = [];
     /**
      * Generations told to stop, with the time by which each must have.
      *
@@ -97,10 +123,11 @@ final class Keeper
      *
      * @param list<string> $command What starts a generation, after the PHP binary: the script and its arguments.
      * @param string $directory The directory to start it in.
-     * @param \Closure(): void $ready Called once the first generation accepts connections.
+     * @param \Closure(): void $ready Called once the first generation, and the held one if any, have started.
+     * @param array{command: list<string>, names: list<string>}|null $held What starts the held generation, and the names of what it holds; null for none.
      * @return int The exit status: 0 after a stop that was asked for.
      */
-    public function run(string $address, array $command, string $directory, \Closure $ready): int
+    public function run(string $address, array $command, string $directory, \Closure $ready, ?array $held = null): int
     {
         if (!extension_loaded('pcntl') || !extension_loaded('posix')) {
             throw new \RuntimeException('Keeping a server in the background needs PHP\'s pcntl and posix extensions.');
@@ -147,6 +174,26 @@ final class Keeper
             $this->starting = null;
             $this->publish();
             $this->log("Serving on {$address}, generation pid {$this->current['pid']}.");
+            if ($held !== null) {
+                $this->heldCommand = $held['command'];
+                $this->heldNames = $held['names'];
+                $this->starting = $this->spawn($this->heldCommand, $this->directory, $this->socket, $this->stopTimeout);
+                $this->publish();
+                [$started, $message] = $this->await($this->starting);
+                if (!$started) {
+                    if ($this->stopping) {
+                        return 0;
+                    }
+                    $this->end($this->starting);
+                    throw new \RuntimeException(
+                        'What is kept across reloads, ' . $this->names() . ", did not start: {$message}",
+                    );
+                }
+                $this->held = $this->starting;
+                $this->starting = null;
+                $this->publish();
+                $this->log('Keeping ' . $this->names() . " across reloads, generation pid {$this->held['pid']}.");
+            }
             $ready();
             while (!$this->stopping) {
                 try {
@@ -155,7 +202,10 @@ final class Keeper
                     // The keeper has to outlive its own mistakes; the service depends on it.
                     $this->log('The keeper caught: ' . FailureReporter::describe($error));
                 }
-                if ($this->current === null && !$this->stopping) {
+                if (
+                    ($this->current === null || $this->heldCommand !== [] && $this->held === null)
+                    && !$this->stopping
+                ) {
                     $status = 1;
                     break;
                 }
@@ -179,6 +229,7 @@ final class Keeper
      * @param int $keeper The keeper's process id.
      * @param list<string> $command What starts the new generation, after the PHP binary.
      * @param float|null $stopTimeout Seconds the new generation needs to stop; null keeps the current allowance.
+     * @param list<string> $held The names of what the held generation holds as the new code has them; a reload is refused when they differ from what runs.
      * @return array{ok: bool, message?: string, pid?: int, previous?: int}
      */
     public static function request(
@@ -189,6 +240,7 @@ final class Keeper
         string $directory,
         float $timeout,
         ?float $stopTimeout = null,
+        array $held = [],
     ): array {
         if ($stopTimeout !== null && (!is_finite($stopTimeout) || $stopTimeout <= 0)) {
             throw new \InvalidArgumentException(
@@ -205,6 +257,7 @@ final class Keeper
             'command' => $command,
             'directory' => $directory,
             'stopTimeout' => $stopTimeout,
+            'held' => $held,
         ]);
         try {
             posix_kill($keeper, SIGUSR2);
@@ -386,7 +439,7 @@ final class Keeper
                 'deadline' => is_finite($generation['deadline']) ? $generation['deadline'] : 0.0,
             ];
         }
-        foreach ([$this->current, $this->starting] as $generation) {
+        foreach ([$this->current, $this->held, $this->starting] as $generation) {
             if ($generation === null) {
                 continue;
             }
@@ -472,47 +525,72 @@ final class Keeper
         if ($this->stopping) {
             return;
         }
-        if ($this->current === null || proc_get_status($this->current['process'])['running']) {
+        if ($this->current !== null && !proc_get_status($this->current['process'])['running']) {
+            $ended = $this->current;
+            $this->current = null;
+            $this->current = $this->revive($ended, $this->failures, $this->command);
+            if ($this->current !== null) {
+                $this->log("Serving again, generation pid {$this->current['pid']}.");
+            }
+        }
+        if ($this->stopping || $this->held === null || proc_get_status($this->held['process'])['running']) {
             return;
         }
-        $ended = $this->current;
-        $this->current = null;
+        $ended = $this->held;
+        $this->held = null;
+        $this->held = $this->revive($ended, $this->heldFailures, $this->heldCommand);
+        if ($this->held !== null) {
+            $this->log('Keeping ' . $this->names() . " again, generation pid {$this->held['pid']}.");
+        }
+    }
+
+    /**
+     * Starts a generation that ended by itself again, as it was started,
+     * after a pause that grows with each failure; gives up at the sixth
+     * failure within a minute.
+     *
+     * @param array{process: resource, report: resource|null, pid: int, stopTimeout: float} $ended
+     * @param list<float> $failures When generations of this kind ended by themselves, lately.
+     * @param list<string> $command
+     * @return array{process: resource, report: resource|null, pid: int, stopTimeout: float}|null The new generation, or null when it could not be started.
+     */
+    private function revive(array $ended, array &$failures, array $command): ?array
+    {
         $exit = proc_close($ended['process']);
         $this->publish();
         $now = microtime(true);
-        $this->failures = array_values(array_filter($this->failures, static fn(float $at): bool => ($now - $at) < 60));
-        $this->failures[] = $now;
-        if (count($this->failures) > 5) {
+        $failures = array_values(array_filter($failures, static fn(float $at): bool => ($now - $at) < 60));
+        $failures[] = $now;
+        if (count($failures) > 5) {
             $this->log(
                 "Generation pid {$ended['pid']} ended with status {$exit}, the sixth to do so within a minute. Giving up.",
             );
-            return;
+            return null;
         }
         $this->log("Generation pid {$ended['pid']} ended by itself with status {$exit}. Starting another.");
         // Connections wait in the socket's queue meanwhile; none is refused.
-        $restartAt = microtime(true) + min(2.0, 0.1 * (2 ** (count($this->failures) - 1)));
+        $restartAt = microtime(true) + min(2.0, 0.1 * (2 ** (count($failures) - 1)));
         while (!$this->stopping && microtime(true) < $restartAt) {
             $this->collectRetiring();
             usleep(10_000);
         }
         if ($this->stopping) {
-            return;
+            return null;
         }
-        $this->starting = $this->spawn($this->command, $this->directory, $this->socket, $ended['stopTimeout']);
+        $this->starting = $this->spawn($command, $this->directory, $this->socket, $ended['stopTimeout']);
         $this->publish();
         [$started, $message] = $this->await($this->starting);
         if ($started) {
-            $this->current = $this->starting;
+            $generation = $this->starting;
             $this->starting = null;
             $this->publish();
-            $this->log("Serving again, generation pid {$this->current['pid']}.");
-            return;
+            return $generation;
         }
-        if ($this->stopping) {
-            return;
+        if (!$this->stopping) {
+            $this->end($this->starting);
+            $this->log("The new generation did not start: {$message} Giving up.");
         }
-        $this->end($this->starting);
-        $this->log("The new generation did not start: {$message} Giving up.");
+        return null;
     }
 
     /**
@@ -541,6 +619,30 @@ final class Keeper
             return;
         }
         $stopTimeout = (float) $stopTimeout;
+        $held = array_map(strval(...), array_values((array) ($request['held'] ?? [])));
+        if ($held !== $this->heldNames) {
+            $this->answer($id, [
+                'ok' => false,
+                'message' =>
+                    'What is kept across reloads was '
+                        . ($this->heldNames === [] ? 'nothing' : implode(', ', $this->heldNames))
+                        . ', and the code now keeps '
+                        . ($held === [] ? 'nothing' : implode(', ', $held))
+                        . '. A reload leaves it running as it is; use `restart` to change it.',
+            ]);
+            return;
+        }
+        if ($this->held !== null && $address !== $this->address) {
+            // The held generation inherited the listening socket, and would keep the old address bound.
+            $this->answer($id, [
+                'ok' => false,
+                'message' =>
+                    'A reload cannot move the server to another address while '
+                        . $this->names()
+                        . ' is kept across reloads; use `restart` to move it.',
+            ]);
+            return;
+        }
         $socket = $this->socket;
         if ($address !== $this->address) {
             try {
@@ -675,7 +777,7 @@ final class Keeper
      */
     private function shutDown(): void
     {
-        foreach ([$this->current, $this->starting] as $generation) {
+        foreach ([$this->current, $this->held, $this->starting] as $generation) {
             if ($generation === null) {
                 continue;
             }
@@ -686,6 +788,7 @@ final class Keeper
             $this->retire($generation, $generation['stopTimeout']);
         }
         $this->current = null;
+        $this->held = null;
         $this->starting = null;
         $this->publish();
         while ($this->retiring !== []) {
@@ -724,6 +827,14 @@ final class Keeper
             @unlink($temporary);
             throw new \RuntimeException("Could not write {$file}.");
         }
+    }
+
+    /**
+     * What the held generation holds, as a reader would list it: "codex, agents".
+     */
+    private function names(): string
+    {
+        return implode(', ', $this->heldNames);
     }
 
     private function log(string $line): void

@@ -388,6 +388,38 @@ final class RuntimeTest extends TestCase
 
     #[RequiresPhpExtension('pcntl')]
     #[RequiresPhpExtension('posix')]
+    public function testAReloadLeavesTheWorkersOfAGroupThatDoesNotReload(): void
+    {
+        $file = tempnam(sys_get_temp_dir(), 'crab-held-');
+        self::assertNotFalse($file);
+        $this->deferCleanup(static function () use ($file): void {
+            if (is_file($file)) {
+                unlink($file);
+            }
+        });
+        $fixture = $this->startFixture('held', $file);
+        try {
+            $initial = $this->ready($fixture, 2);
+            $deadline = hrtime(true) + 3_000_000_000;
+            while (trim((string) file_get_contents($file)) === '' && hrtime(true) < $deadline) {
+                usleep(5000);
+            }
+            $held = (int) file_get_contents($file);
+            self::assertGreaterThan(0, $held, 'The held worker did not start within three seconds.');
+            self::assertTrue(posix_kill(proc_get_status($fixture->process)['pid'], SIGUSR1));
+            $reloaded = $this->ready($fixture, 2);
+            self::assertSame([], array_intersect($reloaded, $initial), 'The other group was replaced.');
+            self::assertSame("{$held}\n", file_get_contents($file), 'The held worker was not started again.');
+            self::assertTrue(posix_kill($held, 0), 'The held worker is still running.');
+        } finally {
+            $result = $this->finishFixture($fixture);
+        }
+        $this->assertFixtureExit($result);
+        self::assertFalse(posix_kill($held, 0), 'Stopping the runtime stops the held worker.');
+    }
+
+    #[RequiresPhpExtension('pcntl')]
+    #[RequiresPhpExtension('posix')]
     public function testSupervisorTerminatesABlockedWorkerByItsDeadline(): void
     {
         $fixture = $this->startFixture('supervised');
@@ -634,7 +666,7 @@ final class RuntimeTest extends TestCase
         return $stream;
     }
 
-    private function startFixture(string $mode): stdClass
+    private function startFixture(string $mode, string ...$arguments): stdClass
     {
         $probe = stream_socket_server('tcp://127.0.0.1:0', $code, $error);
         self::assertIsResource($probe);
@@ -648,7 +680,7 @@ final class RuntimeTest extends TestCase
             }
         });
         $process = proc_open(
-            [PHP_BINARY, __DIR__ . '/Fixtures/runtime.php', $mode, (string) $port],
+            [PHP_BINARY, __DIR__ . '/Fixtures/runtime.php', $mode, (string) $port, ...$arguments],
             [0 => ['pipe', 'r'], 1 => ['pipe', 'w'], 2 => ['file', $stderr, 'w']],
             $pipes,
         );

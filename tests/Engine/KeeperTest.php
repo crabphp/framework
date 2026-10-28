@@ -155,6 +155,89 @@ final class KeeperTest extends TestCase
         }
     }
 
+    public function testAHeldGenerationIsLeftAsItIsByAReload(): void
+    {
+        $pidFile = $this->directory . '/service.pid';
+        $log = $this->directory . '/service.log';
+        $this->keeper = proc_open(
+            [
+                PHP_BINARY,
+                __DIR__ . '/Fixtures/keeper.php',
+                'keep',
+                dirname(__DIR__, 2) . '/vendor/autoload.php',
+                $pidFile,
+                $log,
+                $this->address,
+                'one',
+                'agent',
+            ],
+            [1 => ['pipe', 'w'], 2 => ['pipe', 'w']],
+            $pipes,
+            $this->directory,
+        );
+        self::assertSame("ready\n", fgets($pipes[1]), 'The keeper is ready once both generations have started.');
+        $keeper = (int) file_get_contents($pidFile);
+        $held = $this->held(1);
+        [$heldGeneration, $heldWorker] = $held[0];
+        self::assertNotSame($keeper, $heldGeneration);
+        [, $first] = $this->get();
+        self::assertNotSame($first, $heldGeneration, 'HTTP is served by the other generation.');
+
+        putenv('KEEPER_HELD=agent');
+        try {
+            self::assertSame(['ok' => true], array_intersect_key($this->replace('two'), ['ok' => 0]));
+        } finally {
+            putenv('KEEPER_HELD');
+        }
+        [$text, $second] = $this->get();
+        self::assertSame('two', $text);
+        self::assertNotSame($first, $second);
+        self::assertSame($held, $this->held(1), 'A reload leaves the held generation and its worker running.');
+        self::assertTrue(posix_kill($heldWorker, 0));
+
+        $refused = $this->replace('three');
+        self::assertFalse($refused['ok']);
+        self::assertSame(
+            'What is kept across reloads was agent, and the code now keeps nothing. A reload leaves it running as it is; use `restart` to change it.',
+            $refused['message'],
+        );
+        self::assertSame(['two', $second], $this->get(), 'A refused reload changes nothing.');
+
+        // A held generation that dies is started again.
+        posix_kill($heldGeneration, SIGKILL);
+        $again = $this->held(2)[1];
+        self::assertNotSame($heldGeneration, $again[0]);
+        $revived = "Keeping agent again, generation pid {$again[0]}.";
+        $deadline = hrtime(true) + 10_000_000_000;
+        while (!str_contains((string) file_get_contents($log), $revived) && hrtime(true) < $deadline) {
+            usleep(10_000);
+        }
+        self::assertStringContainsString(
+            $revived,
+            (string) file_get_contents($log),
+            'The keeper did not take the new held generation up within ten seconds.',
+        );
+        self::assertSame(['two', $second], $this->get(), 'HTTP was not touched.');
+
+        posix_kill($keeper, SIGTERM);
+        for ($waited = 0; $waited < 200 && proc_get_status($this->keeper)['running']; ++$waited) {
+            usleep(50_000);
+        }
+        $status = proc_get_status($this->keeper);
+        self::assertSame([false, 0], [$status['running'], $status['exitcode']]);
+        proc_close($this->keeper);
+        $this->keeper = null;
+        self::assertFalse(posix_kill($again[0], 0), 'Stopping the keeper stops the held generation.');
+
+        $logged = (string) file_get_contents($log);
+        foreach ([
+            "Keeping agent across reloads, generation pid {$heldGeneration}.",
+            "Generation pid {$heldGeneration} ended by itself with status",
+        ] as $line) {
+            self::assertStringContainsString($line, $logged);
+        }
+    }
+
     public function testAKeeperThatCannotStartSaysWhy(): void
     {
         $taken = stream_socket_server($this->address);
@@ -183,6 +266,31 @@ final class KeeperTest extends TestCase
         self::assertStringContainsString('failed: Could not bind', $output);
         self::assertFileDoesNotExist($this->directory . '/service.pid');
         fclose($taken);
+    }
+
+    /**
+     * Waits until the held generation's workers have started this many times.
+     *
+     * @return list<array{int, int}> Each start's generation and worker process ids, in order.
+     */
+    private function held(int $count): array
+    {
+        $file = $this->directory . '/held';
+        $lines = [];
+        $deadline = hrtime(true) + 10_000_000_000;
+        while (hrtime(true) < $deadline) {
+            $lines = file_exists($file) ? (file($file, FILE_IGNORE_NEW_LINES) ?: []) : [];
+            if (count($lines) >= $count) {
+                break;
+            }
+            usleep(10_000);
+        }
+        self::assertCount(
+            $count,
+            $lines,
+            "The held generation's worker had not started {$count} times within ten seconds.",
+        );
+        return array_map(static fn(string $line): array => array_map(intval(...), explode(' ', $line)), $lines);
     }
 
     /**

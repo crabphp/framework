@@ -495,12 +495,14 @@ final class App implements RequestHandlerInterface, Runner
      *
      * @param resource|null $socket A socket that already listens on the address, inherited from the server this one takes over from.
      * @param bool $servers Whether the servers "server.with" names are run beside HTTP; false to serve in one process.
+     * @param bool|null $held Which of those servers: null for all of them, as in the foreground; false for those a reload replaces, with HTTP, as the server process in the background runs them; true for those kept across reloads alone, without HTTP, as the keeper's held process runs them.
      */
     public function runtime(
         string $address = 'tcp://127.0.0.1:8080',
         int $workers = 1,
         mixed $socket = null,
         bool $servers = true,
+        ?bool $held = null,
     ): Runtime {
         // Before anything starts, so that every setting that does not fit is said at once.
         $this->config->check();
@@ -525,6 +527,9 @@ final class App implements RequestHandlerInterface, Runner
         // Beside HTTP, the servers "server.with" switches on: none unless it says so. In one
         // process there is room for HTTP alone.
         $with = $servers ? $this->with() : [];
+        if ($held !== null) {
+            $with = array_values(array_filter($with, fn(string $id): bool => $this->servers->reloads($id) !== $held));
+        }
         if (max($workers, (int) $this->config->get('server.workers')) > 1) {
             $tickets = $this->stack->has(\Crab\Auth\Ticket::class);
             foreach ($this->routes->routes() as $route) {
@@ -564,7 +569,12 @@ final class App implements RequestHandlerInterface, Runner
         }
         // Every service that cannot be made, at once, after what is said more precisely above.
         $this->checkServices();
-        $groups = $this->alongside($with);
+        $groups = [];
+        foreach ($with as $id) {
+            foreach ($this->alongside([$id]) as $group) {
+                $groups[] = [$group, $this->servers->reloads($id)];
+            }
+        }
         // Long enough for the slowest of them to finish what it has in hand.
         $runtime = new Runtime(
             loopFactory: static fn() => $backend === 'select'
@@ -572,8 +582,12 @@ final class App implements RequestHandlerInterface, Runner
                 : RevoltEventLoop::create($backend),
             shutdownTimeout: max($drain, $this->servers->grace($with)),
         );
-        foreach ($groups as $group) {
-            $this->group($runtime, $group, background: $socket !== null);
+        foreach ($groups as [$group, $reloads]) {
+            $this->group($runtime, $group, background: $socket !== null && $reloads, reloads: $reloads);
+        }
+        if ($held === true) {
+            // The keeper's held process runs what is kept across reloads, and HTTP is the other one's.
+            return $runtime;
         }
         $handler = new EngineHandler($this->entry());
         $runtime
@@ -692,6 +706,17 @@ final class App implements RequestHandlerInterface, Runner
             throw new \LogicException("\"server.with\" switches on \"{$id}\", and {$known}.");
         }
         return $ids;
+    }
+
+    /**
+     * The ids of the servers `start` runs with HTTP that are kept across
+     * reloads, registered with `reloads: false`.
+     *
+     * @return list<string>
+     */
+    public function held(): array
+    {
+        return array_values(array_filter($this->with(), fn(string $id): bool => !$this->servers->reloads($id)));
     }
 
     /**
@@ -1003,17 +1028,17 @@ final class App implements RequestHandlerInterface, Runner
     /**
      * Adds a group of workers that serve no requests to a runtime.
      */
-    private function group(Runtime $runtime, Workers $workers, bool $background = false): void
+    private function group(Runtime $runtime, Workers $workers, bool $background = false, bool $reloads = true): void
     {
         $work = $workers->work;
-        $group = $runtime->group($workers->group, $workers->workers);
+        $group = $runtime->group($workers->group, $workers->workers, reloads: $reloads);
         if ($workers->setup !== null) {
             ($workers->setup)($group);
             if ($background && ($group->listeners() !== [] || $group->datagrams() !== [])) {
                 // The keeper hands the HTTP socket alone from one server process to the next. Another
                 // listener would be bound afresh by each, and the new one refused while the old holds it.
                 throw new \LogicException(
-                    "The server \"{$workers->group}\" listens on an address of its own, which a server in the background cannot yet hand over when it reloads. Run `start` in the foreground, under systemd or a container, or run this server on its own.",
+                    "The server \"{$workers->group}\" listens on an address of its own, which a server in the background cannot yet hand over when it reloads. Register it with `reloads: false` to keep it running across reloads, run `start` in the foreground, under systemd or a container, or run this server on its own.",
                 );
             }
         }

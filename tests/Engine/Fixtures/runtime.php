@@ -60,4 +60,14 @@ $runtime
             );
         }
     });
+if ($mode === 'held') {
+    // A group SIGUSR1 leaves alone; its worker writes its pid where the test reads it.
+    $file = $argv[3];
+    $runtime
+        ->group('held', reloads: false)
+        ->onStart(static function (Worker $worker) use ($file): void {
+            file_put_contents($file, getmypid() . "\n", FILE_APPEND | LOCK_EX);
+            $worker->loop->repeat(1.0, static fn() => null);
+        });
+}
 $runtime->run(singleProcess: $mode === 'single');
