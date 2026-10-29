@@ -343,6 +343,22 @@ new TokenAuth($tokens, $users, required: false);         // lets a request witho
 
 Roles and permissions, and sessions with cookies, are not built and not planned: each is a few lines of middleware over what an application already has.
 
+## Streaming
+
+An action that returns a generator streams: each value it yields reaches the client as a server-sent event as soon as it is yielded, while the generator waits on whatever it needs between two of them. With the HTTP client's `stream()`, a model's reply is relayed token by token:
+
+~~~php
+Route::post('/chat', static function (#[Fields(['text' => 'string'])] Data $prompt, Request $request, Client $http): \Generator {
+    $reply = $http->timeout(300)->stream('POST', $modelUrl, json: ['prompt' => $prompt->text], cancellation: $request->cancellation())->throw();
+    foreach ($reply->events() as $event) {
+        yield ['token' => $event->json()['delta']];     // data: {"token":"Hi"}
+    }
+    yield 'done' => [];                                 // event: done
+});
+~~~
+
+A slow reader makes the generator wait rather than memory grow, and a client that leaves stops it. A stream may last as long as it keeps moving; one quiet for 30 seconds is cut off. `Response::stream($chunks, 'text/csv')` streams any other body. See [Streaming](docs/responses.md#streaming).
+
 ## WebSockets
 
 A socket route shares the API's port and middleware. Its action starts inside HTTP; ownership checks can still answer 403 or 404 until the first socket use accepts the connection:
@@ -457,6 +473,7 @@ $http->request('PUT', $url, body: $csv, headers: ['Content-Type' => 'text/csv'])
 - **Redirects are followed,** up to 5. A cross-origin redirect drops only `Authorization` and `Cookie`; other credential headers remain. Use `redirects: 0` for those credentials, or follow redirects only from a base URL you trust. See [A client for one API](docs/http-client.md#a-client-for-one-api).
 - **An answer compressed with gzip or deflate** is handed over as what it says, unless `decode: false` asks for the bytes as sent. Brotli is not asked for.
 - **No body may be longer than `http_client.max_bytes`,** 64 MiB, checked as it arrives; `maxBytes:` changes it for one request, and a longer answer throws `HttpClient\TooLargeException`. `sink: $path` streams a download into a file that appears only once it is all there. See [Downloading files](docs/http-client.md#downloading-files).
+- **`stream()` returns at the answer's head,** and its body is read as it arrives: `events()` gives server-sent events and `lines()` lines, each once it has come. See [Streaming answers](docs/http-client.md#streaming-answers).
 - **It is PSR-18's client** under the contract `Contracts\HttpClient\Client`; `sendRequest()` takes any PSR-7 request, and a library that asks for `Psr\Http\Client\ClientInterface` is given the same object.
 
 ### Timeouts

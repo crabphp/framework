@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Crab\HttpClient;
 
+use Crab\Contracts\HttpClient\Event;
 use Crab\Contracts\HttpClient\Response as ResponseContract;
 use Crab\Engine\Http\Response as EngineResponse;
 use Crab\Http\Message;
@@ -50,6 +51,62 @@ final class Response extends Message implements ResponseContract
     public function json(): mixed
     {
         return Request::decodeJson((string) $this->getBody());
+    }
+
+    /**
+     * @return \Generator<int, string>
+     */
+    public function lines(): \Generator
+    {
+        $body = $this->getBody();
+        $pending = '';
+        while (!$body->eof()) {
+            $pending .= $body->read(65_536);
+            while (($end = strpos($pending, "\n")) !== false) {
+                yield rtrim(substr($pending, 0, $end), "\r");
+                $pending = substr($pending, $end + 1);
+            }
+        }
+        if ($pending !== '') {
+            yield rtrim($pending, "\r");
+        }
+    }
+
+    /**
+     * @return \Generator<int, Event>
+     */
+    public function events(): \Generator
+    {
+        $name = '';
+        $data = null;
+        $id = null;
+        foreach ($this->lines() as $line) {
+            if ($line === '') {
+                // A blank line ends an event, and one without data is none.
+                if ($data !== null) {
+                    yield new Event($name === '' ? 'message' : $name, $data, $id);
+                }
+                $name = '';
+                $data = null;
+                continue;
+            }
+            if ($line[0] === ':') {
+                continue;
+            }
+            [$field, $value] = str_contains($line, ':') ? explode(':', $line, 2) : [$line, ''];
+            if (str_starts_with($value, ' ')) {
+                $value = substr($value, 1);
+            }
+            match ($field) {
+                'event' => $name = $value,
+                'data' => $data = $data === null ? $value : "{$data}\n{$value}",
+                'id' => $id = $value,
+                default => null,
+            };
+        }
+        if ($data !== null) {
+            yield new Event($name === '' ? 'message' : $name, $data, $id);
+        }
     }
 
     public function getStatusCode(): int

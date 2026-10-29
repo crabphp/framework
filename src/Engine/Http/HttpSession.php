@@ -382,6 +382,10 @@ final class HttpSession
                     }
                     $this->responseStarted = true;
                     $this->pendingOffset += strlen($chunk);
+                    if ($this->deadlinePhase === 'response') {
+                        // A response that keeps moving may last; the deadline is for one that stalls.
+                        $this->deadlineAt = (hrtime(true) / 1_000_000_000) + $this->responseTimeout;
+                    }
                 }
                 if ($this->pendingOffset === strlen($this->pending)) {
                     $this->pending = '';

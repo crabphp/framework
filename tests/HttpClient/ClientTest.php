@@ -7,6 +7,7 @@ namespace Crab\Tests\HttpClient;
 use Crab\Contracts\Container\Container;
 use Crab\Contracts\HttpClient\Client as ClientContract;
 use Crab\Contracts\HttpClient\File;
+use Crab\Engine\Async\Async;
 use Crab\Engine\Async\Cancellation;
 use Crab\Engine\Async\CancelledException;
 use Crab\Engine\Async\Task;
@@ -139,6 +140,98 @@ final class ClientTest extends TestCase
         }
         // Lets the loop these tests waited on come to its end, so that the next test may install its own.
         EventLoop::current()->run();
+    }
+
+    public function testAStreamedAnswerIsReadAsItArrives(): void
+    {
+        $sent = 0;
+        $server = $this->server(static function (array $request) use (&$sent): \Generator {
+            yield "HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nTransfer-Encoding: chunked\r\n\r\n";
+            foreach (['Hi', 'there'] as $token) {
+                Async::sleep(EventLoop::current(), 0.03);
+                $event = ": keep-alive\n\nevent: delta\nid: {$sent}\ndata: {\"text\":\"{$token}\"}\n\n";
+                ++$sent;
+                yield dechex(strlen($event)) . "\r\n{$event}\r\n";
+            }
+            Async::sleep(EventLoop::current(), 0.03);
+            yield "6\r\ndata: \r\n8\r\n[DONE]\n\n\r\n0\r\n\r\n";
+        });
+        $http = $this->client();
+
+        $response = $http->stream('POST', $server->url('/chat'), json: ['prompt' => 'hello'])->throw();
+
+        self::assertSame(
+            [200, 'text/event-stream', 0],
+            [
+                $response->getStatusCode(),
+                $response->getHeaderLine('Content-Type'),
+                $sent,
+            ],
+            'The response is handed over at its head, before any of its body.',
+        );
+        $seen = [];
+        foreach ($response->events() as $event) {
+            $seen[] = [$event->name, $event->data, $event->id, $sent];
+        }
+        self::assertSame(
+            [
+                ['delta',   '{"text":"Hi"}',    '0', 1],
+                ['delta',   '{"text":"there"}', '1', 2],
+                // The last id given holds for the events after it, as a browser keeps it.
+                ['message', '[DONE]',           '1', 2],
+            ],
+            $seen,
+            'Each event is read once it has arrived, before the next is sent.',
+        );
+        self::assertSame('{"prompt":"hello"}', $server->requests[0]['body']);
+        self::assertSame(['text' => 'Hi'], new \Crab\Contracts\HttpClient\Event('delta', '{"text":"Hi"}')->json());
+    }
+
+    public function testAStreamedAnswerWithAnErrorStatusIsReadWhole(): void
+    {
+        $server = $this->server(static fn(): string => TestServer::reply(429, '{"error":"slow down"}'));
+
+        $response = $this->client()->stream('GET', $server->url('/'));
+
+        self::assertSame([429, ['error' => 'slow down']], [$response->getStatusCode(), $response->json()]);
+        $this->expectException(ResponseException::class);
+        $response->throw();
+    }
+
+    public function testAStreamedAnswerLetGoStopsBeingReceived(): void
+    {
+        $sent = 0;
+        $server = $this->server(static function () use (&$sent): \Generator {
+            yield "HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n";
+            for ($i = 0; $i < 100; ++$i) {
+                Async::sleep(EventLoop::current(), 0.01);
+                ++$sent;
+                yield "6\r\nline{$i}\n\r\n";
+            }
+        });
+        $response = $this->client()->stream('GET', $server->url('/'));
+        foreach ($response->lines() as $line) {
+            self::assertSame('line0', $line);
+            break;
+        }
+        unset($response, $line);
+
+        Async::sleep(EventLoop::current(), 0.1);
+        self::assertLessThan(20, $sent, 'Once no one reads it, the answer is given up.');
+    }
+
+    public function testAStreamedRequestIsGivenUpWithItsCaller(): void
+    {
+        $server = $this->server(static function (): \Generator {
+            yield "HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n";
+            Async::sleep(EventLoop::current(), 0.3);
+        });
+        $cancellation = new Cancellation();
+        $response = $this->client()->stream('GET', $server->url('/'), cancellation: $cancellation);
+        EventLoop::current()->delay(0.02, static fn() => $cancellation->cancel());
+
+        $this->expectException(CancelledException::class);
+        $response->getBody()->getContents();
     }
 
     public function testRequestsAreSentAndAnswersReadOnAKeptConnection(): void

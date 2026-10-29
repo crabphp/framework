@@ -10,6 +10,7 @@
 - [Trying again](#trying-again)
 - [Sending files](#sending-files)
 - [Downloading files](#downloading-files)
+- [Streaming answers](#streaming-answers)
 - [Limiting the size of an answer](#limiting-the-size-of-an-answer)
 - [A client for one API](#a-client-for-one-api)
 - [Cookies](#cookies)
@@ -208,6 +209,38 @@ $http->timeout(1200)->request('GET', $romUrl,
 `sink:` also takes a writable PSR-7 stream, written from where it is, and the response's body is then that stream. A failure leaves what arrived before it in the stream, and the request is not tried again once any of the body went into it. Give a path when a failed download must leave nothing.
 
 `decode: false` sends no `Accept-Encoding` and keeps a compressed body as it came, with its `Content-Encoding` and `Content-Length`. Use it when the bytes are checked against a hash or stored as they are. With the default, `decode: true`, a body sent with gzip or deflate is decompressed and those two headers are removed.
+
+## Streaming answers
+
+`stream()` takes what `request()` takes, but returns as soon as a successful answer's head arrives, and its body is read as it comes. Use it for an AI model's reply or any other answer that a server sends bit by bit:
+
+```php
+$reply = $http->timeout(300)->stream('POST', 'https://api.example.com/v1/chat',
+    json: ['messages' => $messages, 'stream' => true],
+    cancellation: $request->cancellation(),
+)->throw();
+
+foreach ($reply->events() as $event) {       // server-sent events, each once it has arrived
+    if ($event->data === '[DONE]') {
+        break;
+    }
+    $text = $event->json()['choices'][0]['delta']['content'] ?? '';
+}
+```
+
+| | |
+| --- | --- |
+| `$response->events()` | Server-sent events, each a `Crab\Contracts\HttpClient\Event` with `name` (`message` when the server gave none), `data`, `id`, and `json()` |
+| `$response->lines()` | Each line, without its line break: newline-delimited JSON, a log |
+| `$response->getBody()->read($n)` | The bytes as they come |
+
+- **Reading waits, and so does the request.** A read waits until more has arrived. The request stops taking more once the reader is a quarter of a megabyte behind, so a slow reader never makes the body pile up in memory.
+- **Letting go stops it.** Break out of the loop and drop the response, or call `close()` on its body, and the rest is not received. Cancelling `cancellation:` stops it too.
+- **An error status is read whole,** as `request()` reads it, so `throw()` and `json()` work as usual.
+- **The timeout covers the whole answer.** Raise it for a long one, as above.
+- `maxBytes:` and `decode:` hold as for `request()`. Redirects are followed and an answer that broke off before any of its body arrived is tried again as usual. Once any of the body has been read, the request is not made again.
+
+`events()` and `lines()` work on any answer, not only a streamed one. The two together relay a model's reply to a browser: see [Streaming](responses.md#streaming).
 
 ## Limiting the size of an answer
 

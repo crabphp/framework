@@ -82,7 +82,7 @@ final class Exchange
             $this->receiving->expect((int) $length);
         }
         // These have no body, whatever their headers say.
-        $sink = $this->receiving->sink($status, $headers['content-encoding'][0] ?? '', $bodiless);
+        $sink = $this->receiving->sink($status, $headers['content-encoding'][0] ?? '', $bodiless, $headers, $version);
         $store = $sink->write(...);
         $delimited = true;
         if ($bodiless) {

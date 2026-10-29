@@ -286,6 +286,10 @@ final class ActionHandler implements RequestHandlerInterface
         if ($result === null) {
             return Response::noContent();
         }
+        if ($result instanceof \Generator) {
+            // What it yields is sent as it is yielded.
+            return Response::events($result);
+        }
         return Response::json($result);
     }
 

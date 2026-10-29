@@ -54,12 +54,84 @@ final class Response extends Message implements ResponseInterface
      */
     public static function json(mixed $value, int $status = 200, array $headers = [], int $flags = 0): self
     {
+        return self::typed('application/json', self::encode($value, $flags), $status, $headers);
+    }
+
+    /**
+     * A body sent while it is still being made: each chunk goes out as soon
+     * as it is yielded, and the generator waits while the client is slower.
+     * A chunk may wait on anything, a database or another API, and the
+     * response lasts as long as it keeps moving.
+     *
+     *     return Response::stream($this->export->lines(), 'text/csv');
+     *
+     * @param iterable<string> $chunks
+     * @param array<string, string|list<string>> $headers
+     */
+    public static function stream(
+        iterable $chunks,
+        string $type = 'application/octet-stream',
+        int $status = 200,
+        array $headers = [],
+    ): self {
+        return new self($status, ['Content-Type' => $type, ...$headers], new ChunkStream($chunks));
+    }
+
+    /**
+     * Server-sent events, what a browser's EventSource and most AI APIs
+     * read: one event for each value yielded, sent as soon as it is.
+     * A value is sent as JSON, a string as it is; a string key names
+     * the event.
+     *
+     *     yield ['token' => $token];          data: {"token":"Hi"}
+     *     yield 'done' => ['id' => 7];        event: done, data: {"id":7}
+     *
+     * An action that returns a generator is answered this way.
+     *
+     * @param iterable<mixed> $events
+     * @param array<string, string|list<string>> $headers
+     */
+    public static function events(iterable $events, array $headers = []): self
+    {
+        return self::stream(
+            self::eventStream($events),
+            'text/event-stream; charset=utf-8',
+            200,
+            // A proxy that buffers or a cache that keeps would hold the events back.
+            ['Cache-Control' => 'no-cache', 'X-Accel-Buffering' => 'no', ...$headers],
+        );
+    }
+
+    /**
+     * @param iterable<mixed> $events
+     * @return \Generator<int, string>
+     */
+    private static function eventStream(iterable $events): \Generator
+    {
+        foreach ($events as $name => $value) {
+            $event = '';
+            if (is_string($name)) {
+                if (preg_match('/[\r\n]/', $name) === 1) {
+                    throw new \InvalidArgumentException('An event\'s name is one line.');
+                }
+                $event = "event: {$name}\n";
+            }
+            $data = is_string($value) ? $value : self::encode($value);
+            foreach (preg_split('/\r\n|\r|\n/', $data) ?: [''] as $line) {
+                $event .= "data: {$line}\n";
+            }
+            yield $event . "\n";
+        }
+    }
+
+    private static function encode(mixed $value, int $flags = 0): string
+    {
         $json = json_encode($value, JSON_THROW_ON_ERROR | $flags);
         // PHP writes a date as an object of its own internals; a date should be text.
         if (str_contains($json, '"timezone_type":')) {
             $json = json_encode(self::withDatesAsText($value), JSON_THROW_ON_ERROR | $flags);
         }
-        return self::typed('application/json', $json, $status, $headers);
+        return $json;
     }
 
     /**

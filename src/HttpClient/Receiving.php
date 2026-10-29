@@ -49,9 +49,20 @@ final class Receiving
      *
      * @param string $coding Its Content-Encoding.
      * @param bool $bodiless Whether it has no body whatever its headers say.
+     * @param array<string, list<string>> $headers Its headers, for a streamed call to hand on as soon as they arrive.
+     * @param string $version The HTTP version it came by.
      */
-    public function sink(int $status, string $coding, bool $bodiless): BodySink
-    {
-        return new BodySink($this, $bodiless ? '' : $coding, $status >= 200 && $status < 300);
+    public function sink(
+        int $status,
+        string $coding,
+        bool $bodiless,
+        array $headers = [],
+        string $version = '1.1',
+    ): BodySink {
+        $sink = new BodySink($this, $bodiless ? '' : $coding, $status >= 200 && $status < 300);
+        if ($this->sink instanceof Pipe && $status >= 200 && $status < 300) {
+            $this->sink->open($status, $headers, $sink->decoding, $version);
+        }
+        return $sink;
     }
 }

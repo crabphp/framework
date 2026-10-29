@@ -100,6 +100,35 @@ final class FakeClientTest extends TestCase
         self::assertSame('before', $http->sent()[0]->getBody()->getContents());
     }
 
+    public function testAStreamedCallIsAnsweredByTheSameRepliesAndReadsTheSameWay(): void
+    {
+        $http = new FakeClient([
+            'POST https://ai.example.com/chat' => FakeClient::response(
+                200,
+                "event: delta\ndata: {\"text\":\"Hi\"}\n\ndata: [DONE]\n\n",
+                ['Content-Type' => 'text/event-stream'],
+            ),
+            'GET https://ai.example.com/broken' => FakeClient::response(500, ['error' => 'down']),
+        ]);
+
+        $events = [];
+        foreach ($http->stream('POST', 'https://ai.example.com/chat', json: [
+            'prompt' => 'x',
+        ])->throw()->events() as $event) {
+            $events[] = [$event->name, $event->data];
+        }
+
+        self::assertSame(
+            [
+                ['delta',   '{"text":"Hi"}'],
+                ['message', '[DONE]'],
+            ],
+            $events,
+        );
+        self::assertCount(1, $http->sent('POST https://ai.example.com/chat'));
+        self::assertSame(['error' => 'down'], $http->stream('GET', 'https://ai.example.com/broken')->json());
+    }
+
     public function testCopiesShareOneOrderedHistoryWhileTheirOptionsRemainIndependent(): void
     {
         $http = new FakeClient([

@@ -65,6 +65,10 @@ final class EngineHandler
             }
             return new EngineResponse($response->getStatusCode(), $headers, $content);
         }
+        if ($body instanceof ChunkStream) {
+            // Straight to the server, which takes each piece as the client can.
+            return new EngineResponse($response->getStatusCode(), $headers, $body->pieces());
+        }
         $size = $body->getSize();
         if ($size === 0) {
             return new EngineResponse($response->getStatusCode(), $headers, '');

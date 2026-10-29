@@ -9,6 +9,7 @@ use Crab\Contracts\HttpClient\CookieJar as CookieJarContract;
 use Crab\Contracts\HttpClient\Response as ResponseContract;
 use Crab\Engine\Async\Async;
 use Crab\Engine\Async\Cancellation;
+use Crab\Engine\Async\Task;
 use Crab\Engine\EventLoop;
 use Crab\Http\Multipart;
 use Crab\Http\Request;
@@ -230,11 +231,82 @@ class Client implements ClientContract
         if ($json !== null && !isset($names['accept'])) {
             $headers['Accept'] = 'application/json';
         }
-        return $this->send(
-            new Request(strtoupper($method), $url, $headers, $body ?? ''),
+        $request = new Request(strtoupper($method), $url, $headers, $body ?? '');
+        if ($sink instanceof Pipe) {
+            $sink->request = Exchange::describe($request);
+        }
+        return $this->send($request, $cancellation, new Receiving($maxBytes ?? $this->maxBytes, $decode, $sink));
+    }
+
+    public function stream(
+        string $method,
+        string $url,
+        array $query = [],
+        array $headers = [],
+        mixed $json = null,
+        array $form = [],
+        array $files = [],
+        string|StreamInterface|null $body = null,
+        ?Cancellation $cancellation = null,
+        ?int $maxBytes = null,
+        bool $decode = true,
+    ): ResponseContract {
+        $loop = EventLoop::current();
+        $pipe = new Pipe($loop);
+        $request = Task::spawn($loop, function (Cancellation $own) use (
+            $method,
+            $url,
+            $query,
+            $headers,
+            $json,
+            $form,
+            $files,
+            $body,
             $cancellation,
-            new Receiving($maxBytes ?? $this->maxBytes, $decode, $sink),
-        );
+            $maxBytes,
+            $decode,
+            $pipe,
+        ): ResponseContract {
+            // Given up when the caller gives it up, or when no one reads what it receives.
+            $unsubscribe = $cancellation?->subscribe($own->cancel(...));
+            try {
+                return $this->request(
+                    $method,
+                    $url,
+                    $query,
+                    $headers,
+                    $json,
+                    $form,
+                    $files,
+                    $body,
+                    $own,
+                    $pipe,
+                    $maxBytes,
+                    $decode,
+                );
+            } finally {
+                $unsubscribe?->__invoke();
+            }
+        });
+        $request->onComplete(static function (Task $request) use ($pipe): void {
+            try {
+                $request->result();
+                $pipe->finish();
+            } catch (\Throwable $error) {
+                $pipe->finish($error);
+            }
+        });
+        $pipe->waitForHead();
+        $opened = $pipe->opened();
+        if ($opened === null) {
+            // No success to stream: an error status, kept to be read as usual, or no answer at all.
+            return $request->result();
+        }
+        [$status, $received, $decoding, $version] = $opened;
+        if ($decoding) {
+            unset($received['content-encoding'], $received['content-length']);
+        }
+        return new Response($status, $received, new PipeBody($pipe, $request), '', $version, $pipe->request);
     }
 
     public function get(string $url, array $query = [], array $headers = []): ResponseContract

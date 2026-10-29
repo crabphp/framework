@@ -113,6 +113,7 @@ self::assertSame('/users/1', $api->post('/users', $valid)->header('Location'));
 | `$response->assertJson('data.0.name', 'mug')` | Checks that a dot path exists and its value and type match exactly |
 | `$response->assertHeader('Location', '/users/1')` | Checks that a header exists and has this value |
 | `$response->body()` | The body as text |
+| `$response->events()` | A [streamed](responses.md#streaming) body's events, each `['event' => 'done', 'data' => ['id' => 7]]`, the data decoded from JSON when it is JSON |
 | `$response->response` | The PSR-7 response |
 
 `assertStatus()` fails the test when the status is another, and says what was answered instead, which with a `422` or a `500` is the reason:

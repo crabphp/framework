@@ -43,7 +43,7 @@ final class TestServer
     private string $accepting;
 
     /**
-     * @param \Closure(array, self): ?string $reply The bytes to write back; null closes without a word. A reply holding "Connection: close" closes after it. The callback may suspend to hold a reply.
+     * @param \Closure(array, self): (string|\Generator<int, string>|null) $reply The bytes to write back; null closes without a word; a generator sends each piece as it is made, and may wait between them. A reply holding "Connection: close" closes after it. The callback may suspend to hold a reply.
      * @param string|null $certificate A PEM file holding a certificate and its key, to serve over TLS.
      * @param (\Closure(): void)|null $beforeHandshake May hold each connection before its first TLS handshake attempt.
      */
@@ -126,6 +126,18 @@ final class TestServer
                     $request['connection'] = $number;
                     $this->requests[] = $request;
                     $reply = ($this->reply)($request, $this);
+                    if ($reply instanceof \Generator) {
+                        // Sent piece by piece, as the generator makes them, for answers that arrive over time.
+                        foreach ($reply as $piece) {
+                            if (!isset($this->open[$number])) {
+                                return;
+                            }
+                            stream_set_blocking($connection, true);
+                            @fwrite($connection, $piece);
+                            stream_set_blocking($connection, false);
+                        }
+                        continue;
+                    }
                     if ($reply === null) {
                         $this->drop($number);
                         return;

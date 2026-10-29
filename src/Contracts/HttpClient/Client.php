@@ -64,6 +64,42 @@ interface Client extends ClientInterface
     ): Response;
 
     /**
+     * Like request(), but returns as soon as a successful answer's head
+     * arrives, and its body is read as it comes: what an AI model or any
+     * other server that answers bit by bit sends.
+     *
+     *     $reply = $http->timeout(300)->stream('POST', $url, json: $prompt)->throw();
+     *     foreach ($reply->events() as $event) {
+     *         yield ['token' => $event->json()['delta'] ?? ''];
+     *     }
+     *
+     * The request waits while the reader is behind, so the body never piles
+     * up in memory, and once the response is let go, or its body closed,
+     * the rest is not received. An answer with an error status is read in
+     * full, as request() reads it. The client's timeout covers the whole
+     * answer, so raise it for a long one.
+     *
+     * @param array<string, mixed> $query
+     * @param array<string, string|list<string>> $headers
+     * @param array<string, mixed> $form
+     * @param array<string, File|UploadedFileInterface|list<File|UploadedFileInterface>> $files
+     * @throws \Psr\Http\Client\ClientExceptionInterface When there is no answer.
+     */
+    public function stream(
+        string $method,
+        string $url,
+        array $query = [],
+        array $headers = [],
+        mixed $json = null,
+        array $form = [],
+        array $files = [],
+        string|StreamInterface|null $body = null,
+        ?Cancellation $cancellation = null,
+        ?int $maxBytes = null,
+        bool $decode = true,
+    ): Response;
+
+    /**
      * @param array<string, mixed> $query
      * @param array<string, string|list<string>> $headers
      */

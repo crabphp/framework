@@ -111,7 +111,7 @@ Strings receive Content-Length. Iterable responses use checked explicit lengths 
 
 Generated Date formatting is cached per observed wall-clock second, independently of monotonic deadlines. Reused Response objects retain normalized headers after two successful normalizations only when their header arrays contain no PHP references. Referenced headers are revalidated on every encode; new responses avoid reference scanning. Framing, generated headers and body iteration remain specific to each encoding.
 
-Header, body, idle and response deadlines bound slow peers and cooperative handlers. Request completion/teardown triggers cancellation; handlers must pass its token into async waits. Timers cannot preempt blocking PHP or code ignoring cancellation.
+Header, body, idle and response deadlines bound slow peers and cooperative handlers. The response deadline is restarted by each write a streamed body makes, so it bounds a stall, not a stream's length. Request completion/teardown triggers cancellation; handlers must pass its token into async waits. Timers cannot preempt blocking PHP or code ignoring cancellation.
 
 Each HTTP session tracks its current monotonic expiry and reuses an earlier timer wake-up across phase changes. An earlier phase deadline replaces a later timer; a wake-up checks the current expiry before acting. Partial body arrivals retain the phase's absolute deadline.
 

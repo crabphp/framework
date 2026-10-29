@@ -81,6 +81,17 @@ server.on('stream', (stream, headers) => {
             more();
             break;
         }
+        case '/events': {
+            // Three events, one every 30 ms, then the end.
+            stream.respond({ ':status': 200, 'content-type': 'text/event-stream' });
+            let sent = 0;
+            const tick = setInterval(() => {
+                if (stream.destroyed) { clearInterval(tick); return; }
+                stream.write(`data: ${sent}\n\n`);
+                if (++sent === 3) { clearInterval(tick); stream.end(); }
+            }, 30);
+            break;
+        }
         case '/gzip':
             reply(200, zlib.gzipSync('{"compressed":true}'), { 'content-encoding': 'gzip', 'content-type': 'application/json' });
             break;

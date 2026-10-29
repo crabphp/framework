@@ -16,11 +16,20 @@ final readonly class ApiResponse
     /**
      * @param string $request What was asked, for a failure to say: "POST /orders".
      */
+    public ResponseInterface $response;
+
     public function __construct(
-        public ResponseInterface $response,
+        ResponseInterface $response,
         private string $request = '',
     ) {
         $this->status = $response->getStatusCode();
+        if ($response->getBody() instanceof \Crab\Http\ChunkStream) {
+            // A streamed body is read once; read it all now, so that every
+            // assertion sees the whole of it.
+            $this->response = $response->withBody(new \Crab\Http\Stream($response->getBody()->getContents()));
+        } else {
+            $this->response = $response;
+        }
     }
 
     public function header(string $name): string
@@ -55,6 +64,46 @@ final readonly class ApiResponse
             $value = $value[$key];
         }
         return $value;
+    }
+
+    /**
+     * The server-sent events of a streamed answer, in the order sent, each
+     * by its name ("message" when it has none) and its data, decoded from
+     * JSON when it is JSON:
+     *
+     *     [['event' => 'message', 'data' => ['token' => 'Hi']], ['event' => 'done', 'data' => ['id' => 7]]]
+     *
+     * @return list<array{event: string, data: mixed}>
+     */
+    public function events(): array
+    {
+        $events = [];
+        foreach (preg_split('/\r\n\r\n|\n\n|\r\r/', $this->body()) ?: [] as $block) {
+            $name = 'message';
+            $data = null;
+            foreach (preg_split('/\r\n|\r|\n/', $block) ?: [] as $line) {
+                if ($line === '' || str_starts_with($line, ':')) {
+                    continue;
+                }
+                [$field, $value] = str_contains($line, ':') ? explode(':', $line, 2) : [$line, ''];
+                $value = str_starts_with($value, ' ') ? substr($value, 1) : $value;
+                if ($field === 'event') {
+                    $name = $value;
+                } elseif ($field === 'data') {
+                    $data = $data === null ? $value : $data . "\n" . $value;
+                }
+            }
+            if ($data === null) {
+                continue;
+            }
+            try {
+                $decoded = json_decode($data, true, flags: JSON_THROW_ON_ERROR);
+            } catch (\JsonException) {
+                $decoded = $data;
+            }
+            $events[] = ['event' => $name, 'data' => $decoded];
+        }
+        return $events;
     }
 
     /**

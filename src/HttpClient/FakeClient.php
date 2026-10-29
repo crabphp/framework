@@ -193,7 +193,12 @@ final class FakeClient extends Client implements Transport
             if (!$bodiless && preg_match('/^\d{1,18}$/D', $length) === 1) {
                 $receiving->expect((int) $length);
             }
-            $sink = $receiving->sink($status, $reply->getHeaderLine('Content-Encoding'), $bodiless);
+            $sink = $receiving->sink(
+                $status,
+                $reply->getHeaderLine('Content-Encoding'),
+                $bodiless,
+                array_change_key_case($reply->getHeaders(), CASE_LOWER),
+            );
             if (!$bodiless) {
                 if ($body->isSeekable()) {
                     $body->rewind();

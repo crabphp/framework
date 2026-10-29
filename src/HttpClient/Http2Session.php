@@ -571,7 +571,13 @@ final class Http2Session
                         // Refused before a byte of it is read.
                         $stream->receiving->expect((int) $length);
                     }
-                    $stream->body = $stream->receiving->sink($status, $headers['content-encoding'][0] ?? '', $bodiless);
+                    $stream->body = $stream->receiving->sink(
+                        $status,
+                        $headers['content-encoding'][0] ?? '',
+                        $bodiless,
+                        $headers,
+                        '2',
+                    );
                 } catch (\RuntimeException $error) {
                     $stream->error = $error;
                 }

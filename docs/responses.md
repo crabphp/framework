@@ -7,6 +7,8 @@
 - [Cookies](#cookies)
 - [Redirects](#redirects)
 - [Files](#files)
+- [Streaming](#streaming)
+    - [Server-sent events](#server-sent-events)
 - [Errors](#errors)
 
 ## Introduction
@@ -103,6 +105,66 @@ For content the action makes, such as a CSV built from a query, send it as it is
 ```php
 return Response::attachment($csv, 'orders.csv', 'text/csv');
 ```
+
+## Streaming
+
+An action that returns a generator streams. Each value it yields goes to the client as soon as it is yielded, as a [server-sent event](#server-sent-events), so a reply an AI model writes word by word reaches the browser word by word:
+
+```php
+use Crab\Contracts\HttpClient\Client;
+
+final readonly class ReplyToChat
+{
+    public function __construct(private Client $http) {}
+
+    public function handle(int $id, #[Fields(['text' => 'string'])] Data $prompt, Request $request): \Generator
+    {
+        $reply = $this->http->timeout(300)->stream('POST', 'https://api.example.com/v1/chat',
+            json: ['messages' => [['role' => 'user', 'content' => $prompt->text]]],
+            cancellation: $request->cancellation(),
+        )->throw();
+
+        foreach ($reply->events() as $event) {
+            yield ['token' => $event->json()['delta']];
+        }
+        yield 'done' => ['id' => $id];
+    }
+}
+```
+
+Between two values the generator may wait on anything, a query or another API, and the worker serves other requests meanwhile. While the client reads more slowly than the generator yields, the generator waits, so nothing piles up in memory. If the client goes away, the generator is stopped at its `yield` and its `finally` blocks run. Pass `$request->cancellation()` to whatever it waits on, as above, so that the call stops too. Reading another server's answer as it arrives is [`stream()` on the HTTP client](http-client.md#streaming-answers).
+
+A response may last as long as it keeps moving. The server cuts off a response that sends nothing for 30 seconds, so a generator that may be quiet for longer yields something in between.
+
+The generator starts when the response is sent, after the action and its middleware have returned. An exception it throws then cannot become an error response, because the status has already gone: it is logged and the connection is closed, so the client sees the stream end without its last event. Check what can fail before the first `yield`, or yield an error event of your own.
+
+For a body that is not events, such as a large CSV made from a query, give the chunks and their type to `Response::stream()`:
+
+```php
+return Response::stream((function () {
+    yield "id,name\n";
+    $cursor = null;
+    do {
+        $page = $this->db->table('products')->orderBy('id')->cursorPaginate(500, $cursor);
+        foreach ($page->items as $row) {
+            yield "{$row['id']},{$row['name']}\n";
+        }
+        $cursor = $page->nextCursor;
+    } while ($cursor !== null);
+})(), 'text/csv');
+```
+
+### Server-sent events
+
+A browser reads server-sent events with `EventSource`, or with `fetch()` when it must send a body or a token. Each value is one event:
+
+| Yielded | Sent |
+| --- | --- |
+| `yield ['token' => 'Hi'];` | `data: {"token":"Hi"}` |
+| `yield 'done' => ['id' => 7];` | `event: done` then `data: {"id":7}` |
+| `yield 'plain text';` | `data: plain text` |
+
+A value is written as JSON, as a returned one would be, and a string as it is, one `data:` line for each of its lines. A string key names the event. `Response::events($iterable)` makes the same response from any iterable, for adding headers. It is sent with `Cache-Control: no-cache` and `X-Accel-Buffering: no`, so that a proxy such as nginx passes each event on at once.
 
 ## Errors
 

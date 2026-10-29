@@ -561,6 +561,48 @@ final class HttpTest extends TestCase
         self::assertTrue($loop->getIdentifiers() === [], 'Continue exchange leaked watchers.');
     }
 
+    public function testAStreamThatKeepsMovingOutlastsTheResponseDeadline(): void
+    {
+        $output = $this->exchange(
+            "GET / HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n",
+            static fn(Request $request) => new Response(
+                body: (static function () use ($request): Generator {
+                    foreach (['a', 'b', 'c', 'd'] as $part) {
+                        Async::sleep(EventLoop::current(), 0.05, $request->cancellation);
+                        yield $part;
+                    }
+                })(),
+            ),
+            ['responseTimeout' => 0.12],
+        );
+        self::assertStringEndsWith("1\r\na\r\n1\r\nb\r\n1\r\nc\r\n1\r\nd\r\n0\r\n\r\n", $output);
+    }
+
+    public function testAStreamThatStallsIsCutOffAndItsProducerCancelled(): void
+    {
+        $cancelled = false;
+        $output = $this->exchange(
+            "GET / HTTP/1.1\r\nHost: x\r\n\r\n",
+            static function (Request $request) use (&$cancelled): Response {
+                return new Response(
+                    body: (static function () use ($request, &$cancelled): Generator {
+                        yield 'first';
+                        try {
+                            Async::sleep(EventLoop::current(), 10, $request->cancellation);
+                        } catch (\Crab\Engine\Async\CancelledException) {
+                            $cancelled = true;
+                        }
+                        yield 'too late';
+                    })(),
+                );
+            },
+            ['responseTimeout' => 0.05],
+        );
+        self::assertStringContainsString("5\r\nfirst\r\n", $output);
+        self::assertStringNotContainsString('too late', $output);
+        self::assertTrue($cancelled, 'A stalled stream must cancel what its producer waits on.');
+    }
+
     public function testResponseTimeoutCancelsHandlerAndRunsFinally(): void
     {
         $cleanedUp = false;

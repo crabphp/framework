@@ -151,6 +151,24 @@ final class Http2Test extends TestCase
         self::assertSame([], new Hpack()->decode((string) hex2bin('3fe11f')));
     }
 
+    public function testAStreamedAnswerIsReadAsItArrivesOverHttp2(): void
+    {
+        $http = $this->serve();
+        $started = hrtime(true);
+
+        $response = $http->stream('GET', $this->url . '/events')->throw();
+        $atHead = (hrtime(true) - $started) / 1e9;
+        $events = [];
+        foreach ($response->events() as $event) {
+            $events[] = [$event->data, (hrtime(true) - $started) / 1e9];
+        }
+
+        self::assertSame('2', $response->getProtocolVersion());
+        self::assertLessThan(0.05, $atHead, 'The response is handed over at its head.');
+        self::assertSame(['0', '1', '2'], array_column($events, 0));
+        self::assertGreaterThan($events[0][1] + 0.02, $events[2][1], 'Events are read as they arrive, not at the end.');
+    }
+
     public function testRequestsShareOneConnectionAndRunAtOnce(): void
     {
         $http = $this->serve();
