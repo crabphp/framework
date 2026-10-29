@@ -28,6 +28,7 @@
 - [Events](events.md)
 - [Queues](queues.md)
 - [Runs](runs.md)
+- [AI applications](ai.md)
 - [Task scheduling](scheduling.md)
 - [HTTP client](http-client.md)
 - [WebSockets](websockets.md)

@@ -951,7 +951,7 @@ $runs->signal($id, 'approval', ['by' => $user->id]);
 - **Runs are kept in two tables** that `php cua runs:install` writes the migration for, and carried out by queue workers; one worker holds a run at a time, on a lease renewed while it runs.
 - **A failed try is tried again** after `runs.backoff` seconds, `runs.tries` times in all (3), from the step that failed. `runs:list --status=failed` lists the failed ones and `runs:retry <id>` tries one again.
 
-See [docs/runs.md](docs/runs.md).
+See [docs/runs.md](docs/runs.md). For when to stream, when to run and how the two fit together in an AI application, see [docs/ai.md](docs/ai.md).
 
 ## Scheduling
 
