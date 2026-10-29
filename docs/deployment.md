@@ -353,7 +353,7 @@ Starting Shop server on http://127.0.0.1:8080
 Press Ctrl+C to stop
 ```
 
-Each server running under `start` has an id: `http`, `queue`, `schedule`. They are started, stopped and reloaded together: `reload` after a deploy gives every one of them the new code, each given its shutdown period to finish the work in hand before remaining workers are ended. A server registered with `reloads: false` is the exception: `reload` leaves it running, and only `restart` and `stop` end it; see [Keeping a server across reloads](providers.md#keeping-a-server-across-reloads). Each has processes of its own, so a slow job never holds up a request. When something runs beside HTTP, registered servers that are switched off are listed as `off`. With HTTP alone, `start` prints no server table.
+Each server running under `start` has an id: `http`, `queue`, `schedule`. They are started, stopped and reloaded together: `reload` after a deploy gives every one of them the new code, each given its shutdown period to finish the work in hand before remaining workers are ended. A server registered with `reloads: false` is the exception: `reload` leaves it running, and only `restart` and `stop` end it; see [Keeping a server across reloads](providers.md#keeping-a-server-across-reloads). Each has processes of its own, so a slow job never holds up a request. When something runs beside HTTP, `start` lists the servers running; one switched off is left out, and `php cua describe` lists every server registered with whether it is on. With HTTP alone, `start` prints no server table.
 
 | On | Switch on | Why |
 | --- | --- | --- |

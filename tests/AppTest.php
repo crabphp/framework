@@ -760,7 +760,7 @@ final class AppTest extends TestCase
             fclose($inherited);
         }
 
-        // What `start` says as it comes up: every server by its id, the ones not named shown as off.
+        // What `start` says as it comes up: each server running by its id, and none switched off.
         $stream = fopen('php://memory', 'w+');
         \Crab\Commands\Start::announceBackground(
             new \Crab\Console\Output($stream, $stream),
@@ -778,10 +778,6 @@ final class AppTest extends TestCase
               queue     3        queue:work: mail x2, rest x1
               schedule  1        schedule:work
               vite      1        npm run dev
-              chat      off      chat:serve
-              sync      off      php cua users:sync --all
-
-              A server that is off is switched on in "server.with", or run on its own when needed.
 
 
             TEXT, stream_get_contents($stream));

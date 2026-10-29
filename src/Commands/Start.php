@@ -128,9 +128,10 @@ final readonly class Start implements Command
 
     /**
      * The servers running under this one, each by its id: "http", then
-     * every server registered, such as "queue" and "schedule", with the
-     * ones "server.with" does not name shown as off. Nothing is drawn
-     * for a server that runs HTTP alone, as most do while developing.
+     * those "server.with" switches on, such as "queue" and "schedule". One
+     * switched off is not drawn, as it is not running; `describe` lists
+     * every server registered. Nothing is drawn for a server that runs
+     * HTTP alone, as most do while developing.
      */
     private static function announceServers(Output $output, App $app, string $address, int $workers): void
     {
@@ -156,15 +157,8 @@ final readonly class Start implements Command
             }
             $rows[] = [$id, (string) array_sum(array_map(static fn($group): int => $group->workers, $groups)), $runs];
         }
-        foreach (array_diff($servers->ids(), $with) as $id) {
-            $rows[] = [$id, 'off', $servers->label($id)];
-        }
         $output->line();
         $output->table(self::ruled($rows), '  ');
-        if (count($with) < count($servers->ids())) {
-            $output->line();
-            $output->line('  A server that is off is switched on in "server.with", or run on its own when needed.');
-        }
         $output->line();
     }
 
