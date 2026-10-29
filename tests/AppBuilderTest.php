@@ -120,6 +120,7 @@ final class AppBuilderTest extends TestCase
                     \Crab\Runs\RunsProvider::class,
                     HttpClientProvider::class,
                     BroadcastProvider::class,
+                    \Crab\Actors\ActorsProvider::class,
                 ],
                 App::PROVIDERS,
             );
@@ -134,9 +135,16 @@ final class AppBuilderTest extends TestCase
             ] as $contract) {
                 self::assertInstanceOf($contract, $app->container->get($contract));
             }
-            self::assertSame(['queue', 'schedule'], $app->servers->ids());
+            self::assertSame(['queue', 'schedule', 'actors'], $app->servers->ids());
             self::assertSame([], $app->with(), 'Registering a server does not switch it on.');
-            foreach (['migrate', 'cache:clear', 'queue:work', 'schedule:list', 'runs:list'] as $command) {
+            foreach ([
+                'migrate',
+                'cache:clear',
+                'queue:work',
+                'schedule:list',
+                'runs:list',
+                'actors:work',
+            ] as $command) {
                 self::assertTrue($app->console->has($command));
             }
             self::assertFalse($app->container->has(\Crab\Contracts\Auth\TokenStore::class));
@@ -189,7 +197,7 @@ final class AppBuilderTest extends TestCase
         $app = App::configure()->withProviders(remove: ScheduleProvider::class)->create();
         self::assertFalse($app->container->has(Schedule::class));
         self::assertFalse($app->console->has('schedule:list'));
-        self::assertSame(['queue'], $app->servers->ids());
+        self::assertSame(['queue', 'actors'], $app->servers->ids());
         self::assertTrue($app->container->has(Dispatcher::class));
         try {
             App::configure()->withProviders(remove: [GreetingProvider::class]);

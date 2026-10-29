@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Crab;
 
+use Crab\Actors\ActorsProvider;
 use Crab\Auth\AuthProvider;
 use Crab\Broadcast\BroadcastProvider;
 use Crab\Broadcast\Lifecycle as BroadcastLifecycle;
@@ -151,6 +152,7 @@ final class App implements RequestHandlerInterface, Runner
         RunsProvider::class,
         HttpClientProvider::class,
         BroadcastProvider::class,
+        ActorsProvider::class,
     ];
 
     /**

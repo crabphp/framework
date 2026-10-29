@@ -324,7 +324,7 @@ All agreed on 2026-10-04:
 Agreed on 2026-10-10:
 
 6. **Scope:** Crab is not a Laravel on another engine. It stays a framework for JSON APIs that is long-running by design, and leaves out what that does not need: there is no model layer over the query builder, no session and no roles or permissions component. An application that wants one writes it over what is there, or brings a library.
-7. **Own components first:** events, cache, queue, runs and scheduling are Crab's own, because each is small and the queue and the scheduler must run on the engine's worker groups, which a library with a worker loop of its own would sit beside. A third-party library remains welcome behind a contract, as a store or a driver: a Symfony cache adapter as a `Cache\Store`, for one.
+7. **Own components first:** events, cache, queue, runs, actors and scheduling are Crab's own, because each is small and the queue and the scheduler must run on the engine's worker groups, which a library with a worker loop of its own would sit beside. A third-party library remains welcome behind a contract, as a store or a driver: a Symfony cache adapter as a `Cache\Store`, for one.
 8. **Guide:** the usage of every component is written for application developers in `docs/`, one page per topic, and kept in step with the code by the `sync-docs` skill.
 
 Agreed on 2026-10-23:

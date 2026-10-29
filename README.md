@@ -953,6 +953,35 @@ $runs->signal($id, 'approval', ['by' => $user->id]);
 
 See [docs/runs.md](docs/runs.md). For when to stream, when to run and how the two fit together in an AI application, see [docs/ai.md](docs/ai.md).
 
+## Actors
+
+An actor has a key, an inbox and a memory: one runs for each key, takes its messages one at a time in the order sent, and remembers what it was told while it runs. A customer's conversation, a game's table, a device that must get one command at a time:
+
+~~~php
+final readonly class Assistant
+{
+    public function __construct(private Llm $llm) {}
+
+    public function handle(Inbox $inbox, string $key): void
+    {
+        $history = [];                                          // its memory, while it runs
+        foreach ($inbox as $message) {                          // one at a time; ends when idle
+            $history[] = $message->data['text'];
+            $message->reply(['answer' => $this->llm->chat($history)]);
+        }
+    }
+}
+
+$actors->tell(Assistant::class, "user:{$id}", ['text' => 'hi']);                 // returns at once
+$reply = $actors->ask(Assistant::class, "user:{$id}", ['text' => 'and in blue?']); // waits for reply()
+~~~
+
+- **With the local carrier, an actor runs in the process that sends to it;** with Redis, in the `actors` server beside HTTP, each key in the one process a hash picks, so one key has one actor however many workers there are.
+- **Messages and replies are JSON, delivered at most once.** `ask()` ends with the reply, its timeout, its cancellation or `NoReply`.
+- **Its memory lasts while it runs:** it ends after `actors.idle` seconds without a message, or with its process. What must outlast it goes in the database or a run.
+
+See [docs/actors.md](docs/actors.md).
+
 ## Scheduling
 
 The schedule is registered by default by `App::configure()`; declare tasks in your own provider.

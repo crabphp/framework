@@ -204,7 +204,7 @@
 ## Scope
 
 - Crab is a framework for JSON APIs that is long-running by design, not a Laravel on another engine. There is no model layer over the query builder, no session component and no roles or permissions component, and none is to be added without the owner's agreement. Say so plainly where an application developer would look for one. Records are not models: `Query::into()` reads rows into readonly classes and writes them back, and nothing more. No active record, static `find()` or `save()`, lazy loading, relationships, identity map or change tracking.
-- Events, cache, queue, runs and scheduling are Crab's own code. A third-party library may stand behind a contract as a store or a driver, wrapped in one place; it does not replace a component.
+- Events, cache, queue, runs, actors and scheduling are Crab's own code. A third-party library may stand behind a contract as a store or a driver, wrapped in one place; it does not replace a component.
 
 ## Cache
 
@@ -245,6 +245,13 @@
 - A step is kept with `insertOrIgnore()` on a unique run and name, and read back: should two tries race, both go on with the first one's value. A step runs at least once, as a job does, and the guide says so.
 - One worker runs a run at a time, holding a lease it renews every third of `runs.lease`; a resumption that finds it held does nothing but look again when the lease would run out. Sleep and await end a try by throwing `Runs\Suspended` and push the resumption through the queue; neither holds a worker.
 - Runs count and space their own tries (`runs.tries`, `runs.backoff`); the `ResumeRun` job's own tries are only for its worker dying or being stopped.
+
+## Actors
+
+- An actor is a class with `handle(Inbox $inbox, string $key)`; one runs per key and process at a time, as a fiber, and its memory is the variables of that call. The object is the container's and may be shared between keys. Nothing about an actor is stored: it is not durable, and the docs send what must last to runs or the database.
+- Where an actor runs follows the broadcast carrier: with the local one, in the process that sends to it; with any other, in the process of the `actors` server that a hash of class and key picks, messages and replies travelling over the carrier. Do not add a second transport, a registry of where keys live, or a way to move them.
+- Messages and replies are JSON, the first time too, and are delivered at most once. An inbox holds at most `actors.max_inbox` messages; past that, and to a stopping process, a message is dropped and logged and an ask for it refused. `ask()` always ends: by the reply, its timeout, its cancellation, or a refusal.
+- An actor that returns or fails refuses the asks it took and did not reply to, and the messages it had not taken start its next run, unless it took none. There is no supervision beyond that.
 
 ## Scheduling
 

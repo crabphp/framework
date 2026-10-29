@@ -9,6 +9,7 @@
     - [Calling a model in a step](#calling-a-model-in-a-step)
     - [A person in the loop](#a-person-in-the-loop)
 - [Showing a run as it goes](#showing-a-run-as-it-goes)
+- [A conversation that remembers](#a-conversation-that-remembers)
 - [In tests](#in-tests)
 
 ## Introduction
@@ -18,6 +19,7 @@ An application built on a language model spends most of its time waiting: for th
 - **A reply that comes word by word** is an action that returns a generator. Each value it yields reaches the browser as a server-sent event at once. See [Streaming](responses.md#streaming).
 - **Another server's reply that comes word by word,** a model's API, is read with the HTTP client's `stream()`, an event at a time. See [Streaming answers](http-client.md#streaming-answers).
 - **Work of many steps that must not start over,** an agent that plans, searches and writes, is a [run](runs.md). Its steps are kept, so a crash, a deploy or a failed call goes on from where it was, and it may wait days for a person without holding a worker.
+- **A conversation that remembers,** an assistant each customer talks to over many requests, is an [actor](actors.md): one for each customer, taking their messages one at a time and keeping the conversation in memory while it runs.
 
 This page shows when to use which, and how they fit together.
 
@@ -30,6 +32,7 @@ This page shows when to use which, and how they fit together.
 | Several model or tool calls in a row | A run, each call a step | A failure at the fifth call does not pay for the first four again |
 | Anything that waits for a person, or for hours | A run with `await()` or `sleep()` | Waiting holds no worker, and survives deploys |
 | A run the user watches | A run, and a generator action that follows it | The work goes on when the browser closes; the page shows how far it got |
+| A conversation over many requests | An actor for each user | One at a time, in order, with the conversation in memory; nothing to load and save for each message |
 
 ## Relaying a model's reply
 
@@ -228,6 +231,63 @@ final readonly class WatchResearch
 ```
 
 It reads the run once a second, which is cheap at the scale of a person watching a page. For many watchers, have the run's steps [broadcast](broadcasting.md) as they finish, and let the page listen for them.
+
+## A conversation that remembers
+
+A chat whose every request loads the conversation from the database, calls the model and saves it back works, until a customer sends two messages at once and one answer is written over the other. An actor for each customer takes their messages one at a time, in the order sent, and keeps the conversation in its variables:
+
+```php
+use Crab\Contracts\Actors\Inbox;
+
+final readonly class Assistant
+{
+    public function __construct(private Llm $llm)
+    {
+    }
+
+    public function handle(Inbox $inbox, string $key): void
+    {
+        $history = [];
+        foreach ($inbox as $message) {
+            $history[] = ['role' => 'user', 'content' => $message->data['text']];
+            $answer = $this->llm->chat($history, cancellation: $inbox->cancellation());
+            $history[] = ['role' => 'assistant', 'content' => $answer];
+            $message->reply(['answer' => $answer]);
+        }
+    }
+}
+```
+
+The action asks the customer's actor and answers with its reply:
+
+```php
+use Crab\Contracts\Actors\Actors;
+use Crab\Contracts\Actors\NoReply;
+use Crab\Http\HttpException;
+
+final readonly class Chat
+{
+    public function __construct(private Actors $actors)
+    {
+    }
+
+    public function handle(User $user, #[Fields(['text' => 'string'])] Data $input, Request $request): array
+    {
+        try {
+            return $this->actors->ask(Assistant::class, "user:{$user->id}", ['text' => $input->text],
+                timeout: 60,
+                cancellation: $request->cancellation(),
+            );
+        } catch (NoReply) {
+            throw new HttpException(503, 'The assistant is not available.');
+        }
+    }
+}
+```
+
+The conversation lasts while the actor runs, and it ends after `actors.idle` seconds without a message. To keep a conversation for good, save each turn to the database as well, and have the actor load it when it starts. With several HTTP workers, carry the messages over Redis so that one customer has one actor; see [Across processes](actors.md#across-processes).
+
+An actor and a run go together: the actor takes the conversation, and starts a run for work that must not be lost, such as an order the customer asked it to place.
 
 ## In tests
 

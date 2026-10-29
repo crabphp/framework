@@ -331,6 +331,8 @@ The skeleton switches each on through `server.with`, reading its value from `.en
 ],
 ```
 
+The framework registers one more, `actors`, which runs [actors](actors.md) in processes of their own when the broadcast carrier is Redis; add it to `with` in the same way.
+
 ```text
 # .env, in production
 APP_DEBUG=false
