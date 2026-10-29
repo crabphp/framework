@@ -65,6 +65,7 @@ use Crab\Log\Logger;
 use Crab\Queue\QueueProvider;
 use Crab\Routing\Router;
 use Crab\Routing\Urls;
+use Crab\Runs\RunsProvider;
 use Crab\Schedule\ScheduleProvider;
 use Crab\Schedule\Task;
 use Crab\Storage\StorageProvider;
@@ -134,8 +135,9 @@ final class App implements RequestHandlerInterface, Runner
      * The framework's own providers, which an application made with
      * App::configure() starts with, in the order they depend on one
      * another: events before the queue and the schedule, which report
-     * through them. Each binds on first use, so one the application never
-     * touches opens nothing. An application's own and a package's come
+     * through them, and the queue before runs, which it carries out. Each
+     * binds on first use, so one the application never touches opens
+     * nothing. An application's own and a package's come
      * after them, and AppBuilder::withProviders() can leave one out.
      */
     public const PROVIDERS = [
@@ -146,6 +148,7 @@ final class App implements RequestHandlerInterface, Runner
         EventsProvider::class,
         QueueProvider::class,
         ScheduleProvider::class,
+        RunsProvider::class,
         HttpClientProvider::class,
         BroadcastProvider::class,
     ];

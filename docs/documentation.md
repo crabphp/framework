@@ -27,6 +27,7 @@
 - [File storage](storage.md)
 - [Events](events.md)
 - [Queues](queues.md)
+- [Runs](runs.md)
 - [Task scheduling](scheduling.md)
 - [HTTP client](http-client.md)
 - [WebSockets](websockets.md)

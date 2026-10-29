@@ -925,6 +925,34 @@ $queue->on('emails')->push(SendWelcomeEmail::class, userId: 7);          // on a
 
 See [docs/queues.md](docs/queues.md).
 
+## Runs
+
+A run is work of many steps that goes on from where it was after a crash, a deploy or a failure, and may wait minutes or days between steps without holding a worker. It is a class like a job, whose `handle()` also takes the `Run` it keeps its steps through:
+
+~~~php
+final readonly class ResearchTopic
+{
+    public function __construct(private Llm $llm) {}
+
+    public function handle(Run $run, string $topic): string
+    {
+        $plan = $run->step('plan', fn () => $this->llm->plan($topic));      // done once, kept
+        $run->sleep('cool-down', 300);                                       // holds no worker
+        $approved = $run->await('approval');                                 // until signal()
+        return $run->step('report', fn () => $this->llm->report($plan, $approved));
+    }
+}
+
+$id = $runs->start(ResearchTopic::class, topic: 'tides');
+$runs->signal($id, 'approval', ['by' => $user->id]);
+~~~
+
+- **A run is resumed from the top,** each step already done returning what it returned before, so the code between steps must come out the same each time: what is slow, random or outside the process goes in a step.
+- **Runs are kept in two tables** that `php cua runs:install` writes the migration for, and carried out by queue workers; one worker holds a run at a time, on a lease renewed while it runs.
+- **A failed try is tried again** after `runs.backoff` seconds, `runs.tries` times in all (3), from the step that failed. `runs:list --status=failed` lists the failed ones and `runs:retry <id>` tries one again.
+
+See [docs/runs.md](docs/runs.md).
+
 ## Scheduling
 
 The schedule is registered by default by `App::configure()`; declare tasks in your own provider.

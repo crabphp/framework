@@ -171,7 +171,7 @@ $queue->later(600, SendReminder::class, orderId: $order['id']);                 
 $queue->later(new \DateInterval('P1D'), ExpireTrial::class, userId: $id);         // tomorrow
 ```
 
-Use `later()` for something that follows from one event. For work at a fixed time of day, use the [schedule](scheduling.md).
+Use `later()` for something that follows from one event. For work at a fixed time of day, use the [schedule](scheduling.md). For work of many steps that waits between them, use a [run](runs.md).
 
 ### Named queues
 

@@ -117,6 +117,7 @@ final class AppBuilderTest extends TestCase
                     EventsProvider::class,
                     QueueProvider::class,
                     ScheduleProvider::class,
+                    \Crab\Runs\RunsProvider::class,
                     HttpClientProvider::class,
                     BroadcastProvider::class,
                 ],
@@ -135,7 +136,7 @@ final class AppBuilderTest extends TestCase
             }
             self::assertSame(['queue', 'schedule'], $app->servers->ids());
             self::assertSame([], $app->with(), 'Registering a server does not switch it on.');
-            foreach (['migrate', 'cache:clear', 'queue:work', 'schedule:list'] as $command) {
+            foreach (['migrate', 'cache:clear', 'queue:work', 'schedule:list', 'runs:list'] as $command) {
                 self::assertTrue($app->console->has($command));
             }
             self::assertFalse($app->container->has(\Crab\Contracts\Auth\TokenStore::class));
@@ -175,7 +176,7 @@ final class AppBuilderTest extends TestCase
                 } catch (DatabaseException $error) {
                     self::assertStringContainsString('No database is configured', $error->getMessage());
                     self::assertStringContainsString('database.connections', $error->getMessage());
-                    self::assertStringContainsString('sqlite:/path/app.sqlite', $error->getMessage());
+                    self::assertStringContainsString("'database' => '/path/app.sqlite'", $error->getMessage());
                 }
             },
             single: true,

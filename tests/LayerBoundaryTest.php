@@ -28,6 +28,8 @@ final class LayerBoundaryTest extends TestCase
         'HttpClient' => ['Http'],
         // A route's handler is called with an input the validator builds.
         'Routing' => ['Http', 'Validation', 'WebSocket'],
+        // Its work travels as a queue job, which says its own tries.
+        'Runs' => ['Queue'],
         'Testing' => ['Container', 'Http'],
         // Socket admission returns an HTTP upgrade through the middleware.
         'WebSocket' => ['Http'],

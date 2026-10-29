@@ -204,7 +204,7 @@
 ## Scope
 
 - Crab is a framework for JSON APIs that is long-running by design, not a Laravel on another engine. There is no model layer over the query builder, no session component and no roles or permissions component, and none is to be added without the owner's agreement. Say so plainly where an application developer would look for one. Records are not models: `Query::into()` reads rows into readonly classes and writes them back, and nothing more. No active record, static `find()` or `save()`, lazy loading, relationships, identity map or change tracking.
-- Events, cache, queue and scheduling are Crab's own code. A third-party library may stand behind a contract as a store or a driver, wrapped in one place; it does not replace a component.
+- Events, cache, queue, runs and scheduling are Crab's own code. A third-party library may stand behind a contract as a store or a driver, wrapped in one place; it does not replace a component.
 
 ## Cache
 
@@ -237,6 +237,14 @@
 - Retries default to the consumer's settings (`queue.tries`, `queue.backoff`); a supervisor may set its own, and a job may override either one with `#[Crab\Queue\Retry]`, and its timeout with `#[Crab\Queue\Timeout]`. Each attribute is checked where the job is pushed, read once per class, and what it leaves out comes from the consumer running the job. Do not add other per-job options until the owner asks.
 
 - A queue supervisor is a named set of workers with its queues and limits, declared under `queue.supervisors` and read by `Queue\Supervisor`. `queue:work` runs every one as an engine worker group of its own through `Runner::runAll()`. A setting a supervisor accepts must change what its workers do today: do not accept a key ahead of the feature behind it.
+
+## Runs
+
+- A run is a class like a job whose `handle()` also takes `Contracts\Runs\Run`. It is resumed by running `handle()` from the top: a step, sleep or signal already kept returns what was kept. There is no event history, no replay log and no serialized fiber: a run's state is its rows in two tables.
+- What a run keeps is JSON, and a step's value is handed back as JSON reads it the first time too, so that a fresh try and a resumed one see the same value.
+- A step is kept with `insertOrIgnore()` on a unique run and name, and read back: should two tries race, both go on with the first one's value. A step runs at least once, as a job does, and the guide says so.
+- One worker runs a run at a time, holding a lease it renews every third of `runs.lease`; a resumption that finds it held does nothing but look again when the lease would run out. Sleep and await end a try by throwing `Runs\Suspended` and push the resumption through the queue; neither holds a worker.
+- Runs count and space their own tries (`runs.tries`, `runs.backoff`); the `ResumeRun` job's own tries are only for its worker dying or being stopped.
 
 ## Scheduling
 
