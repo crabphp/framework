@@ -2,7 +2,7 @@
 
 Crab follows [semantic versioning](https://semver.org). Before 1.0, a minor version may break what an application writes; the entry says what to change.
 
-## Unreleased
+## 0.2.0 — 2026-10-30
 
 - **Actors:** a class with `handle(Inbox $inbox, string $key)` runs once for each key, takes its messages one at a time in the order sent, and keeps its memory in its variables until `actors.idle` seconds without a message. `Contracts\Actors\Actors::tell()` returns at once; `ask()` waits for `$message->reply()` and ends with it, its timeout, its cancellation or `Contracts\Actors\NoReply`. Messages and replies are JSON, delivered at most once. With the local broadcast carrier an actor runs in the process that sends to it; with Redis, in the new `actors` server beside HTTP (`actors.workers` processes, each key in the one a hash picks), or on its own with `actors:work`. `ActorsProvider` is one of `App::PROVIDERS`. See [Actors](docs/actors.md).
 - **Runs:** work of many steps that goes on from where it was after a crash, a deploy or a failure. A run is a class like a job whose `handle()` also takes `Contracts\Runs\Run`: `step()` keeps what it returns, `sleep()` and `await()` put the run aside without holding a worker, and `Runs::signal()` gives an await its value. Runs are kept in two tables, `runs:install` writes their migration, and queue workers carry them out on a renewed lease. A failed try is tried again `runs.tries` times after `runs.backoff`, from the step that failed; `runs:list` and `runs:retry` look after them. `RunsProvider` is one of `App::PROVIDERS`. See [Runs](docs/runs.md).
