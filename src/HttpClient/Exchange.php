@@ -85,16 +85,21 @@ final class Exchange
         $sink = $this->receiving->sink($status, $headers['content-encoding'][0] ?? '', $bodiless, $headers, $version);
         $store = $sink->write(...);
         $delimited = true;
-        if ($bodiless) {
-            // Nothing to read.
-        } elseif ($chunked) {
-            $this->chunks($store);
-        } elseif ($length !== null) {
-            $this->exactly((int) $length, $store);
-        } else {
-            // Neither a length nor chunks: the body ends when the server closes the connection.
-            $delimited = false;
-            $this->untilClosed($store);
+        try {
+            if ($bodiless) {
+                // Nothing to read.
+            } elseif ($chunked) {
+                $this->chunks($store);
+            } elseif ($length !== null) {
+                $this->exactly((int) $length, $store);
+            } else {
+                // Neither a length nor chunks: the body ends when the server closes the connection.
+                $delimited = false;
+                $this->untilClosed($store);
+            }
+        } catch (\Throwable $error) {
+            $sink->discard();
+            throw $error;
         }
         if ($sink->decoding) {
             // The body is handed on as what it says, so what described its compressed form no longer holds.

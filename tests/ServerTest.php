@@ -199,6 +199,16 @@ final class ServerTest extends TestCase
             posix_getpgid($pid) === posix_getpgid(getmypid()) ? 0 : 1,
             'It is not in the group of the terminal that started it.',
         );
+        // A worker shows its age and memory once it has reported them, a moment after it accepts.
+        $this->awaitStatus(
+            static fn(array $server): bool => (
+                count($server['workers']) === 2
+                && array_filter(
+                    $server['workers'],
+                    static fn(array $worker): bool => !isset($worker['started']) || ($worker['memory'] ?? 0) <= 0,
+                ) === []
+            ),
+        );
         [$status, $output] = $this->cua('status');
         self::assertSame(0, $status, $output);
         self::assertMatchesRegularExpression(

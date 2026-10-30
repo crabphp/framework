@@ -171,25 +171,28 @@ final class AppBuilderTest extends TestCase
     {
         $app = App::configure()->create();
         $app->router->get('/', static fn(): string => 'ready');
-        $served = false;
+        // Only what the worker saw is kept there: an assertion failing inside it would be logged, not reported.
+        $served = null;
+        $missing = null;
         $app->run(
             'test',
-            static function (Worker $worker) use ($app, &$served): void {
+            static function (Worker $worker) use ($app, &$served, &$missing): void {
                 $response = $app->handle(new Request('GET', '/'));
-                self::assertSame([200, 'ready'], [$response->getStatusCode(), (string) $response->getBody()]);
-                $served = true;
+                $served = [$response->getStatusCode(), (string) $response->getBody()];
                 try {
                     $app->container->get(Database::class);
-                    self::fail('An unconfigured database was returned.');
+                    $missing = 'An unconfigured database was returned.';
                 } catch (DatabaseException $error) {
-                    self::assertStringContainsString('No database is configured', $error->getMessage());
-                    self::assertStringContainsString('database.connections', $error->getMessage());
-                    self::assertStringContainsString("'database' => '/path/app.sqlite'", $error->getMessage());
+                    $missing = $error->getMessage();
                 }
             },
             single: true,
         );
-        self::assertTrue($served, 'The worker started and served the request.');
+        self::assertSame([200, 'ready'], $served, 'The worker started and served the request.');
+        self::assertIsString($missing);
+        self::assertStringContainsString('No database is configured', $missing);
+        self::assertStringContainsString('database.connections', $missing);
+        self::assertStringContainsString("'database' => '/path/app.sqlite'", $missing);
     }
 
     public function testAFrameworkProviderCanBeLeftOutAndAnUnknownRemovalNamesTheList(): void

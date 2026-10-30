@@ -11,7 +11,7 @@
 
 Crab is a PHP framework for JSON APIs. It runs your application as a long-lived server: the code is loaded once, and worker processes then answer requests for as long as they live, without PHP-FPM, Nginx or Apache in front.
 
-Reach for it when you are building an API and want it to start fast, answer fast and stay small enough to read. It is not a full-stack framework: there are no views, no sessions and no ORM. What you get is routing, typed actions with validation, middleware, a database layer with a query builder and migrations, authentication by token, a cache, events, a queue, a scheduler and an HTTP client.
+Reach for it when you are building an API and want it to start fast, answer fast and stay small enough to read. It is not a full-stack framework: there are no views, no sessions and no ORM. What you get is routing, typed actions with validation, middleware, a database layer with a query builder and migrations, authentication by token, a cache, events, a queue, a scheduler, an HTTP client, streaming responses, durable runs and actors.
 
 > [!NOTE]
 > Crab's first release, v0.1.0, is tagged on GitHub but not yet on Packagist. The skeleton reads the framework from a folder beside it, as shown below. An application of your own can instead require the release from GitHub:

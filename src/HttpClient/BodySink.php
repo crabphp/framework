@@ -97,12 +97,22 @@ final class BodySink
 
     public function __destruct()
     {
-        // A body that never got all the way leaves nothing at the path, nor beside it.
+        $this->discard();
+    }
+
+    /**
+     * A body that never got all the way leaves nothing at the path, nor
+     * beside it. Called as soon as it fails, not left to the destructor:
+     * an exception's trace may keep this object long after.
+     */
+    public function discard(): void
+    {
         if ($this->part !== null) {
             if (is_resource($this->storage)) {
                 fclose($this->storage);
             }
             @unlink($this->part);
+            $this->part = null;
         }
     }
 

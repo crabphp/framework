@@ -211,6 +211,7 @@ final class Http2Session
             }
         } catch (\Throwable $error) {
             if ($stream !== null) {
+                $stream->body?->discard();
                 $this->abandon($stream);
                 if (!$stream->answered && $stream->error instanceof Unprocessed) {
                     throw $stream->error;
@@ -219,6 +220,7 @@ final class Http2Session
             throw $error;
         }
         if ($stream->error !== null) {
+            $stream->body?->discard();
             $this->abandon($stream);
             throw $stream->error;
         }
