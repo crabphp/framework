@@ -13,6 +13,9 @@
             <directory suffix="Test.php">tests</directory>
         </testsuite>
     </testsuites>
+    <extensions>
+        <bootstrap class="Crab\Tests\Support\SwallowedAssertions"/>
+    </extensions>
     <source>
         <include>
             <directory suffix=".php">src</directory>

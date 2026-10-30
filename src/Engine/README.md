@@ -169,7 +169,7 @@ Nothing the engine catches is dropped. A handler, callback or task that throws i
 - Without one, and for everything the parent process reports, the failure is written to standard error with its class, message and trace.
 - A malformed request is answered (400, 413, 431 and so on) and is not a failure.
 
-An HTTP handler that throws is answered with 500; one that fails after its response has started has its connection closed, so the client does not mistake a partial response for a complete one. `FailureReporter::handleWith()` replaces the destination for a whole process, which is how tests collect reports.
+An HTTP handler that throws is answered with 500; one that fails after its response has started has its connection closed, so the client does not mistake a partial response for a complete one. `FailureReporter::handleWith()` replaces the destination for a whole process, which is how tests collect reports. `FailureReporter::observeWith()` only watches: it sees every report, whoever takes it, and the framework's own suite uses it to fail a run in which an assertion failed where the engine caught it.
 
 ## Transport contracts
 

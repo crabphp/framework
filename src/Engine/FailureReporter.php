@@ -21,12 +21,25 @@ final class FailureReporter
     private static ?\Closure $handler = null;
 
     /**
+     * @var (\Closure(string, ?\Throwable): void)|null
+     */
+    private static ?\Closure $observer = null;
+
+    /**
      * Reports a failure, or with no error, a notice.
      *
      * @param string $what What was being done, for example "HTTP handler failed".
      */
     public static function report(string $what, ?\Throwable $error = null): void
     {
+        $observer = self::$observer;
+        if ($observer !== null) {
+            try {
+                $observer($what, $error);
+            } catch (\Throwable $observingError) {
+                self::write('Failure observer failed', $observingError);
+            }
+        }
         $handler = self::$handler;
         if ($handler !== null) {
             try {
@@ -53,6 +66,22 @@ final class FailureReporter
     {
         $previous = self::$handler;
         self::$handler = $handler;
+        return $previous;
+    }
+
+    /**
+     * Shows every report to an observer as well, whichever handler takes
+     * it; null stops. It cannot change where a report goes. Tests use it
+     * to fail on an assertion the engine caught. Returns the observer that
+     * was in place, so that it can be put back.
+     *
+     * @param (\Closure(string, ?\Throwable): void)|null $observer
+     * @return (\Closure(string, ?\Throwable): void)|null
+     */
+    public static function observeWith(?\Closure $observer): ?\Closure
+    {
+        $previous = self::$observer;
+        self::$observer = $observer;
         return $previous;
     }
 
