@@ -159,6 +159,8 @@ $runtime->group('jobs', maxTasks: 128)->onStart(
 
 Use the worker's loop for timers: `$worker->loop->delay($seconds, $callback)`, `repeat()`, and `cancel($id)`. It is a `Crab\Engine\EventLoop`; `EventLoop::current()` returns the same one where no worker is at hand. `Async\Pool` is a bounded set of reusable resources such as client connections: `acquire()` makes one on demand up to the limit and otherwise waits, first come first served, until `release()`, a timeout or cancellation; `discard()` replaces a broken one and `run()` lends one for a callback. `Async\ConnectionStream` gives one coroutine reader and one writer exclusive ownership of a TCP connection, with demand-driven reads and bounded writes. It must not share ownership with a protocol parser or raw data handler.
 
+`Process\Subprocess::run($argv, directory:, environment:, input:, timeout:, maxBytes:, cancellation:)` runs a command without blocking the loop and returns a `SubprocessResult` (`exitCode`, `stdout`, `stderr`, `output` in arrival order, `timedOut`, `truncated`). Arguments never pass through a shell. With `setsid` and the posix extension present the command gets a process group of its own, and the whole group is killed when it ends, times out, writes past `maxBytes` or is cancelled, so nothing it started in the background outlives it.
+
 Fibers provide concurrency within a worker. Worker processes provide CPU parallelism. Blocking database clients, ordinary filesystem calls, DNS lookups made with PHP's own functions, or CPU loops still block their worker; arbitrary PHP functions do not become asynchronous.
 
 ## Failures

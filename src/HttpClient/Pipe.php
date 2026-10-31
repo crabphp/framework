@@ -6,6 +6,7 @@ namespace Crab\HttpClient;
 
 use Crab\Engine\EventLoop;
 use Crab\Engine\Suspension;
+use Psr\Http\Message\RequestInterface;
 use Psr\Http\Message\StreamInterface;
 
 /**
@@ -30,6 +31,11 @@ final class Pipe implements StreamInterface
      * The request, by method, host and path, for the response's throw() to name.
      */
     public string $request = '';
+
+    /**
+     * The request as sent, for a timeout to be reported against.
+     */
+    public RequestInterface $sent;
 
     private string $buffer = '';
     private bool $finished = false;
@@ -74,14 +80,16 @@ final class Pipe implements StreamInterface
 
     /**
      * Waits for the answer's head, or for the request to end without one.
+     *
+     * @param float|null $idle Seconds to wait at most, or null for as long as the request takes.
+     * @throws TimedOut When the head has not arrived within $idle seconds.
      */
-    public function waitForHead(): void
+    public function waitForHead(?float $idle = null): void
     {
         if ($this->opened !== null || $this->finished) {
             return;
         }
-        $this->head = $this->loop->getSuspension();
-        $this->head->suspend();
+        $this->wait($this->head, $idle, 'waiting for the answer to begin');
     }
 
     public function write(string $string): int
@@ -122,13 +130,14 @@ final class Pipe implements StreamInterface
     /**
      * Up to $length bytes, waiting until some arrive; '' once the body has ended.
      *
+     * @param float|null $idle Seconds to wait at most for something to arrive, or null for as long as the request takes.
+     * @throws TimedOut When nothing has arrived within $idle seconds.
      * @throws \Throwable What ended the request, once what came before it is read.
      */
-    public function take(int $length): string
+    public function take(int $length, ?float $idle = null): string
     {
         while ($this->buffer === '' && !$this->finished) {
-            $this->reader = $this->loop->getSuspension();
-            $this->reader->suspend();
+            $this->wait($this->reader, $idle, 'waiting for more of the answer');
         }
         if ($this->buffer === '') {
             if ($this->failure !== null) {
@@ -217,6 +226,38 @@ final class Pipe implements StreamInterface
     public function getMetadata(?string $key = null): mixed
     {
         return $key === null ? [] : null;
+    }
+
+    /**
+     * Suspends in $slot until woken, or throws once $idle seconds pass first.
+     *
+     * @throws TimedOut
+     */
+    private function wait(?Suspension &$slot, ?float $idle, string $doing): void
+    {
+        $suspension = $this->loop->getSuspension();
+        $slot = $suspension;
+        if ($idle === null) {
+            $suspension->suspend();
+            return;
+        }
+        $expired = false;
+        $timer = $this->loop->delay($idle, static function () use (&$slot, $suspension, &$expired): void {
+            if ($slot !== $suspension) {
+                return;
+            }
+            $slot = null;
+            $expired = true;
+            $suspension->resume();
+        });
+        try {
+            $suspension->suspend();
+        } finally {
+            $this->loop->cancel($timer);
+        }
+        if ($expired) {
+            throw new TimedOut($doing);
+        }
     }
 
     private function wake(?Suspension &$waiting): void

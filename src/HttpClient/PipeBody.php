@@ -19,9 +19,13 @@ final class PipeBody implements StreamInterface
     private int $position = 0;
     private bool $closed = false;
 
+    /**
+     * @param float|null $idle Seconds a read may wait for something to arrive, or null for as long as the request takes.
+     */
     public function __construct(
         private readonly Pipe $pipe,
         private readonly Task $request,
+        private readonly ?float $idle = null,
     ) {}
 
     public function __destruct()
@@ -103,13 +107,19 @@ final class PipeBody implements StreamInterface
 
     /**
      * @throws \RuntimeException What ended the request before the body was all there.
+     * @throws NetworkException When nothing arrived for the idle time allowed; the rest is then not received.
      */
     public function read(int $length): string
     {
         if ($this->closed || $length < 1) {
             return '';
         }
-        $read = $this->pipe->take($length);
+        try {
+            $read = $this->pipe->take($length, $this->idle);
+        } catch (TimedOut $timedOut) {
+            $this->close();
+            throw self::idle($this->pipe, (float) $this->idle, $timedOut);
+        }
         $this->position += strlen($read);
         return $read;
     }
@@ -126,5 +136,17 @@ final class PipeBody implements StreamInterface
     public function getMetadata(?string $key = null): mixed
     {
         return $key === null ? [] : null;
+    }
+
+    /**
+     * The failure of a streamed call that went $idle seconds with nothing arriving.
+     */
+    public static function idle(Pipe $pipe, float $idle, TimedOut $timedOut): NetworkException
+    {
+        return new NetworkException(
+            "{$pipe->request} failed: nothing arrived for {$idle} seconds while {$timedOut->doing}.",
+            $pipe->sent,
+            $timedOut,
+        );
     }
 }

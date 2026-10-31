@@ -234,6 +234,89 @@ final class ClientTest extends TestCase
         $response->getBody()->getContents();
     }
 
+    public function testAStreamedAnswerThatStopsSendingIsGivenUpAfterItsIdleTime(): void
+    {
+        $server = $this->server(static function (): \Generator {
+            yield "HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n";
+            foreach (['a', 'b'] as $line) {
+                Async::sleep(EventLoop::current(), 0.05);
+                yield "2\r\n{$line}\n\r\n";
+            }
+            Async::sleep(EventLoop::current(), 1.0);
+        });
+        $started = hrtime(true);
+        $response = $this->client()->timeout(30)->stream('GET', $server->url('/slow'), idle: 0.2);
+        $seen = [];
+        try {
+            foreach ($response->lines() as $line) {
+                $seen[] = $line;
+            }
+            self::fail('A stalled answer is given up.');
+        } catch (NetworkException $error) {
+            self::assertInstanceOf(TimedOut::class, $error->getPrevious());
+            self::assertStringContainsString('/slow failed: nothing arrived for 0.2 seconds', $error->getMessage());
+        }
+        $took = (hrtime(true) - $started) / 1e9;
+        self::assertSame(
+            ['a', 'b'],
+            $seen,
+            'What arrived in time is read; gaps shorter than the idle time are waited out.',
+        );
+        self::assertLessThan(0.8, $took, 'It is given up after the idle time, not the whole timeout.');
+        self::assertFalse($response->getBody()->isReadable(), 'The rest is not received.');
+    }
+
+    public function testAStreamedAnswerWhoseHeadDoesNotArriveIsGivenUpAfterItsIdleTime(): void
+    {
+        $server = $this->server(static function (): \Generator {
+            Async::sleep(EventLoop::current(), 1.0);
+            yield "HTTP/1.1 200 OK\r\nContent-Length: 0\r\n\r\n";
+        });
+        $started = hrtime(true);
+        try {
+            $this->client()->timeout(30)->stream('GET', $server->url('/'), idle: 0.1);
+            self::fail('An answer that does not begin is given up.');
+        } catch (NetworkException $error) {
+            self::assertStringContainsString('waiting for the answer to begin', $error->getMessage());
+        }
+        self::assertLessThan(0.7, (hrtime(true) - $started) / 1e9);
+    }
+
+    public function testAStreamedAnswerKeepsMovingPastItsIdleTimeInTotal(): void
+    {
+        $server = $this->server(static function (): \Generator {
+            yield "HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n";
+            for ($i = 0; $i < 6; ++$i) {
+                Async::sleep(EventLoop::current(), 0.05);
+                yield "2\r\n{$i}\n\r\n";
+            }
+            yield "0\r\n\r\n";
+        });
+        $response = $this->client()->stream('GET', $server->url('/'), idle: 0.15);
+
+        self::assertSame(['0', '1', '2', '3', '4', '5'], iterator_to_array($response->lines(), false));
+    }
+
+    public function testAnIdleTimeMustBeAboveZero(): void
+    {
+        $this->expectException(\InvalidArgumentException::class);
+        $this->client()->stream('GET', 'http://127.0.0.1:1/', idle: 0.0);
+    }
+
+    public function testAStreamedRequestWithAnIdleTimeIsStillGivenUpWithItsCaller(): void
+    {
+        $server = $this->server(static function (): \Generator {
+            yield "HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n";
+            Async::sleep(EventLoop::current(), 0.5);
+        });
+        $cancellation = new Cancellation();
+        $response = $this->client()->stream('GET', $server->url('/'), cancellation: $cancellation, idle: 5.0);
+        EventLoop::current()->delay(0.02, static fn() => $cancellation->cancel());
+
+        $this->expectException(CancelledException::class);
+        $response->getBody()->getContents();
+    }
+
     public function testRequestsAreSentAndAnswersReadOnAKeptConnection(): void
     {
         $server = $this->server(static fn(array $request): string => TestServer::reply(

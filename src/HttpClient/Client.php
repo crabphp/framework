@@ -234,6 +234,7 @@ class Client implements ClientContract
         $request = new Request(strtoupper($method), $url, $headers, $body ?? '');
         if ($sink instanceof Pipe) {
             $sink->request = Exchange::describe($request);
+            $sink->sent = $request;
         }
         return $this->send($request, $cancellation, new Receiving($maxBytes ?? $this->maxBytes, $decode, $sink));
     }
@@ -250,9 +251,16 @@ class Client implements ClientContract
         ?Cancellation $cancellation = null,
         ?int $maxBytes = null,
         bool $decode = true,
+        ?float $idle = null,
     ): ResponseContract {
+        if ($idle !== null && (!is_finite($idle) || $idle <= 0)) {
+            throw new \InvalidArgumentException('An idle timeout is a number of seconds above zero.');
+        }
         $loop = EventLoop::current();
         $pipe = new Pipe($loop);
+        // What a timeout names until the request is made, when it names that.
+        $pipe->sent = new Request(strtoupper($method), $url);
+        $pipe->request = Exchange::describe($pipe->sent);
         $request = Task::spawn($loop, function (Cancellation $own) use (
             $method,
             $url,
@@ -296,7 +304,13 @@ class Client implements ClientContract
                 $pipe->finish($error);
             }
         });
-        $pipe->waitForHead();
+        try {
+            $pipe->waitForHead($idle);
+        } catch (TimedOut $timedOut) {
+            $pipe->abandon();
+            $request->cancel();
+            throw PipeBody::idle($pipe, (float) $idle, $timedOut);
+        }
         $opened = $pipe->opened();
         if ($opened === null) {
             // No success to stream: an error status, kept to be read as usual, or no answer at all.
@@ -306,7 +320,7 @@ class Client implements ClientContract
         if ($decoding) {
             unset($received['content-encoding'], $received['content-length']);
         }
-        return new Response($status, $received, new PipeBody($pipe, $request), '', $version, $pipe->request);
+        return new Response($status, $received, new PipeBody($pipe, $request, $idle), '', $version, $pipe->request);
     }
 
     public function get(string $url, array $query = [], array $headers = []): ResponseContract

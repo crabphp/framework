@@ -238,6 +238,7 @@ foreach ($reply->events() as $event) {       // server-sent events, each once it
 - **Letting go stops it.** Break out of the loop and drop the response, or call `close()` on its body, and the rest is not received. Cancelling `cancellation:` stops it too.
 - **An error status is read whole,** as `request()` reads it, so `throw()` and `json()` work as usual.
 - **The timeout covers the whole answer.** Raise it for a long one, as above.
+- **`idle:` gives up on a server that has stopped sending.** With `idle: 60.0`, the call waits at most 60 seconds for the answer's head, and each read at most 60 seconds for more of the body; then the request is given up and a `NetworkException` says that nothing arrived. Pair it with a high `timeout()`, so a long answer that keeps coming is never cut, and one that stalls is: `$http->timeout(3600)->stream('POST', $url, json: $prompt, idle: 60.0)`.
 - `maxBytes:` and `decode:` hold as for `request()`. Redirects are followed and an answer that broke off before any of its body arrived is tried again as usual. Once any of the body has been read, the request is not made again.
 
 `events()` and `lines()` work on any answer, not only a streamed one. The two together relay a model's reply to a browser: see [Streaming](responses.md#streaming).

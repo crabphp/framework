@@ -2,6 +2,11 @@
 
 Crab follows [semantic versioning](https://semver.org). Before 1.0, a minor version may break what an application writes; the entry says what to change.
 
+## Unreleased
+
+- **An idle timeout for streamed answers:** `$http->stream(..., idle: 60.0)` gives up on a server that sends nothing for that many seconds, waiting for the answer's head or between reads of its body, with a `NetworkException`, while `timeout()` may be raised to the longest a whole answer may take. A client of your own implementing `Contracts\HttpClient\Client` adds `?float $idle = null` to `stream()`. See [Streaming answers](docs/http-client.md#streaming-answers).
+- **Commands that do not block the loop:** `Engine\Process\Subprocess::run(['git', 'status'], directory:, environment:, input:, timeout:, maxBytes:, cancellation:)` runs a command while other tasks keep running and returns its exit code, standard output and error, and whether it timed out or wrote past its limit. A cancellation, timeout or output limit kills it, and with `setsid` and the posix extension present so is everything it started, so a background child never outlives it.
+
 ## 0.2.0 — 2026-10-30
 
 - **Actors:** a class with `handle(Inbox $inbox, string $key)` runs once for each key, takes its messages one at a time in the order sent, and keeps its memory in its variables until `actors.idle` seconds without a message. `Contracts\Actors\Actors::tell()` returns at once; `ask()` waits for `$message->reply()` and ends with it, its timeout, its cancellation or `Contracts\Actors\NoReply`. Messages and replies are JSON, delivered at most once. With the local broadcast carrier an actor runs in the process that sends to it; with Redis, in the new `actors` server beside HTTP (`actors.workers` processes, each key in the one a hash picks), or on its own with `actors:work`. `ActorsProvider` is one of `App::PROVIDERS`. See [Actors](docs/actors.md).

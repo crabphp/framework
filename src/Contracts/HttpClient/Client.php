@@ -77,13 +77,21 @@ interface Client extends ClientInterface
      * up in memory, and once the response is let go, or its body closed,
      * the rest is not received. An answer with an error status is read in
      * full, as request() reads it. The client's timeout covers the whole
-     * answer, so raise it for a long one.
+     * answer, so raise it for a long one, and give $idle to give up on a
+     * server that has stopped sending:
+     *
+     *     $reply = $http->timeout(3600)->stream('POST', $url, json: $prompt, idle: 60.0)->throw();
+     *
+     * With $idle, the call waits at most that many seconds for the answer's
+     * head, and each read of its body at most that many for more of it;
+     * then the request is given up and a NetworkException says so.
      *
      * @param array<string, mixed> $query
      * @param array<string, string|list<string>> $headers
      * @param array<string, mixed> $form
      * @param array<string, File|UploadedFileInterface|list<File|UploadedFileInterface>> $files
-     * @throws \Psr\Http\Client\ClientExceptionInterface When there is no answer.
+     * @param float|null $idle Seconds the answer may go with nothing arriving, its head and between reads of its body, or null for no limit but the timeout.
+     * @throws \Psr\Http\Client\ClientExceptionInterface When there is no answer, or nothing arrived for $idle seconds.
      */
     public function stream(
         string $method,
@@ -97,6 +105,7 @@ interface Client extends ClientInterface
         ?Cancellation $cancellation = null,
         ?int $maxBytes = null,
         bool $decode = true,
+        ?float $idle = null,
     ): Response;
 
     /**
