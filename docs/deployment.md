@@ -14,6 +14,8 @@
 - [Behind a proxy](#behind-a-proxy)
 - [The other processes](#the-other-processes)
 - [A deploy, start to finish](#a-deploy-start-to-finish)
+- [Storage elsewhere](#storage-elsewhere)
+- [A single executable](#a-single-executable)
 - [Before going live](#before-going-live)
 - [How a background server holds together](#how-a-background-server-holds-together)
 
@@ -409,6 +411,57 @@ Installation and migration must succeed before reload; `set -e` stops the script
 
 Run the migrations before the reload, and write them so that the old code still works on the new tables for the moment between the two: add a column in one deploy, start using it in the next.
 
+## Storage elsewhere
+
+Everything the application writes is in one folder, `storage/` in the application's folder by default: logs, `server.pid` and the stats beside it, the file cache, the `local` disk and a SQLite file. Move it without touching the code with `CRAB_STORAGE`, or in `app.php`:
+
+```text
+# .env, or the real environment
+CRAB_STORAGE=/var/lib/shop
+```
+
+```php
+return App::configure(__DIR__)
+    ->withStorage('/var/lib/shop')       // takes precedence over CRAB_STORAGE
+    // ...
+```
+
+A relative `CRAB_STORAGE` is followed from the working directory; a relative `withStorage()` from the application's folder. Settings that name `storage/...`, such as `log.path` and `server.pid`, follow the folder, and a configuration file names a file in it with `storage_path('database.sqlite')` in place of `dirname(__DIR__) . '/storage/database.sqlite'`.
+
+For deploys into a new release folder each time, point every release at one shared folder: `reload` then finds the server from any of them. When the application cannot be loaded, `status` and `stop` find the server through `CRAB_STORAGE` from the real environment only, since they do not read `.env` or `app.php` then; give `--pid` otherwise.
+
+## A single executable
+
+An application can ship as one file that holds PHP and the application together: copy it to a server and run it, with no PHP installed there. [static-php-cli](https://static-php.dev) provides `micro.sfx`, a PHP runtime that runs whatever phar is appended to it. Its prebuilt "common" builds have every extension Crab needs (`pcntl`, `posix`, `sockets`, `openssl`, `pdo_sqlite`, `pdo_mysql`, `mbstring`, `zlib`, `phar`).
+
+1. Install the application's dependencies without the development ones: `composer install --no-dev --classmap-authoritative`.
+2. Pack the application into a phar, leaving out `storage/`, `.env`, `tests/` and `.git`. Its entry is `cua` without its `#!` line, which a file that is included would print:
+
+    ```php
+    // build.php, run with: php -d phar.readonly=0 build.php
+    $phar = new Phar('app.phar');
+    $phar->startBuffering();
+    // Not what the application writes or its machine's settings, and not this script or the phar it makes.
+    $skip = '~^(storage|tests|\.env|\.git|cua|build\.php|app\.phar)(/|$)~';
+    foreach (new RecursiveIteratorIterator(new RecursiveDirectoryIterator(__DIR__, FilesystemIterator::SKIP_DOTS)) as $file) {
+        $path = substr($file->getPathname(), strlen(__DIR__) + 1);
+        if ($file->isFile() && preg_match($skip, $path) !== 1) {
+            $phar->addFile($file->getPathname(), $path);
+        }
+    }
+    $phar->addFromString('main.php', "<?php\nrequire __DIR__ . '/vendor/autoload.php';\nexit(Crab\\Cua::run(__DIR__ . '/app.php', array_slice(\$argv, 1)));\n");
+    $phar->setStub("<?php Phar::mapPhar('app.phar'); require 'phar://app.phar/main.php'; __HALT_COMPILER();");
+    $phar->stopBuffering();
+    ```
+
+3. Join the two: `cat micro.sfx app.phar > shop && chmod +x shop`.
+
+`./shop` is then `php cua`: `./shop migrate`, `./shop start --daemon`, `./shop reload`, `./shop status`. What the application writes, and its `.env`, are beside the file, since nothing can be written inside it: `storage/` is made next to `shop` when first needed, and `CRAB_STORAGE` moves it as usual. Workers, servers beside HTTP, servers kept across reloads, `reload` and `restart` all work as they do under `php`.
+
+- **The code is fixed in the file.** Configuration files and routes are part of it; a change is a new build. Settings that differ between machines belong in `.env`.
+- **Commands that write into the application's folder,** such as `make:command` and `config:publish`, are for development, not for the executable; and `dev` has no files to watch.
+- **One platform per build:** `micro.sfx` is built for one operating system and processor. Linux and macOS are supported; Windows has no `pcntl`, so a server there runs with `--single`.
+
 ## Before going live
 
 - `APP_DEBUG=false`. Debug mode shows traces to clients.
@@ -438,4 +491,4 @@ keeper            holds the listening socket; its process id is the server's and
 
 - **The keeper** binds the address once and passes the socket to each server process it starts. It serves nothing and loads none of your code, so it never needs replacing. Restart it only after upgrading the framework itself.
 - **A server process that dies is started again** by the keeper, on the socket that never closed. Six deaths within a minute and the keeper gives up and stops. The held server is looked after the same way, and `status` lists it as `kept across reloads`.
-- **The new process starts in the directory `reload` was run from.** Deploying into a new release folder and reloading from there works, as long as `storage/` is shared between the folders, since the process id file is how `reload` finds the server.
+- **The new process starts in the directory `reload` was run from.** Deploying into a new release folder and reloading from there works, as long as `storage/` is shared between the folders, since the process id file is how `reload` finds the server; see [Storage elsewhere](#storage-elsewhere).

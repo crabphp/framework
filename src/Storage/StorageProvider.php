@@ -66,13 +66,13 @@ final class StorageProvider implements WorkerProvider
             ): LocalDisk {
                 $root = $settings['root'] ?? null;
                 if ($root === null) {
-                    $base = $container->get(Config::class)->get('app.path');
-                    if (!is_string($base)) {
+                    $storage = $container->get(Config::class)->get('app.storage');
+                    if (!is_string($storage)) {
                         throw new \LogicException(
                             "The disk \"{$name}\" needs a folder: set its \"root\", or build the application with App::configure(\$basePath).",
                         );
                     }
-                    $root = $base . '/storage/files';
+                    $root = $storage . '/files';
                 }
                 $url = $settings['url'] ?? null;
                 return new LocalDisk(

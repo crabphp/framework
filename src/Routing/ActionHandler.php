@@ -325,6 +325,16 @@ final class ActionHandler implements RequestHandlerInterface
     }
 
     /**
+     * The action's own signature, for route descriptions that need its
+     * return type or attributes. It is the same one read when the route was
+     * added; no new reflection or request work is done here.
+     */
+    public function signature(): \ReflectionFunctionAbstract
+    {
+        return $this->signature;
+    }
+
+    /**
      * The schema of a parameter that is a whole query string or body.
      *
      * @param array{string, class-string} $input

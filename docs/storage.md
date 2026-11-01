@@ -22,7 +22,7 @@
 
 A disk is where your application keeps files: users' avatars, exported reports, uploaded documents. It is a folder on this machine or a bucket on S3, and your code talks to both the same way, so the files can move to S3 when the application outgrows one machine without changing the code that writes them.
 
-The storage provider is registered by default. Out of the box there is one disk, `local`, the folder `storage/files` in your application. Disks on S3, and on the services that speak its API (Cloudflare R2, MinIO, Backblaze B2, DigitalOcean Spaces), come from the `crabphp/s3` package.
+The storage provider is registered by default. Out of the box there is one disk, `local`, the folder `files` in the application's [storage directory](deployment.md#storage-elsewhere), `storage/files` unless moved. Disks on S3, and on the services that speak its API (Cloudflare R2, MinIO, Backblaze B2, DigitalOcean Spaces), come from the `crabphp/s3` package.
 
 ## Configuration
 
@@ -52,7 +52,7 @@ A `local` disk takes two settings:
 
 | Setting | Default | |
 | --- | --- | --- |
-| `root` | `storage/files` in the application | The folder; made when the first file is written |
+| `root` | `files` in the storage directory, `storage/files` unless moved | The folder; made when the first file is written |
 | `url` | none | Where the folder is served from, for [`url()`](#urls) |
 
 A local disk reads and writes in the worker, which is fast enough for files on this machine's disk. A folder on a network mount is not: each read would hold up every request on that worker. Keep such files on a disk that speaks to the service instead.

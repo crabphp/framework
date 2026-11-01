@@ -65,13 +65,13 @@ final class CacheProvider implements Provider
                 $directory = $config->get('cache.directory');
                 if ($directory === null) {
                     // Never a shared temp folder: another account could make it first and fill it.
-                    $base = $config->get('app.path');
-                    if (!is_string($base)) {
+                    $storage = $config->get('app.storage');
+                    if (!is_string($storage)) {
                         throw new \LogicException(
                             'A file cache needs a folder: set cache.directory, or build the application with App::configure($basePath).',
                         );
                     }
-                    $directory = $base . '/storage/cache';
+                    $directory = $storage . '/cache';
                 }
                 return new FileStore((string) $directory);
             }

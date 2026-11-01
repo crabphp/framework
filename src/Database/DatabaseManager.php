@@ -164,6 +164,18 @@ final class DatabaseManager implements Migrators
             $pdoOptions = $mysql
                 ? self::pdoOptions($options)
                 : array_filter($options, static fn(int|string $key): bool => is_int($key), ARRAY_FILTER_USE_KEY);
+            if ($sqlite) {
+                // SQLite makes the file, not the folder it is in: a fresh storage directory, such as one beside a single executable, has none yet.
+                $file = substr($dsn, strlen('sqlite:'));
+                if (
+                    $file !== ''
+                    && $file !== ':memory:'
+                    && !str_starts_with($file, 'file:')
+                    && !is_dir(dirname($file))
+                ) {
+                    @mkdir(dirname($file), 0o777, true);
+                }
+            }
             $pdo = new \PDO($dsn, $username, $password, $pdoOptions);
             if ($mysql && ($options['ssl'] ?? false) !== false) {
                 $pdo->setAttribute(\PDO::ATTR_ERRMODE, \PDO::ERRMODE_EXCEPTION);

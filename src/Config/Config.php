@@ -35,7 +35,8 @@ final class Config implements ConfigContract
             throw new \InvalidArgumentException("Configuration directory {$directory} does not exist.");
         }
         $items = [];
-        foreach (glob($directory . '/*.php') ?: [] as $file) {
+        // scandir(), not glob(): glob() cannot read inside a phar, which a packed application's configuration is.
+        foreach (self::phpFiles($directory) as $file) {
             $values = require $file;
             if (!is_array($values)) {
                 throw new \UnexpectedValueException("Configuration file {$file} must return an array.");
@@ -151,5 +152,24 @@ final class Config implements ConfigContract
                 : $value;
         }
         return $defaults;
+    }
+
+    /**
+     * The .php files directly in a folder, by name, as glob('*.php') finds
+     * them, but also inside a phar.
+     *
+     * @internal For the commands that list them.
+     * @return list<string>
+     */
+    public static function phpFiles(string $directory): array
+    {
+        $files = [];
+        foreach (@scandir($directory) ?: [] as $name) {
+            if ($name[0] === '.' || !str_ends_with($name, '.php') || !is_file($directory . '/' . $name)) {
+                continue;
+            }
+            $files[] = $directory . '/' . $name;
+        }
+        return $files;
     }
 }

@@ -26,6 +26,14 @@ use Crab\Contracts\Container\MissingServices;
 final class Cua
 {
     /**
+     * The first argument with which a self-contained executable launches a
+     * command of its own for a server, in place of PHP's -r; see launch().
+     *
+     * @internal For App.
+     */
+    public const LAUNCH = '--crab-launch';
+
+    /**
      * The commands that run without the application.
      */
     private const WITHOUT = ['status', 'stop'];
@@ -37,6 +45,9 @@ final class Cua
      */
     public static function run(string $app, array $arguments, ?OutputContract $output = null): int
     {
+        if (($arguments[0] ?? null) === self::LAUNCH) {
+            return self::launch(array_slice($arguments, 1));
+        }
         try {
             $application = require $app;
         } catch (\Throwable $error) {
@@ -97,5 +108,24 @@ final class Cua
             $output->error("The application cannot be loaded, so this is from the files in storage/ alone: {$why}");
         }
         return $console->run($arguments, $output);
+    }
+
+    /**
+     * Starts a server's command in place of this process, in a session of
+     * its own unless told to keep this one, so that stopping the server
+     * reaches all it started. It is what PHP's -r does for the server
+     * otherwise, for a self-contained executable, which takes no -r.
+     *
+     * @param list<string> $arguments "detach" or "keep", then the program and its arguments.
+     */
+    private static function launch(array $arguments): int
+    {
+        [$mode, $program] = [$arguments[0] ?? '', $arguments[1] ?? ''];
+        if ($mode === 'detach') {
+            posix_setsid();
+        }
+        pcntl_exec($program, array_slice($arguments, 2));
+        fwrite(STDERR, "could not run {$program}\n");
+        return 127;
     }
 }

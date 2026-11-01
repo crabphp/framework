@@ -382,7 +382,7 @@ final class Migrator implements MigratorContract
         }
         $files = [];
         foreach ($this->directories as $directory) {
-            foreach (glob($directory . '/*.php') ?: [] as $file) {
+            foreach (self::phpFiles($directory) as $file) {
                 $name = basename($file, '.php');
                 if (isset($files[$name])) {
                     throw new DatabaseException("Two migrations are named \"{$name}\": {$files[$name]} and {$file}.");
@@ -490,5 +490,23 @@ final class Migrator implements MigratorContract
             };
 
             PHP;
+    }
+
+    /**
+     * The .php files directly in a folder, by name. Not glob(), which
+     * cannot read inside a phar, where a packed application's migrations are.
+     *
+     * @return list<string>
+     */
+    private static function phpFiles(string $directory): array
+    {
+        $files = [];
+        foreach (@scandir($directory) ?: [] as $name) {
+            if ($name[0] === '.' || !str_ends_with($name, '.php') || !is_file($directory . '/' . $name)) {
+                continue;
+            }
+            $files[] = $directory . '/' . $name;
+        }
+        return $files;
     }
 }

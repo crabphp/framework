@@ -22,6 +22,7 @@ use Crab\Commands\Start;
 use Crab\Commands\Status;
 use Crab\Commands\Stop;
 use Crab\Config\Config;
+use Crab\Config\Env;
 use Crab\Console\Console;
 use Crab\Container\Container;
 use Crab\Container\ServicesException;
@@ -52,6 +53,7 @@ use Crab\Engine\Async\CancelledException;
 use Crab\Engine\EventLoop\RevoltEventLoop;
 use Crab\Engine\EventLoop\StreamSelectEventLoop;
 use Crab\Engine\FailureReporter;
+use Crab\Engine\Process\Interpreter;
 use Crab\Engine\Process\Worker;
 use Crab\Engine\Runtime;
 use Crab\Engine\Server\HttpServer;
@@ -101,6 +103,18 @@ use Psr\Log\LoggerInterface;
 final class App implements RequestHandlerInterface, Runner
 {
     private static ?self $current = null;
+
+    /**
+     * The storage directory of the application being built, while its
+     * configuration files are read and before it exists; see storage().
+     */
+    private static ?string $preparing = null;
+
+    /**
+     * Where the application writes: logs, the pid file, the file cache, the
+     * local disk, a SQLite file. Null for one with nowhere of its own.
+     */
+    private readonly ?string $storage;
 
     public readonly RouterContract $router;
     public readonly ConsoleContract $console;
@@ -163,21 +177,25 @@ final class App implements RequestHandlerInterface, Runner
     /**
      * @param string|null $basePath The application's own directory, which path() resolves against.
      * @param list<MiddlewareInterface|class-string<MiddlewareInterface>> $middleware The middleware around every request, the first outermost. A provider adds inside it through the MiddlewareStack contract.
+     * @param string|null $storagePath Where it writes; see storageDirectory() when null.
      */
     public function __construct(
         public readonly ConfigContract $config = new Config(),
         public readonly ContainerContract $container = new Container(),
         public readonly ?string $basePath = null,
         array $middleware = self::MIDDLEWARE,
+        ?string $storagePath = null,
     ) {
+        $this->storage = $storagePath ?? self::storageDirectory($basePath);
         $config->defaults(
             'app',
-            ['name' => 'Crab', 'debug' => false, 'url' => null, 'path' => $basePath],
+            ['name' => 'Crab', 'debug' => false, 'url' => null, 'path' => $basePath, 'storage' => $this->storage],
             [
                 'name' => ['type' => 'string'],
                 'debug' => ['type' => 'boolean'],
                 'url' => ['type' => ['string', 'null'], 'examples' => ['https://api.example.com']],
                 'path' => ['type' => ['string', 'null']],
+                'storage' => ['type' => ['string', 'null']],
                 // The application's own settings may sit beside these.
                 '*' => [],
             ],
@@ -359,8 +377,10 @@ final class App implements RequestHandlerInterface, Runner
     }
 
     /**
-     * A path inside the application's directory: path('storage/app.log').
-     * A path that is already absolute is returned as it is.
+     * A path inside the application's directory: path('routes/web.php').
+     * One that starts with "storage/" is inside the storage directory,
+     * wherever that is: path('storage/logs/app.log'). A path that is
+     * already absolute is returned as it is.
      */
     public function path(string $path = ''): string
     {
@@ -370,10 +390,84 @@ final class App implements RequestHandlerInterface, Runner
         ) {
             return $path;
         }
+        if ($path === 'storage' || str_starts_with($path, 'storage/')) {
+            return $this->storagePath(substr($path, strlen('storage/')));
+        }
         if ($this->basePath === null) {
             throw new \LogicException('This application has no base path. Give it one with App::configure(__DIR__).');
         }
         return $path === '' ? $this->basePath : $this->basePath . '/' . $path;
+    }
+
+    /**
+     * A path inside the storage directory: storagePath('logs/app.log').
+     */
+    public function storagePath(string $path = ''): string
+    {
+        if ($this->storage === null) {
+            throw new \LogicException(
+                'This application has nowhere to write. Give it a base path with App::configure(__DIR__), or a storage directory with withStorage() or CRAB_STORAGE.',
+            );
+        }
+        return $path === '' ? $this->storage : $this->storage . '/' . ltrim($path, '/');
+    }
+
+    /**
+     * The storage directory an application has unless told otherwise: the
+     * CRAB_STORAGE environment variable, relative to the working directory
+     * when it is not absolute; else "storage" in the folder outside() names.
+     */
+    public static function storageDirectory(?string $basePath): ?string
+    {
+        $given = Env::get('CRAB_STORAGE');
+        if (is_string($given) && $given !== '') {
+            return $given[0] === '/' || preg_match('~^[A-Za-z]:[\\\\/]~', $given) === 1
+                ? $given
+                : getcwd() . '/' . $given;
+        }
+        return $basePath === null ? null : self::outside($basePath) . '/storage';
+    }
+
+    /**
+     * The folder of the files that are not the application's code: what it
+     * writes, and its .env. That is its own folder, but for an application
+     * packed into a phar, such as a single executable, the folder the phar
+     * is in, since nothing can be written inside it.
+     */
+    public static function outside(string $basePath): string
+    {
+        if (!str_starts_with($basePath, 'phar://')) {
+            return $basePath;
+        }
+        // phar:///srv/app/crab.phar/app: the archive is the deepest of these that is a file.
+        $archive = substr($basePath, strlen('phar://'));
+        while (!is_file($archive) && dirname($archive) !== $archive) {
+            $archive = dirname($archive);
+        }
+        return dirname($archive);
+    }
+
+    /**
+     * A path in the storage directory of the application being built, or
+     * else of the current one: what storage_path() returns.
+     */
+    public static function storage(string $path = ''): string
+    {
+        if (self::$preparing !== null) {
+            return $path === '' ? self::$preparing : self::$preparing . '/' . ltrim($path, '/');
+        }
+        return self::current()->storagePath($path);
+    }
+
+    /**
+     * Names the storage directory of the application about to be built,
+     * for the configuration files it reads first.
+     *
+     * @internal For AppBuilder.
+     */
+    public static function preparing(?string $storage): void
+    {
+        self::$preparing = $storage;
     }
 
     /**
@@ -757,7 +851,11 @@ final class App implements RequestHandlerInterface, Runner
                     ),
                 );
             }
-            $groups[] = new Workers($id, self::process($id, [PHP_BINARY, ...$this->invocation(), ...$words]));
+            $groups[] = new Workers($id, self::process($id, [
+                ...Interpreter::prefix(),
+                ...$this->invocation(),
+                ...$words,
+            ]));
         }
         return $groups;
     }
@@ -852,14 +950,17 @@ final class App implements RequestHandlerInterface, Runner
             && posix_getpgid(0) === $keeper;
         return static function (Worker $worker, Cancellation $cancellation) use ($id, $command, $sharedGroup): void {
             $detach = $sharedGroup ? '' : 'posix_setsid(); ';
-            $launcher = [
-                PHP_BINARY,
-                '-r',
-                $detach
-                    . 'pcntl_exec($argv[1], array_slice($argv, 2)); fwrite(STDERR, "could not run {$argv[1]}\n"); exit(127);',
-                '--',
-                ...$command,
-            ];
+            $launcher = Interpreter::selfContained()
+                // No -r in a self-contained executable: it launches through itself; see Cua::launch().
+                ? [$command[0], Cua::LAUNCH, $sharedGroup ? 'keep' : 'detach', ...$command]
+                : [
+                    PHP_BINARY,
+                    '-r',
+                    $detach
+                        . 'pcntl_exec($argv[1], array_slice($argv, 2)); fwrite(STDERR, "could not run {$argv[1]}\n"); exit(127);',
+                    '--',
+                    ...$command,
+                ];
             $process = proc_open($launcher, [['file', '/dev/null', 'r'], ['pipe', 'w'], ['pipe', 'w']], $pipes);
             if ($process === false) {
                 throw new \RuntimeException("Could not start the server \"{$id}\".");

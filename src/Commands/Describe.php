@@ -239,7 +239,7 @@ final readonly class Describe implements Command
                 ?? (is_array($connection) ? $connection['migrations'] ?? null : null);
             $migrations = [];
             if (is_string($directory) && $directory !== '') {
-                foreach (glob($directory . '/*.php') ?: [] as $file) {
+                foreach (\Crab\Config\Config::phpFiles($directory) as $file) {
                     $migrations[] = basename($file, '.php');
                 }
                 sort($migrations);

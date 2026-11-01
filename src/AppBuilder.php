@@ -33,6 +33,7 @@ use Psr\Http\Server\MiddlewareInterface;
 final class AppBuilder
 {
     private ?string $env = null;
+    private ?string $storage = null;
     private ?string $config = null;
     private bool $configRequired = true;
     /**
@@ -98,11 +99,25 @@ final class AppBuilder
 
     /**
      * The .env file with this machine's settings. It may be absent, as it
-     * is where the real environment holds them.
+     * is where the real environment holds them. A relative path is in the
+     * application's folder, or beside the phar it is packed into.
      */
     public function withEnv(string $file): static
     {
         $this->env = $file;
+        return $this;
+    }
+
+    /**
+     * Where the application writes, in place of "storage" in its folder:
+     * logs, the pid file, the file cache, the local disk, a SQLite file. A
+     * relative path is in the application's folder, or beside the phar it
+     * is packed into. The CRAB_STORAGE environment variable does the same
+     * without a change to the code, and this takes precedence over it.
+     */
+    public function withStorage(string $directory): static
+    {
+        $this->storage = rtrim($directory, '/\\');
         return $this;
     }
 
@@ -256,9 +271,22 @@ final class AppBuilder
         }
         if ($this->env !== null) {
             // Before the configuration, whose files read it with env().
-            Env::load($this->path($this->env));
+            Env::load($this->outside($this->env));
         }
-        $app = new App($this->config(), basePath: $this->basePath, middleware: $this->globalMiddleware());
+        // Read after the .env, which may set CRAB_STORAGE, and named before the configuration, whose files may call storage_path().
+        $storage = $this->storage === null ? App::storageDirectory($this->basePath) : $this->outside($this->storage);
+        App::preparing($storage);
+        try {
+            $config = $this->config();
+        } finally {
+            App::preparing(null);
+        }
+        $app = new App(
+            $config,
+            basePath: $this->basePath,
+            middleware: $this->globalMiddleware(),
+            storagePath: $storage,
+        );
         $app->register(...$this->allProviders());
         if ($this->health !== null) {
             $app->router->get($this->health, new Health());
@@ -372,6 +400,20 @@ final class AppBuilder
         $absolute =
             $path !== '' && ($path[0] === '/' || preg_match('~^[A-Za-z]:[\\\\/]|^[a-z][a-z0-9+.-]*://~i', $path) === 1);
         return $absolute || $this->basePath === null ? $path : $this->basePath . '/' . $path;
+    }
+
+    /**
+     * A path to something that is not the application's code, which is
+     * never inside a phar: as path(), but beside the phar when the
+     * application is packed into one. See App::outside().
+     */
+    private function outside(string $path): string
+    {
+        if ($this->basePath === null || !str_starts_with($this->basePath, 'phar://')) {
+            return $this->path($path);
+        }
+        $absolute = $path !== '' && ($path[0] === '/' || preg_match('~^[A-Za-z]:[\\\\/]~', $path) === 1);
+        return $absolute ? $path : App::outside($this->basePath) . '/' . $path;
     }
 
     /**

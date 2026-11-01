@@ -208,6 +208,8 @@ It says that this worker answers, and asks nothing of the database. That is deli
 | --- | --- | --- |
 | `app.name` | `Crab` | Shown above the command list and when the server starts |
 | `app.debug` | `false` | Show a failure's details to the client. Never in production. |
+| `app.path` | the folder given to `App::configure()` | Where the application is; read it, do not set it here |
+| `app.storage` | `storage` in the application's folder | Where the application writes, as `withStorage()` or `CRAB_STORAGE` put it; read it, do not set it here. See [Storage elsewhere](deployment.md#storage-elsewhere) |
 | `app.url` | none | Where the application is reached, such as `https://api.example.com`; the start of every URL `Urls` writes. See [Named routes](routing.md#named-routes) |
 | `auth.ticket_ttl` | `30` | Positive whole seconds a single-use browser socket ticket lives; see [Authentication](authentication.md#browser-socket-tickets) |
 | `log.path` | `php://stderr` | Where the log is written; see [Logging](logging.md) |

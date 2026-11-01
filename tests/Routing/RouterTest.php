@@ -573,6 +573,36 @@ final class RouterTest extends TestCase
         $this->expectException(\InvalidArgumentException::class);
         $router->get('/c', static fn() => 'c')->name(' ');
     }
+
+    public function testARouteExposesTheSignatureOfItsTypedAction(): void
+    {
+        $router = new Router();
+        $router->get('/closure/{id}', static fn(int $id): string => (string) $id);
+        $router->get('/method', RouteSignatureAction::class);
+        $router->get('/handler', new class implements RequestHandlerInterface {
+            public function handle(ServerRequestInterface $request): ResponseInterface
+            {
+                return Response::noContent();
+            }
+        });
+        [$closure, $method, $handler] = $router->routes();
+
+        $closureSignature = $router->signature($closure);
+        self::assertInstanceOf(\ReflectionFunction::class, $closureSignature);
+        self::assertSame('string', (string) $closureSignature->getReturnType());
+
+        $methodSignature = $router->signature($method);
+        self::assertInstanceOf(\ReflectionMethod::class, $methodSignature);
+        self::assertSame(RouteSignatureAction::class, $methodSignature->getDeclaringClass()->getName());
+        self::assertSame('void', (string) $methodSignature->getReturnType());
+
+        self::assertNull($router->signature($handler));
+    }
+}
+
+final readonly class RouteSignatureAction
+{
+    public function handle(): void {}
 }
 
 final class NeedsAnArgument implements \Psr\Http\Server\MiddlewareInterface

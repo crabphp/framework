@@ -81,10 +81,10 @@ final readonly class PublishConfig implements Command
      */
     public static function sections(): array
     {
-        $sections = array_map(
-            static fn(string $file): string => basename($file, '.php'),
-            glob(self::STUBS . '/*.php') ?: [],
-        );
+        $sections = array_map(static fn(string $file): string => basename(
+            $file,
+            '.php',
+        ), \Crab\Config\Config::phpFiles(self::STUBS));
         sort($sections);
         return $sections;
     }

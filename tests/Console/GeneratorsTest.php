@@ -163,8 +163,8 @@ final class GeneratorsTest extends TestCase
             );
             $defaults = $app->config->get($section);
             if ($section === 'app') {
-                // Where the application is; never a setting of its own.
-                unset($defaults['path']);
+                // Where the application is and where it writes; never settings of their own.
+                unset($defaults['path'], $defaults['storage']);
             }
             self::assertEqualsCanonicalizing(array_keys($defaults), array_keys($published), $section);
             foreach ($defaults as $key => $value) {

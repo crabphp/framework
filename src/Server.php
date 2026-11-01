@@ -8,6 +8,7 @@ use Crab\Engine\FailureReporter;
 use Crab\Engine\Process\Daemon;
 use Crab\Engine\Process\FileWatcher;
 use Crab\Engine\Process\Generation;
+use Crab\Engine\Process\Interpreter;
 use Crab\Engine\Process\Keeper;
 use Crab\Engine\Process\PidFile;
 use Crab\Engine\Runtime;
@@ -448,7 +449,7 @@ final class Server
         // The child inherits the terminal. Handing it STDERR instead would make PHP set the
         // descriptor to that stream's own position, rewinding a log that `2>&1` shares with stdout.
         $process = proc_open(
-            [PHP_BINARY, ...$command, '--watch-report'],
+            [...Interpreter::prefix(), ...$command, '--watch-report'],
             [self::WATCH_REPORT => ['pipe', 'w']],
             $pipes,
         );

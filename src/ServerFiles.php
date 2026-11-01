@@ -22,7 +22,8 @@ use Crab\Engine\Process\StatsFile;
 final readonly class ServerFiles
 {
     /**
-     * Where "server.pid" and "server.log" are by default, inside the application's folder.
+     * Where "server.pid" and "server.log" are by default: "storage/" is the
+     * application's storage directory, wherever that is; see App::path().
      */
     public const PID = 'storage/crab.pid';
     public const LOG = 'storage/logs/server.log';
@@ -41,15 +42,15 @@ final readonly class ServerFiles
     ) {}
 
     /**
-     * The files at their default places inside an application's folder.
+     * The files at their default places for an application's folder: in
+     * its storage directory, which the CRAB_STORAGE environment variable
+     * may move, as App::storageDirectory() says.
      */
     public static function in(string $directory): self
     {
-        return new self(
-            $directory . '/' . self::PID,
-            $directory . '/' . self::LOG,
-            self::statsBeside($directory . '/' . self::PID),
-        );
+        $storage = App::storageDirectory($directory) ?? $directory . '/storage';
+        $pid = $storage . '/' . substr(self::PID, strlen('storage/'));
+        return new self($pid, $storage . '/' . substr(self::LOG, strlen('storage/')), self::statsBeside($pid));
     }
 
     /**

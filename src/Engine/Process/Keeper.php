@@ -703,7 +703,7 @@ final class Keeper
             self::SOCKET => $socket,
             self::REPORT => ['pipe', 'w'],
         ];
-        $process = @proc_open([PHP_BINARY, ...$command], $descriptors, $pipes, $directory);
+        $process = @proc_open([...Interpreter::prefix(), ...$command], $descriptors, $pipes, $directory);
         if ($process === false) {
             throw new \RuntimeException('Could not start a PHP process for the server.');
         }

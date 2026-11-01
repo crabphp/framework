@@ -409,6 +409,12 @@ final class Router implements RouterContract
         return $handler instanceof ActionHandler ? $handler->input() : null;
     }
 
+    public function signature(RouteInfo $route): ?\ReflectionFunctionAbstract
+    {
+        $handler = $this->declared["{$route->method} {$route->pattern}"][0] ?? null;
+        return $handler instanceof ActionHandler ? $handler->signature() : null;
+    }
+
     public function route(string $name): ?RouteInfo
     {
         return isset($this->names[$name]) ? $this->routes[$this->names[$name]] : null;

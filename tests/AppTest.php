@@ -164,7 +164,10 @@ final class AppTest extends TestCase
     public function testCoreDefaultsAreVisibleToTheApplicationAndItsConsumers(): void
     {
         $app = new App();
-        self::assertSame(['name' => 'Crab', 'debug' => false, 'url' => null, 'path' => null], $app->config->get('app'));
+        self::assertSame(
+            ['name' => 'Crab', 'debug' => false, 'url' => null, 'path' => null, 'storage' => null],
+            $app->config->get('app'),
+        );
         self::assertSame(['path' => 'php://stderr', 'level' => 'debug'], $app->config->get('log'));
         self::assertSame('tcp://127.0.0.1:8080', $app->config->get('server.address'));
         self::assertSame(1, $app->config->get('server.workers'));

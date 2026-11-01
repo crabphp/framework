@@ -40,6 +40,8 @@ tests/              tests that call the application without a server
 
 `storage/` and `.env` are never committed. Nothing the application needs in order to start lives in `storage/`.
 
+`storage/` is where the application writes: logs, the server's process id file and stats, the file cache, the `local` disk and a SQLite file. A relative path starting with `storage/` in a setting, such as `log.path`, is inside it, and `storage_path('database.sqlite')` names a file in it from a configuration file. Move it with `->withStorage('/var/lib/shop')` in `app.php`, or the `CRAB_STORAGE` environment variable, which a relative path follows from the working directory; everything the framework writes follows. See [Storage elsewhere](deployment.md#storage-elsewhere).
+
 Everything begins in `app.php`:
 
 ```php

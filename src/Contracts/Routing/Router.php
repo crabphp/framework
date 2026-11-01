@@ -92,6 +92,13 @@ interface Router extends RequestHandlerInterface
     public function input(RouteInfo $route): ?array;
 
     /**
+     * The signature of a route's typed action, for tools that need what it
+     * returns as well as what it takes. Null when the route is handled by a
+     * PSR-15 handler of its own.
+     */
+    public function signature(RouteInfo $route): ?\ReflectionFunctionAbstract;
+
+    /**
      * The path of the named route, with its parameters filled in and
      * encoded: path('orders.show', ['id' => 12]) is "/orders/12". A
      * parameter missing, one the pattern does not have, or a value its
