@@ -114,12 +114,8 @@ final class StreamSelectEventLoop extends FiberEventLoop
 
     protected function wait(float $timeout): void
     {
-        if ($this->signalHandling) {
-            pcntl_signal_dispatch();
-            if ($this->signals !== []) {
-                $this->dispatchSignals();
-                $timeout = 0.0;
-            }
+        if ($this->receivedSignals()) {
+            $timeout = 0.0;
         }
         if ($this->readStreams === [] && $this->writeStreams === []) {
             if ($timeout < 0) {
@@ -128,6 +124,7 @@ final class StreamSelectEventLoop extends FiberEventLoop
             } elseif ($timeout > 0) {
                 usleep((int) ($timeout * 1_000_000));
             }
+            $this->receivedSignals();
             return;
         }
         $read = $this->readStreams;
@@ -140,6 +137,9 @@ final class StreamSelectEventLoop extends FiberEventLoop
             $microseconds = (int) (($timeout - $seconds) * 1_000_000);
         }
         $count = @stream_select($read, $write, $except, $seconds, $microseconds);
+        // A signal that cut the wait short is handled this turn, before the
+        // timers now due, which would otherwise run first.
+        $this->receivedSignals();
         if ($count === false) {
             $this->selectFailed();
             return;
@@ -159,6 +159,22 @@ final class StreamSelectEventLoop extends FiberEventLoop
         }
     }
 
+    /**
+     * Queues the watchers of every signal received so far; whether there was one.
+     */
+    private function receivedSignals(): bool
+    {
+        if (!$this->signalHandling) {
+            return false;
+        }
+        pcntl_signal_dispatch();
+        if ($this->signals === []) {
+            return false;
+        }
+        $this->dispatchSignals();
+        return true;
+    }
+
     private function dispatchSignals(): void
     {
         foreach ($this->signals as $signal) {
@@ -174,7 +190,7 @@ final class StreamSelectEventLoop extends FiberEventLoop
         $message = error_get_last()['message'] ?? 'Unknown error during stream_select().';
         error_clear_last();
         if (stripos($message, 'unable to select [4]: ') !== false) {
-            // EINTR: a signal arrived; it is dispatched on the next turn.
+            // EINTR: a signal arrived, and wait() has queued its watchers.
             return;
         }
         if (
