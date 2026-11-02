@@ -264,6 +264,18 @@ final class ProcessToolsTest extends TestCase
         }
     }
 
+    public function testLifecycleSignalsCannotBeTakenByApplicationCallbacks(): void
+    {
+        foreach ([SIGINT, SIGTERM, SIGUSR1] as $signal) {
+            try {
+                (new Runtime())->onSignal($signal, static function (): void {});
+                self::fail('A lifecycle signal was accepted as an application signal.');
+            } catch (\LogicException $error) {
+                self::assertStringContainsString('reserved', $error->getMessage());
+            }
+        }
+    }
+
     public function testAnIdleHttpConnectionIsReadAMomentLongerWhenTheServerStops(): void
     {
         if (!extension_loaded('pcntl') || !extension_loaded('posix')) {

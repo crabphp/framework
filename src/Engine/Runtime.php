@@ -93,6 +93,9 @@ final class Runtime
         if ($this->running) {
             throw new \LogicException('Say what a signal does before startup.');
         }
+        if (in_array($signal, [SIGINT, SIGTERM, SIGUSR1], true)) {
+            throw new \LogicException('SIGINT, SIGTERM and SIGUSR1 are reserved for runtime lifecycle control.');
+        }
         $this->onSignal[$signal] = $callback(...);
         return $this;
     }
