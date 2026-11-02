@@ -1391,6 +1391,19 @@ final class QueueTest extends TestCase
         self::assertSame(2, $store->size('default'));
     }
 
+    public function testNonFiniteNumbersAreRefusedBeforeAJobIsStored(): void
+    {
+        $queue = new Queue(new MemoryStore());
+        foreach ([INF, NAN] as $value) {
+            try {
+                $queue->push(TypedJob::class, id: 7, ratio: $value);
+                self::fail('A non-finite job value was accepted.');
+            } catch (\LogicException $error) {
+                self::assertStringContainsString('non-finite number', $error->getMessage());
+            }
+        }
+    }
+
     public function testAJobWhoseClassIsGoneFailsLikeAnyOther(): void
     {
         $store = new MemoryStore();

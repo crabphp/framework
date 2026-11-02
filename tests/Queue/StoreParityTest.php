@@ -8,7 +8,6 @@ use Crab\Contracts\Queue\Store;
 use Crab\Database\Database;
 use Crab\Queue\DatabaseStore;
 use Crab\Queue\MemoryStore;
-use Crab\Queue\Queue;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 
@@ -55,10 +54,10 @@ final class StoreParityTest extends TestCase
     #[DataProvider('invalidPayloads')]
     public function testAStoreRefusesDataThatCannotBeStoredAsJson(string $store, mixed $value): void
     {
-        $queue = new Queue($this->store($store));
+        $store = $this->store($store);
 
         $this->expectException(\JsonException::class);
-        $queue->push(StoreParityJob::class, value: $value);
+        $store->push('default', StoreParityJob::class, ['value' => $value], 0, 0);
     }
 
     #[DataProvider('stores')]
