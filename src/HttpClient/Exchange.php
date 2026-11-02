@@ -70,16 +70,36 @@ final class Exchange
         }
 
         $method = $request->getMethod();
-        $encoding = strtolower(implode(',', $headers['transfer-encoding'] ?? []));
-        $length = $headers['content-length'][0] ?? null;
-        $bodiless = $method === 'HEAD' || $status === 204 || $status === 304 || $status < 200;
-        $chunked = str_contains($encoding, 'chunked');
-        if (!$bodiless && !$chunked && $length !== null) {
-            if (preg_match('/^\d{1,18}$/D', $length) !== 1) {
-                throw new \RuntimeException('the answer\'s length is not a number');
+        $lengths = $headers['content-length'] ?? [];
+        $length = null;
+        if ($lengths !== []) {
+            $normalized = [];
+            foreach ($lengths as $value) {
+                if (preg_match('/^\d{1,18}$/D', $value) !== 1) {
+                    throw new \RuntimeException('the answer\'s length is not a number');
+                }
+                $normalized[] = ltrim($value, '0') ?: '0';
             }
+            if (count(array_unique($normalized)) !== 1) {
+                throw new \RuntimeException('the answer has conflicting Content-Length values');
+            }
+            $length = (int) $normalized[0];
+        }
+        $transfer = $headers['transfer-encoding'] ?? [];
+        $codings = $transfer === []
+            ? []
+            : array_map(trim(...), explode(',', strtolower(implode(',', $transfer))));
+        if ($codings !== [] && $codings !== ['chunked']) {
+            throw new \RuntimeException('the answer has unsupported transfer encoding');
+        }
+        if ($codings !== [] && $lengths !== []) {
+            throw new \RuntimeException('the answer has both Transfer-Encoding and Content-Length');
+        }
+        $bodiless = $method === 'HEAD' || $status === 204 || $status === 304 || $status < 200;
+        $chunked = $codings === ['chunked'];
+        if (!$bodiless && !$chunked && $length !== null) {
             // Refused before a byte of it is read.
-            $this->receiving->expect((int) $length);
+            $this->receiving->expect($length);
         }
         // These have no body, whatever their headers say.
         $sink = $this->receiving->sink($status, $headers['content-encoding'][0] ?? '', $bodiless, $headers, $version);
@@ -238,7 +258,7 @@ final class Exchange
         }
         $lines = explode("\r\n", substr($this->buffer, 0, $end));
         $this->buffer = substr($this->buffer, $end + 4);
-        if (preg_match('~^HTTP/(1\.[01]) (\d{3})(?: (.*))?$~D', array_shift($lines), $status) !== 1) {
+        if (preg_match('~^HTTP/(1\.[01]) ([1-5][0-9]{2})(?: (.*))?$~D', array_shift($lines), $status) !== 1) {
             throw new \RuntimeException('the answer is not HTTP/1.1');
         }
         $headers = [];

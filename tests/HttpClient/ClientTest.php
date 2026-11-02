@@ -504,6 +504,28 @@ final class ClientTest extends TestCase
         }
     }
 
+    public function testMalformedResponseFramingIsRejected(): void
+    {
+        $responses = [
+            'conflicting lengths' => "HTTP/1.1 200 OK\r\nContent-Length: 1\r\nContent-Length: 5\r\n\r\nhello",
+            'unsupported transfer coding' => "HTTP/1.1 200 OK\r\nTransfer-Encoding: chunkedx\r\n\r\n",
+            'non-final chunked coding' => "HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked, gzip\r\n\r\n",
+            'invalid status' => "HTTP/1.1 600 Weird\r\nContent-Length: 0\r\n\r\n",
+        ];
+        foreach ($responses as $name => $response) {
+            $server = $this->server(static fn() => $response);
+            try {
+                $this->client()->get($server->url('/'));
+                self::fail("{$name} response was accepted.");
+            } catch (NetworkException $error) {
+                self::assertStringContainsString(' failed: ', $error->getMessage());
+            }
+        }
+
+        $server = $this->server(static fn(): string => "HTTP/1.1 200 OK\r\nContent-Length: 005\r\nContent-Length: 5\r\n\r\nhello");
+        self::assertSame('hello', (string) $this->client()->get($server->url('/'))->getBody());
+    }
+
     public function testTheWorkerGoesOnWhileRequestsWait(): void
     {
         $loop = EventLoop::current();
