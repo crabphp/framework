@@ -234,7 +234,7 @@ final class Parser
         }
         if ($host[0] === '[') {
             $close = strpos($host, ']');
-            $port = $close === strlen($host) - 1 ? null : substr($host, $close + 2);
+            $port = $close === (strlen($host) - 1) ? null : substr($host, $close + 2);
         } else {
             $colon = strrpos($host, ':');
             $port = $colon === false ? null : substr($host, $colon + 1);
