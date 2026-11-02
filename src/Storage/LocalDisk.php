@@ -146,7 +146,9 @@ final class LocalDisk implements Disk
         }
         // Only the folder the prefix is in need be walked.
         $slash = strrpos($prefix, '/');
-        $start = $slash === false ? $this->root : $this->root . '/' . substr($prefix, 0, $slash);
+        $folder = $slash === false ? '' : substr($prefix, 0, $slash);
+        $this->assertNoLinks($folder);
+        $start = $folder === '' ? $this->root : $this->root . '/' . $folder;
         if (!is_dir($start)) {
             return;
         }
@@ -156,6 +158,9 @@ final class LocalDisk implements Disk
             \FilesystemIterator::SKIP_DOTS | \FilesystemIterator::CURRENT_AS_PATHNAME,
         ));
         foreach ($walk as $file) {
+            if (is_link((string) $file)) {
+                continue;
+            }
             $path = substr((string) $file, strlen($this->root) + 1);
             if (str_starts_with($path, $prefix) && !str_starts_with(basename($path), self::PARTIAL)) {
                 $paths[] = $path;
@@ -198,7 +203,26 @@ final class LocalDisk implements Disk
 
     private function place(string $path): string
     {
-        return $this->root . '/' . Path::file($path);
+        $path = Path::file($path);
+        $this->assertNoLinks($path);
+        return $this->root . '/' . $path;
+    }
+
+    /**
+     * Refuses a path that would follow a link inside this disk. A link can
+     * point anywhere on the machine, so following one would break the disk's
+     * root boundary.
+     */
+    private function assertNoLinks(string $path): void
+    {
+        $current = $this->root;
+        foreach ($path === '' ? [] : explode('/', $path) as $part) {
+            $current .= '/' . $part;
+            clearstatcache(true, $current);
+            if (is_link($current)) {
+                throw new StorageException("The path \"{$path}\" contains a link and cannot be used on this disk.");
+            }
+        }
     }
 
     /**

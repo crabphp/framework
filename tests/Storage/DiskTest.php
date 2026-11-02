@@ -8,6 +8,7 @@ use Crab\Contracts\Storage\Disk;
 use Crab\Contracts\Storage\File;
 use Crab\Contracts\Storage\FileNotFound;
 use Crab\Contracts\Storage\InvalidPath;
+use Crab\Contracts\Storage\StorageException;
 use Crab\Http\Factory;
 use Crab\Http\Stream;
 use Crab\Storage\LocalDisk;
@@ -183,6 +184,37 @@ final class DiskTest extends TestCase
         }
         $this->expectExceptionMessage('no "url" setting');
         new LocalDisk(self::$root, new Factory())->url('reports/q1 & q2.csv');
+    }
+
+    public function testALocalDiskRefusesLinksThatCouldLeaveItsRoot(): void
+    {
+        $disk = new LocalDisk(self::$root, new Factory());
+        $outside = self::$root . '-outside';
+        mkdir($outside, 0o777, true);
+        mkdir(self::$root, 0o777, true);
+        self::assertTrue(symlink($outside, self::$root . '/link'));
+        file_put_contents($outside . '/existing.txt', 'outside');
+
+        try {
+            foreach ([
+                static fn() => $disk->write('link/new.txt', 'owned'),
+                static fn() => $disk->contents('link/existing.txt'),
+                static fn() => $disk->delete('link/existing.txt'),
+            ] as $operation) {
+                try {
+                    $operation();
+                    self::fail('A local disk operation followed a symlink.');
+                } catch (StorageException $error) {
+                    self::assertStringContainsString('contains a link', $error->getMessage());
+                }
+            }
+            self::assertFileDoesNotExist($outside . '/new.txt');
+            self::assertSame('outside', file_get_contents($outside . '/existing.txt'));
+        } finally {
+            unlink(self::$root . '/link');
+            unlink($outside . '/existing.txt');
+            rmdir($outside);
+        }
     }
 
     public function testAMemoryDiskKeepsTheTypeAndNamesItsUrls(): void
