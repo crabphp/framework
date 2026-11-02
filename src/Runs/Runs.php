@@ -542,7 +542,7 @@ final class Runs implements RunsContract
             if ($typeName === Run::class) {
                 if ($given !== null) {
                     throw new \LogicException(
-                        "{$run}::handle() takes the " . Run::class . " more than once; declare one Run parameter.",
+                        "{$run}::handle() takes the " . Run::class . ' more than once; declare one Run parameter.',
                     );
                 }
                 $given = $parameter->getName();
