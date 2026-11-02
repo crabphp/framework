@@ -522,7 +522,9 @@ final class ClientTest extends TestCase
             }
         }
 
-        $server = $this->server(static fn(): string => "HTTP/1.1 200 OK\r\nContent-Length: 005\r\nContent-Length: 5\r\n\r\nhello");
+        $server = $this->server(
+            static fn(): string => "HTTP/1.1 200 OK\r\nContent-Length: 005\r\nContent-Length: 5\r\n\r\nhello",
+        );
         self::assertSame('hello', (string) $this->client()->get($server->url('/'))->getBody());
     }
 

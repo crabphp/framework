@@ -86,9 +86,7 @@ final class Exchange
             $length = (int) $normalized[0];
         }
         $transfer = $headers['transfer-encoding'] ?? [];
-        $codings = $transfer === []
-            ? []
-            : array_map(trim(...), explode(',', strtolower(implode(',', $transfer))));
+        $codings = $transfer === [] ? [] : array_map(trim(...), explode(',', strtolower(implode(',', $transfer))));
         if ($codings !== [] && $codings !== ['chunked']) {
             throw new \RuntimeException('the answer has unsupported transfer encoding');
         }
