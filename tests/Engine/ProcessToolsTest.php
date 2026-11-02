@@ -268,7 +268,7 @@ final class ProcessToolsTest extends TestCase
     {
         foreach ([SIGINT, SIGTERM, SIGUSR1] as $signal) {
             try {
-                (new Runtime())->onSignal($signal, static function (): void {});
+                new Runtime()->onSignal($signal, static function (): void {});
                 self::fail('A lifecycle signal was accepted as an application signal.');
             } catch (\LogicException $error) {
                 self::assertStringContainsString('reserved', $error->getMessage());
