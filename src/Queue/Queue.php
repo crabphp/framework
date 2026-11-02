@@ -151,6 +151,7 @@ final class Queue implements QueueContract
         $names = [];
         $required = [];
         $types = [];
+        $cancellation = false;
         foreach ($handle->getParameters() as $parameter) {
             // push() and later() take these names themselves, so a value could not be given under them.
             if (in_array($parameter->getName(), ['job', 'delay'], true)) {
@@ -165,6 +166,12 @@ final class Queue implements QueueContract
             }
             // Given by the worker that runs it, not pushed: see Consumer.
             if (Consumer::isCancellation($parameter)) {
+                if ($cancellation) {
+                    throw new \LogicException(
+                        "{$job}::handle() takes the cancellation more than once; declare one Cancellation parameter.",
+                    );
+                }
+                $cancellation = true;
                 continue;
             }
             $names[] = $parameter->getName();
