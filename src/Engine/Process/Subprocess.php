@@ -35,6 +35,7 @@ final class Subprocess
      * @param string|null $input What it reads on standard input; null gives it none.
      * @param float|null $timeout Seconds it may run before it is killed; null for no limit.
      * @param int $maxBytes How much it may write, standard output and error together, before it is killed.
+     * @param (\Closure(string): void)|null $output Told each piece of output, standard output and error, as it comes.
      * @throws CancelledException When the cancellation fires first; the command is killed.
      */
     public static function run(
@@ -46,6 +47,7 @@ final class Subprocess
         int $maxBytes = 1_048_576,
         ?Cancellation $cancellation = null,
         ?EventLoop $loop = null,
+        ?\Closure $output = null,
     ): SubprocessResult {
         if ($command === [] || !array_is_list($command)) {
             throw new \InvalidArgumentException('A subprocess needs a command given as a list of arguments.');
@@ -74,6 +76,7 @@ final class Subprocess
         $pid = (int) proc_get_status($process)['pid'];
         $group = $setsid !== false;
 
+        $onOutput = $output;
         $stdout = '';
         $stderr = '';
         $output = '';
@@ -157,6 +160,7 @@ final class Subprocess
                 $kill,
                 $finish,
                 $settle,
+                $onOutput,
                 &$watchers,
                 &$open,
                 &$stdout,
@@ -184,6 +188,9 @@ final class Subprocess
                     $stdout .= $chunk;
                 } else {
                     $stderr .= $chunk;
+                }
+                if ($onOutput !== null && $chunk !== '') {
+                    $onOutput($chunk);
                 }
                 if ($truncated) {
                     $kill();
