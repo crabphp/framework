@@ -67,6 +67,21 @@ final class EventLoopTest extends TestCase
         self::assertSame([], $loop->getIdentifiers());
     }
 
+    public function testTimersRejectNegativeAndNonFiniteDurations(): void
+    {
+        $loop = new StreamSelectEventLoop();
+        foreach ([-1.0, NAN, INF] as $seconds) {
+            foreach ([$loop->delay(...), $loop->repeat(...)] as $timer) {
+                try {
+                    $timer($seconds, static function (): void {});
+                    self::fail('A non-finite or negative timer duration was accepted.');
+                } catch (\Error $error) {
+                    self::assertStringContainsString('finite, nonnegative', $error->getMessage());
+                }
+            }
+        }
+    }
+
     public function testStreamsStopErrorsAndSuspension(): void
     {
         $loop = new StreamSelectEventLoop();
