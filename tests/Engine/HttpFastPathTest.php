@@ -351,6 +351,10 @@ final class HttpFastPathTest extends TestCase
         yield 'fragment' => ["GET /a#b HTTP/1.1\r\nHost: x\r\n\r\n", 400];
         yield 'asterisk without OPTIONS' => ["GET * HTTP/1.1\r\nHost: x\r\n\r\n", 400];
         yield 'credentials in absolute-form' => ["GET http://u:p@x/ HTTP/1.1\r\nHost: x\r\n\r\n", 400];
+        yield 'malformed absolute authority' => ["GET http://[::1]x/ HTTP/1.1\r\nHost: x\r\n\r\n", 400];
+        yield 'empty absolute authority port' => ["GET http://example.com:/ HTTP/1.1\r\nHost: x\r\n\r\n", 400];
+        yield 'absolute authority port too large' => ["GET http://example.com:65536/ HTTP/1.1\r\nHost: x\r\n\r\n", 400];
+        yield 'Host port too large' => ["GET / HTTP/1.1\r\nHost: example.com:65536\r\n\r\n", 400];
         yield 'CONNECT' => ["CONNECT x:443 HTTP/1.1\r\nHost: x\r\n\r\n", 501];
         yield 'unsupported version' => ["GET / HTTP/1.2\r\nHost: x\r\n\r\n", 505];
         yield 'expectation on HTTP/1.0' => ["GET / HTTP/1.0\r\nExpect: 100-continue\r\n\r\n", 417];

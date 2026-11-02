@@ -220,11 +220,26 @@ final class Parser
      */
     private function acceptHost(string $host): bool
     {
-        if (!preg_match(self::HOST, $host)) {
+        if (!self::validHost($host)) {
             return false;
         }
         $this->validHost = $host;
         return true;
+    }
+
+    private static function validHost(string $host): bool
+    {
+        if (preg_match(self::HOST, $host) !== 1) {
+            return false;
+        }
+        if ($host[0] === '[') {
+            $close = strpos($host, ']');
+            $port = $close === strlen($host) - 1 ? null : substr($host, $close + 2);
+        } else {
+            $colon = strrpos($host, ':');
+            $port = $colon === false ? null : substr($host, $colon + 1);
+        }
+        return $port === null || (int) $port <= 65_535;
     }
 
     /**
@@ -570,6 +585,9 @@ final class Parser
         if (str_contains($target, '#')) {
             throw new HttpException(400, 'Fragments are not allowed in request targets.');
         }
+        if (preg_match('~^https?://([^/?#]*)(?:[/?#].*)?$~iD', $target, $authority) !== 1) {
+            throw new HttpException(400, 'Invalid request target.');
+        }
         $parts = parse_url($target);
         if (
             $parts === false
@@ -577,10 +595,11 @@ final class Parser
             || !in_array(strtolower($parts['scheme']), ['http', 'https'], true)
             || isset($parts['user'])
             || isset($parts['pass'])
+            || !self::validHost($authority[1])
         ) {
             throw new HttpException(400, 'Invalid request target.');
         }
-        $headers['host'] = [$parts['host'] . (isset($parts['port']) ? ':' . $parts['port'] : '')];
+        $headers['host'] = [$authority[1]];
         return $headers;
     }
 
