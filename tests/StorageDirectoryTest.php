@@ -22,7 +22,7 @@ final class StorageDirectoryTest extends TestCase
 
     protected function setUp(): void
     {
-        $this->directory = sys_get_temp_dir() . '/crab-storage-' . bin2hex(random_bytes(6));
+        $this->directory = realpath(sys_get_temp_dir()) . '/crab-storage-' . bin2hex(random_bytes(6));
         mkdir($this->directory . '/config', 0o777, true);
         putenv('CRAB_STORAGE');
     }

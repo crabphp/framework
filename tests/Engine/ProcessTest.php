@@ -31,9 +31,13 @@ final class ProcessTest extends TestCase
             $output .= $chunk;
         });
         $process->write("one\n");
-        $this->waitFor(static function () use (&$output): bool { return $output === "one\n"; });
+        $this->waitFor(static function () use (&$output): bool {
+            return $output === "one\n";
+        });
         $process->write("two\n");
-        $this->waitFor(static function () use (&$output): bool { return $output === "one\ntwo\n"; });
+        $this->waitFor(static function () use (&$output): bool {
+            return $output === "one\ntwo\n";
+        });
         self::assertSame("one\ntwo\n", $output, 'Each line comes back while it keeps running.');
         self::assertTrue($process->running());
 
@@ -42,7 +46,9 @@ final class ProcessTest extends TestCase
             $code = $exit;
         });
         $process->stop();
-        $this->waitFor(static function () use (&$code): bool { return $code !== false; });
+        $this->waitFor(static function () use (&$code): bool {
+            return $code !== false;
+        });
         self::assertSame(0, $code, 'Closing its input ends cat cleanly.');
         self::assertFalse($process->running());
         self::assertSame([], $this->loop->getIdentifiers(), 'A watcher outlived the process.');
@@ -55,7 +61,9 @@ final class ProcessTest extends TestCase
         $process->onExit(static function (?int $exit) use (&$code): void {
             $code = $exit;
         });
-        $this->waitFor(static function () use (&$code): bool { return $code !== false; });
+        $this->waitFor(static function () use (&$code): bool {
+            return $code !== false;
+        });
         $output = $error = '';
         $process->onOutput(static function (string $chunk) use (&$output): void {
             $output .= $chunk;
@@ -77,13 +85,19 @@ final class ProcessTest extends TestCase
     {
         $marker = sys_get_temp_dir() . '/crab-process-' . bin2hex(random_bytes(4));
         // Ignores its input closing, and starts a child that would outlive it.
-        $process = Process::start(['/bin/sh', '-c', "trap '' TERM; (sleep 30; touch {$marker}) & sleep 30"], loop: $this->loop);
+        $process = Process::start([
+            '/bin/sh',
+            '-c',
+            "trap '' TERM; (sleep 30; touch {$marker}) & sleep 30",
+        ], loop: $this->loop);
         $code = false;
         $process->onExit(static function (?int $exit) use (&$code): void {
             $code = $exit;
         });
         $process->stop(grace: 0.1);
-        $this->waitFor(static function () use (&$code): bool { return $code !== false; });
+        $this->waitFor(static function () use (&$code): bool {
+            return $code !== false;
+        });
         self::assertFalse($process->running(), 'Past its grace, it is killed.');
         self::assertNull($code, 'A signal ended it.');
         $survivor = trim((string) shell_exec('pgrep -g ' . $process->pid() . ' 2>/dev/null'));
@@ -94,9 +108,9 @@ final class ProcessTest extends TestCase
     private function waitFor(\Closure $done, float $seconds = 5.0): void
     {
         $start = microtime(true);
-        while (!$done() && microtime(true) - $start < $seconds) {
+        while (!$done() && (microtime(true) - $start) < $seconds) {
             $suspension = $this->loop->getSuspension();
-            $this->loop->delay(0.01, static fn () => $suspension->resume());
+            $this->loop->delay(0.01, static fn() => $suspension->resume());
             $suspension->suspend();
         }
     }
