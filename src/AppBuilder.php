@@ -14,7 +14,7 @@ use Psr\Http\Server\MiddlewareInterface;
  * Describes an application step by step and then makes it, for app.php:
  *
  *     return App::configure(__DIR__)
- *         ->withPlugins(AppPlugin::class)
+ *         ->withSetup(Setup::class)
  *         ->withMiddleware(prepend: [new Cors(['https://app.example.com'])])
  *         ->withRouting(routes: 'routes/web.php', commands: 'routes/console.php', health: '/up')
  *         ->create();
@@ -40,6 +40,12 @@ final class AppBuilder
      * @var list<Plugin|string>
      */
     private array $plugins = [];
+    /**
+     * The application's own setup, registered after every plugin.
+     *
+     * @var list<Plugin|string>
+     */
+    private array $setup = [];
     /**
      * Classes of the framework's plugins to leave out.
      *
@@ -134,13 +140,14 @@ final class AppBuilder
     }
 
     /**
-     * The application's own plugins and those of the packages it uses.
-     * The application starts with the framework's, App::PLUGINS, and
-     * these are registered after them, in the order given:
+     * The framework's optional plugins and those of the packages the
+     * application uses. It starts with the core ones, App::PLUGINS, and
+     * these are registered after them, in the order given; its own setup,
+     * withSetup(), comes after all of them:
      *
-     *     ->withPlugins([RedisPlugin::class, AppPlugin::class])     after the framework's
-     *     ->withPlugins(remove: [SchedulePlugin::class])              without one of the framework's
-     *     ->withPlugins(only: [AppPlugin::class])                     these and no others
+     *     ->withPlugins([QueuePlugin::class, RedisPlugin::class])     after the core plugins
+     *     ->withPlugins(remove: [CachePlugin::class])                  without one of the core plugins
+     *     ->withPlugins(only: [DatabasePlugin::class])                 these and no others
      *
      * One given by class name is made by the container. Called again, it
      * adds to what was said before, except that only: replaces an earlier
@@ -176,6 +183,25 @@ final class AppBuilder
                 "withPlugins() was given both only: and remove:. only: already replaces the framework's plugins, so leave out of it what you do not want.",
             );
         }
+        return $this;
+    }
+
+    /**
+     * The application's own setup: its bindings, listeners and scheduled
+     * tasks, in a class of its own, app/Setup.php in the skeleton. It is
+     * a Plugin in all but name, registered after every plugin, so the
+     * services it builds on are there:
+     *
+     *     ->withSetup(Setup::class)
+     *
+     * Called again, or given a list, it adds to what was said before, in
+     * that order.
+     *
+     * @param Plugin|class-string<Plugin>|list<Plugin|class-string<Plugin>> $setup
+     */
+    public function withSetup(Plugin|string|array $setup): static
+    {
+        $this->setup = [...$this->setup, ...self::plugins(is_array($setup) ? $setup : [$setup], 'withSetup')];
         return $this;
     }
 
@@ -287,7 +313,7 @@ final class AppBuilder
             middleware: $this->globalMiddleware(),
             storagePath: $storage,
         );
-        $app->register(...$this->allPlugins());
+        $app->register(...$this->allPlugins(), ...$this->setup);
         if ($this->health !== null) {
             $app->router->get($this->health, new Health());
         }
@@ -349,12 +375,16 @@ final class AppBuilder
      * @param array<mixed> $list
      * @return list<Plugin|string>
      */
-    private static function plugins(array $list): array
+    private static function plugins(array $list, string $method = 'withPlugins'): array
     {
         foreach ($list as $plugin) {
             if (!is_string($plugin) && !$plugin instanceof Plugin) {
                 throw new \LogicException(
-                    'withPlugins() takes plugins or their class names, not ' . get_debug_type($plugin) . '.',
+                    "{$method}() takes classes implementing "
+                    . Plugin::class
+                    . ', or their names, not '
+                    . get_debug_type($plugin)
+                    . '.',
                 );
             }
         }

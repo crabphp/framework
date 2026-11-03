@@ -107,7 +107,7 @@ Inside a worker, a PHP warning or notice is thrown as an `ErrorException`. Readi
 An API with clients of its own, or a standard to follow, can write every error in its own shape. Bind `Crab\Contracts\Http\ErrorRenderer` in a plugin's `register()`:
 
 ```php
-// app/Plugins/AppPlugin.php
+// app/Setup.php
 use App\Http\Errors;
 use Crab\Contracts\Http\ErrorRenderer;
 

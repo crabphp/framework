@@ -39,8 +39,8 @@ use Crab\Queue\QueuePlugin;
 
 ->withPlugins([
     QueuePlugin::class,
-    AppPlugin::class,
 ])
+->withSetup(Setup::class)
 ```
 
 Jobs are kept in a table of your database by default; configure a connection as described in [Database](database.md#configuration).

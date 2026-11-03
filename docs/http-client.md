@@ -260,7 +260,7 @@ The limit applies to each answer, redirects included. A `TooLargeException` is n
 Make a client with the API's address and credentials, once, in a plugin, and bind it under a name of your own:
 
 ```php
-// app/Plugins/AppPlugin.php
+// app/Setup.php
 use Crab\HttpClient\Client;
 
 $container->singleton(StripeClient::class, static fn (): StripeClient => new StripeClient(

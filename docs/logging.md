@@ -114,7 +114,7 @@ Add [AccessLog middleware](middleware.md#access-logging) to record every request
 Bind your logger under the contract in a plugin. Everything, the framework included, then logs through it:
 
 ```php
-// app/Plugins/AppPlugin.php
+// app/Setup.php
 use Crab\Contracts\Log\Logger;
 use Psr\Log\LoggerInterface;
 

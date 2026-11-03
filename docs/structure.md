@@ -46,13 +46,11 @@ Everything begins in `app.php`:
 
 ```php
 // app.php
-use App\Plugins\AppPlugin;
+use App\Setup;
 use Crab\App;
 
 return App::configure(__DIR__)
-    ->withPlugins([
-        AppPlugin::class,
-    ])
+    ->withSetup(Setup::class)
     ->withRouting(
         routes: 'routes/web.php',
         commands: 'routes/console.php',
@@ -70,7 +68,7 @@ return App::configure(__DIR__)
 | Folder | Holds |
 | --- | --- |
 | `app/Actions/` | Classes that answer routes. See [Actions](actions.md). |
-| `app/Plugins/` | `AppPlugin`, where you bind your own services. See [Services and plugins](plugins.md). |
+| `app/Setup.php` | Where you bind your own services, add listeners and schedule tasks. See [Your application's setup](plugins.md#your-applications-setup). |
 
 ## Where to put new things
 
@@ -83,8 +81,8 @@ The framework does not look for folders, so these are suggestions that keep appl
 | Middleware | `app/Http/` | Name it on a route, a group or in `app.php` |
 | A command | `routes/console.php`, or a class in `app/Console/` | Register it with `Command::add('area:action', YourCommand::class)` in `routes/console.php`, then `php cua area:action` |
 | A queue job | `app/Actions/` | Push it with the queue |
-| An event and its listeners | `app/Events/`, and the listeners in `app/Actions/` | Add the listener in `AppPlugin` |
-| A scheduled task | `app/Plugins/AppPlugin.php` | Declare it on the schedule |
+| An event and its listeners | `app/Events/`, and the listeners in `app/Actions/` | Add the listener in `app/Setup.php` |
+| A scheduled task | `app/Setup.php` | Declare it on the schedule |
 | A setting | A file in `config/`, read from `.env` | `config('file.key')` |
 | A table | `php cua make:migration create_posts_table` | `php cua migrate` |
 | A second routes file | `routes/api.php` | Add it to `routes:` in `app.php` |

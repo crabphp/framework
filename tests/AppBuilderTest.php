@@ -100,6 +100,44 @@ final class AppBuilderTest extends TestCase
         }
     }
 
+    public function testTheApplicationsSetupComesAfterEveryPlugin(): void
+    {
+        // Listed first, the setup still finds the schedule a plugin listed after it binds.
+        $setup = new class implements Plugin {
+            public function register(Container $container): void
+            {
+                $container->get(Schedule::class)->command('report')->daily('07:00');
+            }
+        };
+        $app = App::configure()->withSetup($setup)->withPlugins([SchedulePlugin::class])->create();
+        self::assertCount(1, $app->container->get(Schedule::class)->tasks());
+
+        // Given more than once, each is registered, in that order.
+        $order = [];
+        $first = new class($order) implements Plugin {
+            public function __construct(
+                private array &$order,
+            ) {}
+
+            public function register(Container $container): void
+            {
+                $this->order[] = 'first';
+            }
+        };
+        $second = new class($order) implements Plugin {
+            public function __construct(
+                private array &$order,
+            ) {}
+
+            public function register(Container $container): void
+            {
+                $this->order[] = 'second';
+            }
+        };
+        App::configure()->withSetup($first)->withSetup([$second])->create();
+        self::assertSame(['first', 'second'], $order);
+    }
+
     public function testAnApplicationHasTheFrameworkPluginsWithoutNamingThem(): void
     {
         file_put_contents($this->directory . '/config/queue.php', "<?php return ['store' => 'memory'];");
@@ -373,8 +411,10 @@ final class AppBuilderTest extends TestCase
             'is not a directory' => static fn() => App::configure('/no/such/app'),
             'This application has no base path. Give it one with App::configure(__DIR__)' =>
                 static fn() => new App()->path('x'),
-            'withPlugins() takes plugins or their class names, not int' =>
+            'withPlugins() takes classes implementing Crab\Contracts\Plugin, or their names, not int' =>
                 static fn() => App::configure()->withPlugins([1]),
+            'withSetup() takes classes implementing Crab\Contracts\Plugin, or their names, not stdClass' =>
+                static fn() => App::configure()->withSetup([new \stdClass()]),
             'withMiddleware() takes PSR-15 middleware or their class names, not stdClass' =>
                 static fn() => App::configure()->withMiddleware([new \stdClass()]),
             'withRouting() takes file paths, not int' => static fn() => App::configure()->withRouting(routes: [1]),

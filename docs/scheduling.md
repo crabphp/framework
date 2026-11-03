@@ -32,8 +32,8 @@ use Crab\Schedule\SchedulePlugin;
 
 ->withPlugins([
     SchedulePlugin::class,
-    AppPlugin::class,
 ])
+->withSetup(Setup::class)
 ```
 
 | Setting | Default | |
@@ -45,7 +45,7 @@ use Crab\Schedule\SchedulePlugin;
 Tasks are declared in a plugin's `register()`, on the schedule from the container:
 
 ```php
-// app/Plugins/AppPlugin.php
+// app/Setup.php
 use Crab\Contracts\Container\Container;
 use Crab\Contracts\Schedule\Schedule;
 

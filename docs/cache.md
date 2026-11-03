@@ -254,7 +254,7 @@ Redis drops expired entries itself and needs no scheduled cleanup; its prune com
 For Redis, install the `crabphp/redis` package, add its `RedisPlugin` in `app.php` and set `cache.store` to `redis`. To keep entries somewhere else again, implement `Crab\Contracts\Cache\Store` and bind it after the cache plugin:
 
 ```php
-// app/Plugins/AppPlugin.php
+// app/Setup.php
 use App\CacheStore;
 use Crab\Contracts\Cache\Store;
 

@@ -294,7 +294,8 @@ One way ships, because nearly every API starts with it: a token in a header, kep
 
 ~~~php
 // app.php
-->withPlugins([TokenAuthPlugin::class, AppPlugin::class])
+->withPlugins([TokenAuthPlugin::class])
+->withSetup(Setup::class)
 ~~~
 
 ~~~sh
@@ -594,9 +595,7 @@ An application with more than one file is usually described in one chain instead
 
 ~~~php
 return App::configure(__DIR__)
-    ->withPlugins([
-        AppPlugin::class,
-    ])
+    ->withSetup(Setup::class)
     ->withMiddleware(prepend: [new Cors(['https://app.example.com'])])
     ->withRouting(
         routes: 'routes/web.php',
@@ -616,7 +615,7 @@ To leave out a core plugin or replace the core list, choose one form:
 
 ~~~php
 ->withPlugins(remove: [CachePlugin::class])
-->withPlugins(only: [AppPlugin::class])
+->withPlugins(only: [DatabasePlugin::class])
 ~~~
 
 `remove:` accepts only classes from `App::PLUGINS`; `only: []` leaves them all out. Do not combine `remove:` and `only:`. A framework plugin named again is registered once. Every package is opt-in. `new App()` used directly registers no plugins. See [Services and plugins](docs/plugins.md).

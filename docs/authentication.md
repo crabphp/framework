@@ -70,13 +70,13 @@ Crab keeps no user table and no user model. The table is yours.
 
 ```php
 // app.php
-use App\Plugins\AppPlugin;
+use App\Setup;
 use Crab\Auth\TokenAuthPlugin;
 
 ->withPlugins([
     TokenAuthPlugin::class,
-    AppPlugin::class,
 ])
+->withSetup(Setup::class)
 ```
 
 ```sh
@@ -114,7 +114,7 @@ final readonly class Users implements IdentityResolver
 ```
 
 ```php
-// app/Plugins/AppPlugin.php
+// app/Setup.php
 $container->singleton(IdentityResolver::class, Users::class);
 ```
 

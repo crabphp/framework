@@ -71,7 +71,7 @@ composer require crabphp/s3
 // app.php
 use Crab\S3\S3Plugin;
 
-->withPlugins([S3Plugin::class, AppPlugin::class])
+->withPlugins([S3Plugin::class])
 ```
 
 Then describe the bucket:

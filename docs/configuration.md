@@ -90,7 +90,7 @@ config('mail.timeout', 10);             // 10, because the key is not set
 It works anywhere after the application is created. In a class, you may prefer to take the values in the constructor and read `config()` in the plugin that makes it, which keeps the class usable without the framework:
 
 ```php
-// app/Plugins/AppPlugin.php
+// app/Setup.php
 $container->singleton(Mailer::class, static fn (): Mailer => new SmtpMailer(
     config('mail.host'),
     config('mail.port'),
@@ -130,14 +130,12 @@ A plugin of your own declares what its settings take the same way; see [Settings
 
 ```php
 // app.php
-use App\Plugins\AppPlugin;
+use App\Setup;
 use Crab\App;
 use Crab\Http\Cors;
 
 return App::configure(__DIR__)
-    ->withPlugins([
-        AppPlugin::class,
-    ])
+    ->withSetup(Setup::class)
     ->withMiddleware(prepend: [new Cors(['https://app.example.com'])])
     ->withRouting(
         routes: 'routes/web.php',
@@ -164,18 +162,18 @@ return App::configure(__DIR__)
 
 `App::configure()` starts with the framework's plugins, `App::PLUGINS`, in this order: `DatabasePlugin`, `AuthPlugin`, `CachePlugin`, `EventsPlugin`, `QueuePlugin`, `SchedulePlugin`, `HttpClientPlugin`, `BroadcastPlugin`. Add your own and your packages' plugins with `withPlugins()`, as one plugin or a list, by class name or as objects. They come after the framework's, in the order given, so a plugin that listens to events or adds scheduled tasks finds them already bound.
 
-To leave out a framework plugin or replace the framework's list, use one of these two forms:
+To leave out a core plugin or replace the core list, use one of these two forms:
 
 ```php
 // app.php — choose one
-use App\Plugins\AppPlugin;
-use Crab\Schedule\SchedulePlugin;
+use Crab\Cache\CachePlugin;
+use Crab\Database\DatabasePlugin;
 
-->withPlugins(remove: [SchedulePlugin::class])          // without one of the framework's
-->withPlugins(only: [AppPlugin::class])                 // these in place of the framework's
+->withPlugins(remove: [CachePlugin::class])             // without one of the core plugins
+->withPlugins(only: [DatabasePlugin::class])            // these in place of the core plugins
 ```
 
-`remove:` accepts only classes in `App::PLUGINS` and names the list when you give another. `only: []` leaves out all framework plugins. `only:` and `remove:` cannot be combined, even across calls. Plugins given as the first argument are still added after the replacement list. Calling `withPlugins()` again adds plugins; another `only:` replaces the previous replacement.
+`remove:` accepts only classes in `App::PLUGINS` and names the list when you give another. `only: []` leaves out all core plugins. `only:` and `remove:` cannot be combined, even across calls. Plugins given as the first argument are still added after the replacement list. Calling `withPlugins()` again adds plugins; another `only:` replaces the previous replacement.
 
 A framework plugin named again, by class or as an object, is registered once at its first place. `TokenAuthPlugin` and every package, including `crabphp/redis` and `crabphp/clockwerk`, stay opt-in. Nothing is found by convention. `new App()` used directly registers no plugins.
 

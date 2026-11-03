@@ -6,6 +6,7 @@
     - [Binding a service](#binding-a-service)
     - [Binding an interface](#binding-an-interface)
 - [Core and optional plugins](#core-and-optional-plugins)
+- [Your application's setup](#your-applications-setup)
 - [Writing a plugin](#writing-a-plugin)
     - [Settings with defaults](#settings-with-defaults)
     - [Reaching the application from a plugin](#reaching-the-application-from-a-plugin)
@@ -43,13 +44,13 @@ A class with no binding is made from its constructor's types, so most classes ne
 Bind when a class needs something the container cannot work out, such as a value from configuration:
 
 ```php
-// app/Plugins/AppPlugin.php
-namespace App\Plugins;
+// app/Setup.php
+namespace App;
 
 use Crab\Contracts\Container\Container;
 use Crab\Contracts\Plugin;
 
-final class AppPlugin implements Plugin
+final class Setup implements Plugin
 {
     public function register(Container $container): void
     {
@@ -89,7 +90,7 @@ The framework's plugins are of two kinds.
 
 ```php
 // app.php
-use App\Plugins\AppPlugin;
+use App\Setup;
 use Crab\Queue\QueuePlugin;
 use Crab\Schedule\SchedulePlugin;
 
@@ -97,44 +98,46 @@ return App::configure(__DIR__)
     ->withPlugins([
         QueuePlugin::class,
         SchedulePlugin::class,
-        AppPlugin::class,
     ])
+    ->withSetup(Setup::class)
     ->create();
 ```
 
-A package's plugin, such as `RedisPlugin`, and your own are listed the same way, after the framework's they build on.
+A package's plugin, such as `RedisPlugin`, is listed the same way, after the framework's it builds on.
 
-## Writing a plugin
+## Your application's setup
 
-A plugin is a class with one method, `register()`. Add it to `app.php`:
+Your own services, listeners and scheduled tasks are declared in one class, `app/Setup.php`, given to `withSetup()`:
 
 ```php
 // app.php
-use App\Plugins\AppPlugin;
+use App\Setup;
 
-->withPlugins([
-    AppPlugin::class,
-])
+->withSetup(Setup::class)
 ```
 
-`App::configure()` starts with the core plugins, `App::PLUGINS`. Optional ones, your own and those of the packages you use come after them, in the order given. There is no `boot()` step: because bindings are closures that run on first use, by then every plugin has registered, and order rarely matters. It matters only when a plugin adds to something another made in `register()`, such as scheduled tasks or event listeners; put the plugin that owns the list first.
+It is a plugin in all but name: a class implementing `Crab\Contracts\Plugin`, whose `register()` runs once as the application is defined. It is registered after every plugin, whatever the order of the calls in `app.php`, so the services it builds on, such as the schedule's, are there. Split it when it grows, by area, and give `withSetup()` the list: `->withSetup([Setup::class, Billing::class])`.
+
+`App::configure()` starts with the core plugins, `App::PLUGINS`. Optional ones and those of the packages you use come after them, in the order given, then your setup. There is no `boot()` step: because bindings are closures that run on first use, by then every plugin has registered, and order rarely matters. It matters only when a plugin adds to something another made in `register()`, such as scheduled tasks or event listeners; put the plugin that owns the list first.
 
 To leave out a core plugin or replace the core list, use one of these two forms:
 
 ```php
 // app.php — choose one
-use App\Plugins\AppPlugin;
 use Crab\Cache\CachePlugin;
+use Crab\Database\DatabasePlugin;
 
 ->withPlugins(remove: [CachePlugin::class])             // without one of the core plugins
-->withPlugins(only: [AppPlugin::class])                 // these in place of the core plugins
+->withPlugins(only: [DatabasePlugin::class])            // these in place of the core plugins
 ```
 
 `remove:` accepts only classes in `App::PLUGINS` and names the list when you give another. `only: []` leaves out all core plugins. `only:` and `remove:` cannot be combined, even across calls. Plugins given as the first argument are still added after the replacement list. Calling `withPlugins()` again adds plugins; another `only:` replaces the previous replacement.
 
 A framework plugin, core or optional, named again by class or as an object is registered once at its first place. Every package, including `crabphp/redis` and `crabphp/clockwerk`, is opt-in. Nothing is found by convention. `new App()` used directly registers no plugins.
 
-Start with the one `AppPlugin`. Split it when it grows, by area: a `BillingPlugin`, a `MailPlugin`.
+## Writing a plugin
+
+A plugin for others to install is the same kind of class, shipped in a package: one method, `register()`, and the application lists it in `withPlugins()`.
 
 ### Settings with defaults
 

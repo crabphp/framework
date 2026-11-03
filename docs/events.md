@@ -51,7 +51,7 @@ There is nothing to extend or implement.
 Listeners are added in a plugin's `register()`. That is the one place, so a reader can find every reaction to an event by searching for its class name.
 
 ```php
-// app/Plugins/AppPlugin.php
+// app/Setup.php
 use App\Events\UserRegistered;
 use App\Actions\SendWelcomeEmail;
 use Crab\Contracts\Container\Container;

@@ -61,8 +61,8 @@ use Crab\Runs\RunsPlugin;
 ->withPlugins([
     QueuePlugin::class,
     RunsPlugin::class,
-    AppPlugin::class,
 ])
+->withSetup(Setup::class)
 ```
 
 Then write the migration for their tables and run it:

@@ -125,8 +125,8 @@ use Crab\Broadcast\BroadcastPlugin;
 ->withPlugins([
     BroadcastPlugin::class,
     ActorsPlugin::class,
-    AppPlugin::class,
 ])
+->withSetup(Setup::class)
 ```
 
 Everything has a default. To change one, add `config/actors.php`:
