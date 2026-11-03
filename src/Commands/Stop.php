@@ -69,10 +69,7 @@ final readonly class Stop implements Command
      */
     public static function timeout(Input $input): ?float
     {
-        $timeout = $input->option('timeout');
-        if ($timeout === true) {
-            throw new \InvalidArgumentException('--timeout needs a value; use --timeout=value.');
-        }
+        $timeout = $input->value('timeout', '15');
         $seconds = is_numeric($timeout) ? (float) $timeout : null;
         if ($timeout !== null && ($seconds === null || !is_finite($seconds) || $seconds < 0)) {
             throw new \InvalidArgumentException(

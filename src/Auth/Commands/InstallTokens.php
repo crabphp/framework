@@ -29,20 +29,10 @@ final readonly class InstallTokens implements Command
 
     public function handle(Input $input, Output $output): int
     {
-        foreach (array_keys($this->migrator->status()) as $existing) {
-            if (!str_ends_with($existing, self::NAME)) {
-                continue;
-            }
-
-            $output->line("Your migrations already have {$existing}; nothing was written.");
+        [$file, $written] = $this->migrator->install(self::NAME, self::migration());
+        if (!$written) {
+            $output->line("Your migrations already have {$file}; nothing was written.");
             return 0;
-        }
-        $file = $this->migrator->make(self::NAME);
-        if (@file_put_contents($file, self::migration()) === false) {
-            $output->error(
-                "Could not write {$file}. Check the destination and its permissions before running migrate.",
-            );
-            return 1;
         }
         $output->line("Created {$file}");
         $output->line('Run `migrate` to create the table.');

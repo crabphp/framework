@@ -47,17 +47,7 @@ final readonly class MakeMigration implements Command
      */
     private function database(Input $input): ?string
     {
-        $name = $input->option('database');
-        if ($name === true) {
-            throw new \InvalidArgumentException('--database needs a value; use --database=value.');
-        }
-        if ($name !== null && ($name === '' || !in_array($name, $this->databases->names(), true))) {
-            throw new \InvalidArgumentException(
-                "There is no database named \"{$name}\"; the configured ones are: "
-                . implode(', ', $this->databases->names())
-                . '. Use --database=name to choose one.',
-            );
-        }
+        $name = $this->databases->named($input->value('database'));
         return $name;
     }
 }

@@ -68,8 +68,14 @@ final class GeneratorWriteTest extends TestCase
         $directory = sys_get_temp_dir() . '/crab-installer-write-' . bin2hex(random_bytes(6));
         mkdir($directory);
         $migrator = $this->createStub(Migrator::class);
-        $migrator->method('status')->willReturn([]);
-        $migrator->method('make')->willReturn($directory);
+        // The write fails where the migrator would make the file: the command must not claim it.
+        $migrator
+            ->method('install')
+            ->willThrowException(
+                new \RuntimeException(
+                    "Could not write {$directory}. Check the destination and its permissions before running migrate.",
+                ),
+            );
         $migrators = $this->createStub(Migrators::class);
         $migrators->method('migrator')->willReturn($migrator);
         $config = new Config(['queue' => ['table' => 'jobs'], 'cache' => ['table' => 'cache']]);

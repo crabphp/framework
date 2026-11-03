@@ -27,6 +27,16 @@ interface Input
     public function option(string $name, string|bool|null $default = null): string|bool|null;
 
     /**
+     * The value of an option that takes one, or null when it was not
+     * given. Given without a value, as `--name` alone, it is refused with
+     * InvalidArgumentException naming the option and how to give it:
+     * `--name needs a value; use --name=$example.`
+     *
+     * @throws \InvalidArgumentException
+     */
+    public function value(string $name, string $example = 'value'): ?string;
+
+    /**
      * Whether an option is switched on: present and not "false", "0" or "no".
      */
     public function flag(string $name): bool;

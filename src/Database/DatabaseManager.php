@@ -112,6 +112,24 @@ final class DatabaseManager implements Migrators
     }
 
     /**
+     * The name a command was given with --database, checked against the
+     * configured ones; null, for the default database, when none was given.
+     *
+     * @throws \InvalidArgumentException naming the configured databases.
+     */
+    public function named(?string $name): ?string
+    {
+        if ($name !== null && ($name === '' || !in_array($name, $this->names(), true))) {
+            throw new \InvalidArgumentException(
+                "There is no database named \"{$name}\"; the configured ones are: "
+                . implode(', ', $this->names())
+                . '. Use --database=name to choose one.',
+            );
+        }
+        return $name;
+    }
+
+    /**
      * Closes the connections of every database that was used.
      */
     public function close(): void

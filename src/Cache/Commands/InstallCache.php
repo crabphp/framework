@@ -33,20 +33,10 @@ final readonly class InstallCache implements Command
         $migrator = $this->migrators->migrator(is_string($database) && $database !== '' ? $database : null);
         $table = (string) $this->config->get('cache.table');
         $name = "create_{$table}_table";
-        foreach (array_keys($migrator->status()) as $existing) {
-            if (!str_ends_with($existing, $name)) {
-                continue;
-            }
-
-            $output->line("Your migrations already have {$existing}; nothing was written.");
+        [$file, $written] = $migrator->install($name, self::migration($table));
+        if (!$written) {
+            $output->line("Your migrations already have {$file}; nothing was written.");
             return 0;
-        }
-        $file = $migrator->make($name);
-        if (@file_put_contents($file, self::migration($table)) === false) {
-            $output->error(
-                "Could not write {$file}. Check the destination and its permissions before running migrate.",
-            );
-            return 1;
         }
         $output->line("Created {$file}");
         $output->line('Run `migrate` to create the table, and set "cache.store" to "database".');

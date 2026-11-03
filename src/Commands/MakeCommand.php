@@ -34,10 +34,7 @@ final readonly class MakeCommand implements Command
 
     public function handle(Input $input, Output $output): int
     {
-        $command = $input->option('command');
-        if ($command === true) {
-            throw new \InvalidArgumentException('--command needs a value; use --command=user:prune.');
-        }
+        $command = $input->value('command', 'user:prune');
         $name = (string) $input->argument(0, '');
         $command = $command === null ? self::commandName($name) : (string) $command;
         if (preg_match('/^[a-z0-9][a-z0-9:_-]*$/D', $command) !== 1 || in_array($command, ['list', 'help'], true)) {

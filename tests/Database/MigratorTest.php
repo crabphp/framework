@@ -136,6 +136,23 @@ final class MigratorTest extends TestCase
         self::assertCount(3, $migrator->run(), 'Everything runs again after being taken back.');
     }
 
+    public function testInstallWritesAPackagesMigrationOnceAndLeavesTheApplicationsAlone(): void
+    {
+        $migrator = new Migrator($this->database('sqlite'), $this->directory . '/migrations');
+        $contents = "<?php\n\nreturn new class {};\n";
+
+        [$file, $written] = $migrator->install('create_jobs_table', $contents);
+        self::assertTrue($written);
+        self::assertStringEndsWith('_create_jobs_table.php', $file);
+        self::assertSame($contents, file_get_contents($file));
+
+        // Installed again, it finds the one there by name and writes nothing.
+        [$existing, $again] = $migrator->install('create_jobs_table', 'not written');
+        self::assertFalse($again);
+        self::assertSame(basename($file, '.php'), $existing);
+        self::assertCount(1, glob($this->directory . '/migrations/*.php'));
+    }
+
     #[DataProvider('drivers')]
     public function testFreshDropsEveryTableAndRunsEveryMigrationAsOneBatch(string $driver): void
     {

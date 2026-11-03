@@ -61,9 +61,7 @@ final readonly class ClassWriter
     public function write(Input $input, Output $output, string $kind, \Closure $source): ?array
     {
         foreach (['path', 'namespace'] as $option) {
-            if ($input->option($option) === true) {
-                throw new \InvalidArgumentException("--{$option} needs a value; use --{$option}=value.");
-            }
+            $input->value($option);
         }
         $name = (string) $input->argument(0, '');
         $usage = "{$this->command} {$this->example}";

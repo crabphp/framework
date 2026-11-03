@@ -69,6 +69,15 @@ final readonly class Input implements InputContract
         return $this->options[$name] ?? $default;
     }
 
+    public function value(string $name, string $example = 'value'): ?string
+    {
+        $value = $this->options[$name] ?? null;
+        if ($value === true) {
+            throw new \InvalidArgumentException("--{$name} needs a value; use --{$name}={$example}.");
+        }
+        return $value;
+    }
+
     public function flag(string $name): bool
     {
         $value = $this->options[$name] ?? false;

@@ -221,6 +221,22 @@ final class Migrator implements MigratorContract
         return $file;
     }
 
+    public function install(string $name, string $contents): array
+    {
+        foreach (array_keys($this->status()) as $existing) {
+            if (str_ends_with($existing, $name)) {
+                return [$existing, false];
+            }
+        }
+        $file = $this->make($name);
+        if (@file_put_contents($file, $contents) === false) {
+            throw new \RuntimeException(
+                "Could not write {$file}. Check the destination and its permissions before running migrate.",
+            );
+        }
+        return [$file, true];
+    }
+
     /**
      * Runs one migration's work, in a transaction where the database can
      * roll back a change to its tables.

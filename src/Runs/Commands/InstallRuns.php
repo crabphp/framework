@@ -33,20 +33,10 @@ final readonly class InstallRuns implements Command
         $table = (string) $this->config->get('runs.table');
         $steps = (string) $this->config->get('runs.steps');
         $name = "create_{$table}_tables";
-        foreach (array_keys($migrator->status()) as $existing) {
-            if (!str_ends_with($existing, $name)) {
-                continue;
-            }
-
-            $output->line("Your migrations already have {$existing}; nothing was written.");
+        [$file, $written] = $migrator->install($name, self::migration($table, $steps));
+        if (!$written) {
+            $output->line("Your migrations already have {$file}; nothing was written.");
             return 0;
-        }
-        $file = $migrator->make($name);
-        if (@file_put_contents($file, self::migration($table, $steps)) === false) {
-            $output->error(
-                "Could not write {$file}. Check the destination and its permissions before running migrate.",
-            );
-            return 1;
         }
         $output->line("Created {$file}");
         $output->line('Run `migrate` to create the tables; queue workers then carry runs out.');

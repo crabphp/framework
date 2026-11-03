@@ -50,4 +50,15 @@ interface Migrator
      * @return string The path of the file.
      */
     public function make(string $name): string;
+
+    /**
+     * Writes a migration of the given contents among the application's own,
+     * for a package's `*:install` command, unless one whose name ends with
+     * $name is there already. The table is the application's from then on.
+     *
+     * @return array{string, bool} The file written, and true; or the name of
+     *     the migration already there, and false.
+     * @throws \RuntimeException When the file cannot be written.
+     */
+    public function install(string $name, string $contents): array;
 }

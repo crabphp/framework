@@ -193,9 +193,7 @@ final readonly class Start implements Command
     public static function requireValues(Input $input, array $options): void
     {
         foreach ($options as $option) {
-            if ($input->option($option) === true) {
-                throw new \InvalidArgumentException("--{$option} needs a value; use --{$option}=value.");
-            }
+            $input->value($option);
         }
     }
 
@@ -241,10 +239,7 @@ final readonly class Start implements Command
      */
     public static function address(App $app, Input $input, ?string $kept = null): string
     {
-        $address = $input->option('address');
-        if ($address === true) {
-            throw new \InvalidArgumentException('--address needs a value; use --address=value.');
-        }
+        $address = $input->value('address', 'tcp://127.0.0.1:8080');
         $address ??= $kept ?? $app->config->get('server.address');
         $valid =
             is_string($address) && preg_match('~^tcp://(\[[^\]]+\]|[^:/?#\s]+):([0-9]+)$~D', $address, $parts) === 1;
@@ -272,10 +267,7 @@ final readonly class Start implements Command
      */
     public static function workers(App $app, Input $input, ?string $kept = null): int
     {
-        $workers = $input->option('workers');
-        if ($workers === true) {
-            throw new \InvalidArgumentException('--workers needs a value; use --workers=value.');
-        }
+        $workers = $input->value('workers', '4');
         $workers ??= $kept ?? $app->config->get('server.workers');
         if (
             !is_int($workers) && (!is_string($workers) || preg_match('/^[1-9][0-9]*$/D', $workers) !== 1)
