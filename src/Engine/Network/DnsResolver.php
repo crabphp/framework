@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Crab\Engine\Network;
 
+use Crab\Engine\Async\Async;
 use Crab\Engine\Async\Cancellation;
 use Crab\Engine\Async\CancelledException;
 use Crab\Engine\EventLoop;
@@ -240,42 +241,30 @@ final class DnsResolver
             fclose($socket);
             return null;
         }
-        $suspension = $loop->getSuspension();
-        $settled = false;
-        $finish = static function (?string $reply, ?Throwable $error = null) use ($suspension, &$settled): void {
-            if ($settled) {
-                return;
-            }
-            $settled = true;
-            if ($error !== null) {
-                $suspension->throw($error);
-            } else {
-                $suspension->resume($reply);
-            }
-        };
-        $watcher = $loop->onReadable($socket, static function () use ($socket, $id, $finish): void {
-            $reply = @fread($socket, 4096);
-            if ($reply === false || $reply === '') {
-                // The server's address refuses the question: there is nothing to wait for.
-                $finish(null);
-                return;
-            }
-            // Only the reply to this question: anything else on the socket is not ours to believe.
-            if (strlen($reply) >= 12 && unpack('n', $reply)[1] === $id && (ord($reply[2]) & 0x80) !== 0) {
-                $finish($reply);
-            }
-        });
-        $timer = $loop->delay($this->patience, static fn() => $finish(null));
-        $unsubscribe = $cancellation?->subscribe(static fn(CancelledException $error) => $finish(null, $error));
-        try {
-            return $suspension->suspend();
-        } finally {
-            $settled = true;
-            $loop->cancel($watcher);
-            $loop->cancel($timer);
-            $unsubscribe?->__invoke();
-            fclose($socket);
-        }
+        return Async::await(
+            $loop,
+            function (\Closure $resume) use ($loop, $socket, $id): \Closure {
+                $watcher = $loop->onReadable($socket, static function () use ($socket, $id, $resume): void {
+                    $reply = @fread($socket, 4096);
+                    if ($reply === false || $reply === '') {
+                        // The server's address refuses the question: there is nothing to wait for.
+                        $resume(null);
+                        return;
+                    }
+                    // Only the reply to this question: anything else on the socket is not ours to believe.
+                    if (strlen($reply) >= 12 && unpack('n', $reply)[1] === $id && (ord($reply[2]) & 0x80) !== 0) {
+                        $resume($reply);
+                    }
+                });
+                $timer = $loop->delay($this->patience, static fn() => $resume(null));
+                return static function () use ($loop, $watcher, $timer, $socket): void {
+                    $loop->cancel($watcher);
+                    $loop->cancel($timer);
+                    fclose($socket);
+                };
+            },
+            $cancellation,
+        );
     }
 
     /**
@@ -285,30 +274,20 @@ final class DnsResolver
      */
     private function join(EventLoop $loop, string $name, ?Cancellation $cancellation): array
     {
-        $suspension = $loop->getSuspension();
-        $settled = false;
-        $finish = static function (?array $found, ?Throwable $error = null) use ($suspension, &$settled): void {
-            if ($settled) {
-                return;
-            }
-            $settled = true;
-            if ($error !== null) {
-                $suspension->throw($error);
-            } else {
-                $suspension->resume($found);
-            }
-        };
         $id = $this->next++;
-        $this->asking[$name][$id] = $finish;
-        $unsubscribe = $cancellation?->subscribe(static fn(CancelledException $error) => $finish(null, $error));
-        try {
-            return $suspension->suspend();
-        } finally {
-            $settled = true;
-            // Keep the leader's empty map so later callers still join it.
-            unset($this->asking[$name][$id]);
-            $unsubscribe?->__invoke();
-        }
+        return Async::await(
+            $loop,
+            function (\Closure $resume, \Closure $fail) use ($name, $id): \Closure {
+                $this->asking[$name][$id] = static fn(?array $found, ?Throwable $error = null) => $error === null
+                    ? $resume($found)
+                    : $fail($error);
+                // Keep the leader's empty map so later callers still join it.
+                return function () use ($name, $id): void {
+                    unset($this->asking[$name][$id]);
+                };
+            },
+            $cancellation,
+        );
     }
 
     /**

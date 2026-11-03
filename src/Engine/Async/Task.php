@@ -113,38 +113,26 @@ final class Task
         if ($this->complete) {
             return $this->result();
         }
-        $suspension = $this->loop->getSuspension();
         $observerId = $this->nextObserver++;
-        $settled = false;
-        $unsubscribe = null;
-        $finish = function (?Throwable $error = null) use ($suspension, $observerId, &$settled, &$unsubscribe): void {
-            if ($settled) {
-                return;
-            }
-            $settled = true;
-            unset($this->observers[$observerId]);
-            $unsubscribe?->__invoke();
-            if ($error !== null) {
-                $suspension->throw($error);
-                return;
-            }
-            try {
-                $value = $this->result();
-            } catch (Throwable $failure) {
-                $suspension->throw($failure);
-                return;
-            }
-            $suspension->resume($value);
-        };
-        $this->observers[$observerId] = static fn() => $finish();
-        $unsubscribe = $cancellation?->subscribe(static fn(CancelledException $error) => $finish($error));
-        try {
-            return $suspension->suspend();
-        } finally {
-            $settled = true;
-            unset($this->observers[$observerId]);
-            $unsubscribe?->__invoke();
-        }
+        return Async::await(
+            $this->loop,
+            function (\Closure $resume, \Closure $fail) use ($observerId): \Closure {
+                // Told when the task completes: its result, or what it failed with, settles the wait.
+                $this->observers[$observerId] = function () use ($resume, $fail): void {
+                    try {
+                        $value = $this->result();
+                    } catch (Throwable $failure) {
+                        $fail($failure);
+                        return;
+                    }
+                    $resume($value);
+                };
+                return function () use ($observerId): void {
+                    unset($this->observers[$observerId]);
+                };
+            },
+            $cancellation,
+        );
     }
 
     private function finish(mixed $value, ?Throwable $error): void

@@ -71,49 +71,26 @@ final class Pool
         if ((count($this->borrowed) + $this->creating) < $this->max) {
             return $this->lend($this->create());
         }
-        $suspension = $this->loop->getSuspension();
         $id = $this->nextWaiter++;
-        $settled = false;
-        $timer = null;
-        $unsubscribe = null;
-        $finish = function (?object $resource, ?Throwable $error = null) use (
-            $suspension,
-            $id,
-            &$settled,
-            &$timer,
-            &$unsubscribe,
-        ): void {
-            if ($settled) {
-                return;
-            }
-            $settled = true;
-            unset($this->waiting[$id]);
-            if ($timer !== null) {
-                $this->loop->cancel($timer);
-            }
-            $unsubscribe?->__invoke();
-            if ($error !== null) {
-                $suspension->throw($error);
-            } else {
-                $suspension->resume($resource);
-            }
-        };
-        $this->waiting[$id] = $finish;
-        $timer = $this->loop->delay($this->timeout, fn() => $finish(
-            null,
-            new PoolExhaustedException(
-                "No resource became free within {$this->timeout} seconds; the pool holds {$this->max}.",
-            ),
-        ));
-        $unsubscribe = $cancellation?->subscribe(static fn(CancelledException $error) => $finish(null, $error));
-        try {
-            return $suspension->suspend();
-        } finally {
-            $settled = true;
-            unset($this->waiting[$id]);
-            $this->loop->cancel($timer);
-            $unsubscribe?->__invoke();
-        }
+        return Async::await(
+            $this->loop,
+            function (\Closure $resume, \Closure $fail) use ($id): \Closure {
+                // First come, first served: release() hands a resource to the oldest waiter.
+                $this->waiting[$id] = static fn(?object $resource, ?Throwable $error = null) => $error === null
+                    ? $resume($resource)
+                    : $fail($error);
+                $timer = $this->loop->delay($this->timeout, fn() => $fail(
+                    new PoolExhaustedException(
+                        "No resource became free within {$this->timeout} seconds; the pool holds {$this->max}.",
+                    ),
+                ));
+                return function () use ($id, $timer): void {
+                    unset($this->waiting[$id]);
+                    $this->loop->cancel($timer);
+                };
+            },
+            $cancellation,
+        );
     }
 
     /**
