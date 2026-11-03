@@ -4,8 +4,8 @@ declare(strict_types=1);
 
 namespace Crab\HttpClient;
 
+use Crab\Engine\Async\Async;
 use Crab\Engine\Async\Cancellation;
-use Crab\Engine\Async\CancelledException;
 use Crab\Engine\EventLoop;
 
 /**
@@ -253,40 +253,32 @@ final class Connection
             throw new TimedOut($doing);
         }
         $loop = $this->loop;
-        $suspension = $loop->getSuspension();
-        $settled = false;
-        $finish = static function (?\Throwable $error = null) use ($suspension, &$settled): void {
-            if ($settled) {
-                return;
-            }
-            $settled = true;
-            if ($error !== null) {
-                $suspension->throw($error);
-            } else {
-                $suspension->resume();
-            }
-        };
-        $stream = $this->stream();
-        $watcher = $writable
-            ? $loop->onWritable($stream, static fn() => $finish())
-            : $loop->onReadable($stream, static fn() => $finish());
-        if ($background) {
-            $loop->unreference($watcher);
-        }
-        $wait = $this->nextWait++;
-        $this->waits[$wait] = [$watcher, $finish];
-        $timer = $left === null ? null : $loop->delay($left, static fn() => $finish(new TimedOut($doing)));
-        $unsubscribe = $cancellation?->subscribe(static fn(CancelledException $error) => $finish($error));
-        try {
-            $suspension->suspend();
-        } finally {
-            $settled = true;
-            unset($this->waits[$wait]);
-            $loop->cancel($watcher);
-            if ($timer !== null) {
-                $loop->cancel($timer);
-            }
-            $unsubscribe?->__invoke();
-        }
+        Async::await(
+            $loop,
+            function (\Closure $resume, \Closure $fail) use ($loop, $writable, $background, $left, $doing): \Closure {
+                $stream = $this->stream();
+                $watcher = $writable
+                    ? $loop->onWritable($stream, static fn() => $resume())
+                    : $loop->onReadable($stream, static fn() => $resume());
+                if ($background) {
+                    $loop->unreference($watcher);
+                }
+                $wait = $this->nextWait++;
+                // close() ends it, before the socket goes.
+                $this->waits[$wait] = [
+                    $watcher,
+                    static fn(?\Throwable $error = null) => $error === null ? $resume() : $fail($error),
+                ];
+                $timer = $left === null ? null : $loop->delay($left, static fn() => $fail(new TimedOut($doing)));
+                return function () use ($loop, $wait, $watcher, $timer): void {
+                    unset($this->waits[$wait]);
+                    $loop->cancel($watcher);
+                    if ($timer !== null) {
+                        $loop->cancel($timer);
+                    }
+                };
+            },
+            $cancellation,
+        );
     }
 }

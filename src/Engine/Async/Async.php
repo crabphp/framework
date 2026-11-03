@@ -35,8 +35,10 @@ final class Async
      * cancellation does, and returns what it was resumed with. Only the
      * first of these counts; what comes after it is ignored. $arm is given
      * resume(mixed $value = null) and fail(Throwable $error), and returns
-     * what undoes it, such as cancelling its watchers, which runs however
-     * the wait ends.
+     * what undoes it, such as cancelling its watchers. That runs the
+     * moment the wait settles, so nothing it watched outlives it. One that
+     * settles while $arm is still running, before there is anything to
+     * suspend, is returned or thrown without suspending.
      *
      * @param \Closure(\Closure(mixed=): void, \Closure(Throwable): void): ((\Closure(): void)|null) $arm
      */
@@ -45,39 +47,56 @@ final class Async
         $cancellation?->throwIfCancelled();
         $suspension = $loop->getSuspension();
         $settled = false;
+        $suspended = false;
+        // What settled it before it suspended: [value] or [null, error].
+        $early = null;
         $undo = null;
         $unsubscribe = null;
-        // At once when the wait settles, not when the task next runs: its watchers must not outlive it.
         $release = static function () use (&$undo, &$unsubscribe): void {
             $unsubscribe?->__invoke();
             $unsubscribe = null;
             $undo?->__invoke();
             $undo = null;
         };
-        $resume = static function (mixed $value = null) use ($suspension, $release, &$settled): void {
+        $resume = static function (mixed $value = null) use (
+            $suspension,
+            $release,
+            &$settled,
+            &$suspended,
+            &$early,
+        ): void {
             if ($settled) {
                 return;
             }
             $settled = true;
             $release();
-            $suspension->resume($value);
+            if ($suspended) {
+                $suspension->resume($value);
+            } else {
+                $early = [$value];
+            }
         };
-        $fail = static function (Throwable $error) use ($suspension, $release, &$settled): void {
+        $fail = static function (Throwable $error) use ($suspension, $release, &$settled, &$suspended, &$early): void {
             if ($settled) {
                 return;
             }
             $settled = true;
             $release();
-            $suspension->throw($error);
+            if ($suspended) {
+                $suspension->throw($error);
+            } else {
+                $early = [null, $error];
+            }
         };
         try {
             $undo = $arm($resume, $fail);
-            if ($settled) {
-                // Settled while being armed: what it armed is undone now.
-                $release();
-            } else {
+            if (!$settled) {
                 $unsubscribe = $cancellation?->subscribe(static fn(CancelledException $error) => $fail($error));
             }
+            if ($early !== null) {
+                return isset($early[1]) ? throw $early[1] : $early[0];
+            }
+            $suspended = true;
             return $suspension->suspend();
         } finally {
             $settled = true;

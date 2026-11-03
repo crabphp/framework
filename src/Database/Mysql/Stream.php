@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Crab\Database\Mysql;
 
+use Crab\Engine\Async\Async;
 use Crab\Engine\Async\Cancellation;
 use Crab\Engine\Async\CancelledException;
 use Crab\Engine\EventLoop;
@@ -259,46 +260,32 @@ final class Stream
                 'MySQL connection setup timed out; increase "timeout" on the database connection or check the server.',
             );
         }
-        $suspension = $this->loop->getSuspension();
-        $settled = false;
-        $finish = static function (?\Throwable $error = null) use ($suspension, &$settled): void {
-            if ($settled) {
-                return;
-            }
-            $settled = true;
-            if ($error === null) {
-                $suspension->resume();
-            } else {
-                $suspension->throw($error);
-            }
-        };
-        if ($writable) {
-            $watcher = $this->loop->onWritable($this->resource(), static fn() => $finish());
-        } else {
-            $watcher = $this->loop->onReadable($this->resource(), static fn() => $finish());
-        }
-        $this->waiting = $finish;
-        $this->watcher = $watcher;
-        $timer = null;
-        if ($left !== null) {
-            $timer = $this->loop->delay($left, static fn() => $finish(
-                new StreamFailure(
-                    'MySQL connection setup timed out; increase "timeout" on the database connection or check the server.',
-                ),
-            ));
-        }
-        $unsubscribe = $cancellation?->subscribe(static fn(CancelledException $error) => $finish($error));
-        try {
-            $suspension->suspend();
-        } finally {
-            $settled = true;
-            $this->waiting = null;
-            $this->watcher = null;
-            $this->loop->cancel($watcher);
-            if ($timer !== null) {
-                $this->loop->cancel($timer);
-            }
-            $unsubscribe?->__invoke();
-        }
+        Async::await(
+            $this->loop,
+            function (\Closure $resume, \Closure $fail) use ($writable, $left): \Closure {
+                $watcher = $writable
+                    ? $this->loop->onWritable($this->resource(), static fn() => $resume())
+                    : $this->loop->onReadable($this->resource(), static fn() => $resume());
+                // close() ends the wait with its own failure.
+                $this->waiting = static fn(?\Throwable $error = null) => $error === null ? $resume() : $fail($error);
+                $this->watcher = $watcher;
+                $timer = $left === null
+                    ? null
+                    : $this->loop->delay($left, static fn() => $fail(
+                        new StreamFailure(
+                            'MySQL connection setup timed out; increase "timeout" on the database connection or check the server.',
+                        ),
+                    ));
+                return function () use ($watcher, $timer): void {
+                    $this->waiting = null;
+                    $this->watcher = null;
+                    $this->loop->cancel($watcher);
+                    if ($timer !== null) {
+                        $this->loop->cancel($timer);
+                    }
+                };
+            },
+            $cancellation,
+        );
     }
 }

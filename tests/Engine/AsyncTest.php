@@ -134,6 +134,65 @@ final class AsyncTest extends TestCase
         self::assertSame([], $loop->getIdentifiers());
     }
 
+    public function testAwaitSettlesOnceAndReleasesWhatItArmedAtOnce(): void
+    {
+        $loop = $this->newLoop();
+
+        // Settled while it is armed: returned or thrown without suspending, and undone once.
+        $undone = 0;
+        self::assertSame('now', Async::await($loop, static function (Closure $resume) use (&$undone): Closure {
+            $resume('now');
+            $resume('again');
+            return static function () use (&$undone): void {
+                $undone++;
+            };
+        }));
+        self::assertSame(1, $undone);
+        try {
+            Async::await($loop, static function (Closure $resume, Closure $fail): null {
+                $fail(new RuntimeException('at once'));
+                return null;
+            });
+            self::fail('An early failure was not thrown.');
+        } catch (RuntimeException $error) {
+            self::assertSame('at once', $error->getMessage());
+        }
+
+        // Resumed later, with what it was given; what came after is ignored.
+        $task = $this->spawn($loop, static fn() => Async::await($loop, static function (Closure $resume) use (
+            $loop,
+        ): Closure {
+            $first = $loop->delay(0.01, static fn() => $resume('first'));
+            $second = $loop->delay(0.02, static fn() => $resume('second'));
+            return static function () use ($loop, $first, $second): void {
+                $loop->cancel($first);
+                $loop->cancel($second);
+            };
+        }));
+        self::assertSame('first', $this->awaitTask($loop, $task));
+
+        // Cancelled: its timer is gone before the waiting task runs again.
+        $cancellation = new Cancellation();
+        $armed = null;
+        $task = $this->spawn($loop, static fn() => Async::await(
+            $loop,
+            static function () use ($loop, &$armed): Closure {
+                $armed = $loop->delay(60, static function (): void {});
+                return static fn() => $loop->cancel($armed);
+            },
+            $cancellation,
+        ));
+        $loop->delay(0.01, static function () use ($cancellation, $loop, &$armed): void {
+            $cancellation->cancel();
+            self::assertNotContains($armed, $loop->getIdentifiers(), 'The wait kept its timer after it was cancelled.');
+        });
+        try {
+            $this->awaitTask($loop, $task);
+            self::fail('A cancelled wait returned.');
+        } catch (CancelledException) {
+        }
+    }
+
     private function newLoop(): StreamSelectEventLoop
     {
         $loop = new StreamSelectEventLoop();

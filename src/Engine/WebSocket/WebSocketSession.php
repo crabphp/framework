@@ -5,8 +5,8 @@ declare(strict_types=1);
 namespace Crab\Engine\WebSocket;
 
 use Closure;
+use Crab\Engine\Async\Async;
 use Crab\Engine\Async\Cancellation;
-use Crab\Engine\Async\CancelledException;
 use Crab\Engine\Network\Connection;
 use Crab\Engine\Network\WriteResult;
 use SplQueue;
@@ -155,44 +155,26 @@ final class WebSocketSession
                 'Too many WebSocket writers are waiting; reduce producers or increase maxWritableWaiters.',
             );
         }
-        $suspension = $this->connection->loop()->getSuspension();
         $id = $this->nextWaiter++;
-        $settled = false;
-        $unsubscribe = null;
-        $finish = function (bool $writable = false, ?\Throwable $error = null) use (
-            $suspension,
-            $id,
-            &$settled,
-            &$unsubscribe,
-        ): void {
-            if ($settled) {
-                return;
-            }
-            $settled = true;
-            unset($this->writableWaiters[$id]);
-            if ($this->writableWaiters === []) {
-                $this->connection->onWriteProgress(null);
-            }
-            $unsubscribe?->__invoke();
-            if ($error !== null) {
-                $suspension->throw($error);
-            } else {
-                $suspension->resume($writable);
-            }
-        };
-        $this->writableWaiters[$id] = [$belowBytes, $finish];
-        $this->connection->onWriteProgress($this->notifyWritable(...));
-        $unsubscribe = $cancellation?->subscribe(static fn(CancelledException $error) => $finish(false, $error));
-        try {
-            return $suspension->suspend();
-        } finally {
-            unset($this->writableWaiters[$id]);
-            if ($this->writableWaiters === []) {
-                $this->connection->onWriteProgress(null);
-            }
-            $settled = true;
-            $unsubscribe?->__invoke();
-        }
+        return Async::await(
+            $this->connection->loop(),
+            function (\Closure $resume, \Closure $fail) use ($id, $belowBytes): \Closure {
+                $this->writableWaiters[$id] = [
+                    $belowBytes,
+                    static fn(bool $writable = false, ?\Throwable $error = null) => $error === null
+                        ? $resume($writable)
+                        : $fail($error),
+                ];
+                $this->connection->onWriteProgress($this->notifyWritable(...));
+                return function () use ($id): void {
+                    unset($this->writableWaiters[$id]);
+                    if ($this->writableWaiters === []) {
+                        $this->connection->onWriteProgress(null);
+                    }
+                };
+            },
+            $cancellation,
+        );
     }
 
     private function isWritableBelow(int $bytes): bool

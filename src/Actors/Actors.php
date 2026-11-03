@@ -9,6 +9,7 @@ use Crab\Contracts\Actors\Inbox;
 use Crab\Contracts\Actors\NoReply;
 use Crab\Contracts\Broadcast\Carrier;
 use Crab\Contracts\Container\Container;
+use Crab\Engine\Async\Async;
 use Crab\Engine\Async\Cancellation;
 use Crab\Engine\Async\CancelledException;
 use Crab\Engine\Async\Task;
@@ -110,48 +111,36 @@ final class Actors implements ActorsContract
             $this->listen();
         }
         $loop = EventLoop::current();
-        $suspension = $loop->getSuspension();
         $id = bin2hex(random_bytes(8));
-        // Settled once, by the reply, the timeout or the cancellation; an outcome that comes before the wait is kept for it.
-        $settled = false;
-        $waiting = false;
-        $early = null;
-        $settle = static function (array $outcome) use (&$settled, &$waiting, &$early, $suspension): void {
-            if ($settled) {
-                return;
-            }
-            $settled = true;
-            if ($waiting) {
-                $suspension->resume($outcome);
-            } else {
-                $early = $outcome;
-            }
-        };
-        $this->waiting[$id] = static function (bool $replied, mixed $value) use ($settle, $actor, $key): void {
-            $settle(
-                $replied ? [true, $value] : [false, new NoReply("{$actor} for \"{$key}\" did not reply: {$value}")],
-            );
-        };
-        $timer = $loop->delay($timeout, static function () use ($settle, $actor, $key, $timeout): void {
-            $settle([false, new NoReply("{$actor} for \"{$key}\" did not reply within {$timeout} seconds.")]);
-        });
-        $unsubscribe = $cancellation?->subscribe(static fn(CancelledException $error) => $settle([false, $error]));
-        try {
-            $this->route($actor, $key, $data, $id);
-            if ($early === null) {
-                $waiting = true;
-            }
-            [$replied, $value] = $early ?? $suspension->suspend();
-        } finally {
-            $settled = true;
-            unset($this->waiting[$id]);
-            $loop->cancel($timer);
-            $unsubscribe?->__invoke();
-        }
-        if (!$replied) {
-            throw $value;
-        }
-        return $value;
+        // Settled once, by the reply, the timeout or the cancellation; a reply may come while it is still being sent.
+        return Async::await(
+            $loop,
+            function (\Closure $resume, \Closure $fail) use ($loop, $id, $actor, $key, $data, $timeout): \Closure {
+                $this->waiting[$id] = static function (bool $replied, mixed $value) use (
+                    $resume,
+                    $fail,
+                    $actor,
+                    $key,
+                ): void {
+                    $replied ? $resume($value) : $fail(new NoReply("{$actor} for \"{$key}\" did not reply: {$value}"));
+                };
+                $timer = $loop->delay($timeout, static function () use ($fail, $actor, $key, $timeout): void {
+                    $fail(new NoReply("{$actor} for \"{$key}\" did not reply within {$timeout} seconds."));
+                });
+                $undo = function () use ($loop, $id, $timer): void {
+                    unset($this->waiting[$id]);
+                    $loop->cancel($timer);
+                };
+                try {
+                    $this->route($actor, $key, $data, $id);
+                } catch (\Throwable $error) {
+                    $undo();
+                    throw $error;
+                }
+                return $undo;
+            },
+            $cancellation,
+        );
     }
 
     /**

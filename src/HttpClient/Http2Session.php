@@ -4,8 +4,8 @@ declare(strict_types=1);
 
 namespace Crab\HttpClient;
 
+use Crab\Engine\Async\Async;
 use Crab\Engine\Async\Cancellation;
-use Crab\Engine\Async\CancelledException;
 use Crab\Engine\EventLoop;
 use Psr\Http\Message\RequestInterface;
 
@@ -812,32 +812,19 @@ final class Http2Session
         if ($left <= 0) {
             throw new TimedOut($doing);
         }
-        $suspension = $this->loop->getSuspension();
-        $settled = false;
-        $finish = static function (?\Throwable $error = null) use ($suspension, $register, &$settled): void {
-            if ($settled) {
-                return;
-            }
-            $settled = true;
-            // A settled writer must leave the queue before another turn is handed out.
-            $register(null);
-            if ($error !== null) {
-                $suspension->throw($error);
-            } else {
-                $suspension->resume();
-            }
-        };
-        $register(static fn() => $finish());
-        $timer = $this->loop->delay($left, static fn() => $finish(new TimedOut($doing)));
-        $unsubscribe = $cancellation?->subscribe(static fn(CancelledException $error) => $finish($error));
-        try {
-            $suspension->suspend();
-        } finally {
-            $settled = true;
-            $register(null);
-            $this->loop->cancel($timer);
-            $unsubscribe?->__invoke();
-        }
+        Async::await(
+            $this->loop,
+            function (\Closure $resume, \Closure $fail) use ($register, $left, $doing): \Closure {
+                $register(static fn() => $resume());
+                $timer = $this->loop->delay($left, static fn() => $fail(new TimedOut($doing)));
+                // A settled writer must leave the queue before another turn is handed out: this runs as it settles.
+                return function () use ($register, $timer): void {
+                    $register(null);
+                    $this->loop->cancel($timer);
+                };
+            },
+            $cancellation,
+        );
     }
 
     private function wakeAll(): void
