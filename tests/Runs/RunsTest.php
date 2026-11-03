@@ -103,6 +103,11 @@ final readonly class NoRun
     public function handle(int $id): void {}
 }
 
+final readonly class RunNamedData
+{
+    public function handle(Run $step, int $run): void {}
+}
+
 final readonly class DuplicateRun
 {
     public function handle(Run $run, Run $other, int $id): void {}
@@ -340,6 +345,7 @@ final class RunsTest extends TestCase
                 depth: new \stdClass(),
             ),
             'takes no ' . Run::class => static fn(Runs $runs) => $runs->start(NoRun::class, id: 1),
+            'a name start() uses for itself' => static fn(Runs $runs) => $runs->start(RunNamedData::class),
             'takes the ' . Run::class . ' more than once' => static fn(Runs $runs) => $runs->start(
                 DuplicateRun::class,
                 id: 1,

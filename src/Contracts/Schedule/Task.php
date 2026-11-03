@@ -109,6 +109,11 @@ interface Task
     public function runsOnOneServer(): bool;
 
     /**
+     * Whether a run is not started while another runs, on any server.
+     */
+    public function preventsOverlaps(): bool;
+
+    /**
      * The next time it is due after the given one. For a task that runs
      * by an interval, that is one interval later.
      */

@@ -17,6 +17,14 @@ use SplQueue;
  */
 final class WebSocketSession
 {
+    /**
+     * RFC 6455 opcodes besides the data frames, which are MessageType.
+     */
+    private const CONTINUATION = 0;
+    private const CLOSE = 8;
+    private const PING = 9;
+    private const PONG = 10;
+
     private string $input = '';
     private int $offset = 0;
     private ?MessageType $fragmentType = null;
@@ -109,11 +117,6 @@ final class WebSocketSession
     public function isClosing(): bool
     {
         return $this->closing || $this->draining;
-    }
-
-    public function remoteAddress(): string
-    {
-        return $this->connection->remoteAddress;
     }
 
     public function bufferedBytes(): int
@@ -314,7 +317,7 @@ final class WebSocketSession
         if ($this->isClosing() || $this->isClosed()) {
             return WriteResult::Closed;
         }
-        if ($this->enqueueControl(9, $payload)) {
+        if ($this->enqueueControl(self::PING, $payload)) {
             return WriteResult::Accepted;
         }
         $this->pressured = true;
@@ -333,7 +336,7 @@ final class WebSocketSession
             return;
         }
         $this->beginClosing();
-        $frame = self::encodeFrame(8, pack('n', $code) . $reason);
+        $frame = self::encodeFrame(self::CLOSE, pack('n', $code) . $reason);
         $this->output->enqueue($frame);
         $this->queuedBytes += strlen($frame);
         $this->flush();
@@ -408,8 +411,8 @@ final class WebSocketSession
             if (
                 ($first & 112) !== 0
                 || ($second & 128) === 0
-                || !in_array($opcode, [0, 1, 2, 8, 9, 10], true)
-                || $opcode >= 8 && (!$fin || $length > 125)
+                || !in_array($opcode, [self::CONTINUATION, 1, 2, self::CLOSE, self::PING, self::PONG], true)
+                || $opcode >= self::CLOSE && (!$fin || $length > 125)
             ) {
                 $this->fail(1002, 'Invalid frame');
                 return;
@@ -444,8 +447,8 @@ final class WebSocketSession
                 $this->fail(1009, 'Frame limit');
                 return;
             }
-            if ($opcode < 8 && !$this->closing) {
-                if (($opcode === 0) !== ($this->fragmentType !== null)) {
+            if ($opcode < self::CLOSE && !$this->closing) {
+                if (($opcode === self::CONTINUATION) !== ($this->fragmentType !== null)) {
                     $this->fail(1002, 'Invalid continuation');
                     return;
                 }
@@ -499,26 +502,26 @@ final class WebSocketSession
 
     private function handleFrame(int $opcode, string $payload, bool $fin): void
     {
-        if ($opcode === 8) {
+        if ($opcode === self::CLOSE) {
             $this->receiveClose($payload);
             return;
         }
-        if ($opcode === 9) {
-            if (!$this->closeSent && !$this->enqueueControl(10, $payload)) {
+        if ($opcode === self::PING) {
+            if (!$this->closeSent && !$this->enqueueControl(self::PONG, $payload)) {
                 $this->fail(1008, 'Control queue limit');
             }
             return;
         }
-        if ($opcode === 10 || $this->closing) {
+        if ($opcode === self::PONG || $this->closing) {
             return;
         }
-        $type = $opcode === 0 ? $this->fragmentType : MessageType::from($opcode);
+        $type = $opcode === self::CONTINUATION ? $this->fragmentType : MessageType::from($opcode);
         if (!$fin) {
             $this->fragmentType = $type;
             $this->fragment .= $payload;
             return;
         }
-        if ($opcode === 0) {
+        if ($opcode === self::CONTINUATION) {
             $payload = $this->fragment . $payload;
         }
         $this->fragment = '';
@@ -562,7 +565,7 @@ final class WebSocketSession
         do {
             $chunk = substr($message, $offset, $this->outgoingFrameBytes);
             $last = ($offset + strlen($chunk)) >= $length;
-            $frames[] = self::encodeFrame($offset === 0 ? $type->value : 0, $chunk, $last);
+            $frames[] = self::encodeFrame($offset === 0 ? $type->value : self::CONTINUATION, $chunk, $last);
             $offset += strlen($chunk);
         } while (!$last);
         return $this->enqueue($frames);
@@ -656,7 +659,7 @@ final class WebSocketSession
                 }
                 $queue->dequeue();
                 $this->queuedBytes -= strlen($frame);
-                if ((ord($frame[0]) & 15) === 8) {
+                if ((ord($frame[0]) & 15) === self::CLOSE) {
                     $this->closeSent = true;
                     if ($this->closeReceived || $this->failed) {
                         $this->connection->end();
@@ -729,7 +732,7 @@ final class WebSocketSession
         if ($this->closeSent) {
             $this->connection->end();
         } else {
-            $this->enqueueControl(8, $payload);
+            $this->enqueueControl(self::CLOSE, $payload);
         }
     }
 
@@ -747,7 +750,7 @@ final class WebSocketSession
         if ($this->closeSent) {
             $this->connection->end();
         } else {
-            $this->enqueueControl(8, pack('n', $code) . $reason);
+            $this->enqueueControl(self::CLOSE, pack('n', $code) . $reason);
         }
     }
 

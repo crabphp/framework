@@ -44,7 +44,7 @@ final class Async
                 $suspension->resume();
             }
         };
-        $timer = $seconds === 0
+        $timer = $seconds === 0.0
             ? $loop->defer(static fn() => $finish())
             : $loop->delay($seconds, static fn() => $finish());
         $unsubscribe = $cancellation?->subscribe(static fn(CancelledException $error) => $finish($error));

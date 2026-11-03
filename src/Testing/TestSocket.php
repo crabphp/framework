@@ -145,11 +145,6 @@ final class TestSocket
         $this->frame(1, $payload);
     }
 
-    public function sendBinary(string $bytes): void
-    {
-        $this->frame(2, $bytes);
-    }
-
     public function receive(float $timeout = 1.0): array|string|Binary|null
     {
         $this->waitUntil(fn(): bool => !$this->messages->isEmpty() || $this->closed, $timeout);

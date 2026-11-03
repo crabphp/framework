@@ -336,14 +336,17 @@ final class Router implements RouterContract
     }
 
     /**
-     * Declares an action that lasts for the connection. Query fields, the
-     * user and pattern parameters are checked before returning 101.
+     * Whether any WebSocket route was declared.
      */
     public function hasWebSockets(): bool
     {
         return $this->websockets !== null;
     }
 
+    /**
+     * Declares an action that lasts for the connection. Query fields, the
+     * user and pattern parameters are checked before returning 101.
+     */
     public function websocket(string $pattern, \Closure|string|array $action): DeclaredRoute
     {
         return $this->add('WS', $pattern, $action);
@@ -532,8 +535,8 @@ final class Router implements RouterContract
 
     /**
      * Whether a route was given the name of an action class: one with a
-     * handle() method that is not a PSR-15 handler, whose handle() takes
-     * the request and nothing else.
+     * handle() method that is not a PSR-15 handler. Its parameters are
+     * read by ActionHandler.
      */
     private static function isActionClass(mixed $action): bool
     {

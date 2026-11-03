@@ -375,7 +375,7 @@ Route::websocket('/orders/{id}/live', static function (Socket $socket, int $id):
 });
 ~~~
 
-Arrays travel as JSON text; `WebSocket\Binary` preserves binary frames through the echo loop, and `sendBinary()` sends bytes. Returning closes with 1000, and stop or reload sends 1001. Use `accept()` to upgrade without sending and `cancellation()` to stop awaited work on socket closure. Header-based authentication and typed query fields use the same HTTP checks before upgrading. Browser clients exchange their authentication for a short-lived, single-use ticket; see [Authenticating a browser](docs/websockets.md#authenticating-a-browser). Delivery is at most once.
+Arrays travel as JSON text; `WebSocket\Binary` preserves binary frames through the echo loop, and `send(new Binary(...))` sends bytes. Returning closes with 1000, and stop or reload sends 1001. Use `accept()` to upgrade without sending and `cancellation()` to stop awaited work on socket closure. Header-based authentication and typed query fields use the same HTTP checks before upgrading. Browser clients exchange their authentication for a short-lived, single-use ticket; see [Authenticating a browser](docs/websockets.md#authenticating-a-browser). Delivery is at most once.
 
 Defaults are `websocket.ping = 25`, `websocket.max_message = 65536`, `websocket.send_timeout = 5.0`, and `websocket.max_connections = 256` per worker. `server.max_connections = 512` bounds all connections, and `server.loop = 'select'` can be changed to an installed `ev`, `uv` or `event` backend. `Testing\Api::websocket()` exercises the real action and protocol over a socket pair. See [WebSockets](docs/websockets.md) for limits, authentication, proxies and tests.
 
