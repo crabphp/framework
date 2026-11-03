@@ -146,7 +146,7 @@ final class QueuePlugin implements Plugin
             );
         });
         if ($container->has(Servers::class)) {
-            // Named in "server.with", the queue's workers are run by `start` itself, beside HTTP: every
+            // Listed in app.php, the queue's workers are run by `start` itself, beside HTTP: every
             // supervisor declared, or one made of the queue's own settings.
             $container->get(Servers::class)->add(
                 'queue',

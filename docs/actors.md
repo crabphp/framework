@@ -94,14 +94,9 @@ With several HTTP workers, or another machine, two requests from one customer ma
 ```php
 // config/broadcast.php
 return ['carrier' => 'redis'];          // with crabphp/redis and its RedisPlugin registered
-
-// config/server.php
-'with' => [
-    'actors' => env('SERVER_ACTORS', false),
-],
 ```
 
-`start` then runs the `actors` server beside HTTP, in `actors.workers` processes, 2 by default; `php cua actors:work` runs it on its own. The keys are shared out among those processes by a hash of the actor's class and key, so one key always goes to the same process, and every message and reply travels through Redis to it and back. Every process that sends to actors reads `actors.workers`, so give them all the same value.
+With `ActorsPlugin` listed, `start` then runs the `actors` server beside HTTP, in `actors.workers` processes, 2 by default; `php cua actors:work` runs it on its own. The keys are shared out among those processes by a hash of the actor's class and key, so one key always goes to the same process, and every message and reply travels through Redis to it and back. Every process that sends to actors reads `actors.workers`, so give them all the same value.
 
 Without the `actors` server running, nothing takes the messages: a `tell()` is lost and an `ask()` ends at its timeout. With the local carrier, the `actors` server refuses to start, as it would have nothing to do.
 

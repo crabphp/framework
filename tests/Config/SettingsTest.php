@@ -222,7 +222,7 @@ final class SettingsTest extends TestCase
         ]);
         self::assertSame(
             [
-                'server.wokers is not a setting; server takes address, workers, with, watch, max_body, body_timeout, drain, max_connections, loop, pid and log. Did you mean server.workers?',
+                'server.wokers is not a setting; server takes address, workers, watch, max_body, body_timeout, drain, max_connections, loop, pid and log. Did you mean server.workers?',
             ],
             $app->config->problems(),
             "The application's own settings may sit in app, and a section of its own has no rules.",

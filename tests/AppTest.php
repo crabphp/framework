@@ -171,7 +171,7 @@ final class AppTest extends TestCase
         self::assertSame(['path' => 'php://stderr', 'level' => 'debug'], $app->config->get('log'));
         self::assertSame('tcp://127.0.0.1:8080', $app->config->get('server.address'));
         self::assertSame(1, $app->config->get('server.workers'));
-        self::assertSame([], $app->config->get('server.with'));
+        self::assertFalse($app->config->has('server.with'), 'Every registered server runs; there is no switch.');
         self::assertSame(\Crab\Server::WATCHED, $app->config->get('server.watch'));
         self::assertSame(1_048_576, $app->config->get('server.max_body'));
         self::assertSame(30, $app->config->get('server.body_timeout'));
@@ -192,7 +192,7 @@ final class AppTest extends TestCase
         $config = new Config([
             'app' => ['name' => null, 'debug' => true, 'url' => null],
             'log' => ['path' => 'php://memory', 'level' => 'warning'],
-            'server' => ['address' => 'tcp://127.0.0.1:28480', 'workers' => 3, 'watch' => null, 'with' => false],
+            'server' => ['address' => 'tcp://127.0.0.1:28480', 'workers' => 3, 'watch' => null],
         ]);
         $app = new App($config);
         self::assertNull($config->get('app.name'));
@@ -200,7 +200,6 @@ final class AppTest extends TestCase
         self::assertNull($config->get('app.url'));
         self::assertSame(['path' => 'php://memory', 'level' => 'warning'], $config->get('log'));
         self::assertNull($config->get('server.watch'));
-        self::assertFalse($config->get('server.with'));
         self::assertSame([], $app->with());
         self::assertSame('tcp://127.0.0.1:28480', \Crab\Commands\Start::address($app, new \Crab\Console\Input()));
         self::assertSame(3, \Crab\Commands\Start::workers($app, new \Crab\Console\Input()));
@@ -659,10 +658,9 @@ final class AppTest extends TestCase
         }
     }
 
-    public function testServeRunsTheServersNamedForItBesideHttp(): void
+    public function testServeRunsEveryRegisteredServerBesideHttp(): void
     {
         $app = new App(new Config([
-            'server' => ['with' => ' queue, schedule ,vite,'],
             'queue' => [
                 'store' => 'memory',
                 'supervisors' => [
@@ -706,30 +704,13 @@ final class AppTest extends TestCase
         );
         self::assertSame([30.0, 12.0], [$app->servers->grace(['queue', 'chat']), $app->servers->grace(['chat'])]);
 
-        // Nothing is named, so the server is HTTP alone.
+        // No plugin with a server is listed, so the server is HTTP alone.
         $http = App::configure()->create();
         self::assertSame([], $http->with());
         self::assertInstanceOf(\Crab\Engine\Crab::class, $http->runtime('tcp://127.0.0.1:0')->group('queue:mail'));
 
-        // Each id with whether it is on, as a configuration file reads it from the environment.
-        $switched = new App(new Config([
-            'server' => [
-                'with' => [
-                    'queue' => true,
-                    'schedule' => false,
-                    'vite' => true,
-                    'chat' => false,
-                    'sync' => 'yes',
-                ],
-            ],
-        ]));
-        foreach (['queue', 'schedule', 'vite', 'chat', 'sync'] as $id) {
-            $switched->servers->process($id, 'true');
-        }
-        self::assertSame(['queue', 'vite'], $switched->with());
-
-        // Or a plain list, or ids with commas between. Switched on, they are part of the runtime.
-        self::assertSame(['queue', 'schedule', 'vite'], $app->with());
+        // Every one registered is part of the runtime.
+        self::assertSame($servers->ids(), $app->with());
         $runtime = $app->runtime('tcp://127.0.0.1:0');
         self::assertSame(30.0, $runtime->shutdownTimeout);
         try {
@@ -746,7 +727,7 @@ final class AppTest extends TestCase
 
         // A server in the background hands only the HTTP socket to the one that replaces it, so one that
         // listens on an address of its own is refused there, in words, and not left to fail at its first reload.
-        $listening = new App(new Config(['server' => ['with' => ['chat' => true]]]));
+        $listening = new App();
         $listening->servers->add('chat', static fn(): array => [
             new \Crab\Contracts\Workers('chat', setup: static function (\Crab\Engine\Crab $group): void {
                 $group->listen('tcp://127.0.0.1:0', static fn() => null);
@@ -763,7 +744,7 @@ final class AppTest extends TestCase
             fclose($inherited);
         }
 
-        // What `start` says as it comes up: each server running by its id, and none switched off.
+        // What `start` says as it comes up: each server running by its id.
         $stream = fopen('php://memory', 'w+');
         \Crab\Commands\Start::announceBackground(
             new \Crab\Console\Output($stream, $stream),
@@ -780,6 +761,8 @@ final class AppTest extends TestCase
               http      4        http://127.0.0.1:8080
               queue     3        queue:work: mail x2, rest x1
               schedule  1        schedule:work
+              chat      3        chat:serve
+              sync      1        php cua users:sync --all
               vite      1        npm run dev
 
 
@@ -791,15 +774,6 @@ final class AppTest extends TestCase
         self::assertSame(['queue', 'schedule', 'chat', 'sync', 'vite'], $servers->ids());
 
         foreach ([
-            'switches on "mail", and the servers registered are queue, schedule, chat, sync, vite' =>
-                static function () use ($app): void {
-                    $fresh = new Config(['server' => ['with' => 'mail']]);
-                    $other = new App($fresh);
-                    foreach (['queue', 'schedule', 'chat', 'sync', 'vite'] as $id) {
-                        $other->servers->process($id, 'true');
-                    }
-                    $other->with();
-                },
             'there is no command "mail:work"' => static function () use ($app): void {
                 $app->servers->command('mailer', 'mail:work');
                 $app->alongside(['mailer']);

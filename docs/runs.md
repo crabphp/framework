@@ -72,7 +72,7 @@ php cua runs:install         # writes the runs and run_steps tables' migration i
 php cua migrate
 ```
 
-A queue worker carries runs out: `php cua queue:work`, or the queue switched on in `server.with`. See [Running the worker](queues.md#running-the-worker).
+A queue worker carries runs out: the queue's workers `php cua start` runs with `QueuePlugin` listed, or `php cua queue:work`. See [Running the worker](queues.md#running-the-worker).
 
 ## Writing a run
 

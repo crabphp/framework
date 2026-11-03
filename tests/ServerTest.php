@@ -310,7 +310,7 @@ final class ServerTest extends TestCase
 
     public function testHttpDrainIsKeptSeparateFromTheOtherServersAllowance(): void
     {
-        $app = new \Crab\App(new \Crab\Config\Config(['server' => ['drain' => 0.3, 'with' => ['slow']]]));
+        $app = new \Crab\App(new \Crab\Config\Config(['server' => ['drain' => 0.3]]));
         $app->servers->add('slow', static fn() => [], grace: 30.0);
         $runtime = $app->runtime($this->address);
         $groups = new \ReflectionProperty($runtime, 'groups')->getValue($runtime);
@@ -426,10 +426,7 @@ final class ServerTest extends TestCase
     {
         $this->drainSetting(0.3);
         // Another server's allowance must not lengthen HTTP draining.
-        file_put_contents(
-            $this->directory . '/config/server.php',
-            "<?php return ['drain' => 0.3, 'with' => ['slow']];",
-        );
+        file_put_contents($this->directory . '/config/server.php', "<?php return ['drain' => 0.3];");
         file_put_contents($this->directory . '/app.php', <<<'PHP'
             <?php
             $app = Crab\App::configure(__DIR__)->withRouting(routes: 'app/routes.php')->create();
@@ -578,10 +575,7 @@ final class ServerTest extends TestCase
     public function testABlockedHttpWorkerIsEndedAtItsOwnAllowanceAndReportedOnce(): void
     {
         $this->drainSetting(0.1);
-        file_put_contents(
-            $this->directory . '/config/server.php',
-            "<?php return ['drain' => 0.1, 'with' => ['slow']];",
-        );
+        file_put_contents($this->directory . '/config/server.php', "<?php return ['drain' => 0.1];");
         file_put_contents($this->directory . '/app.php', <<<'PHP'
             <?php
             $app = Crab\App::configure(__DIR__)->withRouting(routes: 'app/routes.php')->create();
@@ -863,7 +857,7 @@ final class ServerTest extends TestCase
     public function testAServerKeptAcrossReloadsRunsOnUntilRestart(): void
     {
         mkdir($this->directory . '/config');
-        file_put_contents($this->directory . '/config/server.php', "<?php return ['with' => ['agent']];");
+        file_put_contents($this->directory . '/config/server.php', '<?php return [];');
         $held = <<<'PHP'
             <?php
             $app = Crab\App::configure(__DIR__)->withRouting(routes: 'app/routes.php')->create();
@@ -1005,7 +999,7 @@ final class ServerTest extends TestCase
         bool $reload = false,
     ): void {
         mkdir($this->directory . '/config');
-        file_put_contents($this->directory . '/config/server.php', "<?php return ['with' => ['aux']];");
+        file_put_contents($this->directory . '/config/server.php', '<?php return [];');
         $source = file_get_contents($this->directory . '/app.php');
         $source = str_replace('return Crab\\App', '$app = Crab\\App', $source);
         $line = "PHP_BINARY . ' ' . escapeshellarg(__DIR__ . '/aux.php')";

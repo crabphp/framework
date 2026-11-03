@@ -66,13 +66,17 @@ final class ActorsPlugin implements WorkerPlugin
         });
         $container->singleton(ActorsContract::class, Actors::class);
         if ($container->has(Servers::class)) {
-            // Named in "server.with", the actors run in workers of their own, beside HTTP.
+            // Listed in app.php, with a carrier between processes, the actors run in workers of their own, beside HTTP.
             $container->get(Servers::class)->add(
                 'actors',
                 static function () use ($container): array {
                     $config = $container->get(Config::class);
                     $config->check('actors');
-                    self::requireCarrier($container);
+                    // With the local carrier an actor runs in the process that sends to it: nothing to run here.
+                    $carrier = $container->has(Carrier::class) ? $container->get(Carrier::class) : null;
+                    if ($carrier === null || $carrier instanceof LocalCarrier) {
+                        return [];
+                    }
                     return [new Workers(
                         'actors',
                         static function (Worker $worker, Cancellation $cancellation) use ($container): void {

@@ -44,7 +44,6 @@ final class Server
     public const DEFAULTS = [
         'address' => 'tcp://127.0.0.1:8080',
         'workers' => 1,
-        'with' => [],
         'watch' => self::WATCHED,
         'max_body' => 1_048_576,
         'body_timeout' => 30,
@@ -65,11 +64,6 @@ final class Server
             'examples' => ['tcp://127.0.0.1:8080'],
         ],
         'workers' => ['type' => 'integer', 'minimum' => 1],
-        // Each server's id with whether it is on, a list of ids, or ids with commas between.
-        'with' => [
-            'type' => ['object', 'array', 'string', 'boolean', 'null'],
-            'examples' => [['queue' => true]],
-        ],
         'watch' => ['type' => 'array', 'items' => ['type' => 'string', 'minLength' => 1], 'minItems' => 1],
         'max_body' => ['type' => 'integer', 'minimum' => 1],
         'body_timeout' => ['type' => 'number', 'exclusiveMinimum' => 0],

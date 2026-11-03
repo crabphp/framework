@@ -128,10 +128,8 @@ final readonly class Start implements Command
 
     /**
      * The servers running under this one, each by its id: "http", then
-     * those "server.with" switches on, such as "queue" and "schedule". One
-     * switched off is not drawn, as it is not running; `describe` lists
-     * every server registered. Nothing is drawn for a server that runs
-     * HTTP alone, as most do while developing.
+     * those the plugins registered, such as "queue" and "schedule".
+     * Nothing is drawn for a server that runs HTTP alone.
      */
     private static function announceServers(Output $output, App $app, string $address, int $workers): void
     {
@@ -143,6 +141,10 @@ final readonly class Start implements Command
         $rows = [['Server', 'Workers', 'Runs'], ['http', (string) $workers, Server::describe($address)]];
         foreach ($with as $id) {
             $groups = $app->alongside([$id]);
+            if ($groups === []) {
+                // Registered, with nothing to run in this setup, such as actors on the local carrier.
+                continue;
+            }
             $runs = $servers->label($id);
             if ($servers->kind($id) === 'groups' && count($groups) > 1) {
                 // Which groups of workers it brought: "queue:mail" is "mail".

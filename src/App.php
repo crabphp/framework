@@ -555,7 +555,7 @@ final class App implements RequestHandlerInterface, Runner
      * worker is logged.
      *
      * @param resource|null $socket A socket that already listens on the address, inherited from the server this one takes over from.
-     * @param bool $servers Whether the servers "server.with" names are run beside HTTP; false to serve in one process.
+     * @param bool $servers Whether the registered servers are run beside HTTP; false to serve in one process.
      * @param bool|null $held Which of those servers: null for all of them, as in the foreground; false for those a reload replaces, with HTTP, as the server process in the background runs them; true for those kept across reloads alone, without HTTP, as the keeper's held process runs them.
      */
     public function runtime(
@@ -585,7 +585,7 @@ final class App implements RequestHandlerInterface, Runner
                 'The select loop supports server.max_connections up to 900, leaving descriptors for files, database and Redis. Reduce the limit or install a native extension and select it with server.loop.',
             );
         }
-        // Beside HTTP, the servers "server.with" switches on: none unless it says so. In one
+        // Beside HTTP, every server registered. In one
         // process there is room for HTTP alone.
         $with = $servers ? $this->with() : [];
         if ($held !== null) {
@@ -731,42 +731,15 @@ final class App implements RequestHandlerInterface, Runner
     }
 
     /**
-     * The ids of the servers `start` runs with HTTP, as "server.with"
-     * says: each id with whether it is on, usually from the environment,
-     *
-     *     'with' => ['queue' => env('SERVER_QUEUE', false), 'schedule' => env('SERVER_SCHEDULE', false)],
-     *
-     * or a plain list of ids, or ids with commas between.
+     * The ids of the servers `start` runs with HTTP: every one registered.
+     * A plugin listed in app.php runs its server, as QueuePlugin runs the
+     * queue's workers; one that is not listed registers none.
      *
      * @return list<string>
      */
     public function with(): array
     {
-        $setting = $this->config->get('server.with');
-        if ($setting === null || $setting === false || $setting === '') {
-            return [];
-        }
-        $ids = [];
-        foreach (is_array($setting) ? $setting : explode(',', (string) $setting) as $key => $value) {
-            if (is_int($key)) {
-                // In a list, a server named is a server on.
-                $ids[] = trim((string) $value);
-            } elseif ($value === true) {
-                $ids[] = $key;
-            }
-        }
-        $ids = array_values(array_unique(array_filter($ids, static fn(string $id): bool => $id !== '')));
-        foreach ($ids as $id) {
-            if ($this->servers->has($id)) {
-                continue;
-            }
-
-            $known = $this->servers->ids() === []
-                ? 'none is registered'
-                : 'the servers registered are ' . implode(', ', $this->servers->ids());
-            throw new \LogicException("\"server.with\" switches on \"{$id}\", and {$known}.");
-        }
-        return $ids;
+        return $this->servers->ids();
     }
 
     /**

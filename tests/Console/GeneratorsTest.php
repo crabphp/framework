@@ -162,7 +162,7 @@ final class GeneratorsTest extends TestCase
             array_values(array_diff(array_keys($app->config->rules()), PublishConfig::sections())),
             'A configuration section has no stub in src/Config/stubs.',
         );
-        $differ = ['server.with', 'database.connections'];
+        $differ = ['database.connections'];
         foreach (PublishConfig::sections() as $section) {
             $published = (static fn(string $file): array => require $file)(
                 dirname(__DIR__, 2) . "/src/Config/stubs/{$section}.php",

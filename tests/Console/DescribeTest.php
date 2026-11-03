@@ -249,8 +249,8 @@ final class DescribeTest extends TestCase
 
         self::assertSame(
             [
-                ['id' => 'agent', 'runs' => 'node agent.js', 'on' => false, 'reloads' => false],
-                ['id' => 'vite', 'runs' => 'npm run dev', 'on' => false, 'reloads' => true],
+                ['id' => 'agent', 'runs' => 'node agent.js', 'reloads' => false],
+                ['id' => 'vite', 'runs' => 'npm run dev', 'reloads' => true],
             ],
             $this->describe($app, 'servers')['servers'],
         );
@@ -259,8 +259,8 @@ final class DescribeTest extends TestCase
         rewind($stream);
         self::assertStringEndsWith(<<<'TEXT'
             servers
-              agent runs node agent.js, off, kept across reloads
-              vite runs npm run dev, off
+              agent runs node agent.js, kept across reloads
+              vite runs npm run dev
 
             TEXT, (string) stream_get_contents($stream));
     }

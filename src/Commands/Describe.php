@@ -204,17 +204,15 @@ final readonly class Describe implements Command
     }
 
     /**
-     * @return list<array{id: string, runs: string, on: bool, reloads: bool}>
+     * @return list<array{id: string, runs: string, reloads: bool}>
      */
     private function servers(): array
     {
-        $on = $this->app->with();
         $servers = [];
         foreach ($this->app->servers->ids() as $id) {
             $servers[] = [
                 'id' => $id,
                 'runs' => $this->app->servers->label($id),
-                'on' => in_array($id, $on, true),
                 'reloads' => $this->app->servers->reloads($id),
             ];
         }

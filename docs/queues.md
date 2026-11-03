@@ -222,7 +222,7 @@ php cua queue:work
 
 It runs jobs until you stop it with Ctrl+C.
 
-While you develop, start it in a second terminal when you are working on jobs. To have `php cua start` start the queue's workers itself, beside the HTTP workers, and stop and reload them with the server, switch it on in `server.with`, with `SERVER_QUEUE=true` in `.env`; see [Deployment](deployment.md#the-other-processes).
+With `QueuePlugin` listed in `app.php`, `php cua start` runs the queue's workers itself, beside the HTTP workers, and stops and reloads them with the server; see [Deployment](deployment.md#the-other-processes). `queue:work` runs them on their own, for a machine that serves no HTTP.
 
 | Option | |
 | --- | --- |
@@ -286,9 +286,9 @@ A queue no supervisor names is run by nobody, so list every queue you push to. T
 
 ### In production
 
-On one machine, set `SERVER_QUEUE=true` and run `php cua start --daemon`; `php cua reload` updates HTTP and queue workers together. See [Deployment](deployment.md#a-deploy-start-to-finish).
+Run `php cua start --daemon`; `php cua reload` updates HTTP and queue workers together. See [Deployment](deployment.md#a-deploy-start-to-finish).
 
-When queue workers run separately, leave that switch off on the HTTP server and keep `queue:work` running with a process manager. For example, with systemd:
+On a machine that only works the queue, keep `queue:work` running with a process manager. For example, with systemd:
 
 ```text
 [Service]

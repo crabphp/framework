@@ -148,7 +148,7 @@ return ['carrier' => env('BROADCAST_CARRIER', 'local')];
 | `broadcast.max_backlog_bytes` | `524288` | Bytes allowed behind one recipient's output; overflow closes that recipient with 1008 |
 | `websocket.send_timeout` | `5.0` | Seconds a backpressured recipient has to catch up before closing with 1008 |
 
-`local` suits one HTTP worker with sends inside that process. Startup refuses it when socket routes exist and `server.workers` exceeds one or `server.with` includes `queue` or `schedule`. A console sender, including `queue:work` and `schedule:work`, fails with an instruction to choose Redis: it cannot reach another process through local memory.
+`local` suits one HTTP worker with sends inside that process. Startup refuses it when socket routes exist and `server.workers` exceeds one or a listed plugin, such as the queue's or the schedule's, runs a server of its own beside HTTP. A console sender, including `queue:work` and `schedule:work`, fails with an instruction to choose Redis: it cannot reach another process through local memory.
 
 For `redis`, install `crabphp/redis` and add its `RedisPlugin` to `withPlugins()` after `BroadcastPlugin`. Follow the [Redis package installation example](https://github.com/crabphp/redis#installation).
 

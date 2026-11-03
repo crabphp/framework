@@ -176,7 +176,11 @@ final class AppBuilderTest extends TestCase
                 self::assertInstanceOf($contract, $full->container->get($contract));
             }
             self::assertSame(['queue', 'schedule', 'actors'], $full->servers->ids());
-            self::assertSame([], $full->with(), 'Registering a server does not switch it on.');
+            self::assertSame(
+                ['queue', 'schedule', 'actors'],
+                $full->with(),
+                'A listed plugin\'s server runs with start.',
+            );
             foreach (['queue:work', 'schedule:list', 'runs:list', 'actors:work', 'token:install'] as $command) {
                 self::assertTrue($full->console->has($command), $command);
             }

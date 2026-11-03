@@ -171,11 +171,9 @@ Where clocks change in spring and autumn, a task set for an hour that is skipped
 php cua schedule:work
 ```
 
-To have `php cua start` run the scheduler itself, in a worker of its own beside the HTTP workers, switch it on in `server.with`, with `SERVER_SCHEDULE=true` in `.env`; see [Deployment](deployment.md#the-other-processes).
+With `SchedulePlugin` listed in `app.php`, `php cua start` runs the scheduler itself, in a worker of its own beside the HTTP workers, and `php cua reload` updates it with them; see [Deployment](deployment.md#the-other-processes). Every server that starts the application runs one, so with more than one, mark tasks [`onOneServer()`](#several-servers).
 
-On one machine, set `SERVER_SCHEDULE=true` and run `php cua start --daemon`; `php cua reload` updates the scheduler with the HTTP and queue workers. Keep one scheduler wherever the application is deployed, unless its tasks use `onOneServer()`.
-
-If you run the scheduler separately, leave that switch off on the HTTP server. For example, with systemd:
+`schedule:work` runs it on its own, for a machine that serves no HTTP. For example, with systemd:
 
 ```text
 [Service]
@@ -211,7 +209,7 @@ The run holds a lease in the [cache](cache.md#locks) while it lasts. The lease i
 
 ## Several servers
 
-When more than one machine runs `schedule:work`, each would run every task. Mark the tasks that must run once:
+When more than one machine runs the scheduler, by `start` or `schedule:work`, each would run every task. Mark the tasks that must run once:
 
 ```php
 $schedule->job(SendDailyDigest::class)->daily('08:00')->onOneServer();

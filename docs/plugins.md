@@ -312,16 +312,7 @@ public function register(Container $container): void
 
 A program is run through the shell, so a pipeline or `a && b` works. When the server stops or reloads, every process the line started is sent `SIGTERM` and given a few seconds to finish, so a program should stay in the foreground and clean up on that signal.
 
-Then switch each on where it should run:
-
-```php
-// config/server.php
-'with' => [
-    'queue' => env('SERVER_QUEUE', false),
-    'chat' => env('SERVER_CHAT', true),
-    'vite' => env('APP_DEBUG', false),
-],
-```
+`start` runs every server registered, beside HTTP. A plugin registers its own, so listing it in `app.php` is what runs it; one registered in your setup runs wherever the application starts. To run one only somewhere, register it only there, as in `if (config('app.debug')) { $servers->process('vite', 'npm run dev'); }`.
 
 | Method | Runs | When the server stops or reloads |
 | --- | --- | --- |

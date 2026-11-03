@@ -321,28 +321,7 @@ Name only the addresses of proxies you control; use your proxy's address if it i
 
 ## The other processes
 
-On one machine, run HTTP, queue and scheduler together with `start`. No cron or separate queue/schedule process manager is needed.
-
-The skeleton switches each on through `server.with`, reading its value from `.env`:
-
-```php
-// config/server.php
-'with' => [
-    'queue' => env('SERVER_QUEUE', false),
-    'schedule' => env('SERVER_SCHEDULE', false),
-],
-```
-
-The framework registers one more, `actors`, which runs [actors](actors.md) in processes of their own when the broadcast carrier is Redis; add it to `with` in the same way.
-
-```text
-# .env, in production
-APP_DEBUG=false
-APP_URL=https://api.example.com
-LOG_LEVEL=info
-SERVER_QUEUE=true
-SERVER_SCHEDULE=true
-```
+`start` runs, beside HTTP, the server of every plugin listed in `app.php` that has one: the queue's workers for `QueuePlugin`, the scheduler for `SchedulePlugin`, and the actors for `ActorsPlugin` when the broadcast carrier is Redis. No cron or separate process manager is needed, and no setting switches them on: listing the plugin is what does.
 
 ```text
 $ php cua start
@@ -357,26 +336,17 @@ Starting Shop server on http://127.0.0.1:8080
 Press Ctrl+C to stop
 ```
 
-Each server running under `start` has an id: `http`, `queue`, `schedule`. They are started, stopped and reloaded together: `reload` after a deploy gives every one of them the new code, each given its shutdown period to finish the work in hand before remaining workers are ended. A server registered with `reloads: false` is the exception: `reload` leaves it running, and only `restart` and `stop` end it; see [Keeping a server across reloads](plugins.md#keeping-a-server-across-reloads). Each has processes of its own, so a slow job never holds up a request. When something runs beside HTTP, `start` lists the servers running; one switched off is left out, and `php cua describe` lists every server registered with whether it is on. With HTTP alone, `start` prints no server table.
+Each server running under `start` has an id: `http`, `queue`, `schedule`. They are started, stopped and reloaded together: `reload` after a deploy gives every one of them the new code, each given its shutdown period to finish the work in hand before remaining workers are ended. A server registered with `reloads: false` is the exception: `reload` leaves it running, and only `restart` and `stop` end it; see [Keeping a server across reloads](plugins.md#keeping-a-server-across-reloads). Each has processes of its own, so a slow job never holds up a request. With HTTP alone, `start` prints no server table; `php cua describe` lists every server registered.
 
-| On | Switch on | Why |
+| On | What runs | Mind |
 | --- | --- | --- |
-| Your own machine | nothing, most days | HTTP alone starts fastest and runs no job behind your back |
-| One server | `queue` and `schedule` | One command, one reload |
-| Several web servers | `queue`, and `schedule` on one of them | The schedule must run in one place, or mark its tasks `onOneServer()` |
-| Web and workers apart | nothing on the web servers | The workers' machines run `queue:work` and `schedule:work` |
+| Your own machine | what `app.php` lists | A listed queue runs its jobs as you work |
+| One server | HTTP, and the queue and schedule when listed | One command, one reload |
+| Several servers | the same on each | Every one runs a scheduler: mark tasks [`onOneServer()`](scheduling.md#several-servers), so each runs once among them |
 
-**Separate processes** suit workers on other machines, or development where you start work only as needed:
+`php cua queue:work` and `php cua schedule:work` still run a queue's workers or the scheduler on their own, for a machine that serves no HTTP. Keep them alive with systemd, Supervisor or containers and restart them after deployment; `reload` only covers what `start` runs.
 
-| Process | Command | How many |
-| --- | --- | --- |
-| The HTTP server | `php cua start --daemon` | One per machine |
-| Queue workers | `php cua queue:work` | One command per machine, or one per supervisor |
-| The scheduler | `php cua schedule:work` | Exactly one, or mark tasks `onOneServer()` |
-
-In this arrangement, leave those `server.with` switches off on the HTTP server. Keep the separate workers alive with systemd, Supervisor or containers and restart them after deployment; `reload` only covers workers managed by `start`. Do not start a second scheduler alongside the integrated one.
-
-`--single` serves HTTP alone whatever is switched on, as one process has room for nothing else. To add a server of your own to the list, a WebSocket server, a command of yours, or a program such as `npm run dev`, see [Service plugins](plugins.md#a-server-of-your-own-beside-http).
+`--single` serves HTTP alone, as one process has room for nothing else. To add a server of your own to the list, a WebSocket server, a command of yours, or a program such as `npm run dev`, see [Service plugins](plugins.md#a-server-of-your-own-beside-http).
 
 To see all of it on one page, requests, the queue, scheduled tasks, workers and exceptions, install the `crabphp/clockwerk` package, a dashboard served by the application itself at `/clockwerk`.
 
@@ -384,15 +354,13 @@ See [Queues](queues.md#in-production) and [Task scheduling](scheduling.md#runnin
 
 ## A deploy, start to finish
 
-For one machine running HTTP, queue and scheduler together, set these production values in `.env`. Choose `SERVER_WORKERS` for the machine; four is an example. Leave the queue or schedule switch off when the application does not use it.
+For one machine running HTTP, and the queue and scheduler its `app.php` lists, set these production values in `.env`. Choose `SERVER_WORKERS` for the machine; four is an example.
 
 ```text
 APP_DEBUG=false
 APP_URL=https://api.example.com
 LOG_LEVEL=info
 SERVER_WORKERS=4
-SERVER_QUEUE=true
-SERVER_SCHEDULE=true
 ```
 
 Set `APP_URL` to the public application URL: [named links](routing.md#named-routes) use it in actions, jobs and commands alike.
@@ -468,7 +436,7 @@ An application can ship as one file that holds PHP and the application together:
 - `APP_URL` set to the externally reachable HTTPS URL, so [named links](routing.md#named-routes) point to production.
 - `LOG_LEVEL=info` or `warning`, and a `log.path` you collect or rotate.
 - Choose `SERVER_WORKERS` explicitly; the skeleton starts with one for development.
-- Set `SERVER_QUEUE=true` and `SERVER_SCHEDULE=true` for the work this machine must run, and apply the database queue migration before starting its workers. Run the scheduler in one place, or use `onOneServer()`.
+- List the plugins the application uses in `app.php`, and apply the database queue migration before starting. With more than one server, each runs the scheduler: mark tasks `onOneServer()`.
 - The `pcntl` and `posix` extensions, for workers and the background server.
 - Connections per worker within the loop's reach: at most 900 on `select`; beyond that a native `server.loop` and a raised descriptor limit, as in [How many connections](#how-many-connections).
 - OPcache on, with `opcache.enable_cli=1`: the server runs under PHP's command line.

@@ -1002,7 +1002,7 @@ php cua schedule:work        # runs each task when it is due, until stopped
 php cua schedule:list        # the tasks, and when each runs next
 ~~~
 
-Keep one `schedule:work` running and no cron entry is needed. Switched on in `server.with`, as in production, the scheduler and the queue's workers are run by `php cua start` itself, beside HTTP, and reloaded with the server. `everySeconds()` runs a task by an interval, down to a hundredth of a second, counted from when the scheduler starts. A task that fails is logged and runs again when next due; one still running is not started twice. `->onOneServer()` lets one of several machines run a task, agreed through a shared cache. `schedule.timezone` is the zone the times are in. See [docs/scheduling.md](docs/scheduling.md).
+Keep one `schedule:work` running and no cron entry is needed. With their plugins listed in `app.php`, the scheduler and the queue's workers are run by `php cua start` itself, beside HTTP, and reloaded with the server. `everySeconds()` runs a task by an interval, down to a hundredth of a second, counted from when the scheduler starts. A task that fails is logged and runs again when next due; one still running is not started twice. `->onOneServer()` lets one of several machines run a task, agreed through a shared cache. `schedule.timezone` is the zone the times are in. See [docs/scheduling.md](docs/scheduling.md).
 
 ## Running the server
 

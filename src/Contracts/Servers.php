@@ -7,7 +7,7 @@ namespace Crab\Contracts;
 /**
  * The servers `start` can run beside HTTP, each under an id: "queue",
  * "schedule", "chat", "vite". A plugin registers one here, and `start`
- * runs the ones "server.with" names, under the one parent: started,
+ * runs every one registered, under the one parent: started,
  * stopped and reloaded with the HTTP workers.
  *
  *     $servers = $container->get(Servers::class);

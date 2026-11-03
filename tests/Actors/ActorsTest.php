@@ -17,6 +17,17 @@ use PHPUnit\Framework\TestCase;
 
 final class ActorsTest extends TestCase
 {
+    public function testListedOnTheLocalCarrierTheActorsServerRunsNothingAndStartGoesOn(): void
+    {
+        // With the local carrier an actor runs in the process that sends to it: the server has nothing to do.
+        $app = \Crab\App::configure()
+            ->withPlugins([\Crab\Broadcast\BroadcastPlugin::class, \Crab\Actors\ActorsPlugin::class])
+            ->create();
+        self::assertSame(['actors'], $app->with());
+        self::assertSame([], $app->alongside(['actors']));
+        self::assertInstanceOf(\Crab\Engine\Runtime::class, $app->runtime('tcp://127.0.0.1:0'));
+    }
+
     public function testEachKeyHasOneActorThatKeepsItsStateBetweenMessages(): void
     {
         $actors = new Actors();

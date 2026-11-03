@@ -855,13 +855,14 @@ final class BroadcastTest extends TestCase
 
     public function testStartupRefusesLocalBroadcastAcrossMultipleProcesses(): void
     {
+        // More HTTP workers, or a plugin whose server runs in processes of its own, which a listed one does.
         foreach ([
-            ['server' => ['workers' => 2]],
-            ['server' => ['with' => ['queue']]],
-            ['server' => ['with' => ['schedule']]],
-        ] as $settings) {
+            [['server' => ['workers' => 2]], []],
+            [[], [\Crab\Queue\QueuePlugin::class]],
+            [[], [\Crab\Schedule\SchedulePlugin::class]],
+        ] as [$settings, $plugins]) {
             $app = new App(new Config($settings));
-            $app->register(...App::PLUGINS, ...App::OPTIONAL_PLUGINS);
+            $app->register(...[...App::PLUGINS, ...$plugins, \Crab\Broadcast\BroadcastPlugin::class]);
             $app->router->websocket('/live', static function (Socket $socket): void {
                 $socket->receive();
             });
