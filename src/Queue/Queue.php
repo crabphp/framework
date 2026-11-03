@@ -263,6 +263,11 @@ final class Queue implements QueueContract
             }
             return;
         }
+        if (is_float($value) && !is_finite($value)) {
+            throw new \LogicException(
+                "{$job} was pushed with a non-finite number as \"{$name}\". A job's data is stored as JSON: give a finite number, text, boolean, null or an array of them.",
+            );
+        }
         if ($value !== null && !is_scalar($value)) {
             throw new \LogicException(
                 "{$job} was pushed with "
