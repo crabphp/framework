@@ -186,19 +186,11 @@ final class FakeClient extends Client implements Transport
     private static function receive(ResponseInterface $reply, RequestInterface $request, Receiving $receiving): Response
     {
         $status = $reply->getStatusCode();
-        $length = $reply->getHeaderLine('Content-Length');
-        $bodiless = $request->getMethod() === 'HEAD' || $status === 204 || $status === 304 || $status < 200;
+        $bodiless = Receiving::bodiless($request->getMethod() === 'HEAD', $status);
         $body = $reply->getBody();
         try {
-            if (!$bodiless && preg_match('/^\d{1,18}$/D', $length) === 1) {
-                $receiving->expect((int) $length);
-            }
-            $sink = $receiving->sink(
-                $status,
-                $reply->getHeaderLine('Content-Encoding'),
-                $bodiless,
-                array_change_key_case($reply->getHeaders(), CASE_LOWER),
-            );
+            $headers = array_change_key_case($reply->getHeaders(), CASE_LOWER);
+            $sink = $receiving->open($status, $headers, $bodiless, Receiving::length($headers));
             if (!$bodiless) {
                 if ($body->isSeekable()) {
                     $body->rewind();

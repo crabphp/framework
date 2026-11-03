@@ -70,17 +70,7 @@ final class Exchange
         }
 
         $method = $request->getMethod();
-        // Repeated lengths must agree; anything else could be read as two different bodies.
-        $length = null;
-        foreach ($headers['content-length'] ?? [] as $value) {
-            if (preg_match('/^\d{1,18}$/D', $value) !== 1) {
-                throw new \RuntimeException('the answer\'s length is not a number');
-            }
-            if ($length !== null && $length !== (int) $value) {
-                throw new \RuntimeException('the answer has conflicting Content-Length values');
-            }
-            $length = (int) $value;
-        }
+        $length = Receiving::length($headers);
         // Chunked is the only transfer coding read, and it leaves no room for a length.
         $chunked = isset($headers['transfer-encoding']);
         if ($chunked) {
@@ -92,13 +82,8 @@ final class Exchange
                 throw new \RuntimeException('the answer has both Transfer-Encoding and Content-Length');
             }
         }
-        $bodiless = $method === 'HEAD' || $status === 204 || $status === 304 || $status < 200;
-        if (!$bodiless && !$chunked && $length !== null) {
-            // Refused before a byte of it is read.
-            $this->receiving->expect($length);
-        }
-        // These have no body, whatever their headers say.
-        $sink = $this->receiving->sink($status, $headers['content-encoding'][0] ?? '', $bodiless, $headers, $version);
+        $bodiless = Receiving::bodiless($method === 'HEAD', $status);
+        $sink = $this->receiving->open($status, $headers, $bodiless, $chunked ? null : $length, $version);
         $store = $sink->write(...);
         $delimited = true;
         try {
@@ -117,10 +102,7 @@ final class Exchange
             $sink->discard();
             throw $error;
         }
-        if ($sink->decoding) {
-            // The body is handed on as what it says, so what described its compressed form no longer holds.
-            unset($headers['content-encoding'], $headers['content-length']);
-        }
+        $headers = Receiving::shown($headers, $sink->decoding);
         $closing = static fn(array $values): bool => str_contains(strtolower(implode(',', $values)), 'close');
         $this->reusable =
             $unsent === null

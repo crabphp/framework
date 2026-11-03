@@ -100,6 +100,26 @@ final class FakeClientTest extends TestCase
         self::assertSame('before', $http->sent()[0]->getBody()->getContents());
     }
 
+    public function testAReplyWhoseLengthCannotBeTrustedIsRefusedAsOnTheWire(): void
+    {
+        $http = new FakeClient([
+            'GET https://api.example.com/odd' => new \Crab\Http\Response(200, ['Content-Length' => 'five'], 'hello'),
+            'GET https://api.example.com/two' => new \Crab\Http\Response(
+                200,
+                ['Content-Length' => ['1', '5']],
+                'hello',
+            ),
+        ]);
+        foreach (['odd' => 'is not a number', 'two' => 'conflicting Content-Length'] as $path => $says) {
+            try {
+                $http->get("https://api.example.com/{$path}");
+                self::fail("The reply at /{$path} was accepted.");
+            } catch (\RuntimeException $error) {
+                self::assertStringContainsString($says, $error->getMessage());
+            }
+        }
+    }
+
     public function testAStreamedCallIsAnsweredByTheSameRepliesAndReadsTheSameWay(): void
     {
         $http = new FakeClient([

@@ -37,6 +37,69 @@ final class Receiving
      *
      * @throws TooLarge
      */
+    /**
+     * Whether an answer has no body, whatever its headers say: one to HEAD,
+     * an interim one, 204 and 304.
+     */
+    public static function bodiless(bool $head, int $status): bool
+    {
+        return $head || $status < 200 || $status === 204 || $status === 304;
+    }
+
+    /**
+     * The length its Content-Length gives, or null when it has none.
+     * Repeated values must agree; anything else could be read as two
+     * different bodies, so it is refused, by every protocol alike.
+     *
+     * @param array<string, list<string>> $headers
+     * @throws \RuntimeException
+     */
+    public static function length(array $headers): ?int
+    {
+        $length = null;
+        foreach ($headers['content-length'] ?? [] as $value) {
+            if (preg_match('/^\d{1,18}$/D', $value) !== 1) {
+                throw new \RuntimeException('the answer\'s length is not a number');
+            }
+            if ($length !== null && $length !== (int) $value) {
+                throw new \RuntimeException('the answer has conflicting Content-Length values');
+            }
+            $length = (int) $value;
+        }
+        return $length;
+    }
+
+    /**
+     * The headers an answer is handed on with: once its body is decoded it
+     * is what it says, so what described the compressed form no longer holds.
+     *
+     * @param array<string, list<string>> $headers
+     * @return array<string, list<string>>
+     */
+    public static function shown(array $headers, bool $decoding): array
+    {
+        if ($decoding) {
+            unset($headers['content-encoding'], $headers['content-length']);
+        }
+        return $headers;
+    }
+
+    /**
+     * Where an answer's body is to be kept, once its length, when it gives
+     * one and has a body, is within the limit: refused before a byte of it
+     * is read.
+     *
+     * @param array<string, list<string>> $headers
+     * @param int|null $length What its Content-Length gives, or null for none or a chunked body.
+     */
+    public function open(int $status, array $headers, bool $bodiless, ?int $length, string $version = '1.1'): BodySink
+    {
+        if (!$bodiless && $length !== null) {
+            $this->expect($length);
+        }
+        return $this->sink($status, $headers['content-encoding'][0] ?? '', $bodiless, $headers, $version);
+    }
+
     public function expect(int $length): void
     {
         if ($length > $this->limit) {

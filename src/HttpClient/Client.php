@@ -317,10 +317,14 @@ class Client implements ClientContract
             return $request->result();
         }
         [$status, $received, $decoding, $version] = $opened;
-        if ($decoding) {
-            unset($received['content-encoding'], $received['content-length']);
-        }
-        return new Response($status, $received, new PipeBody($pipe, $request, $idle), '', $version, $pipe->request);
+        return new Response(
+            $status,
+            Receiving::shown($received, $decoding),
+            new PipeBody($pipe, $request, $idle),
+            '',
+            $version,
+            $pipe->request,
+        );
     }
 
     public function get(string $url, array $query = [], array $headers = []): ResponseContract

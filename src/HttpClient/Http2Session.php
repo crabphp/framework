@@ -224,11 +224,8 @@ final class Http2Session
             $this->abandon($stream);
             throw $stream->error;
         }
-        $headers = $stream->headers;
         $sink = $stream->body ?? $receiving->sink((int) $stream->status, '', true);
-        if ($sink->decoding) {
-            unset($headers['content-encoding'], $headers['content-length']);
-        }
+        $headers = Receiving::shown($stream->headers, $sink->decoding);
         try {
             return new Response((int) $stream->status, $headers, $sink->body(), '', '2', Exchange::describe($request));
         } catch (\InvalidArgumentException $invalid) {
@@ -566,18 +563,13 @@ final class Http2Session
                 // An interim answer, such as 100 Continue, is followed by the real one.
                 $stream->status = $status;
                 $stream->headers = $headers;
-                $bodiless = $stream->bodiless || $status === 204 || $status === 304;
+                $bodiless = Receiving::bodiless($stream->bodiless, $status);
                 try {
-                    $length = $headers['content-length'][0] ?? '';
-                    if (!$bodiless && preg_match('/^\d{1,18}$/D', $length) === 1) {
-                        // Refused before a byte of it is read.
-                        $stream->receiving->expect((int) $length);
-                    }
-                    $stream->body = $stream->receiving->sink(
+                    $stream->body = $stream->receiving->open(
                         $status,
-                        $headers['content-encoding'][0] ?? '',
-                        $bodiless,
                         $headers,
+                        $bodiless,
+                        Receiving::length($headers),
                         '2',
                     );
                 } catch (\RuntimeException $error) {
