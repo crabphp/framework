@@ -221,50 +221,8 @@ final class App implements RequestHandlerInterface, Runner
                 ]],
             ],
         );
-        $config->defaults(
-            'server',
-            [
-                'address' => 'tcp://127.0.0.1:8080',
-                'workers' => 1,
-                'with' => [],
-                'watch' => Server::WATCHED,
-                'max_body' => 1_048_576,
-                'body_timeout' => 30,
-                'drain' => 5.0,
-                'max_connections' => 512,
-                'loop' => 'select',
-                'pid' => ServerFiles::PID,
-                'log' => ServerFiles::LOG,
-            ],
-            [
-                'address' => [
-                    'type' => 'string',
-                    'pattern' => '^tcp://(\\[[^\\]]+\\]|[^:/?#\\s]+):[0-9]{1,5}$',
-                    'examples' => ['tcp://127.0.0.1:8080'],
-                ],
-                'workers' => ['type' => 'integer', 'minimum' => 1],
-                // Each server's id with whether it is on, a list of ids, or ids with commas between.
-                'with' => [
-                    'type' => ['object', 'array', 'string', 'boolean', 'null'],
-                    'examples' => [['queue' => true]],
-                ],
-                'watch' => ['type' => 'array', 'items' => ['type' => 'string', 'minLength' => 1], 'minItems' => 1],
-                'max_body' => ['type' => 'integer', 'minimum' => 1],
-                'body_timeout' => ['type' => 'number', 'exclusiveMinimum' => 0],
-                'drain' => ['type' => 'number', 'exclusiveMinimum' => 0],
-                'max_connections' => ['type' => 'integer', 'minimum' => 1],
-                'loop' => ['enum' => ['select', 'ev', 'uv', 'event']],
-                'pid' => ['type' => 'string', 'minLength' => 1],
-                'log' => ['type' => 'string', 'minLength' => 1],
-            ],
-        );
-        $config->defaults('websocket', SocketSettings::DEFAULTS, [
-            // Zero sends no pings.
-            'ping' => ['type' => 'number', 'minimum' => 0],
-            'max_message' => ['type' => 'integer', 'minimum' => 1],
-            'send_timeout' => ['type' => 'number', 'exclusiveMinimum' => 0],
-            'max_connections' => ['type' => 'integer', 'minimum' => 1],
-        ]);
+        $config->defaults('server', Server::DEFAULTS, Server::RULES);
+        $config->defaults('websocket', SocketSettings::DEFAULTS, SocketSettings::RULES);
         self::$current = $this;
         $container->instance(self::class, $this);
         // What runs workers that serve no requests, for a plugin's commands.

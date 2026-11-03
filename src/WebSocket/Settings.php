@@ -19,6 +19,17 @@ final readonly class Settings
         'max_connections' => 256,
     ];
 
+    /**
+     * What each of the "websocket" section's settings may be.
+     */
+    public const RULES = [
+        // Zero sends no pings.
+        'ping' => ['type' => 'number', 'minimum' => 0],
+        'max_message' => ['type' => 'integer', 'minimum' => 1],
+        'send_timeout' => ['type' => 'number', 'exclusiveMinimum' => 0],
+        'max_connections' => ['type' => 'integer', 'minimum' => 1],
+    ];
+
     public Config $engine;
 
     public function __construct(
