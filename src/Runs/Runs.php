@@ -562,6 +562,12 @@ final class Runs implements RunsContract
                     "{$run}::handle() takes a variable number of arguments; name each value a run takes.",
                 );
             }
+            // start() takes this name itself, so a value could not be given under it.
+            if ($parameter->getName() === 'run') {
+                throw new \LogicException(
+                    "{$run}::handle() takes \$run as data, a name start() uses for itself. Give the parameter another name.",
+                );
+            }
             $names[] = $parameter->getName();
             if (!$parameter->isOptional()) {
                 $required[] = $parameter->getName();

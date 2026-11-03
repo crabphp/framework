@@ -23,8 +23,6 @@ interface Socket extends \IteratorAggregate
 
     public function send(array|string|Binary $message): void;
 
-    public function sendBinary(string $bytes): void;
-
     public function join(string $channel): void;
 
     public function leave(string $channel): void;

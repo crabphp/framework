@@ -8,6 +8,7 @@ use Crab\App;
 use Crab\Config\Config;
 use Crab\Contracts\Auth\Identity;
 use Crab\Contracts\Http\Request;
+use Crab\Contracts\WebSocket\Binary;
 use Crab\Contracts\WebSocket\Socket;
 use Crab\Engine\Async\Async;
 use Crab\Engine\Async\Task;
@@ -27,7 +28,6 @@ use Crab\Tests\Support\Wait;
 use Crab\Validation\Data;
 use Crab\Validation\Fields;
 use Crab\Validation\Range;
-use Crab\WebSocket\Binary;
 use Crab\WebSocket\SocketClosed;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
@@ -350,7 +350,7 @@ final class RouteTest extends TestCase
     {
         $socket = $this->open($this->api(static function (Socket $socket): void {
             $socket->send(['ready' => true]);
-            $socket->sendBinary("\0\xff");
+            $socket->send(new Binary("\0\xff"));
             foreach ($socket as $message) {
                 $socket->send($message);
             }
@@ -360,7 +360,7 @@ final class RouteTest extends TestCase
             $socket->send($message);
             $socket->assertReceived($message === '{}' || $message === '[]' ? [] : $message);
         }
-        $socket->sendBinary('{"binary":true}');
+        $socket->send(new Binary('{"binary":true}'));
         $socket->assertReceived(new Binary('{"binary":true}'));
     }
 
@@ -371,9 +371,9 @@ final class RouteTest extends TestCase
                 $socket->send($message);
             }
         }));
-        $socket->sendBinary("\0\xff");
+        $socket->send(new Binary("\0\xff"));
         $socket->assertReceived(new Binary("\0\xff"));
-        $socket->sendBinary('{"a":1}');
+        $socket->send(new Binary('{"a":1}'));
         $socket->assertReceived(new Binary('{"a":1}'));
     }
 
@@ -513,7 +513,7 @@ final class RouteTest extends TestCase
             } catch (SocketClosed) {
                 $closed = true;
             }
-            $socket->sendBinary('late');
+            $socket->send(new Binary('late'));
         }))->assertClosed(1000);
         self::assertTrue($closed);
         self::assertSame([], $this->reports);
@@ -729,7 +729,7 @@ final class RouteTest extends TestCase
             );
             try {
                 for ($i = 0; $i < 10_000; ++$i) {
-                    $socket->sendBinary(str_repeat('x', 65_536));
+                    $socket->send(new Binary(str_repeat('x', 65_536)));
                 }
             } finally {
                 $ended = true;
@@ -1060,7 +1060,7 @@ final class RouteTest extends TestCase
                     }
                 }
                 try {
-                    $socket->sendBinary("\xff");
+                    $socket->send(new Binary("\xff"));
                 } catch (SocketClosed) {
                     ++$caught;
                 }

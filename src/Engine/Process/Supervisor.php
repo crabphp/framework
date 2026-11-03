@@ -141,11 +141,6 @@ final class Supervisor
         }
     }
 
-    public function reload(): void
-    {
-        $this->reloadRequested = true;
-    }
-
     /**
      * Ends every owned worker now. The run loop reaps each one before
      * returning, so the generation cannot leave its workers behind.
@@ -157,26 +152,6 @@ final class Supervisor
             posix_kill($pid, SIGKILL);
             $this->children[$pid]['deadline'] = INF;
         }
-    }
-
-    /**
-     * Each worker with the stats it last reported, under 'stats', and
-     * how many times its slot has been started again.
-     */
-    public function stats(): array
-    {
-        $workers = [];
-        foreach ($this->children as $pid => $child) {
-            $workers[] = [
-                'pid' => $pid,
-                'slot' => $child['slot'],
-                'ready' => $child['ready'],
-                'retiring' => $child['retiring'],
-                'restarts' => $this->restarts[$child['slot']] ?? 0,
-                'stats' => $child['stats'],
-            ];
-        }
-        return ['pid' => getmypid(), 'stopping' => $this->stopping, 'workers' => $workers];
     }
 
     private function spawn(string $slot, ?int $replaces = null): int
@@ -281,7 +256,7 @@ final class Supervisor
             $child = $this->children[$pid];
             if (!$child['ready'] && !$child['retiring'] && ($now - $child['started']) >= $this->startupTimeout) {
                 FailureReporter::report("Worker {$pid} exceeded its startup deadline");
-                $this->retire($pid, intentional: false);
+                $this->retire($pid);
             }
             if ($child['limit'] !== null && $now >= $child['limit'] && $child['deadline'] !== INF) {
                 $group = $this->slots[$child['slot']]['group'];
@@ -372,7 +347,7 @@ final class Supervisor
                 fclose($child['stream']);
                 $child['stream'] = null;
                 if (!$child['retiring']) {
-                    $this->retire($pid, intentional: false);
+                    $this->retire($pid);
                 }
                 continue;
             }
@@ -404,7 +379,7 @@ final class Supervisor
                 }
             }
             if (strlen($child['buffer']) > self::LINE) {
-                $this->retire($pid, intentional: false);
+                $this->retire($pid);
             }
         }
         unset($child);
@@ -467,14 +442,13 @@ final class Supervisor
         }, $workers);
     }
 
-    private function retire(int $pid, bool $intentional = true): void
+    private function retire(int $pid): void
     {
         if (!isset($this->children[$pid]) || $this->children[$pid]['retiring']) {
             return;
         }
         $this->children[$pid]['retiring'] = true;
         $this->changed = true;
-        $this->children[$pid]['intentional'] = $intentional;
         $this->children[$pid]['deadline'] = self::now() + $this->grace($this->children[$pid]['slot']);
         $stream = $this->children[$pid]['stream'];
         if (!is_resource($stream) || @fwrite($stream, "stop\n") !== 5) {

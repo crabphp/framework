@@ -231,13 +231,6 @@ final class Socket implements SocketContract, Recipient
         $this->write(is_array($message) ? json_encode($message, JSON_THROW_ON_ERROR) : $message, false);
     }
 
-    public function sendBinary(string $bytes): void
-    {
-        $this->requireOpen();
-        $this->accept();
-        $this->write($bytes, true);
-    }
-
     public function join(string $channel): void
     {
         $this->requireOpen();

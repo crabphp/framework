@@ -120,7 +120,7 @@ final readonly class WatchOrder
 }
 ```
 
-Before the first `join()`, `send()`, `sendBinary()`, `receive()`, iteration, or `accept()`, the action is still handling HTTP: `HttpException` supplies its status, validation failures receive 422, and unexpected failures receive 500 and are reported. At first use, middleware receives the bodyless 101 response; the action waits for the wire upgrade before continuing. After acceptance, an action failure is reported once with its route and closes with 1011. `Concurrency` holds its place and `AccessLog` writes its line until the middleware pipeline returns at acceptance or an HTTP refusal.
+Before the first `join()`, `send()`, `receive()`, iteration, or `accept()`, the action is still handling HTTP: `HttpException` supplies its status, validation failures receive 422, and unexpected failures receive 500 and are reported. At first use, middleware receives the bodyless 101 response; the action waits for the wire upgrade before continuing. After acceptance, an action failure is reported once with its route and closes with 1011. `Concurrency` holds its place and `AccessLog` writes its line until the middleware pipeline returns at acceptance or an HTTP refusal.
 
 Register `TokenAuthProvider` and your identity resolver as shown in [Authentication](authentication.md#installation), and the database provider as shown in [Database](database.md). A client that can set headers sends `Authorization` during the handshake. Missing required Identity receives HTTP 401. For browsers, use a ticket as below.
 
@@ -222,12 +222,11 @@ For more connections, install and enable `ev`, `uv` or `event`, choose it with `
 Send arrays as JSON text, strings as text, and `Binary` as binary frames:
 
 ```php
-use Crab\WebSocket\Binary;
+use Crab\Contracts\WebSocket\Binary;
 
 $socket->send(['status' => 'paid']);
 $socket->send('ready');
 $socket->send(new Binary("\x00\xff"));
-$socket->sendBinary("\x00\xff");
 
 $message = $socket->receive();
 if ($message instanceof Binary) {
@@ -327,7 +326,7 @@ foreach ($socket as $message) {
 
 A message sent by the server has the same `websocket.max_message` byte limit. Oversized outgoing messages throw `LengthException`; invalid text throws `InvalidArgumentException`, and JSON encoding errors throw `JsonException`. An uncaught error after acceptance closes with 1011. Oversized client input instead closes with 1009.
 
-`send()` and `sendBinary()` wait on bounded output. Reaching `websocket.send_timeout` closes with 1008 and throws `SocketClosed`. Success means local acceptance, not client delivery.
+`send()` waits on bounded output. Reaching `websocket.send_timeout` closes with 1008 and throws `SocketClosed`. Success means local acceptance, not client delivery.
 
 An inbox left full pauses reads, including processing pongs and Close. The engine stops its peer-silence clock during that intentional pause. If the action does not consume enough messages to resume within two ping intervals, the framework closes with 1011, cancels the socket token, and logs one warning naming the route. With `websocket.ping = 0`, there is no pause deadline. A send-only action never pauses reads and retains ordinary silent-peer retirement with 1001. Keep awaited work bounded and queue longer work.
 
@@ -391,7 +390,7 @@ Keep `Testing\Api` as your test fixture. It opens the real middleware, action an
 
 ```php
 use Crab\Testing\Api;
-use Crab\WebSocket\Binary;
+use Crab\Contracts\WebSocket\Binary;
 
 $api = new Api($app);
 $socket = $api->websocket('/live');
@@ -406,7 +405,7 @@ $socket->assertClosed(1000);
 
 No `finally` is needed: the Api fixture closes every socket when it leaves scope, even if an assertion fails. A test case holding Api in a property can call `$this->api->closeSockets()` in `tearDown()` to reset it between tests. Keep the fixture alive while using its sockets; an Api temporary ends its sockets when that temporary leaves scope.
 
-`close()` completes or cuts the transport, then waits up to one second for the action and asynchronous cleanup to settle. A failure to settle is a test failure naming the route. It finishes the main-context event loop without cancelling another open test socket's work. `receive(timeout: 1.0)` returns an array, string, Binary, or `null` on timeout or closure; a timeout leaves the connection open. `sendBinary()` and optional close-code assertions work too.
+`close()` completes or cuts the transport, then waits up to one second for the action and asynchronous cleanup to settle. A failure to settle is a test failure naming the route. It finishes the main-context event loop without cancelling another open test socket's work. `receive(timeout: 1.0)` returns an array, string, Binary, or `null` on timeout or closure; a timeout leaves the connection open. `send(new Binary(...))` and optional close-code assertions work too.
 
 Use `actingAs()`, `withToken()` and `withHeaders()` as for HTTP. An ownership refusal inside `handle()` is carried by `WebSocketRefused`:
 

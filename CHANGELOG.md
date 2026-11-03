@@ -2,6 +2,15 @@
 
 Crab follows [semantic versioning](https://semver.org). Before 1.0, a minor version may break what an application writes; the entry says what to change.
 
+## Unreleased
+
+- **One way to send bytes on a socket (breaking):** `Socket::sendBinary($bytes)` is gone; send `new Binary($bytes)` with `send()`, in an action and on a `TestSocket` alike. `Crab\WebSocket\Binary`, an alias, is gone too: import `Crab\Contracts\WebSocket\Binary`.
+- **`server.with` takes `true` or `false` for each id (breaking):** the undocumented `['enabled' => true]` form is no longer read.
+- **`config:publish storage`** writes the storage section, which had no file to publish.
+- **A run's data cannot be named `$run`:** `start()` takes that name itself, so such a run is refused with a message saying so, where PHP's own error came before.
+- **`Async::sleep($loop, 0)`** resumes on the next turn of the loop, as it says, rather than through a zero-second timer.
+- `Contracts\Schedule\Task` has `preventsOverlaps()`, which `describe` already used.
+
 ## 0.3.0 — 2026-11-03
 
 - **A storage directory that can be moved:** everything the framework writes, logs, `server.pid` and its stats, the file cache, the `local` disk, is in one folder, `storage/` unless `->withStorage($dir)` in `app.php` or the `CRAB_STORAGE` environment variable says otherwise. A relative path starting with `storage/` in a setting is inside it, `storage_path('database.sqlite')` names a file in it from a configuration file, and `app.storage` reads it. To upgrade, replace `dirname(__DIR__) . '/storage/...'` in configuration files with `storage_path('...')`. A SQLite file whose folder is missing has it made. See [Storage elsewhere](docs/deployment.md#storage-elsewhere).

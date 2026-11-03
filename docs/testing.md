@@ -147,7 +147,7 @@ Use `$api->withToken($token)->get('/me')` when testing token authentication itse
 
 ### Socket routes
 
-`$api->websocket('/live')` opens a real socket route over an in-process socket pair. Arrays travel as JSON, and `WebSocket\Binary` preserves binary messages. Keep Api as your fixture: it closes all sockets when it leaves scope, including after failed assertions. When your test case stores Api in a property, call `$this->api->closeSockets()` in `tearDown()`.
+`$api->websocket('/live')` opens a real socket route over an in-process socket pair. Arrays travel as JSON, and `Contracts\WebSocket\Binary` preserves binary messages. Keep Api as your fixture: it closes all sockets when it leaves scope, including after failed assertions. When your test case stores Api in a property, call `$this->api->closeSockets()` in `tearDown()`.
 
 `TestSocket::close()` waits for connection-owned action cleanup with a one-second bound and finishes the main-context loop. See [WebSockets](websockets.md#testing) for messages, close assertions and HTTP refusals.
 

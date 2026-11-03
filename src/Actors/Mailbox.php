@@ -126,11 +126,6 @@ final class Mailbox implements Inbox
         return $this->taken;
     }
 
-    public function isEnded(): bool
-    {
-        return $this->ended;
-    }
-
     /**
      * Takes no more, and wakes the actor if it waits. With a reason, the
      * process is stopping, and what the actor waits on is cancelled.

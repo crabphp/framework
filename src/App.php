@@ -789,7 +789,7 @@ final class App implements RequestHandlerInterface, Runner
             if (is_int($key)) {
                 // In a list, a server named is a server on.
                 $ids[] = trim((string) $value);
-            } elseif ((is_array($value) ? $value['enabled'] ?? false : $value) === true) {
+            } elseif ($value === true) {
                 $ids[] = $key;
             }
         }

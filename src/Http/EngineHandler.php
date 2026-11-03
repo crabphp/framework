@@ -21,7 +21,9 @@ final class EngineHandler
     private ?Worker $worker = null;
 
     /**
-     * A closure is handled as a route's closure is; see ClosureHandler.
+     * A closure takes the request and returns a response or a string; see
+     * ClosureHandler. A route's closure is an action instead, read by
+     * ActionHandler.
      */
     public function __construct(RequestHandlerInterface|\Closure $handler)
     {

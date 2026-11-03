@@ -156,6 +156,12 @@ final class GeneratorsTest extends TestCase
         foreach (App::PROVIDERS as $provider) {
             new $provider()->register($app->container);
         }
+        // Every section the framework defines can be published.
+        self::assertSame(
+            [],
+            array_values(array_diff(array_keys($app->config->rules()), PublishConfig::sections())),
+            'A configuration section has no stub in src/Config/stubs.',
+        );
         $differ = ['server.with', 'database.connections'];
         foreach (PublishConfig::sections() as $section) {
             $published = (static fn(string $file): array => require $file)(

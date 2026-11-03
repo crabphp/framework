@@ -717,8 +717,8 @@ final class AppTest extends TestCase
                 'with' => [
                     'queue' => true,
                     'schedule' => false,
-                    'vite' => ['enabled' => true],
-                    'chat' => ['enabled' => false],
+                    'vite' => true,
+                    'chat' => false,
                     'sync' => 'yes',
                 ],
             ],
