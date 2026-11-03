@@ -69,6 +69,16 @@ abstract class EventLoop
     abstract public function repeat(float $interval, \Closure $callback): string;
 
     /**
+     * Refuses a timer that would never fire or fire without pause.
+     */
+    final protected static function assertDuration(float $seconds): void
+    {
+        if (!is_finite($seconds) || $seconds < 0) {
+            throw new \Error('A timer needs a finite, nonnegative number of seconds.');
+        }
+    }
+
+    /**
      * @param resource $stream
      */
     abstract public function onReadable(mixed $stream, \Closure $callback): string;

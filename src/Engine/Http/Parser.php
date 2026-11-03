@@ -14,7 +14,7 @@ final class Parser
     private const FIELDS = '/\G(?:(' . self::TOKEN . '):[ \t]*+([\x09\x20-\x7E\x80-\xFF]*)\r\n|\r\n\z)/';
     private const VALID_FIELDS = '/\G(?:' . self::TOKEN . ':[\x09\x20-\x7E\x80-\xFF]*+\r\n)*+\r\n\z/';
     private const FRAMING_FIELDS = '/\r\n(host|connection|expect|content-length|transfer-encoding):[ \t]*+([^\r]*)/i';
-    private const HOST = '/^(?:\[[0-9a-fA-F:.]+\]|[A-Za-z0-9._~%!$&\x27()*+;=-]+)(?::[0-9]{1,5})?$/D';
+    private const HOST = '/^(?:\[[0-9a-fA-F:.]+\]|[A-Za-z0-9._~%!$&\x27()*+;=-]+)(?::([0-9]{1,5}))?$/D';
 
     /**
      * Validated field lines, bounded and reset when full. A line always
@@ -227,19 +227,12 @@ final class Parser
         return true;
     }
 
+    /**
+     * A host the HOST grammar allows, whose port, if it has one, is a real one.
+     */
     private static function validHost(string $host): bool
     {
-        if (preg_match(self::HOST, $host) !== 1) {
-            return false;
-        }
-        if ($host[0] === '[') {
-            $close = strpos($host, ']');
-            $port = $close === (strlen($host) - 1) ? null : substr($host, $close + 2);
-        } else {
-            $colon = strrpos($host, ':');
-            $port = $colon === false ? null : substr($host, $colon + 1);
-        }
-        return $port === null || (int) $port <= 65_535;
+        return preg_match(self::HOST, $host, $match) === 1 && (int) ($match[1] ?? 0) <= 65_535;
     }
 
     /**
@@ -585,16 +578,9 @@ final class Parser
         if (str_contains($target, '#')) {
             throw new HttpException(400, 'Fragments are not allowed in request targets.');
         }
-        if (preg_match('~^https?://([^/?#]*)(?:[/?#].*)?$~iD', $target, $authority) !== 1) {
-            throw new HttpException(400, 'Invalid request target.');
-        }
-        $parts = parse_url($target);
+        // Absolute form: an http(s) scheme and an authority that is a valid Host, never credentials.
         if (
-            $parts === false
-            || !isset($parts['host'], $parts['scheme'])
-            || !in_array(strtolower($parts['scheme']), ['http', 'https'], true)
-            || isset($parts['user'])
-            || isset($parts['pass'])
+            preg_match('~^https?://([^/?#]*)(?:[/?#].*)?$~iD', $target, $authority) !== 1
             || !self::validHost($authority[1])
         ) {
             throw new HttpException(400, 'Invalid request target.');

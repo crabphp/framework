@@ -61,7 +61,7 @@ final class Task implements TaskContract
 
     public function everySeconds(int|float $seconds): static
     {
-        if (!is_finite((float) $seconds) || $seconds < 0.01) {
+        if (!is_finite($seconds) || $seconds < 0.01) {
             throw new \InvalidArgumentException(
                 "everySeconds({$seconds}) cannot be scheduled: give at least 0.01 of a second.",
             );

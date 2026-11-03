@@ -308,6 +308,7 @@ A plaintext HTTP response cannot replace, delete or shadow an unexpired Secure c
 
 - HTTP/3, HTTP/2 without encryption, and server push.
 - Proxies reached over TLS, and SOCKS proxies.
+- Transfer codings other than `chunked`. An HTTP/1.1 answer sent with any other `Transfer-Encoding`, or with that and a `Content-Length` too, or with `Content-Length` values that disagree, is refused as malformed.
 - Brotli. With PHP's `zlib` extension, answers compressed with gzip or deflate are decompressed for you unless you pass `decode: false`; without it they remain encoded.
 
 HTTP/2 is spoken with every `https` server that offers it: all requests to one server then share one connection and run at once. With the others it is HTTP/1.1 on connections that are kept and reused, up to `http_client.connections` to one server.
