@@ -8,14 +8,12 @@ use Closure;
 use Crab\Engine\EventLoop;
 use Crab\Engine\EventLoop\StreamSelectEventLoop;
 use Crab\Engine\Network\Connection;
-use Crab\Engine\Network\Connector;
 use Crab\Engine\Network\Listener;
 use Crab\Engine\Network\WriteResult;
 use Crab\Engine\Tests\Support\TestCase;
 use InvalidArgumentException;
 use LengthException;
 use LogicException;
-use PHPUnit\Framework\Attributes\DataProvider;
 use RuntimeException;
 use Throwable;
 
@@ -418,104 +416,10 @@ final class TransportTest extends TestCase
         self::assertFalse($connection->hasPendingWork());
     }
 
-    public function testSuccessfulConnectCleansUpBeforeCallbackAndIgnoresLaterCancellation(): void
-    {
-        $loop = $this->newLoop();
-        $stream = $this->ownStream(Listener::bind('tcp://127.0.0.1:0'));
-        $address = 'tcp://' . stream_socket_get_name($stream, false);
-        $serverConnection = null;
-        $listener = new Listener($loop, $stream, function (Connection $connection) use (&$serverConnection): void {
-            $serverConnection = $this->ownConnection($connection);
-            $connection->onData(static function (Connection $connection, string $bytes): void {
-                $connection->tryWrite($bytes);
-            });
-        });
-        $this->deferCleanup($listener->close(...));
-        $listener->attach();
-        $completions = 0;
-        $response = '';
-        $client = null;
-        $cancel = Connector::connect($loop, $address, $this->guardCallback(function (
-            ?Connection $connection,
-            ?Throwable $error,
-        ) use (&$completions, &$response, &$client): void {
-            $completions++;
-            self::assertNull($error);
-            self::assertInstanceOf(Connection::class, $connection);
-            $client = $this->ownConnection($connection);
-            $connection->onData(static function (Connection $connection, string $bytes) use (&$response): void {
-                $response .= $bytes;
-            });
-            $connection->tryWrite('ping');
-        }));
-        $this->deferCleanup($cancel);
-        $this->until($loop, static function () use (&$response): bool {
-            return $response === 'ping';
-        });
-        $cancel();
-        self::assertSame(1, $completions);
-        self::assertFalse($client->isClosed(), 'Cancellation changed an established connection.');
-        $client->close();
-        $serverConnection->close();
-        $listener->close();
-        self::assertSame([], $loop->getIdentifiers(), 'Connect leaked its watcher or deadline.');
-    }
-
-    public function testConnectRefusalAndCancellationCompleteOnce(): void
-    {
-        $loop = $this->newLoop();
-        $stream = $this->ownStream(Listener::bind('tcp://127.0.0.1:0'));
-        $address = 'tcp://' . stream_socket_get_name($stream, false);
-        fclose($stream);
-        $failures = [];
-        $cancel = Connector::connect($loop, $address, static function (?Connection $connection, ?Throwable $error) use (
-            &$failures,
-        ): void {
-            $failures[] = [$connection, $error];
-        });
-        $this->deferCleanup($cancel);
-        $this->until($loop, static function () use (&$failures): bool {
-            return count($failures) === 1;
-        });
-        $cancel();
-        self::assertCount(1, $failures);
-        self::assertNull($failures[0][0], 'Refused connection was published as established.');
-        self::assertInstanceOf(Throwable::class, $failures[0][1]);
-        self::assertSame([], $loop->getIdentifiers(), 'Refusal did not clean up.');
-        $stream = $this->ownStream(Listener::bind('tcp://127.0.0.1:0'));
-        $address = 'tcp://' . stream_socket_get_name($stream, false);
-        $cancel = Connector::connect($loop, $address, static function (?Connection $connection, ?Throwable $error) use (
-            &$failures,
-        ): void {
-            $failures[] = [$connection, $error];
-        });
-        $this->deferCleanup($cancel);
-        $cancel();
-        $cancel();
-        self::assertCount(2, $failures);
-        self::assertNull($failures[1][0]);
-        self::assertStringContainsString('cancelled', $failures[1][1]?->getMessage() ?? '');
-        self::assertSame([], $loop->getIdentifiers());
-    }
-
     public function testListenerRejectsUnsupportedTlsScheme(): void
     {
         $this->expectException(InvalidArgumentException::class);
         Listener::bind('tls://127.0.0.1:0');
-    }
-
-    #[DataProvider('unsupportedConnectAddresses')]
-    public function testConnectorRejectsBlockingDnsCredentialsAndPaths(string $address): void
-    {
-        $this->expectException(InvalidArgumentException::class);
-        Connector::connect($this->newLoop(), $address, static function (): void {});
-    }
-
-    public static function unsupportedConnectAddresses(): iterable
-    {
-        yield 'blocking DNS' => ['tcp://localhost:80'];
-        yield 'credentials' => ['tcp://name@127.0.0.1:80'];
-        yield 'path' => ['tcp://127.0.0.1:80/path'];
     }
 
     private function newLoop(): StreamSelectEventLoop

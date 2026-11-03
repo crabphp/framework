@@ -6,7 +6,6 @@ namespace Crab\Engine;
 
 use Crab\Engine\EventLoop\StreamSelectEventLoop;
 use Crab\Engine\Network\Listener;
-use Crab\Engine\Network\UdpEndpoint;
 use Crab\Engine\Process\StatsFile;
 use Crab\Engine\Process\Supervisor;
 use Crab\Engine\Process\Worker;
@@ -136,17 +135,11 @@ final class Runtime
         try {
             foreach ($this->groups as $name => $group) {
                 $group->freeze();
-                $bindings[$name] = ['tcp' => [], 'udp' => []];
+                $bindings[$name] = ['tcp' => []];
                 foreach ($group->listeners() as $definition) {
                     $socket = $definition['socket'] ?? Listener::bind($definition['address'], $definition['options']);
                     stream_set_blocking($socket, false);
                     $bindings[$name]['tcp'][] = $socket;
-                }
-                foreach ($group->datagrams() as $definition) {
-                    $bindings[$name]['udp'][] = UdpEndpoint::bind(
-                        $definition['address'],
-                        $definition['options']['socket'] ?? [],
-                    );
                 }
             }
             if ($singleProcess) {

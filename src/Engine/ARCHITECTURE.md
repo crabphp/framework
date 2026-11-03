@@ -19,14 +19,12 @@ flowchart TD
     W --> D[One EventLoop]
     D --> SD[StreamSelectDriver default]
     D -. optional .-> ND[Native driver]
-    W --> L[Listener and Connector]
+    W --> L[Listener]
     L --> C[Connection: bytes and backpressure]
-    W --> U[UdpEndpoint: packets and counters]
     C --> H[HttpSession]
     H --> HA[Request handler]
     H -. upgrade with unread bytes .-> WS[WebSocketSession]
     C --> RAW[Raw TCP handler]
-    C --> CS[Exclusive coroutine ConnectionStream]
     W --> T[Bounded tracked Tasks]
 ~~~
 
@@ -36,18 +34,17 @@ flowchart TD
 | `Crab` | Frozen startup configuration, endpoint and admission limits |
 | `Supervisor` | Worker slots, readiness, backoff, control channels, hard deadlines |
 | `Worker` | One loop, connection/task registries, admission, bootstrap and drain |
-| `Listener / Connector` | Establish streams and transfer ownership once |
+| `Listener` | Accept streams and transfer ownership once |
 | `Connection` | Byte I/O, watchers, bounded FIFO output, directional close state |
-| `UdpEndpoint` | Datagram I/O, packet/byte limits, drop/error counters |
 | `HttpSession` | Incremental parser, request lifetime, ordered responses and upgrade |
 | `Handshake / WebSocketSession` | Deferred upgrade admission, ordered messages, controls, output waits and deadlines |
-| `Task / Cancellation / ConnectionStream` | Cooperative application operations on the same driver |
+| `Task / Cancellation` | Cooperative application operations on the same driver |
 
 Server classes install protocol handlers; they do not own another runtime. HTTP and WebSocket load through ordinary autoloading when selected. There is no router, container, ORM or generic plugin registry in the core.
 
 ## Processes and lifetime
 
-A group serves several TCP listeners and UDP endpoints, or only bootstrap tasks/timers. Processes belong to groups, not individual listeners. State is process-local. Initialize application clients during `onStart(Worker)`, after fork.
+A group serves several TCP listeners, or only bootstrap tasks/timers. Processes belong to groups, not individual listeners. State is process-local. Initialize application clients during `onStart(Worker)`, after fork.
 
 Startup binds sockets in the parent, forks workers, closes unrelated inherited descriptors, installs each worker's driver, creates endpoint owners, runs bootstrap callbacks, then reports readiness. Bind failure closes earlier bindings. Child bootstrap failure exits and enters bounded restart/backoff handling.
 
@@ -57,7 +54,7 @@ Admission counts accepted and pending outbound connections together, including c
 
 A group's `onStop(Worker)` callbacks run in a worker after it has drained or reached its deadline, in reverse order of registration, and only when its start callbacks all completed; the loop has stopped by then, so they must not suspend. `onFailure(Throwable, Worker)` receives a failed task, a throwing stop callback, and a failure that escapes a timer or watcher callback; without one the first two go to PHP's error log and the last ends the worker.
 
-SIGINT/SIGTERM stop admission and initiate drain. HTTP finishes its active response, WebSocket starts a close handshake, raw TCP flushes accepted output, and UDP finishes its bounded local send queue. Pending connects and worker tasks receive cancellation. The worker cancels its watchers when it exits.
+SIGINT/SIGTERM stop admission and initiate drain. HTTP finishes its active response, WebSocket starts a close handshake, and raw TCP flushes accepted output. Worker tasks receive cancellation. The worker cancels its watchers when it exits.
 
 Worker and parent enforce the shutdown deadline, default five seconds. The parent can kill and reap a blocked child; single-process deadlines are cooperative. A worker can also ask its parent for a deadline of its own with `Worker::deadline($seconds)`, sent over the control stream as the earliest one not withdrawn; the parent kills a child still running past it, reports it, and restarts the slot as after any unexpected exit. It is the bound for work that may block PHP, such as a queue job past its timeout; alone, without a parent, it does nothing. A control/wakeup stream keeps intended live workers alive without a polling statistics timer.
 
@@ -95,12 +92,6 @@ Physical close and service completion are separate: `onClose()` follows socket c
 
 ## Protocol modules
 
-### UDP
-
-Datagrams preserve packet boundaries and valid empty payloads. A full-sized receive precedes application size validation, so oversized packets are dropped whole. Receive/send work is bounded at 64 packets per turn. Pending output has byte and packet caps.
-
-Destinations are numeric IPv4/IPv6 addresses and valid ports. `send()` means local acceptance. Queue rejection, oversized input and failed sends appear in counters. Pausing reception does not backpressure senders, counters cannot detect all network loss, and shared sockets do not establish peer affinity. [UDP](https://www.rfc-editor.org/rfc/rfc768.html)
-
 ### HTTP/1.1
 
 Incremental parsing validates request lines, fields and framing: fixed lengths, chunked bodies, bounded extensions and trailers. Duplicate Content-Length, TE/CL ambiguity, invalid Host, obsolete folding and prohibited trailer fields are rejected. Persistent and pipelined requests execute sequentially per connection. The first request of a read turn runs inside that turn; pipelined successors each take a later scheduler turn. A read turn admits no further input until it ends, even while its handler is suspended, so the session pauses reading only when output outlives the turn or the request runs from a later turn. Every head is validated in full before its handler runs; the parser extracts only the fields that decide framing and connection handling, and the complete field map is built when a handler first reads it.
@@ -131,7 +122,7 @@ Text/binary sends report pressure explicitly. Binary chunk sends provide message
 
 The loop executes callbacks in reusable Fibers; transport adds no separate Crab Fiber per packet. `Task::spawn()` uses that scheduler. `Worker::spawn()` additionally applies admission and lifecycle ownership. Results/failures are observable and worker-owned failures are reported.
 
-`Async::sleep()` and `ConnectionStream` use loop suspensions. A stream has at most one waiting reader and writer, demand-driven reads and bounded read-ahead. Writes return after bytes reach the local socket. Raw/protocol consumers cannot share its reader.
+`Async::sleep()` uses loop suspensions.
 
 `Pool` bounds a set of reusable resources. A caller beyond the limit suspends in a FIFO queue; release hands the resource straight to the longest waiter, so it never becomes idle in between. A place is reserved while a resource is being made, a failed creation frees it, and a timed-out or cancelled waiter leaves no registration behind.
 
@@ -149,12 +140,12 @@ Keep optimizations only after real socket checks and matched measurements. HTTP/
 
 [BENCHMARKS.md](../../BENCHMARKS.md) records results and limits. Short closed-loop trials with client/server on the same machine do not establish production saturation, internet tail latency, or superiority over other engines.
 
-`Worker::stats()` exposes active/pending connections, tasks, queued transport bytes, PHP memory and drain state. UDP exposes packet/error/drop counters. Queries stay outside the packet path; no metrics exporter is required.
+`Worker::stats()` exposes active connections, tasks, queued transport bytes, PHP memory and drain state. Queries stay outside the packet path; no metrics exporter is required.
 
 Select retains platform descriptor limits and scanning costs; application files and body spools consume descriptors too. Native drivers are the extension point when a measured workload outgrows select.
 
 ## Acceptance and further scope
 
-Tests cover TCP partial writes/half-close; connector refusal/cancellation; UDP boundaries/accounting; coroutine exclusion/cancellation/cleanup; HTTP framing/order/pressure/deadlines/upgrade; WebSocket handshake/fragments/malformed input/pressure/close; worker admission/bootstrap rollback/restart/blocked-child termination/reaping; and all four servers sharing one runtime.
+Tests cover TCP partial writes/half-close; coroutine cancellation/cleanup; HTTP framing/order/pressure/deadlines/upgrade; WebSocket handshake/fragments/malformed input/pressure/close; worker admission/bootstrap rollback/restart/blocked-child termination/reaping; and HTTP, WebSocket and TCP servers sharing one runtime.
 
 Separate work: TLS, generic line/length framing helpers, live uploads, a cross-process job pool, HTTP/2 or HTTP/3, long-duration distributed-load qualification, and the web/agent framework. These are not hidden dependencies or advertised implemented features.

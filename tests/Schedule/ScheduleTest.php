@@ -279,7 +279,7 @@ final class ScheduleTest extends TestCase
         $schedule->call(static fn() => null)->name('ping');
         $schedule->call(static fn() => throw new \RuntimeException('disk is full'))->name('backup');
         $scheduler = new Scheduler($schedule, new Container(), $this->log);
-        $worker = new Worker(new StreamSelectEventLoop(), new Crab('schedule'), 0, ['tcp' => [], 'udp' => []], 1.0);
+        $worker = new Worker(new StreamSelectEventLoop(), new Crab('schedule'), 0, ['tcp' => []], 1.0);
 
         $minute = new \DateTimeImmutable('2026-03-10 07:00:00');
         foreach ($scheduler->due($minute) as $task) {
@@ -627,7 +627,7 @@ final class ScheduleTest extends TestCase
             return 'task-' . count($pending);
         });
         $loop->method('delay')->willReturn('drain');
-        $worker = new Worker($loop, new Crab('schedule'), 0, ['tcp' => [], 'udp' => []], 5.0);
+        $worker = new Worker($loop, new Crab('schedule'), 0, ['tcp' => []], 5.0);
         $reports = [];
         $previous = FailureReporter::handleWith(static function (string $what, ?\Throwable $error) use (
             &$reports,

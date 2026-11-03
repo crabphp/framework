@@ -10,9 +10,7 @@ use Crab\Engine\Crab;
 use Crab\Engine\EventLoop;
 use Crab\Engine\FailureReporter;
 use Crab\Engine\Network\Connection;
-use Crab\Engine\Network\Connector;
 use Crab\Engine\Network\Listener;
-use Crab\Engine\Network\UdpEndpoint;
 
 final class Worker
 {
@@ -25,15 +23,9 @@ final class Worker
      */
     private array $connections = [];
     /**
-     * @var array<int, UdpEndpoint>
-     */
-    private array $datagrams = [];
-    /**
      * @var array<int, Task>
      */
     private array $tasks = [];
-    private array $pendingConnects = [];
-    private int $nextConnect = 0;
     private bool $draining = false;
     private bool $starting = true;
     private array $keepAlive = [];
@@ -65,7 +57,7 @@ final class Worker
      * Under a supervisor, the worker reports its stats() over the control
      * stream about once a second; alone, it hands them to $report.
      *
-     * @param array{tcp:list<resource>, udp:list<resource>} $bindings
+     * @param array{tcp:list<resource>} $bindings
      * @param (\Closure(array<string, mixed>): void)|null $report
      */
     public function __construct(
@@ -103,11 +95,7 @@ final class Worker
                     $this->loop,
                     $this->bindings['tcp'][$i],
                     function (Connection $connection) use ($definition): void {
-                        if (
-                            $this->draining
-                            || (count($this->connections) + count($this->pendingConnects))
-                                >= $this->group->maxConnections
-                        ) {
+                        if ($this->draining || count($this->connections) >= $this->group->maxConnections) {
                             $connection->close();
                             return;
                         }
@@ -117,23 +105,6 @@ final class Worker
                 );
                 $this->listeners[] = $listener;
                 $listener->attach();
-            }
-            foreach ($this->group->datagrams() as $i => $definition) {
-                $options = $definition['options'];
-                $endpoint = new UdpEndpoint(
-                    $this->loop,
-                    $this->bindings['udp'][$i],
-                    $definition['handler'],
-                    $options['maxDatagramSize'] ?? 65_507,
-                    $options['maxQueueBytes'] ?? 1_048_576,
-                    $options['maxQueuePackets'] ?? 1024,
-                );
-                $id = spl_object_id($endpoint);
-                $this->datagrams[$id] = $endpoint;
-                $endpoint->onClose(function () use ($id): void {
-                    unset($this->datagrams[$id]);
-                    $this->finishDrain();
-                });
             }
             foreach ($this->group->startCallbacks() as $callback) {
                 $callback($this);
@@ -163,17 +134,11 @@ final class Worker
             foreach ($this->listeners as $listener) {
                 $listener->close();
             }
-            foreach ($this->pendingConnects as $cancel) {
-                $cancel();
-            }
             foreach ($this->tasks as $task) {
                 $task->cancel();
             }
             foreach ($this->connections as $connection) {
                 $connection->close();
-            }
-            foreach ($this->datagrams as $endpoint) {
-                $endpoint->close();
             }
             foreach ($this->loop->getIdentifiers() as $id) {
                 $this->loop->cancel($id);
@@ -203,9 +168,6 @@ final class Worker
         foreach ($this->listeners as $listener) {
             $listener->close();
         }
-        foreach ($this->pendingConnects as $cancel) {
-            $cancel();
-        }
         foreach ($this->tasks as $task) {
             $task->cancel();
         }
@@ -221,16 +183,10 @@ final class Worker
             foreach ($this->connections as $connection) {
                 $connection->close();
             }
-            foreach ($this->datagrams as $endpoint) {
-                $endpoint->close();
-            }
             $this->loop->stop();
         });
         foreach ($this->connections as $connection) {
             $connection->drain($this->shutdownTimeout);
-        }
-        foreach ($this->datagrams as $endpoint) {
-            $endpoint->drain();
         }
         $this->finishDrain();
     }
@@ -263,45 +219,6 @@ final class Worker
             $this->finishDrain();
         });
         return $task;
-    }
-
-    /**
-     * Completion receives (?Connection, ?Throwable); cancelling also completes once.
-     */
-    public function connect(string $address, callable $completion, float $timeout = 5.0): \Closure
-    {
-        if (
-            $this->draining
-            || (count($this->connections) + count($this->pendingConnects)) >= $this->group->maxConnections
-        ) {
-            throw new \OverflowException('Worker is draining or its connection limit has been reached.');
-        }
-        $id = ++$this->nextConnect;
-        $completed = false;
-        $cancel = Connector::connect(
-            $this->loop,
-            $address,
-            function (?Connection $connection, ?\Throwable $error) use ($id, $completion, &$completed): void {
-                $completed = true;
-                unset($this->pendingConnects[$id]);
-                if ($connection !== null) {
-                    $this->track($connection);
-                } else {
-                    $this->updateAdmission();
-                }
-                try {
-                    $completion($connection, $error);
-                } finally {
-                    $this->finishDrain();
-                }
-            },
-            $timeout,
-        );
-        if (!$completed) {
-            $this->pendingConnects[$id] = $cancel;
-            $this->updateAdmission();
-        }
-        return $cancel(...);
     }
 
     /**
@@ -349,9 +266,7 @@ final class Worker
             'index' => $this->index,
             'started' => $this->started,
             'connections' => count($this->connections),
-            'pendingConnects' => count($this->pendingConnects),
             'tasks' => count($this->tasks),
-            'datagrams' => count($this->datagrams),
             'queuedBytes' => array_sum(array_map(
                 static fn(Connection $c): int => $c->bufferedBytes(),
                 $this->connections,
@@ -428,9 +343,7 @@ final class Worker
 
     private function updateAdmission(): void
     {
-        $atCapacity =
-            $this->draining
-            || (count($this->connections) + count($this->pendingConnects)) >= $this->group->maxConnections;
+        $atCapacity = $this->draining || count($this->connections) >= $this->group->maxConnections;
         foreach ($this->listeners as $listener) {
             if ($atCapacity) {
                 $listener->pause();
@@ -487,12 +400,7 @@ final class Worker
 
     private function hasWork(): bool
     {
-        return (
-            $this->connections !== []
-            || $this->datagrams !== []
-            || $this->tasks !== []
-            || $this->pendingConnects !== []
-        );
+        return $this->connections !== [] || $this->tasks !== [];
     }
 
     private function finishDrain(): void

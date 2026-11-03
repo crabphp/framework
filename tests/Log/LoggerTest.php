@@ -65,7 +65,7 @@ final class LoggerTest extends TestCase
             Crab\Engine\FailureReporter::handleWith(static fn(): bool => true);
             $runtime = $app->runtime();
             $group = new ReflectionProperty($runtime, 'groups')->getValue($runtime)['http'];
-            $worker = new Crab\Engine\Process\Worker(Crab\Engine\EventLoop::current(), $group, 0, ['tcp' => [], 'udp' => []], 5.0);
+            $worker = new Crab\Engine\Process\Worker(Crab\Engine\EventLoop::current(), $group, 0, ['tcp' => []], 5.0);
             // Exercise the registered stop callback with one request cut at the drain deadline.
             new ReflectionProperty($worker, 'cutConnections')->setValue($worker, 1);
             foreach ($group->stopCallbacks() as $stop) {
