@@ -743,7 +743,16 @@ final class ServerTest extends TestCase
             self::assertStringNotContainsString('within their drain time', $output);
             self::assertFalse(posix_kill($keeper, 0));
             self::assertTrue(posix_kill($unrelated, 0), 'Another process in the job must survive.');
-            self::assertFileDoesNotExist($this->directory . '/storage/service.pid');
+            // This has failed now and then under load in CI only: say enough to find which branch kept the file.
+            $pidFile = $this->directory . '/storage/service.pid';
+            self::assertFileDoesNotExist($pidFile, sprintf(
+                "The pid file was left. It names %s; the keeper was %d, alive: %s, zombie: %s. The command said:\n%s",
+                is_file($pidFile) ? trim((string) file_get_contents($pidFile)) : '(gone)',
+                $keeper,
+                \Crab\Engine\Process\PidFile::alive($keeper) ? 'yes' : 'no',
+                \Crab\Engine\Process\PidFile::zombie($keeper) ? 'yes' : 'no',
+                $output,
+            ));
         } finally {
             foreach ($processes as $process) {
                 if (!is_resource($process)) {
