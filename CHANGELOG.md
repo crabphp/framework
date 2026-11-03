@@ -2,7 +2,7 @@
 
 Crab follows [semantic versioning](https://semver.org). Before 1.0, a minor version may break what an application writes; the entry says what to change.
 
-## Unreleased
+## 0.3.0 — 2026-11-03
 
 - **A storage directory that can be moved:** everything the framework writes, logs, `server.pid` and its stats, the file cache, the `local` disk, is in one folder, `storage/` unless `->withStorage($dir)` in `app.php` or the `CRAB_STORAGE` environment variable says otherwise. A relative path starting with `storage/` in a setting is inside it, `storage_path('database.sqlite')` names a file in it from a configuration file, and `app.storage` reads it. To upgrade, replace `dirname(__DIR__) . '/storage/...'` in configuration files with `storage_path('...')`. A SQLite file whose folder is missing has it made. See [Storage elsewhere](docs/deployment.md#storage-elsewhere).
 - **A single executable:** an application packed into a phar and appended to static-php-cli's `micro.sfx` runs as one file: its `.env` and storage are beside the file, configuration and migrations are read from inside the phar, and `start`, `reload`, `restart`, servers kept across reloads and servers that run a command work as they do under `php`. See [A single executable](docs/deployment.md#a-single-executable).
