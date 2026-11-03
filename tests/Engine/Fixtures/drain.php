@@ -65,6 +65,7 @@ namespace {
     use Crab\Engine\Network\Connection;
     use Crab\Engine\Process\Generation;
     use Crab\Engine\Process\Keeper;
+    use Crab\Engine\Process\KeeperClient;
     use Crab\Engine\Process\PidFile;
     use Crab\Engine\Runtime;
 
@@ -73,7 +74,7 @@ namespace {
     if ($argv[1] === 'guard') {
         $GLOBALS['guardSignals'] = [];
         $errors = [];
-        $keeper = new Keeper(new PidFile($argv[3] . '/service.pid'), $argv[3] . '/service.log');
+        $keeper = new KeeperClient(new PidFile($argv[3] . '/service.pid'));
         foreach ([1, 0, -1] as $pid) {
             try {
                 $keeper->force($pid);
@@ -94,7 +95,7 @@ namespace {
 
     if ($argv[1] === 'force') {
         try {
-            new Keeper(new PidFile($argv[3] . '/service.pid'), $argv[3] . '/service.log')->force((int) $argv[4]);
+            new KeeperClient(new PidFile($argv[3] . '/service.pid'))->force((int) $argv[4]);
             echo "forced\n";
             exit(0);
         } catch (Throwable $error) {

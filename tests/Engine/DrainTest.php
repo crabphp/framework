@@ -9,7 +9,7 @@ use Crab\Engine\Crab;
 use Crab\Engine\EventLoop;
 use Crab\Engine\Http\Response;
 use Crab\Engine\Network\Listener;
-use Crab\Engine\Process\Keeper;
+use Crab\Engine\Process\KeeperClient;
 use Crab\Engine\Process\PidFile;
 use Crab\Engine\Process\Supervisor;
 use Crab\Engine\Process\Worker;
@@ -57,7 +57,7 @@ final class DrainTest extends TestCase
     {
         foreach ([0.0, -1.0, INF, NAN] as $timeout) {
             try {
-                Keeper::request(new PidFile('/unused'), 0, '', [], '', 1.0, $timeout);
+                new KeeperClient(new PidFile('/unused'))->request(0, '', [], '', 1.0, $timeout);
                 self::fail('An invalid generation stop allowance was accepted.');
             } catch (\InvalidArgumentException $error) {
                 self::assertStringContainsString('generation stop timeout', $error->getMessage());
@@ -102,8 +102,7 @@ final class DrainTest extends TestCase
         $pidFile = new PidFile($directory . '/service.pid');
         $pid = (int) $pidFile->pid();
         foreach (['second' => 0.08, 'third' => 1.0] as $name => $allowance) {
-            $answer = Keeper::request(
-                $pidFile,
+            $answer = new KeeperClient($pidFile)->request(
                 $pid,
                 $address,
                 [$fixture, 'serve', $autoload, $directory, $name],
@@ -176,8 +175,7 @@ final class DrainTest extends TestCase
         self::assertSame("ready\n", fgets($pipes[1]));
         $pidFile = new PidFile($directory . '/service.pid');
         $keeper = (int) $pidFile->pid();
-        $answer = Keeper::request(
-            $pidFile,
+        $answer = new KeeperClient($pidFile)->request(
             $keeper,
             $address,
             [$fixture, 'serve', $autoload, $directory, 'second'],
@@ -197,8 +195,7 @@ final class DrainTest extends TestCase
             usleep(10_000);
         } while (microtime(true) < $deadline);
         self::assertStringContainsString('Serving again, generation pid ', $log);
-        $answer = Keeper::request(
-            $pidFile,
+        $answer = new KeeperClient($pidFile)->request(
             $keeper,
             $address,
             [$fixture, 'serve', $autoload, $directory, 'third'],
@@ -376,7 +373,7 @@ final class DrainTest extends TestCase
         $directory = realpath(sys_get_temp_dir()) . '/crab-drain-' . bin2hex(random_bytes(6));
         mkdir($directory);
         $pidFile = new PidFile($directory . '/service.pid');
-        $keeper = new Keeper($pidFile, $directory . '/service.log');
+        $keeper = new KeeperClient($pidFile);
         $this->deferCleanup(static function () use ($directory): void {
             foreach (glob($directory . '/*') ?: [] as $file) {
                 unlink($file);
@@ -437,8 +434,7 @@ final class DrainTest extends TestCase
         $pidFile = new PidFile($directory . '/service.pid');
         $keeper = (int) $pidFile->pid();
         self::assertSame($keeper . "\n", file_get_contents($pidFile->path), 'The pid file stays readable as a number.');
-        $answer = Keeper::request(
-            $pidFile,
+        $answer = new KeeperClient($pidFile)->request(
             $keeper,
             $address,
             [$fixture, 'serve', $autoload, $directory, 'second'],

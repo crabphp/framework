@@ -153,7 +153,9 @@ final readonly class PidFile
      */
     public static function running(int $pid): bool
     {
-        return self::alive($pid) && !self::zombie($pid);
+        // Asked again after the zombie check: a parent collecting the process in between leaves
+        // no zombie to see, and the process gone would otherwise pass for one still executing.
+        return self::alive($pid) && !self::zombie($pid) && self::alive($pid);
     }
 
     /**

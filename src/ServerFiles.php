@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace Crab;
 
-use Crab\Engine\Process\Keeper;
+use Crab\Engine\Process\KeeperClient;
 use Crab\Engine\Process\PidFile;
 use Crab\Engine\Process\StatsFile;
 
@@ -137,7 +137,7 @@ final readonly class ServerFiles
             return null;
         }
         self::requireSignals();
-        $keeper = new Keeper($pidFile, $this->log);
+        $keeper = new KeeperClient($pidFile);
         if ($force) {
             try {
                 $keeper->force($pid);

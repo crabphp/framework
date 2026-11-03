@@ -832,7 +832,7 @@ final class ServerTest extends TestCase
             self::assertTrue(posix_kill($pid, 0), 'No signal may reach the unrelated process.');
         }
         try {
-            new \Crab\Engine\Process\Keeper($pidFile, $this->directory . '/service.log')->force($pid);
+            new \Crab\Engine\Process\KeeperClient($pidFile)->force($pid);
             self::fail('The direct force path must also check the recorded identity.');
         } catch (\RuntimeException $error) {
             self::assertStringContainsString('is stale', $error->getMessage());
@@ -1255,10 +1255,8 @@ final class ServerTest extends TestCase
         $request = $this->slowRequest();
         $this->drainSetting($drain);
         try {
-            $keeper = new \Crab\Engine\Process\Keeper(
-                new \Crab\Engine\Process\PidFile($this->directory . '/storage/crab.pid'),
-                '',
-            );
+            $keeper = new \Crab\Engine\Process\KeeperClient(new \Crab\Engine\Process\PidFile($this->directory
+            . '/storage/crab.pid'));
             self::assertGreaterThanOrEqual(36.0, $keeper->allowance($pid));
             [$status, $output] = $this->stopDuringRequest();
             self::assertSame(0, $status, $output);

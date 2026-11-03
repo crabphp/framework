@@ -15,6 +15,7 @@ use Crab\Engine\Http\Request;
 use Crab\Engine\Http\Response;
 use Crab\Engine\Process\Generation;
 use Crab\Engine\Process\Keeper;
+use Crab\Engine\Process\KeeperClient;
 use Crab\Engine\Process\PidFile;
 use Crab\Engine\Process\Worker;
 use Crab\Engine\Runtime;
@@ -46,8 +47,7 @@ if ($argv[1] === 'replace') {
     $command = [__FILE__, 'serve', $argv[2], $text, ...array_slice($argv, 6)];
     $held = (string) getenv('KEEPER_HELD');
     echo
-        json_encode(Keeper::request(
-            $file,
+        json_encode(new KeeperClient($file)->request(
             (int) $file->pid(),
             $address,
             $command,

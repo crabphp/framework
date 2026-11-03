@@ -10,6 +10,7 @@ use Crab\Engine\Process\FileWatcher;
 use Crab\Engine\Process\Generation;
 use Crab\Engine\Process\Interpreter;
 use Crab\Engine\Process\Keeper;
+use Crab\Engine\Process\KeeperClient;
 use Crab\Engine\Process\PidFile;
 use Crab\Engine\Runtime;
 
@@ -292,8 +293,7 @@ final class Server
         $log = $files->log;
         $logged = (int) @filesize($log);
         try {
-            $answer = Keeper::request(
-                $pidFile,
+            $answer = new KeeperClient($pidFile)->request(
                 $server,
                 $address,
                 self::generationCommand($invocation, $given),
