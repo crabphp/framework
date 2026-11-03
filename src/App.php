@@ -1140,7 +1140,7 @@ final class App implements RequestHandlerInterface, Runner
         $group = $runtime->group($workers->group, $workers->workers, reloads: $reloads);
         if ($workers->setup !== null) {
             ($workers->setup)($group);
-            if ($background && ($group->listeners() !== [] || $group->datagrams() !== [])) {
+            if ($background && $group->listeners() !== []) {
                 // The keeper hands the HTTP socket alone from one server process to the next. Another
                 // listener would be bound afresh by each, and the new one refused while the old holds it.
                 throw new \LogicException(

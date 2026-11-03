@@ -4,13 +4,11 @@ declare(strict_types=1);
 
 use Crab\Engine\Http\Response;
 use Crab\Engine\Network\Connection;
-use Crab\Engine\Network\UdpEndpoint;
 use Crab\Engine\Network\WriteResult;
 use Crab\Engine\Process\Worker;
 use Crab\Engine\Runtime;
 use Crab\Engine\Server\HttpServer;
 use Crab\Engine\Server\TcpServer;
-use Crab\Engine\Server\UdpServer;
 use Crab\Engine\Server\WebSocketServer;
 use Crab\Engine\WebSocket\MessageType;
 use Crab\Engine\WebSocket\WebSocketSession;
@@ -32,11 +30,8 @@ $runtime->group(workers: (int) (getenv('CRAB_WORKERS') ?: 1))
             if ($connection->tryWrite($bytes) === WriteResult::Backpressured) { $connection->close(); }
         },
     ))
-    ->udp('udp://127.0.0.1:8083', new UdpServer(
-        static fn(UdpEndpoint $endpoint, string $packet, string $peer) => $endpoint->send($packet, $peer),
-    ))
     ->onStart(static function (Worker $worker): void {
-        fwrite(STDOUT, "Worker {$worker->index} ready; HTTP :8080, WebSocket :8081, TCP :8082, UDP :8083\n");
+        fwrite(STDOUT, "Worker {$worker->index} ready; HTTP :8080, WebSocket :8081, TCP :8082\n");
     });
 
 return $runtime;

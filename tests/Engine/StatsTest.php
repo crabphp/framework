@@ -51,7 +51,7 @@ final class StatsTest extends TestCase
 
     public function testAWorkerCountsAndCarriesItsCountsInItsStats(): void
     {
-        $worker = new Worker(new StreamSelectEventLoop(), new Crab('web'), 0, ['tcp' => [], 'udp' => []], 1.0);
+        $worker = new Worker(new StreamSelectEventLoop(), new Crab('web'), 0, ['tcp' => []], 1.0);
         self::assertSame([], $worker->stats()['counts']);
 
         $worker->count('requests');

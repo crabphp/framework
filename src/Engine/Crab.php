@@ -17,10 +17,6 @@ final class Crab
      */
     private array $listeners = [];
     /**
-     * @var list<array{address:string, handler:\Closure, options:array}>
-     */
-    private array $datagrams = [];
-    /**
      * @var list<\Closure>
      */
     private array $startCallbacks = [];
@@ -76,13 +72,6 @@ final class Crab
         return $this;
     }
 
-    public function udp(string $address, callable $handler, array $options = []): self
-    {
-        $this->assertMutable();
-        $this->datagrams[] = ['address' => $address, 'handler' => $handler(...), 'options' => $options];
-        return $this;
-    }
-
     public function onStart(callable $callback): self
     {
         $this->assertMutable();
@@ -120,11 +109,6 @@ final class Crab
     public function listeners(): array
     {
         return $this->listeners;
-    }
-
-    public function datagrams(): array
-    {
-        return $this->datagrams;
     }
 
     public function startCallbacks(): array

@@ -701,7 +701,7 @@ final class QueueTest extends TestCase
     public function testASupervisorsWorkerCountsEachTryAndEachFailureForStatus(): void
     {
         $store = new MemoryStore();
-        $worker = new Worker(new StreamSelectEventLoop(), new Crab('queue'), 0, ['tcp' => [], 'udp' => []], 1.0);
+        $worker = new Worker(new StreamSelectEventLoop(), new Crab('queue'), 0, ['tcp' => []], 1.0);
         $consumer = new Consumer($store, new Container(), $this->log, $this->clock)->within(
             new Supervisor('queue', ['default'], tries: 2, backoff: [0]),
             $worker,
@@ -1495,7 +1495,7 @@ final class QueueTest extends TestCase
             $this->clock,
             tries: 1,
             events: $events,
-            worker: new Worker($loop, new Crab('queue'), 0, ['tcp' => [], 'udp' => []], 1.0, $worker),
+            worker: new Worker($loop, new Crab('queue'), 0, ['tcp' => []], 1.0, $worker),
             grace: 5.0,
         );
 

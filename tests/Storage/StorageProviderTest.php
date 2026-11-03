@@ -93,7 +93,7 @@ final class StorageProviderTest extends TestCase
                     new \Crab\Engine\EventLoop\StreamSelectEventLoop(),
                     new \Crab\Engine\Crab('web'),
                     0,
-                    ['tcp' => [], 'udp' => []],
+                    ['tcp' => []],
                     1.0,
                 ),
                 $app->container,

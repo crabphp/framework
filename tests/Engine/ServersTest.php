@@ -11,16 +11,11 @@ use stdClass;
 final class ServersTest extends TestCase
 {
     #[RequiresPhpExtension('pcntl')]
-    public function testHttpWebSocketTcpAndUdpCoexistAndShutDownCleanly(): void
+    public function testHttpWebSocketAndTcpCoexistAndShutDownCleanly(): void
     {
         $ports = $reserved = [];
-        foreach (['tcp', 'tcp', 'tcp', 'udp'] as $scheme) {
-            $socket = stream_socket_server(
-                "{$scheme}://127.0.0.1:0",
-                $code,
-                $error,
-                $scheme === 'udp' ? STREAM_SERVER_BIND : STREAM_SERVER_BIND | STREAM_SERVER_LISTEN,
-            );
+        foreach (['tcp', 'tcp', 'tcp'] as $scheme) {
+            $socket = stream_socket_server("{$scheme}://127.0.0.1:0", $code, $error);
             self::assertIsResource($socket, 'Reserve server address.');
             $this->ownStream($socket);
             $ports[] = substr(strrchr(stream_socket_get_name($socket, false), ':'), 1);
@@ -34,8 +29,7 @@ final class ServersTest extends TestCase
         try {
             self::assertSame("ready\n", fgets($fixture->stdout), 'Combined server startup deadline.');
             foreach ($ports as $index => $port) {
-                $scheme = $index === 3 ? 'udp' : 'tcp';
-                $socket = stream_socket_client("{$scheme}://127.0.0.1:{$port}", $code, $error, 1);
+                $socket = stream_socket_client("tcp://127.0.0.1:{$port}", $code, $error, 1);
                 self::assertIsResource($socket, 'Connect to server.');
                 $clients[$index] = $this->ownStream($socket);
                 stream_set_timeout($socket, 1);
@@ -53,7 +47,6 @@ final class ServersTest extends TestCase
                 . "Sec-WebSocket-Version: 13\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\n\r\n",
             );
             fwrite($clients[2], $payload);
-            stream_socket_sendto($clients[3], $payload);
 
             $responses = stream_get_contents($clients[0]);
             self::assertSame(2, substr_count($responses, 'HTTP/1.1 200 OK'));
@@ -73,7 +66,6 @@ final class ServersTest extends TestCase
             fwrite($clients[1], "\x82\x86" . $mask . $masked);
             self::assertSame("\x82\x06" . $payload, $this->readExactly($clients[1], 8), 'WebSocket binary echo.');
             self::assertSame($payload, $this->readExactly($clients[2], strlen($payload)), 'TCP binary echo.');
-            self::assertSame($payload, stream_socket_recvfrom($clients[3], 100), 'UDP binary echo.');
         } finally {
             foreach ($clients as $socket) {
                 if (!is_resource($socket)) {

@@ -863,7 +863,7 @@ final class HttpTest extends TestCase
                 $worker->stop();
             });
         });
-        $worker = new Worker($loop, $group, 0, ['tcp' => [$bound], 'udp' => []], 5.0);
+        $worker = new Worker($loop, $group, 0, ['tcp' => [$bound]], 5.0);
         $worker->run();
         fclose($peer);
         self::assertFalse($timedOut, 'HTTP activity fixture never reached its cleanup phase.');

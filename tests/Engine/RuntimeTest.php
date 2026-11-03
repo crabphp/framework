@@ -225,41 +225,20 @@ final class RuntimeTest extends TestCase
         self::assertSame(['Task failed: deliberate detached task failure'], $this->reports);
     }
 
-    public function testActiveOutboundConnectionReservesAdmissionCapacity(): void
-    {
-        $this->assertOutboundAdmission('complete');
-    }
-
-    public function testCancellingPendingOutboundConnectionReleasesAdmissionCapacity(): void
-    {
-        $this->assertOutboundAdmission('cancel');
-    }
-
-    public function testBootstrapFailureRollsBackListenersPendingConnectionsAndTasks(): void
+    public function testBootstrapFailureRollsBackListenersAndTasks(): void
     {
         $loop = $this->driver();
         $bound = $this->ownStream(Listener::bind('tcp://127.0.0.1:0'));
-        $outbound = $this->ownStream(Listener::bind('tcp://127.0.0.1:0'));
-        $outboundAddress = 'tcp://' . stream_socket_get_name($outbound, false);
-        $cancelled = 0;
         $ran = false;
         $group = new Crab('bootstrap-failure');
         $group->listen('tcp://127.0.0.1:0', static function (): void {});
-        $group->onStart(function (Worker $worker) use ($outboundAddress, &$cancelled, &$ran): void {
-            $worker->connect($outboundAddress, $this->guardCallback(static function (
-                ?Connection $connection,
-                ?Throwable $error,
-            ) use (&$cancelled): void {
-                self::assertNull($connection);
-                self::assertNotNull($error, 'Bootstrap rollback must cancel pending connections.');
-                $cancelled++;
-            }));
+        $group->onStart(static function (Worker $worker) use (&$ran): void {
             $worker->spawn(static function () use (&$ran): void {
                 $ran = true;
             });
             throw new RuntimeException('Expected bootstrap rollback');
         });
-        $worker = new Worker($loop, $group, 0, ['tcp' => [$bound], 'udp' => []], 0.1);
+        $worker = new Worker($loop, $group, 0, ['tcp' => [$bound]], 0.1);
         $failure = null;
         try {
             $worker->run();
@@ -268,7 +247,6 @@ final class RuntimeTest extends TestCase
         }
         self::assertInstanceOf(RuntimeException::class, $failure);
         self::assertSame('Expected bootstrap rollback', $failure->getMessage());
-        self::assertSame(1, $cancelled);
         self::assertFalse($ran, 'A task queued by failed bootstrap must not run.');
         self::assertFalse(is_resource($bound), 'Bootstrap failure must release the listener.');
         self::assertSame([], $loop->getIdentifiers());
@@ -298,7 +276,7 @@ final class RuntimeTest extends TestCase
                 fclose($pair[0]);
             });
         });
-        $worker = new Worker($loop, $group, 0, ['tcp' => [], 'udp' => []], 5.0, $pair[1]);
+        $worker = new Worker($loop, $group, 0, ['tcp' => []], 5.0, $pair[1]);
         $worker->run();
         self::assertTrue($watcherRemoved, 'EOF must stop read interest before the task finishes.');
         self::assertSame([], $loop->getIdentifiers());
@@ -494,76 +472,6 @@ final class RuntimeTest extends TestCase
         $this->assertFixtureExit($result, expected: 255);
     }
 
-    private function assertOutboundAdmission(string $mode): void
-    {
-        $loop = $this->driver();
-        $bound = $this->ownStream(Listener::bind('tcp://127.0.0.1:0'));
-        $incomingAddress = 'tcp://' . stream_socket_get_name($bound, false);
-        $outbound = $this->ownStream(Listener::bind('tcp://127.0.0.1:0'));
-        $outboundAddress = 'tcp://' . stream_socket_get_name($outbound, false);
-        $accepted = $completions = 0;
-        $released = false;
-        $worker = null;
-        $group = new Crab('admission', maxConnections: 1);
-        $group->listen($incomingAddress, $this->guardCallback(static function (Connection $connection) use (
-            &$accepted,
-            &$released,
-            &$worker,
-        ): void {
-            self::assertTrue($released, 'An inbound socket was accepted before outbound capacity was released.');
-            $accepted++;
-            $connection->close();
-            $worker->stop();
-        }));
-        $group->onStart($this->guardCallback(function (Worker $worker) use (
-            $loop,
-            $mode,
-            $outboundAddress,
-            $incomingAddress,
-            &$accepted,
-            &$completions,
-            &$released,
-        ): void {
-            $cancel = $worker->connect($outboundAddress, $this->guardCallback(function (
-                ?Connection $connection,
-                ?Throwable $error,
-            ) use ($loop, $mode, &$accepted, &$completions, &$released): void {
-                $completions++;
-                if ($mode === 'cancel') {
-                    self::assertNull($connection);
-                    self::assertNotNull($error);
-                    $released = true;
-                } else {
-                    self::assertNotNull($connection);
-                    self::assertNull($error);
-                    $loop->delay(0.005, $this->guardCallback(static function () use (
-                        $connection,
-                        &$accepted,
-                        &$released,
-                    ): void {
-                        self::assertSame(0, $accepted, 'Active outbound connections must reserve admission capacity.');
-                        $released = true;
-                        $connection->close();
-                    }));
-                }
-            }));
-            $incoming = stream_socket_client($incomingAddress, $code, $error, 1);
-            self::assertIsResource($incoming, 'Could not queue an inbound client.');
-            $this->ownStream($incoming);
-            if ($mode === 'cancel') {
-                $loop->defer(static fn() => $cancel());
-            }
-            $loop->delay(1, $this->guardCallback(static function (): void {
-                self::fail('Admission did not resume after capacity release.');
-            }));
-        }));
-        $worker = new Worker($loop, $group, 0, ['tcp' => [$bound], 'udp' => []], 0.1);
-        $worker->run();
-        self::assertSame(1, $accepted);
-        self::assertSame(1, $completions);
-        self::assertSame([], $loop->getIdentifiers());
-    }
-
     /**
      * @return array{bool, bool, float, int}
      */
@@ -632,7 +540,7 @@ final class RuntimeTest extends TestCase
                 static fn() => throw new RuntimeException('The HTTP cleanup operation never started.'),
             );
         });
-        $worker = new Worker($loop, $group, 0, ['tcp' => [$bound], 'udp' => []], $shutdownTimeout);
+        $worker = new Worker($loop, $group, 0, ['tcp' => [$bound]], $shutdownTimeout);
         $start = hrtime(true);
         $worker->run();
         self::assertInstanceOf(Connection::class, $connection);

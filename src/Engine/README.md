@@ -1,6 +1,6 @@
 # Crab Engine
 
-A PHP 8.4 networking engine with TCP, UDP, HTTP/1.1, WebSocket, coroutines, timers, and supervised worker processes.
+A PHP 8.4 networking engine with TCP, HTTP/1.1, WebSocket, coroutines, timers, and supervised worker processes.
 
 The engine has its own event loop type, `Crab\Engine\EventLoop`, which everything is written against; `EventLoop::current()` is the loop of the running process. `StreamSelectEventLoop`, the default, is the engine's own pure-PHP loop on `stream_select()`; backend-neutral scheduling lives in `FiberEventLoop`, so a native backend only adds how streams and signals are watched. `RevoltEventLoop` extends `EventLoop` on `revolt/event-loop` for the native ev, event and uv backends, and is the only code that names Revolt. Swoole and OpenSwoole are not required. A native backend is chosen through the loop factory: `new Runtime(loopFactory: fn () => RevoltEventLoop::create('uv'))`.
 
@@ -11,7 +11,7 @@ composer install
 php bin/crab examples/servers.php --single
 ~~~
 
-The example starts HTTP on `127.0.0.1:8080`, WebSocket on `:8081`, TCP echo on `:8082` and UDP echo on `:8083`.
+The example starts HTTP on `127.0.0.1:8080`, WebSocket on `:8081`, and TCP echo on `:8082`.
 
 ~~~sh
 curl http://127.0.0.1:8080/
@@ -70,10 +70,9 @@ Run `php bin/crab server.php`. A group can serve several listeners; two workers 
 
 HTTP provides strict request framing, keep-alive, ordered pipelining, chunked bodies, streaming responses, request cancellation, and configurable deadlines. Request bodies are incrementally parsed into a bounded temporary spool **before** the handler runs; live upload consumption is not exposed yet. See [HTTP behavior](src/Http/README.md).
 
-## WebSocket and datagrams
+## WebSocket
 
 ~~~php
-use Crab\Engine\Network\UdpEndpoint;
 use Crab\Engine\Network\WriteResult;
 use Crab\Engine\Server\WebSocketServer;
 use Crab\Engine\WebSocket\MessageType;
@@ -90,9 +89,6 @@ $group->listen('tcp://127.0.0.1:8081', new WebSocketServer(
         }
     },
 ));
-$group->udp('udp://127.0.0.1:8083',
-    static fn(UdpEndpoint $socket, string $packet, string $peer) => $socket->send($packet, $peer),
-);
 ~~~
 
 WebSocket supports masking validation, fragmented text/binary messages, ping/pong, UTF-8 checks, close handshakes, subprotocol selection and an application admission callback. Configure bounds with `WebSocket\Config`. `sendBinaryChunk()` streams a fragmented binary message; `pauseRead()` also pauses dispatch of already-buffered messages. Protocol extensions such as per-message compression are not negotiated.
@@ -134,8 +130,6 @@ A message handler may suspend. The next message is delivered only when it return
 
 Drain rejects new writes immediately and spreads Close 1001 frames deterministically over at most `min(1, closeTimeout)` seconds, capped at half the remaining worker allowance. The other half remains available for the close handshake. The transport's worker deadline remains the hard cutoff and cancels pending closes. WebSockets do not contribute to the cut HTTP request count.
 
-UDP preserves packet boundaries and empty packets. `send()` reports local acceptance, never delivery. Queue overflow rejects the packet; counters expose application drops and send errors. Multiple workers sharing one UDP endpoint do not guarantee peer affinity.
-
 ## Coroutines and timers
 
 ~~~php
@@ -157,7 +151,7 @@ $runtime->group('jobs', maxTasks: 128)->onStart(
 
 `Worker::spawn()` tracks tasks until they exit and requests cancellation during shutdown. A group's `onStop()` callbacks run in each worker after it drains, for releasing what `onStart()` opened, and `onFailure()` receives a task that failed, which otherwise goes to PHP's error log, and a failure that escapes a timer callback, which otherwise ends the worker. Tasks return results through `await()`; cancellation of an await only cancels that wait. Pass the supplied token into async operations. HTTP handlers receive `$request->cancellation` for the same purpose. `php bin/crab examples/coroutines.php --single` runs a complete task example.
 
-Use the worker's loop for timers: `$worker->loop->delay($seconds, $callback)`, `repeat()`, and `cancel($id)`. It is a `Crab\Engine\EventLoop`; `EventLoop::current()` returns the same one where no worker is at hand. `Async\Pool` is a bounded set of reusable resources such as client connections: `acquire()` makes one on demand up to the limit and otherwise waits, first come first served, until `release()`, a timeout or cancellation; `discard()` replaces a broken one and `run()` lends one for a callback. `Async\ConnectionStream` gives one coroutine reader and one writer exclusive ownership of a TCP connection, with demand-driven reads and bounded writes. It must not share ownership with a protocol parser or raw data handler.
+Use the worker's loop for timers: `$worker->loop->delay($seconds, $callback)`, `repeat()`, and `cancel($id)`. It is a `Crab\Engine\EventLoop`; `EventLoop::current()` returns the same one where no worker is at hand. `Async\Pool` is a bounded set of reusable resources such as client connections: `acquire()` makes one on demand up to the limit and otherwise waits, first come first served, until `release()`, a timeout or cancellation; `discard()` replaces a broken one and `run()` lends one for a callback.
 
 `Process\Subprocess::run($argv, directory:, environment:, input:, timeout:, maxBytes:, cancellation:)` runs a command without blocking the loop and returns a `SubprocessResult` (`exitCode`, `stdout`, `stderr`, `output` in arrival order, `timedOut`, `truncated`). Arguments never pass through a shell. With `setsid` and the posix extension present the command gets a process group of its own, and the whole group is killed when it ends, times out, writes past `maxBytes` or is cancelled, so nothing it started in the background outlives it.
 
@@ -167,7 +161,7 @@ Fibers provide concurrency within a worker. Worker processes provide CPU paralle
 
 Nothing the engine catches is dropped. A handler, callback or task that throws is reported through `FailureReporter`, as is what the supervisor notices about its workers:
 
-- A group with `onFailure(fn (Throwable $error, Worker $worker) => ...)` receives every failure caught in its workers: HTTP and WebSocket handlers, streamed responses that fail part-way, connection, accept and UDP callbacks, tasks, timers and stop callbacks.
+- A group with `onFailure(fn (Throwable $error, Worker $worker) => ...)` receives every failure caught in its workers: HTTP and WebSocket handlers, streamed responses that fail part-way, connection and accept callbacks, tasks, timers and stop callbacks.
 - Without one, and for everything the parent process reports, the failure is written to standard error with its class, message and trace.
 - A malformed request is answered (400, 413, 431 and so on) and is not a failure.
 
@@ -183,11 +177,11 @@ An HTTP handler that throws is answered with 500; one that fails after its respo
 | `WriteResult::Backpressured` | No bytes accepted; pause production and retry after `onDrain()` |
 | `WriteResult::Closed` | No more writes are accepted |
 
-An individually oversized write throws `LengthException`. `onDrain()` signals a chance to retry; it does not reserve capacity. `shutdownWrite()` flushes then sends FIN while retaining the read direction; `end()` flushes and closes; `close()` releases resources immediately. Low-level application connection, UDP and cancellation callbacks must not suspend; WebSocket message handlers may suspend. Other WebSocket callbacks must not suspend. Use tracked tasks for asynchronous application work.
+An individually oversized write throws `LengthException`. `onDrain()` signals a chance to retry; it does not reserve capacity. `shutdownWrite()` flushes then sends FIN while retaining the read direction; `end()` flushes and closes; `close()` releases resources immediately. Low-level application connection and cancellation callbacks must not suspend; WebSocket message handlers may suspend. Other WebSocket callbacks must not suspend. Use tracked tasks for asynchronous application work.
 
 `onClose()` runs after socket cleanup. `onSettled()` additionally waits for service activity to finish, including asynchronous `finally` cleanup. HTTP and WebSocket message dispatch own these activity scopes automatically. Custom protocol owners can use `beginActivity()` and call its returned release closure in `finally`; a closed connection remains in worker admission accounting until all activities release it.
 
-`Worker::connect()` establishes outbound TCP connections with cancellation, timeouts, admission accounting and exactly-once completion. It accepts numeric IPv4/IPv6 endpoints. `Network\DnsResolver::resolve($loop, $host)` finds a name's addresses first, without holding the worker: it reads the hosts file, keeps answers for as long as they hold, asks the system's name servers over UDP, and only when they give nothing falls back on the system's blocking resolver.
+`Network\DnsResolver::resolve($loop, $host)` finds a name's addresses first, without holding the worker: it reads the hosts file, keeps answers for as long as they hold, asks the system's name servers over UDP, and only when they give nothing falls back on the system's blocking resolver.
 
 ## Bounds and scope
 
