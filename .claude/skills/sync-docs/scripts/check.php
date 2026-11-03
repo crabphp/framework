@@ -12,7 +12,7 @@ declare(strict_types=1);
 
 use Crab\App;
 use Crab\Config\Config;
-use Crab\Contracts\Provider;
+use Crab\Contracts\Plugin;
 
 $root = getcwd();
 if (!is_file($root . '/composer.json') || !is_dir($root . '/src') || !is_file($root . '/vendor/autoload.php')) {
@@ -109,11 +109,11 @@ foreach ($pages as $name => $markdown) {
 $app = new App(new Config());
 $files = new RecursiveIteratorIterator(new RecursiveDirectoryIterator($root . '/src', FilesystemIterator::SKIP_DOTS));
 foreach ($files as $file) {
-    if (!str_ends_with($file->getFilename(), 'Provider.php') || str_contains($file->getPathname(), '/Contracts/')) {
+    if (!str_ends_with($file->getFilename(), 'Plugin.php') || str_contains($file->getPathname(), '/Contracts/')) {
         continue;
     }
     $class = 'Crab\\' . str_replace('/', '\\', substr($file->getPathname(), strlen($root . '/src/'), -4));
-    if (class_exists($class) && is_subclass_of($class, Provider::class)) {
+    if (class_exists($class) && is_subclass_of($class, Plugin::class)) {
         $app->register($class);
     }
 }

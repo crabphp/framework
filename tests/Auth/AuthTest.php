@@ -5,12 +5,12 @@ declare(strict_types=1);
 namespace Crab\Tests\Auth;
 
 use Crab\App;
-use Crab\Auth\AuthProvider;
+use Crab\Auth\AuthPlugin;
 use Crab\Auth\Commands\InstallTokens;
 use Crab\Auth\DatabaseTokenStore;
 use Crab\Auth\PasswordHasher;
 use Crab\Auth\TokenAuth;
-use Crab\Auth\TokenAuthProvider;
+use Crab\Auth\TokenAuthPlugin;
 use Crab\Config\Config;
 use Crab\Console\Input;
 use Crab\Console\Output;
@@ -22,7 +22,7 @@ use Crab\Contracts\Database\Database as DatabaseContract;
 use Crab\Contracts\Database\Migrator;
 use Crab\Contracts\Http\Middleware;
 use Crab\Database\Database;
-use Crab\Database\DatabaseProvider;
+use Crab\Database\DatabasePlugin;
 use Crab\Database\Migrator as DatabaseMigrator;
 use Crab\Http\ErrorResponse;
 use Crab\Http\Request;
@@ -397,7 +397,7 @@ final class AuthTest extends TestCase
             ],
         ]));
         // In either order: nothing is needed from the database until a token is.
-        $app->register(AuthProvider::class, TokenAuthProvider::class, DatabaseProvider::class);
+        $app->register(AuthPlugin::class, TokenAuthPlugin::class, DatabasePlugin::class);
         $app->container->instance(ClockInterface::class, new FrozenClock('2026-01-31 12:00:00'));
         $members = new Members();
         $members->known[7] = new Member(7, 'Ada');
@@ -409,7 +409,7 @@ final class AuthTest extends TestCase
         self::assertSame(
             [],
             $app->container->get(Migrator::class)->status(),
-            'The provider adds no migration of its own.',
+            'The plugin adds no migration of its own.',
         );
         $out = fopen('php://memory', 'w+');
         self::assertSame(0, $app->console->run(['token:install'], new Output($out, $out)));
@@ -526,32 +526,32 @@ final class AuthTest extends TestCase
     {
         // The general part needs nothing: no database, no tokens, no way of finding a user.
         $general = new App();
-        $general->register(AuthProvider::class);
+        $general->register(AuthPlugin::class);
         self::assertInstanceOf(PasswordHasher::class, $general->container->get(PasswordHasherContract::class));
         self::assertFalse($general->console->has('token:install'));
         self::assertFalse($general->container->has(TokenStore::class));
 
         $bare = new App();
-        $bare->register(TokenAuthProvider::class);
+        $bare->register(TokenAuthPlugin::class);
         self::assertTrue($bare->console->has('token:install'));
         try {
             $bare->container->get(TokenStore::class);
             self::fail('Tokens were offered without a database to keep them in.');
         } catch (\LogicException $error) {
             self::assertStringContainsString(
-                'register the database provider, DatabaseProvider, as well as TokenAuthProvider',
+                'register the database plugin, DatabasePlugin, as well as TokenAuthPlugin',
                 $error->getMessage(),
             );
         }
 
         $app = new App(new Config(['database' => ['connections' => ['main' => ['dsn' => 'sqlite:' . $this->file]]]]));
-        $app->register(DatabaseProvider::class, TokenAuthProvider::class);
+        $app->register(DatabasePlugin::class, TokenAuthPlugin::class);
         try {
             $app->container->get(TokenAuth::class);
             self::fail('Token authentication was set up with no way to find a user.');
         } catch (\LogicException $error) {
             self::assertStringContainsString(
-                'bind Crab\Contracts\Auth\IdentityResolver in a provider of your own: it finds one of your users by id',
+                'bind Crab\Contracts\Auth\IdentityResolver in a plugin of your own: it finds one of your users by id',
                 $error->getMessage(),
             );
         }

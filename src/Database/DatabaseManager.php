@@ -21,7 +21,7 @@ use Psr\Clock\ClockInterface;
  *     username     for MySQL
  *     password     for MySQL
  *     options      integer PDO attributes, or the async driver's string ssl stream option
- *     async        use the nonblocking MySQL driver inside a provider's worker; false
+ *     async        use the nonblocking MySQL driver inside a plugin's worker; false
  *     pool         the most connections each worker opens; 1 for SQLite, which allows one writer, and 10 otherwise
  *     timeout      seconds to wait for a connection when all are in use; 5
  *     migrations   the folder that holds this database's migration files
@@ -122,7 +122,7 @@ final class DatabaseManager implements Migrators
     }
 
     /**
-     * Provider lifecycle supplies the running worker without process-global state.
+     * Plugin lifecycle supplies the running worker without process-global state.
      * Existing pools are replaced so a parent or previous worker's PDO is not lent.
      */
     public function start(Worker $worker): void

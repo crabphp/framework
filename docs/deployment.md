@@ -100,7 +100,7 @@ final readonly class Ready
 Route::get('/ready', Ready::class);
 ```
 
-Point the readiness probe at `GET /ready` and the liveness probe at `GET /up`. When the database is down, every container stops taking traffic and none is restarted, since restarting would not bring the database back. Ask only what every request needs: a mail provider or a payment API that is down should fail the requests that use it, not take the whole service out of rotation.
+Point the readiness probe at `GET /ready` and the liveness probe at `GET /up`. When the database is down, every container stops taking traffic and none is restarted, since restarting would not bring the database back. Ask only what every request needs: a mail plugin or a payment API that is down should fail the requests that use it, not take the whole service out of rotation.
 
 Give the probe a short timeout of its own, a second or two. The database's `timeout` setting bounds connecting and waiting for a free connection; a query has no deadline of its own, so a database that accepts the connection and then hangs is caught by the probe's timeout.
 
@@ -178,7 +178,7 @@ php cua reload
 The server starts a new process, with the code and configuration as they are now, on the socket it already listens on. When every worker of the new process accepts connections, the old process gives its requests up to its `server.drain` limit to finish and stops.
 
 - **Connections keep being accepted.** The old and the new process accept from the same socket. Requests already in flight finish within the old workers' `server.drain` limit; connections still open at that limit are cut.
-- **A reload that fails at startup leaves the old process serving.** Settings that do not fit are refused before the running server is touched. So is a service the code names and the container cannot make, as described in [Services that cannot be made](#services-that-cannot-be-made). Syntax errors, middleware construction and provider start hooks fail here too. What a constructor or a closure binding does when it runs is still found by the first request that needs it.
+- **A reload that fails at startup leaves the old process serving.** Settings that do not fit are refused before the running server is touched. So is a service the code names and the container cannot make, as described in [Services that cannot be made](#services-that-cannot-be-made). Syntax errors, middleware construction and plugin start hooks fail here too. What a constructor or a closure binding does when it runs is still found by the first request that needs it.
 - **It starts the server as it was started.** An `--address` or `--workers` typed to `start` is kept by every `reload` and `restart` after it; one left to `server.address` or `server.workers` follows the configuration as it is now. Typing one to `reload` changes it without refusing a connection, and it is kept from then on:
 
 ```sh
@@ -209,7 +209,7 @@ The server was not reloaded, and goes on serving as it was: 2 services cannot be
 
 ### When the new code does not load
 
-`php cua` loads the application before it runs a command. When the new code cannot be loaded, because of a syntax error or a provider that throws, `status` and `stop` still run, from the files the server keeps in `storage/`:
+`php cua` loads the application before it runs a command. When the new code cannot be loaded, because of a syntax error or a plugin that throws, `status` and `stop` still run, from the files the server keeps in `storage/`:
 
 ```sh
 php cua status
@@ -244,7 +244,7 @@ Set `server.drain` when a report request needs more than the default five second
 
 After an HTTP worker stops accepting connections, it has this many seconds to finish its in-flight requests. Stop, reload, restart and a watched restart use the same limit. The setting accepts a finite number of seconds greater than zero; an invalid value stops `start` at startup.
 
-At the limit, the worker cuts its remaining connections and logs one warning with its process id and the number of connections still reading, handling or answering a request. Idle keep-alive connections do not add to that count. If the logger throws, the same warning goes to standard error and the logger's failure is reported separately; worker providers still stop.
+At the limit, the worker cuts its remaining connections and logs one warning with its process id and the number of connections still reading, handling or answering a request. Idle keep-alive connections do not add to that count. If the logger throws, the same warning goes to standard error and the logger's failure is reported separately; worker plugins still stop.
 
 The HTTP supervisor allows `server.drain` plus one second for cleanup, regardless of another worker group's stop allowance. The background keeper and watcher allow additional time for the generation to exit. On reload, the old generation keeps its old allowance and the new generation uses the new setting. The keeper continues enforcing retiring generations' deadlines during startup and failed-start cleanup. A stop during startup includes the starting generation in the same shutdown pass. Request and response timeouts still apply while draining.
 
@@ -357,7 +357,7 @@ Starting Shop server on http://127.0.0.1:8080
 Press Ctrl+C to stop
 ```
 
-Each server running under `start` has an id: `http`, `queue`, `schedule`. They are started, stopped and reloaded together: `reload` after a deploy gives every one of them the new code, each given its shutdown period to finish the work in hand before remaining workers are ended. A server registered with `reloads: false` is the exception: `reload` leaves it running, and only `restart` and `stop` end it; see [Keeping a server across reloads](providers.md#keeping-a-server-across-reloads). Each has processes of its own, so a slow job never holds up a request. When something runs beside HTTP, `start` lists the servers running; one switched off is left out, and `php cua describe` lists every server registered with whether it is on. With HTTP alone, `start` prints no server table.
+Each server running under `start` has an id: `http`, `queue`, `schedule`. They are started, stopped and reloaded together: `reload` after a deploy gives every one of them the new code, each given its shutdown period to finish the work in hand before remaining workers are ended. A server registered with `reloads: false` is the exception: `reload` leaves it running, and only `restart` and `stop` end it; see [Keeping a server across reloads](plugins.md#keeping-a-server-across-reloads). Each has processes of its own, so a slow job never holds up a request. When something runs beside HTTP, `start` lists the servers running; one switched off is left out, and `php cua describe` lists every server registered with whether it is on. With HTTP alone, `start` prints no server table.
 
 | On | Switch on | Why |
 | --- | --- | --- |
@@ -376,7 +376,7 @@ Each server running under `start` has an id: `http`, `queue`, `schedule`. They a
 
 In this arrangement, leave those `server.with` switches off on the HTTP server. Keep the separate workers alive with systemd, Supervisor or containers and restart them after deployment; `reload` only covers workers managed by `start`. Do not start a second scheduler alongside the integrated one.
 
-`--single` serves HTTP alone whatever is switched on, as one process has room for nothing else. To add a server of your own to the list, a WebSocket server, a command of yours, or a program such as `npm run dev`, see [Service providers](providers.md#a-server-of-your-own-beside-http).
+`--single` serves HTTP alone whatever is switched on, as one process has room for nothing else. To add a server of your own to the list, a WebSocket server, a command of yours, or a program such as `npm run dev`, see [Service plugins](plugins.md#a-server-of-your-own-beside-http).
 
 To see all of it on one page, requests, the queue, scheduled tasks, workers and exceptions, install the `crabphp/clockwerk` package, a dashboard served by the application itself at `/clockwerk`.
 

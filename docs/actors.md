@@ -93,7 +93,7 @@ With several HTTP workers, or another machine, two requests from one customer ma
 
 ```php
 // config/broadcast.php
-return ['carrier' => 'redis'];          // with crabphp/redis and its RedisProvider registered
+return ['carrier' => 'redis'];          // with crabphp/redis and its RedisPlugin registered
 
 // config/server.php
 'with' => [
@@ -114,6 +114,20 @@ The `actors` server is reloaded with the rest, and a reload ends its actors as a
 - **Not moved.** A key belongs to one process for as long as `actors.workers` is unchanged; changing it moves keys, and the actors they had end with their idle time.
 
 ## Configuration
+
+Actors are an optional plugin that travels on broadcast's carrier. Add both in `app.php`, broadcast first:
+
+```php
+// app.php
+use Crab\Actors\ActorsPlugin;
+use Crab\Broadcast\BroadcastPlugin;
+
+->withPlugins([
+    BroadcastPlugin::class,
+    ActorsPlugin::class,
+    AppPlugin::class,
+])
+```
 
 Everything has a default. To change one, add `config/actors.php`:
 

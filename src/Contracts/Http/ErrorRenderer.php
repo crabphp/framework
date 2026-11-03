@@ -9,7 +9,7 @@ use Psr\Http\Message\ServerRequestInterface;
 
 /**
  * Writes every error response in the application's own format. Bind one
- * in a provider's register() and it writes them all: the router's 404 and
+ * in a plugin's register() and it writes them all: the router's 404 and
  * 405, a validation 422, a middleware's 401 or 429, an HttpError such as
  * HttpException, and a failure's 500.
  *

@@ -22,7 +22,7 @@
 
 A disk is where your application keeps files: users' avatars, exported reports, uploaded documents. It is a folder on this machine or a bucket on S3, and your code talks to both the same way, so the files can move to S3 when the application outgrows one machine without changing the code that writes them.
 
-The storage provider is registered by default. Out of the box there is one disk, `local`, the folder `files` in the application's [storage directory](deployment.md#storage-elsewhere), `storage/files` unless moved. Disks on S3, and on the services that speak its API (Cloudflare R2, MinIO, Backblaze B2, DigitalOcean Spaces), come from the `crabphp/s3` package.
+The storage plugin is a core plugin, on without being listed. Out of the box there is one disk, `local`, the folder `files` in the application's [storage directory](deployment.md#storage-elsewhere), `storage/files` unless moved. Disks on S3, and on the services that speak its API (Cloudflare R2, MinIO, Backblaze B2, DigitalOcean Spaces), come from the `crabphp/s3` package.
 
 ## Configuration
 
@@ -61,7 +61,7 @@ A local disk reads and writes in the worker, which is fast enough for files on t
 
 ### S3, R2 and MinIO
 
-Install the package and register its provider after the framework's:
+Install the package and register its plugin after the framework's:
 
 ```sh
 composer require crabphp/s3
@@ -69,9 +69,9 @@ composer require crabphp/s3
 
 ```php
 // app.php
-use Crab\S3\S3Provider;
+use Crab\S3\S3Plugin;
 
-->withProviders([S3Provider::class, AppProvider::class])
+->withPlugins([S3Plugin::class, AppPlugin::class])
 ```
 
 Then describe the bucket:
@@ -294,15 +294,15 @@ Every failure a disk reports is a `Crab\Contracts\Storage\StorageException`: `Fi
 
 ## Adding a driver
 
-A package adds a driver in its provider, through `Crab\Contracts\Storage\Drivers`, after the framework's providers. It names the settings the driver takes, and the closure receives a disk's settings and name, once, when the disk is first used:
+A package adds a driver in its plugin, through `Crab\Contracts\Storage\Drivers`, after the framework's plugins. It names the settings the driver takes, and the closure receives a disk's settings and name, once, when the disk is first used:
 
 ```php
 use Crab\Contracts\Container\Container;
-use Crab\Contracts\Provider;
+use Crab\Contracts\Plugin;
 use Crab\Contracts\Storage\Disk;
 use Crab\Contracts\Storage\Drivers;
 
-final class FtpProvider implements Provider
+final class FtpPlugin implements Plugin
 {
     public function register(Container $container): void
     {

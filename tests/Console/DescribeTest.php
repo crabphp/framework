@@ -121,7 +121,7 @@ final class DescribeTest extends TestCase
         ]));
         $app->container->get(\Crab\Contracts\Http\MiddlewareStack::class)->add(new Cors(['https://shop.example']));
         $app->console->add('shop:sync', static fn(): int => 0, "Sync the shop\n\nRuns nightly.");
-        $app->register(\Crab\Events\EventsProvider::class, \Crab\Schedule\ScheduleProvider::class);
+        $app->register(\Crab\Events\EventsPlugin::class, \Crab\Schedule\SchedulePlugin::class);
         $schedule = $app->container->get(\Crab\Contracts\Schedule\Schedule::class);
         $schedule->command('shop:sync')->daily('03:00')->onOneServer()->withoutOverlapping();
         $schedule

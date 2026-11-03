@@ -153,8 +153,8 @@ final class GeneratorsTest extends TestCase
     public function testEveryPublishedFileHoldsTheFrameworksDefaults(): void
     {
         $app = new App(basePath: $this->directory);
-        foreach (App::PROVIDERS as $provider) {
-            new $provider()->register($app->container);
+        foreach ([...App::PLUGINS, ...App::OPTIONAL_PLUGINS] as $plugin) {
+            new $plugin()->register($app->container);
         }
         // Every section the framework defines can be published.
         self::assertSame(

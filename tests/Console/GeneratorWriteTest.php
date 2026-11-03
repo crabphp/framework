@@ -42,7 +42,7 @@ final class GeneratorWriteTest extends TestCase
             \Crab\Contracts\Clock\Clock::class,
             new \Crab\Testing\FrozenClock('2099-01-01 00:00:00'),
         );
-        $app->register(\Crab\Database\DatabaseProvider::class);
+        $app->register(\Crab\Database\DatabasePlugin::class);
         $stream = fopen('php://memory', 'w+b');
         try {
             $status = $app->console->run(['make:migration', 'create_example_table'], new Output($stream, $stream));
@@ -111,12 +111,12 @@ final class GeneratorWriteTest extends TestCase
             ],
         ]));
         foreach ([
-            \Crab\Database\DatabaseProvider::class,
-            \Crab\Queue\QueueProvider::class,
-            \Crab\Cache\CacheProvider::class,
-            \Crab\Auth\TokenAuthProvider::class,
-        ] as $provider) {
-            $app->register($provider);
+            \Crab\Database\DatabasePlugin::class,
+            \Crab\Queue\QueuePlugin::class,
+            \Crab\Cache\CachePlugin::class,
+            \Crab\Auth\TokenAuthPlugin::class,
+        ] as $plugin) {
+            $app->register($plugin);
         }
         $stream = fopen('php://memory', 'w+b');
         $output = new Output($stream, $stream);

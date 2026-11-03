@@ -217,7 +217,7 @@ The same file runs on both; the schema is written for the database in use. Besid
 - **On SQLite each migration runs in a transaction.** A failure before commit rolls back its changes; a failed commit callback leaves its already committed changes.
 - **MySQL commits each change to a table as it is made.** A migration that fails halfway has done the first half. Keep each migration small, one change to one table where you can, so that a failure leaves little to tidy.
 
-SQLite checks foreign keys on the connections the provider opens.
+SQLite checks foreign keys on the connections the plugin opens.
 
 ## Several databases and packages
 
@@ -228,7 +228,7 @@ php cua make:migration create_totals_table --database=reports
 php cua migrate --database=reports
 ```
 
-A package adds its own folder of migrations from its provider, through `Crab\Contracts\Database\Migrator::path()`.
+A package adds its own folder of migrations from its plugin, through `Crab\Contracts\Database\Migrator::path()`.
 
 The framework itself ships no migrations. A component that needs a table writes the migration into your folder with an `install` command, where you own it. One that is told to keep its table in another database, with `queue.database` or `cache.database`, writes it into that database's folder; run `migrate --database=` for it.
 

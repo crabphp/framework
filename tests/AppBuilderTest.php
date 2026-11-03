@@ -5,9 +5,8 @@ declare(strict_types=1);
 namespace Crab\Tests;
 
 use Crab\App;
-use Crab\Auth\AuthProvider;
-use Crab\Broadcast\BroadcastProvider;
-use Crab\Cache\CacheProvider;
+use Crab\Auth\AuthPlugin;
+use Crab\Cache\CachePlugin;
 use Crab\Commands\Start;
 use Crab\Console\Output;
 use Crab\Contracts\Auth\PasswordHasher;
@@ -17,19 +16,18 @@ use Crab\Contracts\Container\Container;
 use Crab\Contracts\Database\Database;
 use Crab\Contracts\Events\Dispatcher;
 use Crab\Contracts\HttpClient\Client;
-use Crab\Contracts\Provider;
+use Crab\Contracts\Plugin;
 use Crab\Contracts\Queue\Queue;
 use Crab\Contracts\Schedule\Schedule;
 use Crab\Database\DatabaseException;
-use Crab\Database\DatabaseProvider;
+use Crab\Database\DatabasePlugin;
 use Crab\Engine\Process\Worker;
-use Crab\Events\EventsProvider;
+use Crab\Events\EventsPlugin;
 use Crab\Http\ErrorHandler;
 use Crab\Http\Request;
-use Crab\HttpClient\HttpClientProvider;
-use Crab\Queue\QueueProvider;
-use Crab\Schedule\ScheduleProvider;
-use Crab\Storage\StorageProvider;
+use Crab\HttpClient\HttpClientPlugin;
+use Crab\Schedule\SchedulePlugin;
+use Crab\Storage\StoragePlugin;
 use PHPUnit\Framework\TestCase;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface;
@@ -43,7 +41,7 @@ final class Greeting
     ) {}
 }
 
-final class GreetingProvider implements Provider
+final class GreetingPlugin implements Plugin
 {
     public function register(Container $container): void
     {
@@ -69,9 +67,9 @@ final class AppBuilderTest extends TestCase
 {
     private string $directory;
 
-    public function testAFrameworkProviderNamedAgainIsRegisteredOnce(): void
+    public function testAFrameworkPluginNamedAgainIsRegisteredOnce(): void
     {
-        $additions = new class implements Provider {
+        $additions = new class implements Plugin {
             public function register(Container $container): void
             {
                 $container->get(Dispatcher::class)->listen(Greeting::class, static function (Greeting $event): void {
@@ -81,18 +79,18 @@ final class AppBuilderTest extends TestCase
             }
         };
         foreach ([false, true] as $replace) {
-            $providers = [
+            $plugins = [
+                EventsPlugin::class,
+                new EventsPlugin(),
+                SchedulePlugin::class,
+                new SchedulePlugin(),
                 $additions,
-                EventsProvider::class,
-                new EventsProvider(),
-                ScheduleProvider::class,
-                new ScheduleProvider(),
             ];
             $builder = App::configure();
             if ($replace) {
-                $builder->withProviders(only: [EventsProvider::class, ScheduleProvider::class, ...$providers]);
+                $builder->withPlugins(only: [EventsPlugin::class, SchedulePlugin::class, ...$plugins]);
             } else {
-                $builder->withProviders($providers);
+                $builder->withPlugins($plugins);
             }
             $app = $builder->create();
             $event = new Greeting('hello');
@@ -102,7 +100,7 @@ final class AppBuilderTest extends TestCase
         }
     }
 
-    public function testAnApplicationHasTheFrameworkProvidersWithoutNamingThem(): void
+    public function testAnApplicationHasTheFrameworkPluginsWithoutNamingThem(): void
     {
         file_put_contents($this->directory . '/config/queue.php', "<?php return ['store' => 'memory'];");
         file_put_contents($this->directory . '/config/cache.php', "<?php return ['store' => 'array'];");
@@ -110,42 +108,39 @@ final class AppBuilderTest extends TestCase
             $app = App::configure($this->directory)->create();
             self::assertSame(
                 [
-                    DatabaseProvider::class,
-                    AuthProvider::class,
-                    CacheProvider::class,
-                    StorageProvider::class,
-                    EventsProvider::class,
-                    QueueProvider::class,
-                    ScheduleProvider::class,
-                    \Crab\Runs\RunsProvider::class,
-                    HttpClientProvider::class,
-                    BroadcastProvider::class,
-                    \Crab\Actors\ActorsProvider::class,
+                    DatabasePlugin::class,
+                    AuthPlugin::class,
+                    CachePlugin::class,
+                    StoragePlugin::class,
+                    EventsPlugin::class,
+                    HttpClientPlugin::class,
                 ],
-                App::PROVIDERS,
+                App::PLUGINS,
             );
-            foreach ([
-                PasswordHasher::class,
-                Queue::class,
-                Cache::class,
-                Schedule::class,
-                Client::class,
-                Dispatcher::class,
-                Broadcaster::class,
-            ] as $contract) {
+            foreach ([PasswordHasher::class, Cache::class, Client::class, Dispatcher::class] as $contract) {
                 self::assertInstanceOf($contract, $app->container->get($contract));
             }
-            self::assertSame(['queue', 'schedule', 'actors'], $app->servers->ids());
-            self::assertSame([], $app->with(), 'Registering a server does not switch it on.');
-            foreach ([
-                'migrate',
-                'cache:clear',
-                'queue:work',
-                'schedule:list',
-                'runs:list',
-                'actors:work',
-            ] as $command) {
-                self::assertTrue($app->console->has($command));
+            self::assertSame(
+                ['migrate', 'cache:clear'],
+                array_values(array_filter(
+                    ['migrate', 'cache:clear', 'queue:work', 'schedule:list', 'runs:list', 'actors:work'],
+                    $app->console->has(...),
+                )),
+            );
+            // The optional ones are off until listed, servers and all.
+            foreach ([Queue::class, Schedule::class, Broadcaster::class] as $contract) {
+                self::assertFalse($app->container->has($contract), "{$contract} is bound without its plugin.");
+            }
+            self::assertSame([], $app->servers->ids());
+
+            $full = App::configure($this->directory)->withPlugins(App::OPTIONAL_PLUGINS)->create();
+            foreach ([Queue::class, Schedule::class, Broadcaster::class] as $contract) {
+                self::assertInstanceOf($contract, $full->container->get($contract));
+            }
+            self::assertSame(['queue', 'schedule', 'actors'], $full->servers->ids());
+            self::assertSame([], $full->with(), 'Registering a server does not switch it on.');
+            foreach (['queue:work', 'schedule:list', 'runs:list', 'actors:work', 'token:install'] as $command) {
+                self::assertTrue($full->console->has($command), $command);
             }
             self::assertFalse($app->container->has(\Crab\Contracts\Auth\TokenStore::class));
             $direct = new App();
@@ -159,7 +154,7 @@ final class AppBuilderTest extends TestCase
                 Dispatcher::class,
                 Broadcaster::class,
             ] as $contract) {
-                self::assertFalse($direct->container->has($contract), 'new App() registers no providers.');
+                self::assertFalse($direct->container->has($contract), 'new App() registers no plugins.');
             }
         } finally {
             unlink($this->directory . '/config/queue.php');
@@ -195,35 +190,40 @@ final class AppBuilderTest extends TestCase
         self::assertStringContainsString("'database' => '/path/app.sqlite'", $missing);
     }
 
-    public function testAFrameworkProviderCanBeLeftOutAndAnUnknownRemovalNamesTheList(): void
+    public function testAFrameworkPluginCanBeLeftOutAndAnUnknownRemovalNamesTheList(): void
     {
-        $app = App::configure()->withProviders(remove: ScheduleProvider::class)->create();
-        self::assertFalse($app->container->has(Schedule::class));
-        self::assertFalse($app->console->has('schedule:list'));
-        self::assertSame(['queue', 'actors'], $app->servers->ids());
+        $app = App::configure()->withPlugins(remove: CachePlugin::class)->create();
+        self::assertFalse($app->container->has(Cache::class));
+        self::assertFalse($app->console->has('cache:clear'));
         self::assertTrue($app->container->has(Dispatcher::class));
         try {
-            App::configure()->withProviders(remove: [GreetingProvider::class]);
-            self::fail('An application provider was accepted as a framework provider.');
+            App::configure()->withPlugins(remove: SchedulePlugin::class);
+            self::fail('An optional plugin was accepted for remove:, which leaves out core ones.');
         } catch (\LogicException $error) {
-            self::assertStringContainsString(GreetingProvider::class, $error->getMessage());
-            self::assertStringContainsString(implode(', ', App::PROVIDERS), $error->getMessage());
+            self::assertStringContainsString('SchedulePlugin', $error->getMessage());
+        }
+        try {
+            App::configure()->withPlugins(remove: [GreetingPlugin::class]);
+            self::fail('An application plugin was accepted as a framework plugin.');
+        } catch (\LogicException $error) {
+            self::assertStringContainsString(GreetingPlugin::class, $error->getMessage());
+            self::assertStringContainsString(implode(', ', App::PLUGINS), $error->getMessage());
         }
     }
 
-    public function testOnlyReplacesTheFrameworkProvidersAndCannotBeCombinedWithRemove(): void
+    public function testOnlyReplacesTheFrameworkPluginsAndCannotBeCombinedWithRemove(): void
     {
-        $app = App::configure()->withProviders(only: [EventsProvider::class])->create();
+        $app = App::configure()->withPlugins(only: [EventsPlugin::class])->create();
         self::assertTrue($app->container->has(Dispatcher::class));
         self::assertFalse($app->container->has(Schedule::class));
         self::assertFalse($app->console->has('migrate'));
         self::assertSame([], $app->servers->ids());
-        $empty = App::configure()->withProviders(only: [EventsProvider::class])->withProviders(only: [])->create();
+        $empty = App::configure()->withPlugins(only: [EventsPlugin::class])->withPlugins(only: [])->create();
         self::assertFalse($empty->container->has(Dispatcher::class));
         foreach ([
-            static fn() => App::configure()->withProviders(only: [], remove: ScheduleProvider::class),
-            static fn() => App::configure()->withProviders(only: [])->withProviders(remove: ScheduleProvider::class),
-            static fn() => App::configure()->withProviders(remove: ScheduleProvider::class)->withProviders(only: []),
+            static fn() => App::configure()->withPlugins(only: [], remove: CachePlugin::class),
+            static fn() => App::configure()->withPlugins(only: [])->withPlugins(remove: CachePlugin::class),
+            static fn() => App::configure()->withPlugins(remove: CachePlugin::class)->withPlugins(only: []),
         ] as $mistake) {
             try {
                 $mistake();
@@ -283,7 +283,7 @@ final class AppBuilderTest extends TestCase
 
     public function testAnApplicationIsDescribedInAnyOrderAndBuiltInTheRightOne(): void
     {
-        // Given backwards on purpose: routes need the application, providers the configuration, configuration the environment.
+        // Given backwards on purpose: routes need the application, plugins the configuration, configuration the environment.
         $app = App::configure()
             ->withRouting(commands: $this->directory . '/console.php', routes: [
                 $this->directory . '/web.php',
@@ -291,7 +291,7 @@ final class AppBuilderTest extends TestCase
             ])
             ->withMiddleware(Mark::class)
             ->withMiddleware(new Mark('object'))
-            ->withProviders(GreetingProvider::class)
+            ->withPlugins(GreetingPlugin::class)
             ->withConfig($this->directory . '/config')
             ->withEnv($this->directory . '/.env')
             ->create();
@@ -315,7 +315,7 @@ final class AppBuilderTest extends TestCase
     public function testABasePathLoadsEnvAndConfigAndResolvesRelativePaths(): void
     {
         $app = App::configure($this->directory . '/')
-            ->withProviders([GreetingProvider::class])
+            ->withPlugins([GreetingPlugin::class])
             ->withMiddleware([Mark::class, new Mark('object')])
             ->withRouting(routes: ['web.php', $this->directory . '/api.php'], commands: 'console.php')
             ->create();
@@ -373,8 +373,8 @@ final class AppBuilderTest extends TestCase
             'is not a directory' => static fn() => App::configure('/no/such/app'),
             'This application has no base path. Give it one with App::configure(__DIR__)' =>
                 static fn() => new App()->path('x'),
-            'withProviders() takes providers or their class names, not int' =>
-                static fn() => App::configure()->withProviders([1]),
+            'withPlugins() takes plugins or their class names, not int' =>
+                static fn() => App::configure()->withPlugins([1]),
             'withMiddleware() takes PSR-15 middleware or their class names, not stdClass' =>
                 static fn() => App::configure()->withMiddleware([new \stdClass()]),
             'withRouting() takes file paths, not int' => static fn() => App::configure()->withRouting(routes: [1]),

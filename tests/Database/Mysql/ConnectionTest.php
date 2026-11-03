@@ -11,7 +11,7 @@ use Crab\Contracts\Database\Connection as ConnectionContract;
 use Crab\Contracts\Database\Database as DatabaseContract;
 use Crab\Database\DatabaseException;
 use Crab\Database\DatabaseManager;
-use Crab\Database\DatabaseProvider;
+use Crab\Database\DatabasePlugin;
 use Crab\Database\Mysql\Connection;
 use Crab\Database\PdoConnection;
 use Crab\Engine\Async\Cancellation;
@@ -178,7 +178,7 @@ final class ConnectionTest extends TestCase
                     $this->waitForQuery($worker, $id, 'select sleep(10)');
                     $worker->stop();
                 });
-                // This task ignores cooperative cancellation. Provider teardown must
+                // This task ignores cooperative cancellation. Plugin teardown must
                 // still close its socket when the worker's one-second deadline ends.
                 $connection->first('select sleep(10)');
             },
@@ -186,7 +186,7 @@ final class ConnectionTest extends TestCase
         );
         self::assertLessThan(5.0, (hrtime(true) - $start) / 1e9);
         self::assertFalse($connection->inTransaction());
-        // Close is idempotent after provider teardown, including a borrowed session.
+        // Close is idempotent after plugin teardown, including a borrowed session.
         $connection->close();
     }
 
@@ -384,7 +384,7 @@ final class ConnectionTest extends TestCase
         }, ['pool' => 1]);
     }
 
-    public function testAsyncIsSelectedOnlyForMysqlInsideTheProviderWorker(): void
+    public function testAsyncIsSelectedOnlyForMysqlInsideThePluginWorker(): void
     {
         $manager = new DatabaseManager([
             'main' => [
@@ -427,7 +427,7 @@ final class ConnectionTest extends TestCase
             ]],
         ]));
         return WorkerHarness::run(
-            [new DatabaseProvider()],
+            [new DatabasePlugin()],
             static fn(Worker $worker, Container $container): mixed => $body(
                 $container->get(DatabaseContract::class),
                 $worker,

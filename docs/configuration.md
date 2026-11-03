@@ -6,7 +6,7 @@
 - [Reading configuration](#reading-configuration)
 - [Checked at startup](#checked-at-startup)
 - [Describing the application](#describing-the-application)
-    - [Providers](#providers)
+    - [Plugins](#plugins)
     - [Middleware](#middleware)
     - [Routes and commands](#routes-and-commands)
     - [A health check](#a-health-check)
@@ -87,17 +87,17 @@ config('mail.from.address');            // "hello@example.com"
 config('mail.timeout', 10);             // 10, because the key is not set
 ```
 
-It works anywhere after the application is created. In a class, you may prefer to take the values in the constructor and read `config()` in the provider that makes it, which keeps the class usable without the framework:
+It works anywhere after the application is created. In a class, you may prefer to take the values in the constructor and read `config()` in the plugin that makes it, which keeps the class usable without the framework:
 
 ```php
-// app/Providers/AppProvider.php
+// app/Plugins/AppPlugin.php
 $container->singleton(Mailer::class, static fn (): Mailer => new SmtpMailer(
     config('mail.host'),
     config('mail.port'),
 ));
 ```
 
-The core and providers declare their defaults before your application runs, so `config()` exposes the same values their consumers use. Values you supply, including explicit `null` and `false`, take precedence.
+The core and plugins declare their defaults before your application runs, so `config()` exposes the same values their consumers use. Values you supply, including explicit `null` and `false`, take precedence.
 
 Configuration is fixed once the application is defined. Do not change it at run time: every worker has its own copy, and a change in one is seen by no other.
 
@@ -122,7 +122,7 @@ What the check takes:
 - A framework section takes no keys other than its own, so a misspelt key is reported rather than ignored. `app` is the exception: put the application's own settings there, or in a file of their own, which the check leaves alone.
 - A value named like a secret (`password`, `secret`, `token`, `key`) is never repeated in a message, nor a password inside a URL.
 
-A provider of your own declares what its settings take the same way; see [Settings with defaults](providers.md#settings-with-defaults).
+A plugin of your own declares what its settings take the same way; see [Settings with defaults](plugins.md#settings-with-defaults).
 
 ## Describing the application
 
@@ -130,13 +130,13 @@ A provider of your own declares what its settings take the same way; see [Settin
 
 ```php
 // app.php
-use App\Providers\AppProvider;
+use App\Plugins\AppPlugin;
 use Crab\App;
 use Crab\Http\Cors;
 
 return App::configure(__DIR__)
-    ->withProviders([
-        AppProvider::class,
+    ->withPlugins([
+        AppPlugin::class,
     ])
     ->withMiddleware(prepend: [new Cors(['https://app.example.com'])])
     ->withRouting(
@@ -147,9 +147,9 @@ return App::configure(__DIR__)
     ->create();
 ```
 
-Every step is optional and they may come in any order. Nothing happens until `create()`, which loads the environment, then the configuration, makes the application, registers the providers and the middleware, and then includes the route and command files.
+Every step is optional and they may come in any order. Nothing happens until `create()`, which loads the environment, then the configuration, makes the application, registers the plugins and the middleware, and then includes the route and command files.
 
-`App::configure(__DIR__)` begins the chain with two steps on your behalf, `withEnv('.env')` and `withConfig('config', required: false)`. The framework providers are also registered by default. Call either file step yourself to name another file or folder:
+`App::configure(__DIR__)` begins the chain with two steps on your behalf, `withEnv('.env')` and `withConfig('config', required: false)`. The core framework plugins are also registered by default; see [Core and optional plugins](plugins.md#core-and-optional-plugins). Call either file step yourself to name another file or folder:
 
 ```php
 use Crab\App;
@@ -160,26 +160,26 @@ return App::configure(__DIR__)
     ->create();
 ```
 
-### Providers
+### Plugins
 
-`App::configure()` starts with the framework's providers, `App::PROVIDERS`, in this order: `DatabaseProvider`, `AuthProvider`, `CacheProvider`, `EventsProvider`, `QueueProvider`, `ScheduleProvider`, `HttpClientProvider`, `BroadcastProvider`. Add your own and your packages' providers with `withProviders()`, as one provider or a list, by class name or as objects. They come after the framework's, in the order given, so a provider that listens to events or adds scheduled tasks finds them already bound.
+`App::configure()` starts with the framework's plugins, `App::PLUGINS`, in this order: `DatabasePlugin`, `AuthPlugin`, `CachePlugin`, `EventsPlugin`, `QueuePlugin`, `SchedulePlugin`, `HttpClientPlugin`, `BroadcastPlugin`. Add your own and your packages' plugins with `withPlugins()`, as one plugin or a list, by class name or as objects. They come after the framework's, in the order given, so a plugin that listens to events or adds scheduled tasks finds them already bound.
 
-To leave out a framework provider or replace the framework's list, use one of these two forms:
+To leave out a framework plugin or replace the framework's list, use one of these two forms:
 
 ```php
 // app.php — choose one
-use App\Providers\AppProvider;
-use Crab\Schedule\ScheduleProvider;
+use App\Plugins\AppPlugin;
+use Crab\Schedule\SchedulePlugin;
 
-->withProviders(remove: [ScheduleProvider::class])          // without one of the framework's
-->withProviders(only: [AppProvider::class])                 // these in place of the framework's
+->withPlugins(remove: [SchedulePlugin::class])          // without one of the framework's
+->withPlugins(only: [AppPlugin::class])                 // these in place of the framework's
 ```
 
-`remove:` accepts only classes in `App::PROVIDERS` and names the list when you give another. `only: []` leaves out all framework providers. `only:` and `remove:` cannot be combined, even across calls. Providers given as the first argument are still added after the replacement list. Calling `withProviders()` again adds providers; another `only:` replaces the previous replacement.
+`remove:` accepts only classes in `App::PLUGINS` and names the list when you give another. `only: []` leaves out all framework plugins. `only:` and `remove:` cannot be combined, even across calls. Plugins given as the first argument are still added after the replacement list. Calling `withPlugins()` again adds plugins; another `only:` replaces the previous replacement.
 
-A framework provider named again, by class or as an object, is registered once at its first place. `TokenAuthProvider` and every package, including `crabphp/redis` and `crabphp/clockwerk`, stay opt-in. Nothing is found by convention. `new App()` used directly registers no providers.
+A framework plugin named again, by class or as an object, is registered once at its first place. `TokenAuthPlugin` and every package, including `crabphp/redis` and `crabphp/clockwerk`, stay opt-in. Nothing is found by convention. `new App()` used directly registers no plugins.
 
-See [Services and providers](providers.md).
+See [Services and plugins](plugins.md).
 
 ### Middleware
 

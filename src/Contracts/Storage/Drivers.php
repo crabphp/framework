@@ -6,7 +6,7 @@ namespace Crab\Contracts\Storage;
 
 /**
  * The kinds of disk a "driver" setting can name. The framework has
- * "local" and "memory"; a package adds its own in its provider:
+ * "local" and "memory"; a package adds its own in its plugin:
  *
  *     $container->get(Drivers::class)->add('s3', ['key', 'secret', 'bucket'], static fn (array $settings, string $name): Disk => new S3Disk(...));
  *

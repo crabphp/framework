@@ -6,7 +6,7 @@ namespace Crab;
 
 use Crab\Config\Config;
 use Crab\Config\Env;
-use Crab\Contracts\Provider;
+use Crab\Contracts\Plugin;
 use Crab\Http\Health;
 use Psr\Http\Server\MiddlewareInterface;
 
@@ -14,7 +14,7 @@ use Psr\Http\Server\MiddlewareInterface;
  * Describes an application step by step and then makes it, for app.php:
  *
  *     return App::configure(__DIR__)
- *         ->withProviders(AppProvider::class)
+ *         ->withPlugins(AppPlugin::class)
  *         ->withMiddleware(prepend: [new Cors(['https://app.example.com'])])
  *         ->withRouting(routes: 'routes/web.php', commands: 'routes/console.php', health: '/up')
  *         ->create();
@@ -23,11 +23,11 @@ use Psr\Http\Server\MiddlewareInterface;
  * a relative path given to any step is inside it. An application starts
  * with its .env file and its config folder, which are steps that
  * App::configure() takes on its behalf, and with the framework's own
- * providers and middleware, the lists App::PROVIDERS and App::MIDDLEWARE.
+ * plugins and middleware, the lists App::PLUGINS and App::MIDDLEWARE.
  *
  * Nothing happens until create(), which does the steps in the order they
  * depend on one another, whatever order they were given in: environment,
- * configuration, the application, providers, middleware, then the route
+ * configuration, the application, plugins, middleware, then the route
  * and command files.
  */
 final class AppBuilder
@@ -37,21 +37,21 @@ final class AppBuilder
     private ?string $config = null;
     private bool $configRequired = true;
     /**
-     * @var list<Provider|string>
+     * @var list<Plugin|string>
      */
-    private array $providers = [];
+    private array $plugins = [];
     /**
-     * Classes of the framework's providers to leave out.
+     * Classes of the framework's plugins to leave out.
      *
      * @var list<string>
      */
-    private array $withoutProviders = [];
+    private array $withoutPlugins = [];
     /**
      * The whole list in place of the framework's, when given.
      *
-     * @var list<Provider|string>|null
+     * @var list<Plugin|string>|null
      */
-    private ?array $onlyProviders = null;
+    private ?array $onlyPlugins = null;
     /**
      * Middleware to put after the framework's, and before it.
      *
@@ -134,46 +134,46 @@ final class AppBuilder
     }
 
     /**
-     * The application's own providers and those of the packages it uses.
-     * The application starts with the framework's, App::PROVIDERS, and
+     * The application's own plugins and those of the packages it uses.
+     * The application starts with the framework's, App::PLUGINS, and
      * these are registered after them, in the order given:
      *
-     *     ->withProviders([RedisProvider::class, AppProvider::class])     after the framework's
-     *     ->withProviders(remove: [ScheduleProvider::class])              without one of the framework's
-     *     ->withProviders(only: [AppProvider::class])                     these and no others
+     *     ->withPlugins([RedisPlugin::class, AppPlugin::class])     after the framework's
+     *     ->withPlugins(remove: [SchedulePlugin::class])              without one of the framework's
+     *     ->withPlugins(only: [AppPlugin::class])                     these and no others
      *
      * One given by class name is made by the container. Called again, it
      * adds to what was said before, except that only: replaces an earlier
      * only:. One of the framework's named again is registered once, in the
      * framework's place.
      *
-     * @param Provider|class-string<Provider>|list<Provider|class-string<Provider>> $providers
-     * @param class-string<Provider>|list<class-string<Provider>> $remove Classes of the framework's providers to leave out.
-     * @param list<Provider|class-string<Provider>>|null $only The whole list in place of the framework's.
+     * @param Plugin|class-string<Plugin>|list<Plugin|class-string<Plugin>> $plugins
+     * @param class-string<Plugin>|list<class-string<Plugin>> $remove Classes of the framework's plugins to leave out.
+     * @param list<Plugin|class-string<Plugin>>|null $only The whole list in place of the framework's.
      */
-    public function withProviders(
-        Provider|string|array $providers = [],
+    public function withPlugins(
+        Plugin|string|array $plugins = [],
         string|array $remove = [],
         ?array $only = null,
     ): static {
-        $this->providers = [...$this->providers, ...self::providers(is_array($providers) ? $providers : [$providers])];
+        $this->plugins = [...$this->plugins, ...self::plugins(is_array($plugins) ? $plugins : [$plugins])];
         foreach ((array) $remove as $class) {
-            if (!is_string($class) || !in_array($class, App::PROVIDERS, true)) {
+            if (!is_string($class) || !in_array($class, App::PLUGINS, true)) {
                 $given = is_string($class) ? $class : get_debug_type($class);
                 throw new \LogicException(
-                    "withProviders(remove:) leaves out one of the framework's providers, and {$given} is not one of them: "
-                    . implode(', ', App::PROVIDERS)
-                    . '. A provider of your own is left out where you added it.',
+                    "withPlugins(remove:) leaves out one of the framework's plugins, and {$given} is not one of them: "
+                    . implode(', ', App::PLUGINS)
+                    . '. A plugin of your own is left out where you added it.',
                 );
             }
-            $this->withoutProviders[] = $class;
+            $this->withoutPlugins[] = $class;
         }
         if ($only !== null) {
-            $this->onlyProviders = self::providers($only);
+            $this->onlyPlugins = self::plugins($only);
         }
-        if ($this->onlyProviders !== null && $this->withoutProviders !== []) {
+        if ($this->onlyPlugins !== null && $this->withoutPlugins !== []) {
             throw new \LogicException(
-                "withProviders() was given both only: and remove:. only: already replaces the framework's providers, so leave out of it what you do not want.",
+                "withPlugins() was given both only: and remove:. only: already replaces the framework's plugins, so leave out of it what you do not want.",
             );
         }
         return $this;
@@ -287,7 +287,7 @@ final class AppBuilder
             middleware: $this->globalMiddleware(),
             storagePath: $storage,
         );
-        $app->register(...$this->allProviders());
+        $app->register(...$this->allPlugins());
         if ($this->health !== null) {
             $app->router->get($this->health, new Health());
         }
@@ -321,40 +321,40 @@ final class AppBuilder
     }
 
     /**
-     * The providers to register, in order: the framework's or what
-     * replaces them, then the application's. A class of the framework's
-     * that the application names as well is registered once.
+     * The plugins to register, in order: the core ones or what replaces
+     * them, then the application's. A framework plugin, core or optional,
+     * named more than once is registered once, where it was first named.
      *
-     * @return list<Provider|string>
+     * @return list<Plugin|string>
      */
-    private function allProviders(): array
+    private function allPlugins(): array
     {
-        $first = $this->onlyProviders ?? array_values(array_diff(App::PROVIDERS, $this->withoutProviders));
-        $providers = [];
+        $first = $this->onlyPlugins ?? array_values(array_diff(App::PLUGINS, $this->withoutPlugins));
+        $plugins = [];
         $seen = [];
-        foreach ([...$first, ...$this->providers] as $provider) {
-            $class = is_string($provider) ? $provider : $provider::class;
-            if (in_array($class, App::PROVIDERS, true)) {
+        foreach ([...$first, ...$this->plugins] as $plugin) {
+            $class = is_string($plugin) ? $plugin : $plugin::class;
+            if (in_array($class, App::PLUGINS, true) || in_array($class, App::OPTIONAL_PLUGINS, true)) {
                 if (isset($seen[$class])) {
                     continue;
                 }
                 $seen[$class] = true;
             }
-            $providers[] = $provider;
+            $plugins[] = $plugin;
         }
-        return $providers;
+        return $plugins;
     }
 
     /**
      * @param array<mixed> $list
-     * @return list<Provider|string>
+     * @return list<Plugin|string>
      */
-    private static function providers(array $list): array
+    private static function plugins(array $list): array
     {
-        foreach ($list as $provider) {
-            if (!is_string($provider) && !$provider instanceof Provider) {
+        foreach ($list as $plugin) {
+            if (!is_string($plugin) && !$plugin instanceof Plugin) {
                 throw new \LogicException(
-                    'withProviders() takes providers or their class names, not ' . get_debug_type($provider) . '.',
+                    'withPlugins() takes plugins or their class names, not ' . get_debug_type($plugin) . '.',
                 );
             }
         }

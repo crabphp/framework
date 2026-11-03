@@ -7,12 +7,12 @@
 
 ## Introduction
 
-The skeleton is small on purpose: every file in it is one you will open. Your own and package providers and route and command files are named in `app.php`; the framework providers are registered by default, and configuration files and migrations are found inside their configured folders.
+The skeleton is small on purpose: every file in it is one you will open. Your own and package plugins and route and command files are named in `app.php`; the core framework plugins are registered by default and the optional ones, such as the queue's, listed there too, and configuration files and migrations are found inside their configured folders.
 
 ## The root
 
 ```text
-app.php             describes the application: providers, middleware, routes
+app.php             describes the application: plugins, middleware, routes
 cua                 the command line: php cua <command>
 
 routes/
@@ -21,7 +21,7 @@ routes/
 
 app/
   Actions/          what the application does: classes with handle()
-  Providers/        where your services are bound
+  Plugins/        where your services are bound
 
 config/
   app.php           name, debug
@@ -46,12 +46,12 @@ Everything begins in `app.php`:
 
 ```php
 // app.php
-use App\Providers\AppProvider;
+use App\Plugins\AppPlugin;
 use Crab\App;
 
 return App::configure(__DIR__)
-    ->withProviders([
-        AppProvider::class,
+    ->withPlugins([
+        AppPlugin::class,
     ])
     ->withRouting(
         routes: 'routes/web.php',
@@ -70,7 +70,7 @@ return App::configure(__DIR__)
 | Folder | Holds |
 | --- | --- |
 | `app/Actions/` | Classes that answer routes. See [Actions](actions.md). |
-| `app/Providers/` | `AppProvider`, where you bind your own services. See [Services and providers](providers.md). |
+| `app/Plugins/` | `AppPlugin`, where you bind your own services. See [Services and plugins](plugins.md). |
 
 ## Where to put new things
 
@@ -83,8 +83,8 @@ The framework does not look for folders, so these are suggestions that keep appl
 | Middleware | `app/Http/` | Name it on a route, a group or in `app.php` |
 | A command | `routes/console.php`, or a class in `app/Console/` | Register it with `Command::add('area:action', YourCommand::class)` in `routes/console.php`, then `php cua area:action` |
 | A queue job | `app/Actions/` | Push it with the queue |
-| An event and its listeners | `app/Events/`, and the listeners in `app/Actions/` | Add the listener in `AppProvider` |
-| A scheduled task | `app/Providers/AppProvider.php` | Declare it on the schedule |
+| An event and its listeners | `app/Events/`, and the listeners in `app/Actions/` | Add the listener in `AppPlugin` |
+| A scheduled task | `app/Plugins/AppPlugin.php` | Declare it on the schedule |
 | A setting | A file in `config/`, read from `.env` | `config('file.key')` |
 | A table | `php cua make:migration create_posts_table` | `php cua migrate` |
 | A second routes file | `routes/api.php` | Add it to `routes:` in `app.php` |

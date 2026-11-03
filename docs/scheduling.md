@@ -24,7 +24,17 @@ On most frameworks you add a cron entry on the server for this. With Crab you de
 
 ## Installation
 
-The schedule is registered by default by `App::configure()`, so it needs nothing in `app.php`; your providers can declare tasks in `register()`.
+The schedule is an optional plugin. Add it in `app.php`, before the plugins that declare tasks in `register()`:
+
+```php
+// app.php
+use Crab\Schedule\SchedulePlugin;
+
+->withPlugins([
+    SchedulePlugin::class,
+    AppPlugin::class,
+])
+```
 
 | Setting | Default | |
 | --- | --- | --- |
@@ -32,10 +42,10 @@ The schedule is registered by default by `App::configure()`, so it needs nothing
 
 ## Defining the schedule
 
-Tasks are declared in a provider's `register()`, on the schedule from the container:
+Tasks are declared in a plugin's `register()`, on the schedule from the container:
 
 ```php
-// app/Providers/AppProvider.php
+// app/Plugins/AppPlugin.php
 use Crab\Contracts\Container\Container;
 use Crab\Contracts\Schedule\Schedule;
 

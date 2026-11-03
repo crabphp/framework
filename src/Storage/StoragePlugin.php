@@ -9,7 +9,7 @@ use Crab\Contracts\Container\Container;
 use Crab\Contracts\Storage\Disk;
 use Crab\Contracts\Storage\Drivers;
 use Crab\Contracts\Storage\Storage;
-use Crab\Contracts\WorkerProvider;
+use Crab\Contracts\WorkerPlugin;
 use Crab\Engine\Process\Worker;
 use Psr\Clock\ClockInterface;
 use Psr\Http\Message\StreamFactoryInterface;
@@ -29,7 +29,7 @@ use Psr\Http\Message\StreamFactoryInterface;
  * Every disk's driver is checked as each worker starts, so a misspelt
  * one stops the server then and not on its first upload.
  */
-final class StorageProvider implements WorkerProvider
+final class StoragePlugin implements WorkerPlugin
 {
     public function register(Container $container): void
     {

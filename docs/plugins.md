@@ -1,22 +1,21 @@
-# Services and providers
+# Services and plugins
 
 - [Introduction](#introduction)
 - [The container](#the-container)
     - [Asking for a service](#asking-for-a-service)
     - [Binding a service](#binding-a-service)
     - [Binding an interface](#binding-an-interface)
-- [Writing a provider](#writing-a-provider)
+- [Core and optional plugins](#core-and-optional-plugins)
+- [Writing a plugin](#writing-a-plugin)
     - [Settings with defaults](#settings-with-defaults)
-    - [Reaching the application from a provider](#reaching-the-application-from-a-provider)
+    - [Reaching the application from a plugin](#reaching-the-application-from-a-plugin)
 - [Work in each worker](#work-in-each-worker)
 - [Worker processes of your own](#worker-processes-of-your-own)
 - [Rules for a service](#rules-for-a-service)
 
 ## Introduction
 
-A service is an object your application shares: a mailer, a payment client, a repository. The container makes services and hands them to the classes that ask for them. A provider is where you tell the container how a service is made.
-
-`App::configure()` includes BroadcastProvider alongside the database, auth, cache, events, queue, schedule and HTTP client providers. It binds `Crab\Contracts\Broadcast\Broadcaster` and opens no resources until first use; see [Broadcasting](broadcasting.md).
+A service is an object your application shares: a mailer, a payment client, a repository. The container makes services and hands them to the classes that ask for them. A plugin is where you tell the container how a service is made.
 
 You rarely call the container yourself. You declare what a class needs in its constructor, and the container supplies it.
 
@@ -44,13 +43,13 @@ A class with no binding is made from its constructor's types, so most classes ne
 Bind when a class needs something the container cannot work out, such as a value from configuration:
 
 ```php
-// app/Providers/AppProvider.php
-namespace App\Providers;
+// app/Plugins/AppPlugin.php
+namespace App\Plugins;
 
 use Crab\Contracts\Container\Container;
-use Crab\Contracts\Provider;
+use Crab\Contracts\Plugin;
 
-final class AppProvider implements Provider
+final class AppPlugin implements Plugin
 {
     public function register(Container $container): void
     {
@@ -80,41 +79,66 @@ $container->singleton(Mailer::class, SmtpMailer::class);
 
 An action that asks for `Mailer` now receives the `SmtpMailer`, and a test can bind a fake under the same name.
 
-## Writing a provider
+## Core and optional plugins
 
-A provider is a class with one method, `register()`. Add it to `app.php`:
+The framework's plugins are of two kinds.
+
+**Core plugins** are on in every application made with `App::configure()`, without being listed: `DatabasePlugin`, `AuthPlugin`, `CachePlugin`, `StoragePlugin`, `EventsPlugin` and `HttpClientPlugin`, the list `App::PLUGINS`. Each binds on first use, so one you never touch opens nothing.
+
+**Optional plugins** are off until you list them in `app.php`, because not every API wants them: `QueuePlugin`, `SchedulePlugin`, `RunsPlugin`, `BroadcastPlugin`, `ActorsPlugin` and `TokenAuthPlugin`, the list `App::OPTIONAL_PLUGINS`. List them in that order where you use several: runs need the queue, and actors travel on broadcast's carrier.
 
 ```php
 // app.php
-use App\Providers\AppProvider;
+use App\Plugins\AppPlugin;
+use Crab\Queue\QueuePlugin;
+use Crab\Schedule\SchedulePlugin;
 
-->withProviders([
-    AppProvider::class,
+return App::configure(__DIR__)
+    ->withPlugins([
+        QueuePlugin::class,
+        SchedulePlugin::class,
+        AppPlugin::class,
+    ])
+    ->create();
+```
+
+A package's plugin, such as `RedisPlugin`, and your own are listed the same way, after the framework's they build on.
+
+## Writing a plugin
+
+A plugin is a class with one method, `register()`. Add it to `app.php`:
+
+```php
+// app.php
+use App\Plugins\AppPlugin;
+
+->withPlugins([
+    AppPlugin::class,
 ])
 ```
 
-`App::configure()` starts with the framework's providers, `App::PROVIDERS`, in this order: `DatabaseProvider`, `AuthProvider`, `CacheProvider`, `EventsProvider`, `QueueProvider`, `ScheduleProvider`, `HttpClientProvider`, `BroadcastProvider`. Your own providers and those of the packages you use come after them, in the order given. There is no `boot()` step: because bindings are closures that run on first use, by then every provider has registered, and order rarely matters. It matters only when a provider adds to something another made in `register()`, such as scheduled tasks or event listeners; put the provider that owns the list first.
+`App::configure()` starts with the core plugins, `App::PLUGINS`. Optional ones, your own and those of the packages you use come after them, in the order given. There is no `boot()` step: because bindings are closures that run on first use, by then every plugin has registered, and order rarely matters. It matters only when a plugin adds to something another made in `register()`, such as scheduled tasks or event listeners; put the plugin that owns the list first.
 
-To leave out a framework provider or replace the framework's list, use one of these two forms:
+To leave out a core plugin or replace the core list, use one of these two forms:
 
 ```php
 // app.php — choose one
-use App\Providers\AppProvider;
-use Crab\Schedule\ScheduleProvider;
+use App\Plugins\AppPlugin;
+use Crab\Cache\CachePlugin;
 
-->withProviders(remove: [ScheduleProvider::class])          // without one of the framework's
-->withProviders(only: [AppProvider::class])                 // these in place of the framework's
+->withPlugins(remove: [CachePlugin::class])             // without one of the core plugins
+->withPlugins(only: [AppPlugin::class])                 // these in place of the core plugins
 ```
 
-`remove:` accepts only classes in `App::PROVIDERS` and names the list when you give another. `only: []` leaves out all framework providers. `only:` and `remove:` cannot be combined, even across calls. Providers given as the first argument are still added after the replacement list. Calling `withProviders()` again adds providers; another `only:` replaces the previous replacement.
+`remove:` accepts only classes in `App::PLUGINS` and names the list when you give another. `only: []` leaves out all core plugins. `only:` and `remove:` cannot be combined, even across calls. Plugins given as the first argument are still added after the replacement list. Calling `withPlugins()` again adds plugins; another `only:` replaces the previous replacement.
 
-A framework provider named again, by class or as an object, is registered once at its first place. `TokenAuthProvider` and every package, including `crabphp/redis` and `crabphp/clockwerk`, stay opt-in. Nothing is found by convention. `new App()` used directly registers no providers.
+A framework plugin, core or optional, named again by class or as an object is registered once at its first place. Every package, including `crabphp/redis` and `crabphp/clockwerk`, is opt-in. Nothing is found by convention. `new App()` used directly registers no plugins.
 
-Start with the one `AppProvider`. Split it when it grows, by area: a `BillingProvider`, a `MailProvider`.
+Start with the one `AppPlugin`. Split it when it grows, by area: a `BillingPlugin`, a `MailPlugin`.
 
 ### Settings with defaults
 
-A provider that ships in a package declares its settings, their defaults and what each takes, once. The application's own configuration wins, and `config('mailer.port')` then reads the same value everywhere:
+A plugin that ships in a package declares its settings, their defaults and what each takes, once. The application's own configuration wins, and `config('mailer.port')` then reads the same value everywhere:
 
 ```php
 use Crab\Contracts\Config\Config;
@@ -143,15 +167,15 @@ $container->singleton(Mailer::class, static function (Container $container): Mai
 });
 ```
 
-A provider that offers one more choice for another section's setting adds it with an `enum` of its own, which joins the earlier choices: this is how `crabphp/redis` makes `"redis"` a value of `cache.store`.
+A plugin that offers one more choice for another section's setting adds it with an `enum` of its own, which joins the earlier choices: this is how `crabphp/redis` makes `"redis"` a value of `cache.store`.
 
 ```php
 $config->defaults('cache', [], ['store' => ['enum' => ['redis']]]);
 ```
 
-### Reaching the application from a provider
+### Reaching the application from a plugin
 
-A provider does everything through contracts in the container, so a package never names a framework class:
+A plugin does everything through contracts in the container, so a package never names a framework class:
 
 | To | Ask for | And call |
 | --- | --- | --- |
@@ -175,14 +199,14 @@ public function register(Container $container): void
 
 ## Work in each worker
 
-A provider that must open something in every worker, such as a connection kept for the worker's life or a timer, implements `WorkerProvider` as well:
+A plugin that must open something in every worker, such as a connection kept for the worker's life or a timer, implements `WorkerPlugin` as well:
 
 ```php
 use Crab\Contracts\Container\Container;
-use Crab\Contracts\WorkerProvider;
+use Crab\Contracts\WorkerPlugin;
 use Crab\Engine\Process\Worker;
 
-final readonly class MetricsProvider implements WorkerProvider
+final readonly class MetricsPlugin implements WorkerPlugin
 {
     public function __construct(private float $interval = 10.0)
     {
@@ -206,7 +230,7 @@ final readonly class MetricsProvider implements WorkerProvider
 }
 ```
 
-This provider flushes every ten seconds by default; its constructor accepts a shorter interval for a [test](testing.md#code-that-waits). `start()` runs in each worker after it is forked and before it takes requests; throwing there stops the server from starting. `stop()` runs after the worker has finished its requests, in reverse order of registration, and must not wait on anything. What a timer throws is logged and the worker keeps running.
+This plugin flushes every ten seconds by default; its constructor accepts a shorter interval for a [test](testing.md#code-that-waits). `start()` runs in each worker after it is forked and before it takes requests; throwing there stops the server from starting. `stop()` runs after the worker has finished its requests, in reverse order of registration, and must not wait on anything. What a timer throws is logged and the worker keeps running.
 
 > [!WARNING]
 > Never open a connection in `register()` or in a constructor. It would be opened once in the parent process and then shared by every forked worker, which corrupts it. Open on first use, or in `start()`.
@@ -250,7 +274,7 @@ final readonly class ConsumeEvents implements Command
 }
 ```
 
-Each worker is started and stopped as an HTTP worker is, with every `WorkerProvider` around it and every failure logged. To run several groups under one parent process, as `queue:work` does for its supervisors, give `runAll()` a list of `Crab\Contracts\Workers`, each a group name, its work and its number of workers. The cancellation fires when the process is told to stop; finish what is in hand and return. The worker only hears it while your code waits through the engine, as `Async::sleep()` does, so a loop that never waits never stops.
+Each worker is started and stopped as an HTTP worker is, with every `WorkerPlugin` around it and every failure logged. To run several groups under one parent process, as `queue:work` does for its supervisors, give `runAll()` a list of `Crab\Contracts\Workers`, each a group name, its work and its number of workers. The cancellation fires when the process is told to stop; finish what is in hand and return. The worker only hears it while your code waits through the engine, as `Async::sleep()` does, so a loop that never waits never stops.
 
 ### A server of your own beside HTTP
 
@@ -302,7 +326,7 @@ Then switch each on where it should run:
 | `process($id, 'any program')` | The program, through the shell | The same |
 | `add($id, fn () => [new Workers(...)])` | Groups of workers inside the server itself | They finish what they have and are replaced, as the HTTP workers are |
 
-What a command or a program prints appears in the server's output with its id in front, `[vite] ready in 300 ms`. One that ends is started again. Registering an id a second time takes the place of the first, so your provider, which comes after the framework's, can say what `queue` runs.
+What a command or a program prints appears in the server's output with its id in front, `[vite] ready in 300 ms`. One that ends is started again. Registering an id a second time takes the place of the first, so your plugin, which comes after the framework's, can say what `queue` runs.
 
 > [!WARNING]
 > A server that listens on an address of its own cannot yet be run under `start --daemon` and reloaded: on `reload` only the HTTP socket is handed from the old server to the new. `start` refuses to start it there and says so. Keep it across reloads, as below, or run `start` in the foreground, kept alive by systemd or a container, where a restart replaces the whole process.
@@ -331,13 +355,13 @@ Under `start --daemon` such a server runs in a process of its own beside the one
 - **It may listen on an address of its own,** since nothing hands its socket over.
 - **It holds the old code's connections to the database and other services,** so keep what it shares with HTTP backward compatible across a deploy, as for the moment between a migration and a reload.
 
-A group given to `add()` has a `setup`, which has it listen on an address of its own, or `work`, a loop that runs until it is told to stop, or both. The closure that returns the groups runs when the server starts, so it may read the configuration and what later providers bound.
+A group given to `add()` has a `setup`, which has it listen on an address of its own, or `work`, a loop that runs until it is told to stop, or both. The closure that returns the groups runs when the server starts, so it may read the configuration and what later plugins bound.
 
 ## Rules for a service
 
 - **No request state.** One object serves overlapping requests. Pass what belongs to a request as an argument. `final readonly class` prevents property reassignment; also keep request state out of mutable objects those properties hold.
 - **Open nothing in the constructor.** Connect on first use, so the object is safe to make anywhere.
-- **Take values, not `config()`.** Read configuration in the provider and pass it in, so the class works without the framework.
+- **Take values, not `config()`.** Read configuration in the plugin and pass it in, so the class works without the framework.
 - **Depend on contracts.** Type-hint `Crab\Contracts\...` and PSR interfaces, never a framework class, so that an implementation can be replaced.
 
 See [Request lifecycle](lifecycle.md) for why.

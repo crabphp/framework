@@ -75,7 +75,7 @@ final class Schedule implements ScheduleContract
             static function (?ContainerInterface $container) use ($job, $data): void {
                 if ($container === null || !$container->has(Queue::class)) {
                     throw new \LogicException(
-                        "The scheduled job {$job} is pushed onto the queue, and there is none: register the queue provider, QueueProvider, or schedule the work with call().",
+                        "The scheduled job {$job} is pushed onto the queue, and there is none: add QueuePlugin to withPlugins() in app.php, or schedule the work with call().",
                     );
                 }
                 $container->get(Queue::class)->push($job, ...$data);

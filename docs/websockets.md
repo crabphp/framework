@@ -122,7 +122,7 @@ final readonly class WatchOrder
 
 Before the first `join()`, `send()`, `receive()`, iteration, or `accept()`, the action is still handling HTTP: `HttpException` supplies its status, validation failures receive 422, and unexpected failures receive 500 and are reported. At first use, middleware receives the bodyless 101 response; the action waits for the wire upgrade before continuing. After acceptance, an action failure is reported once with its route and closes with 1011. `Concurrency` holds its place and `AccessLog` writes its line until the middleware pipeline returns at acceptance or an HTTP refusal.
 
-Register `TokenAuthProvider` and your identity resolver as shown in [Authentication](authentication.md#installation), and the database provider as shown in [Database](database.md). A client that can set headers sends `Authorization` during the handshake. Missing required Identity receives HTTP 401. For browsers, use a ticket as below.
+Register `TokenAuthPlugin` and your identity resolver as shown in [Authentication](authentication.md#installation), and the database plugin as shown in [Database](database.md). A client that can set headers sends `Authorization` during the handshake. Missing required Identity receives HTTP 401. For browsers, use a ticket as below.
 
 Socket actions take one non-null `Socket`, typed pattern parameters, the query string (fields marked `#[FromQuery]`, or one marked class or described `Data`), and optionally the request or authenticated Identity. A closure or `[WatchOrder::class, 'handle']` also works. Invalid parameters receive HTTP 422 before application code runs. Upgrades have no request body; a body, an input class or described `Data` without `#[FromQuery]`, is refused at declaration. Middleware sees raw pattern attributes, so it must validate any attribute it uses itself.
 
@@ -194,7 +194,7 @@ Do not put a long-lived bearer token in the socket URL: a proxy may retain the w
 
 ## Configuration
 
-Declaring a socket route enables this capability; no provider is needed. Defaults work without a configuration file. Override them in `config/websocket.php`:
+Declaring a socket route enables this capability; no plugin is needed. Defaults work without a configuration file. Override them in `config/websocket.php`:
 
 ```php
 // config/websocket.php
@@ -309,7 +309,7 @@ foreach ($socket as $message) {
 
 Never put the receive loop inside `Database::run()` or `transaction()`; both hold their connection until the callback returns, and a parked socket can exhaust the pool.
 
-Awaited work lets other fibers run but fills this socket's inbox until reads pause and the pause deadline applies. Blocking I/O or CPU work stops the whole worker and its timers; no timeout preempts PHP code. Queue long work and acknowledge it at once, using the [Queue](queues.md) provider and a job whose `handle()` accepts `orderId`:
+Awaited work lets other fibers run but fills this socket's inbox until reads pause and the pause deadline applies. Blocking I/O or CPU work stops the whole worker and its timers; no timeout preempts PHP code. Queue long work and acknowledge it at once, using the [Queue](queues.md) plugin and a job whose `handle()` accepts `orderId`:
 
 ```php
 // In an action with a Queue service in its constructor.

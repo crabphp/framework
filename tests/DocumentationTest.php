@@ -252,7 +252,7 @@ final class DocumentationTest extends TestCase
         );
         require $this->directory . '/middleware.php';
         $class = $page === 'middleware.md' ? 'App\\Http\\' . $name : $name;
-        $app = App::configure()->withProviders(only: [])->withMiddleware([new $class()])->create();
+        $app = App::configure()->withPlugins(only: [])->withMiddleware([new $class()])->create();
         $calls = 0;
         $app->router->post('/json', static function () use (&$calls): array {
             ++$calls;
@@ -649,7 +649,7 @@ final class DocumentationTest extends TestCase
     public function testQueueAssertionsUseTheApplicationsClock(string $page): void
     {
         $app = new App(new Config(['queue' => ['store' => 'memory']]));
-        $app->register(\Crab\Queue\QueueProvider::class);
+        $app->register(\Crab\Queue\QueuePlugin::class);
         $clock = new \Crab\Testing\FrozenClock('2099-01-01');
         $app->container->instance(\Crab\Contracts\Clock\Clock::class, $clock);
         $app->container->get(\Crab\Contracts\Queue\Queue::class)->push(DocumentationQueuedJob::class, userId: 1);
@@ -838,21 +838,21 @@ final class DocumentationTest extends TestCase
     private function runTimerExample(int $pause, bool $flushes = true): void
     {
         $namespace = 'DocumentedTimer' . bin2hex(random_bytes(6));
-        $provider = $this->example('providers.md', 'php', 'class MetricsProvider');
+        $plugin = $this->example('plugins.md', 'php', 'class MetricsPlugin');
         if ($pause > 0) {
-            $provider = str_replace(
+            $plugin = str_replace(
                 '$worker->loop->repeat(',
                 '$worker->loop->defer(static function (): void { usleep('
                 . $pause
                 . '); });'
                 . "\n"
                 . '$worker->loop->repeat(',
-                $provider,
+                $plugin,
             );
         }
         if (!$flushes) {
             // Keep the timer active but disable its effect, so only the documented deadline can end the wait.
-            $provider = str_replace('static fn () => $metrics->flush()', 'static fn () => null', $provider);
+            $plugin = str_replace('static fn () => $metrics->flush()', 'static fn () => null', $plugin);
         }
         $metrics = <<<'PHP'
             final class Metrics
@@ -866,10 +866,10 @@ final class DocumentationTest extends TestCase
             }
             PHP;
         file_put_contents(
-            $this->directory . '/timer-provider.php',
-            "<?php\nnamespace {$namespace};\n" . $provider . "\n" . $metrics,
+            $this->directory . '/timer-plugin.php',
+            "<?php\nnamespace {$namespace};\n" . $plugin . "\n" . $metrics,
         );
-        require $this->directory . '/timer-provider.php';
+        require $this->directory . '/timer-plugin.php';
         $example = $this->example('testing.md', 'php', 'WorkerHarness::run(');
         file_put_contents(
             $this->directory . '/timer-test.php',

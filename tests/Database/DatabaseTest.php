@@ -11,7 +11,7 @@ use Crab\Contracts\Database\Connection;
 use Crab\Contracts\Database\Database as DatabaseContract;
 use Crab\Database\Database;
 use Crab\Database\DatabaseException;
-use Crab\Database\DatabaseProvider;
+use Crab\Database\DatabasePlugin;
 use Crab\Database\PdoConnection;
 use Crab\Engine\Async\Async;
 use Crab\Engine\Process\Worker;
@@ -438,7 +438,7 @@ final class DatabaseTest extends TestCase
     public function testADatabaseIsDescribedUnderConnectionsAndNowhereElse(): void
     {
         $flat = new App(new Config(['database' => ['dsn' => 'sqlite::memory:']]));
-        $flat->register(DatabaseProvider::class);
+        $flat->register(DatabasePlugin::class);
         try {
             $flat->container->get(DatabaseContract::class);
             self::fail('A database outside "connections" must be refused.');
@@ -449,7 +449,7 @@ final class DatabaseTest extends TestCase
             );
         }
         $none = new App(new Config([]));
-        $none->register(DatabaseProvider::class);
+        $none->register(DatabasePlugin::class);
         try {
             $none->container->get(DatabaseContract::class);
             self::fail('An application without a database must be told how to describe one.');
@@ -459,25 +459,25 @@ final class DatabaseTest extends TestCase
         }
     }
 
-    public function testTheProviderBindsTheDatabaseFromConfigurationAndClosesItWithTheWorker(): void
+    public function testThePluginBindsTheDatabaseFromConfigurationAndClosesItWithTheWorker(): void
     {
         $this->database('sqlite');
         $app = new App(new Config(['database' => ['connections' => ['main' => ['dsn' => 'sqlite:' . $this->file]]]]));
-        $app->register(DatabaseProvider::class);
+        $app->register(DatabasePlugin::class);
         self::assertSame([null, 60], [config('database.default'), config('database.migration_lock_timeout')]);
 
         $db = $app->container->get(DatabaseContract::class);
         self::assertSame($db, $app->container->get(Connection::class));
-        self::assertSame(1, $db->insert('insert into users (name) values (?)', ['from the provider']));
+        self::assertSame(1, $db->insert('insert into users (name) values (?)', ['from the plugin']));
 
         $names = WorkerHarness::run(
-            [new DatabaseProvider()],
+            [new DatabasePlugin()],
             static function (Worker $worker, Container $container): array {
                 return array_column($container->get(DatabaseContract::class)->select('select name from users'), 'name');
             },
             $app->container,
         );
-        self::assertSame(['from the provider'], $names);
+        self::assertSame(['from the plugin'], $names);
 
         // SQLite allows one writer, so its pool is one connection unless set: the second transaction waits its turn.
         $order = WorkerHarness::run([], static function (Worker $worker) use ($db): array {
@@ -501,7 +501,7 @@ final class DatabaseTest extends TestCase
         self::assertSame(['first begins', 'first ends', 'second begins', 'second ends'], $order);
 
         $unset = new App();
-        $unset->register(DatabaseProvider::class);
+        $unset->register(DatabasePlugin::class);
         $this->expectException(DatabaseException::class);
         $this->expectExceptionMessage('No database is configured');
         $unset->container->get(DatabaseContract::class);

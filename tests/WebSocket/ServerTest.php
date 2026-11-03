@@ -133,7 +133,7 @@ final class ServerTest extends TestCase
     {
         $source = <<<'PHP'
             <?php
-            final class SocketObserver implements Crab\Contracts\WorkerProvider
+            final class SocketObserver implements Crab\Contracts\WorkerPlugin
             {
                 public function register(Crab\Contracts\Container\Container $container): void {}
                 public function start(Crab\Engine\Process\Worker $worker, Crab\Contracts\Container\Container $container): void {}

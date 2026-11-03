@@ -8,7 +8,7 @@ use Crab\Contracts\Broadcast\Carrier;
 
 /**
  * Worker context supplied by glue, plus resources actually used. Stopping
- * an unused provider must not resolve a carrier just to close it.
+ * an unused plugin must not resolve a carrier just to close it.
  *
  * @internal
  */

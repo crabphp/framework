@@ -8,7 +8,7 @@ use Crab\Contracts\Cache\Cache;
 use Crab\Contracts\Config\Config;
 use Crab\Contracts\Console\Console;
 use Crab\Contracts\Container\Container;
-use Crab\Contracts\Provider;
+use Crab\Contracts\Plugin;
 use Crab\Contracts\Schedule\Schedule as ScheduleContract;
 use Crab\Contracts\Servers;
 use Crab\Contracts\Workers;
@@ -22,7 +22,7 @@ use Psr\Log\LoggerInterface;
 
 /**
  * Binds the schedule, and adds the `schedule:work` and `schedule:list`
- * commands. Register it before the providers that declare tasks, which
+ * commands. Register it before the plugins that declare tasks, which
  * they do in register():
  *
  *     $container->get(Schedule::class)->command('report:send')->daily('07:00');
@@ -30,7 +30,7 @@ use Psr\Log\LoggerInterface;
  * "schedule.timezone" is the zone the tasks' times are in, such as
  * "Europe/Paris"; PHP's own when null.
  */
-final class ScheduleProvider implements Provider
+final class SchedulePlugin implements Plugin
 {
     public function register(Container $container): void
     {

@@ -13,7 +13,7 @@ use Crab\Contracts\Database\Migrator as MigratorContract;
 use Crab\Contracts\Database\Schema as SchemaContract;
 use Crab\Database\Database;
 use Crab\Database\DatabaseException;
-use Crab\Database\DatabaseProvider;
+use Crab\Database\DatabasePlugin;
 use Crab\Database\Migrator;
 use Crab\Database\PdoConnection;
 use Crab\Database\Schema;
@@ -356,7 +356,7 @@ final class MigratorTest extends TestCase
         self::assertFalse($schema->hasTable('migrator_users'));
     }
 
-    public function testTheProviderBindsTheSchemaAndMigratorAndAddsTheCommands(): void
+    public function testThePluginBindsTheSchemaAndMigratorAndAddsTheCommands(): void
     {
         $app = new App(new Config([
             'database' => [
@@ -367,7 +367,7 @@ final class MigratorTest extends TestCase
             ],
         ]));
         $app->container->instance(Clock::class, new FrozenClock('2026-01-31 12:00:00'));
-        $app->register(DatabaseProvider::class);
+        $app->register(DatabasePlugin::class);
         self::assertInstanceOf(Schema::class, $app->container->get(SchemaContract::class));
         self::assertInstanceOf(Migrator::class, $app->container->get(MigratorContract::class));
 
@@ -401,7 +401,7 @@ final class MigratorTest extends TestCase
         $db = $app->container->get(DatabaseContract::class);
         try {
             $db->table('migrator_posts')->insert(['user_id' => 5]);
-            self::fail('SQLite did not check a foreign key on a connection the provider opened.');
+            self::fail('SQLite did not check a foreign key on a connection the plugin opened.');
         } catch (DatabaseException) {
         }
         self::assertSame("Rolled back  2026_02_01_000000_create_posts\nRolled back  2026_01_31_120000_create_migrator_users_table\n", $this->run_(
@@ -411,7 +411,7 @@ final class MigratorTest extends TestCase
         $db->close();
 
         $unset = new App(new Config(['database' => ['connections' => ['main' => ['dsn' => 'sqlite::memory:']]]]));
-        $unset->register(DatabaseProvider::class);
+        $unset->register(DatabasePlugin::class);
         self::assertStringContainsString('Set "migrations" on its connection', $this->run_(
             $unset,
             'migrate',
@@ -429,7 +429,7 @@ final class MigratorTest extends TestCase
                 ]],
             ],
         ]));
-        $app->register(DatabaseProvider::class);
+        $app->register(DatabasePlugin::class);
         $this->migration(
             'migrations/2026_01_01_000000_create_users',
             "\$schema->create('migrator_users', function (Table \$t) { \$t->id(); });",
@@ -452,7 +452,7 @@ final class MigratorTest extends TestCase
             ],
         ]), basePath: $this->directory);
         $app->container->instance(Clock::class, new FrozenClock('2026-01-31 12:00:00'));
-        $app->register(DatabaseProvider::class);
+        $app->register(DatabasePlugin::class);
 
         self::assertSame("Nothing to migrate.\n", $this->run_($app, 'migrate'), 'The folder need not exist yet.');
         self::assertSame(
@@ -528,7 +528,7 @@ final class MigratorTest extends TestCase
                 ]],
             ],
         ]));
-        $app->register(DatabaseProvider::class);
+        $app->register(DatabasePlugin::class);
         self::assertSame("Nothing to migrate.\n", $this->run_($app, 'migrate'));
         self::assertFileExists($this->directory . '/app.sqlite');
         $app->container->get(\Crab\Database\DatabaseManager::class)->close();
@@ -554,7 +554,7 @@ final class MigratorTest extends TestCase
                 ],
             ],
         ]));
-        $app->register(DatabaseProvider::class);
+        $app->register(DatabasePlugin::class);
         $this->migration(
             'migrations/2026_01_01_000000_create_users',
             "\$schema->create('migrator_users', function (Table \$t) { \$t->id(); \$t->string('name'); });",
@@ -655,7 +655,7 @@ final class MigratorTest extends TestCase
                 ],
             ],
         ]));
-        $app->register(DatabaseProvider::class);
+        $app->register(DatabasePlugin::class);
         $this->migration(
             'migrations/2026_01_01_000000_main',
             "\$schema->create('marker', fn (Table \$table) => \$table->id());",
@@ -1079,7 +1079,7 @@ final class MigratorTest extends TestCase
         $database->close();
     }
 
-    public function testTheProviderPassesTheLockTimeoutToEveryNamedMigrator(): void
+    public function testThePluginPassesTheLockTimeoutToEveryNamedMigrator(): void
     {
         $this->requireFork();
         $this->prepareConcurrentDatabase('sqlite');
@@ -1101,12 +1101,12 @@ final class MigratorTest extends TestCase
                 ];
                 $configuration['migration_lock_timeout'] = 0;
                 $app = new App(new Config(['database' => $configuration]));
-                $app->register(DatabaseProvider::class);
+                $app->register(DatabasePlugin::class);
                 $manager = $app->container->get(\Crab\Database\DatabaseManager::class);
                 foreach ($manager->names() as $name) {
                     try {
                         $manager->migrator($name)->run();
-                        self::fail('The provider should pass the configured lock timeout.');
+                        self::fail('The plugin should pass the configured lock timeout.');
                     } catch (DatabaseException $error) {
                         self::assertStringContainsString('for 0 seconds', $error->getMessage());
                         self::assertStringContainsString('migrate:status', $error->getMessage());
@@ -1121,7 +1121,7 @@ final class MigratorTest extends TestCase
 
         $defaults = new Config(['database' => ['connections' => ['main' => ['dsn' => 'sqlite::memory:']]]]);
         $app = new App($defaults);
-        $app->register(DatabaseProvider::class);
+        $app->register(DatabasePlugin::class);
         self::assertSame(60, $defaults->get('database.migration_lock_timeout'));
     }
 
@@ -1138,7 +1138,7 @@ final class MigratorTest extends TestCase
         $database->close();
     }
 
-    public function testTheProviderRefusesInvalidLockTimeoutsAndCastsFractionsToWholeSeconds(): void
+    public function testThePluginRefusesInvalidLockTimeoutsAndCastsFractionsToWholeSeconds(): void
     {
         foreach ([-1, 'later', null, INF, NAN] as $timeout) {
             $app = new App(new Config([
@@ -1147,7 +1147,7 @@ final class MigratorTest extends TestCase
                     'migration_lock_timeout' => $timeout,
                 ],
             ]));
-            $app->register(DatabaseProvider::class);
+            $app->register(DatabasePlugin::class);
             try {
                 $app->container->get(MigratorContract::class);
                 self::fail('The invalid configured lock timeout should be refused.');
@@ -1162,14 +1162,14 @@ final class MigratorTest extends TestCase
                 'migration_lock_timeout' => 1.9,
             ],
         ]));
-        $app->register(DatabaseProvider::class);
+        $app->register(DatabasePlugin::class);
         $manager = $app->container->get(\Crab\Database\DatabaseManager::class);
         $timeout = new \ReflectionProperty(Migrator::class, 'lockTimeout');
         foreach ($manager->names() as $name) {
             self::assertSame(
                 1,
                 $timeout->getValue($manager->migrator($name)),
-                'The provider must cast before calling the integer constructor.',
+                'The plugin must cast before calling the integer constructor.',
             );
         }
         $manager->close();
@@ -1351,7 +1351,7 @@ final class MigratorTest extends TestCase
 
     /**
      * Each child opens its own pool after the fork, without clearing the
-     * shared tables. SQLite uses the provider's WAL and waiting settings.
+     * shared tables. SQLite uses the plugin's WAL and waiting settings.
      */
     private function concurrentDatabase(string $driver): Database
     {

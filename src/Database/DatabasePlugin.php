@@ -12,7 +12,7 @@ use Crab\Contracts\Database\Database as DatabaseContract;
 use Crab\Contracts\Database\Migrator as MigratorContract;
 use Crab\Contracts\Database\Migrators;
 use Crab\Contracts\Database\Schema as SchemaContract;
-use Crab\Contracts\WorkerProvider;
+use Crab\Contracts\WorkerPlugin;
 use Crab\Database\Commands\Fresh;
 use Crab\Database\Commands\MakeMigration;
 use Crab\Database\Commands\Migrate;
@@ -30,7 +30,7 @@ use Psr\Clock\ClockInterface;
  * worker opens its own connections when it first runs a statement and
  * closes them when it stops.
  */
-final class DatabaseProvider implements WorkerProvider
+final class DatabasePlugin implements WorkerPlugin
 {
     public function register(Container $container): void
     {

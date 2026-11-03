@@ -286,7 +286,7 @@ Route::middleware(TokenAuth::class)->group(function () {
 - **The user reaches an action by type.** A parameter whose class implements `Identity` receives the user that middleware put on the request's `user` attribute; a request with none is answered with `401`. Make the parameter nullable for a route that works either way.
 - **There is no `Auth::user()`.** A worker serves requests that overlap, so the user travels with the request and nowhere else.
 - **Any middleware can be a way of authenticating.** It finds the user, and either calls `$handler->handle($request->withAttribute('user', $user))` or answers `401`. A session cookie, a signed address, a JWT, a header a proxy sets: each is a few lines of middleware of your own, and needs nothing more from Crab.
-- **`AuthProvider`, registered by default,** binds what every way shares, the `PasswordHasher`: `hash()`, `verify()` and `needsRehash()`, over PHP's own password hashing.
+- **`AuthPlugin`, registered by default,** binds what every way shares, the `PasswordHasher`: `hash()`, `verify()` and `needsRehash()`, over PHP's own password hashing.
 
 ### Tokens
 
@@ -294,7 +294,7 @@ One way ships, because nearly every API starts with it: a token in a header, kep
 
 ~~~php
 // app.php
-->withProviders([TokenAuthProvider::class, AppProvider::class])
+->withPlugins([TokenAuthPlugin::class, AppPlugin::class])
 ~~~
 
 ~~~sh
@@ -329,7 +329,7 @@ The fixed dummy hash makes a missing account perform password verification too. 
 
 The client then sends `Authorization: Bearer <token>`, and `TokenAuth` is the middleware that reads it.
 
-- **You say how a user is found.** A token records whose it is, not who that is, so bind `Contracts\Auth\IdentityResolver` in your own provider; its `resolve($id)` returns your user or null.
+- **You say how a user is found.** A token records whose it is, not who that is, so bind `Contracts\Auth\IdentityResolver` in your own plugin; its `resolve($id)` returns your user or null.
 - **The table is yours.** `token:install` writes the migration for `auth_tokens` into your migrations folder, where you can read and change it; the framework ships no migration of its own.
 - **`TokenStore`** has `issue($user, $name, $expiresAt)`, `owner($token)`, `revoke($token)` and `revokeAll($user)`. A token is 64 random characters, shown once; only its hash is stored. Checking one is one query, and a revoked token stops working at once.
 - **Another header, or another word before the token,** is an argument, given as an object:
@@ -389,7 +389,7 @@ $this->broadcast->to("orders.{$id}")->send(['status' => 'shipped']);
 $this->broadcast->within($transaction)->to("orders.{$id}")->send(['status' => 'shipped']);
 ```
 
-`BroadcastProvider` is included by `App::configure()`; with `new App()`, register it explicitly. `broadcast.carrier = 'local'` reaches one HTTP process. Choose `'redis'` and register `Crab\Redis\RedisProvider` for multiple workers or console senders. Defaults are `broadcast.prefix = 'crab:broadcast:'`, `broadcast.max_channels = 64`, `broadcast.batch = 128`, and `broadcast.max_pending_bytes = 1048576`. Slow readers close with 1008; Redis gaps close joined sockets with 1012 so clients reconnect and refetch state. Delivery is at most once, with no replay. `Testing\FakeBroadcaster` records sends without sockets. See [Broadcasting](docs/broadcasting.md).
+`BroadcastPlugin` is optional: list it in `withPlugins()`. `broadcast.carrier = 'local'` reaches one HTTP process. Choose `'redis'` and list `Crab\Redis\RedisPlugin` after it for multiple workers or console senders. Defaults are `broadcast.prefix = 'crab:broadcast:'`, `broadcast.max_channels = 64`, `broadcast.batch = 128`, and `broadcast.max_pending_bytes = 1048576`. Slow readers close with 1008; Redis gaps close joined sockets with 1012 so clients reconnect and refetch state. Delivery is at most once, with no replay. `Testing\FakeBroadcaster` records sends without sockets. See [Broadcasting](docs/broadcasting.md).
 
 ## Requests and responses
 
@@ -522,7 +522,7 @@ $stripe = new \Crab\HttpClient\Client('https://api.stripe.com/v1', headers: ['Au
 $stripe->post('/charges', json: ['amount' => 500])->throw();
 ~~~
 
-Make it in a provider and bind it under a name of your own. It takes the same arguments as the settings below, among them `proxy:`.
+Make it in a plugin and bind it under a name of your own. It takes the same arguments as the settings below, among them `proxy:`.
 
 ### Cookies
 
@@ -590,12 +590,12 @@ Env::load(__DIR__ . '/.env');
 $app = new App(Config::load(__DIR__ . '/config'));
 ~~~
 
-An application with more than one file is usually described in one chain instead, which also registers the framework providers and loads the route files:
+An application with more than one file is usually described in one chain instead, which also registers the core framework plugins and loads the route files:
 
 ~~~php
 return App::configure(__DIR__)
-    ->withProviders([
-        AppProvider::class,
+    ->withPlugins([
+        AppPlugin::class,
     ])
     ->withMiddleware(prepend: [new Cors(['https://app.example.com'])])
     ->withRouting(
@@ -608,18 +608,18 @@ return App::configure(__DIR__)
 
 - **The base path** is the directory given to `configure()`. Its `.env` file and `config` folder are loaded by default, because `App::configure()` begins the chain with `withEnv('.env')` and `withConfig('config', required: false)`; call either again to name another. Nothing else is found by convention.
 - **Paths may be relative** to the base path, and `$app->path('storage/app.log')` gives one in full anywhere else.
-- **Providers** start with `App::PROVIDERS`: Database, Auth, Cache, Events, Queue, Schedule, HttpClient and Broadcast, in that order. Add your own and your packages' providers as one provider or a list; `routes:` and `commands:` each take one file or a list of files. `withMiddleware()` is described under [Middleware](#middleware).
+- **Plugins** start with the core ones, `App::PLUGINS`: Database, Auth, Cache, Storage, Events and HttpClient. The optional ones, `App::OPTIONAL_PLUGINS` (Queue, Schedule, Runs, Broadcast, Actors and TokenAuth), are listed only when you want them, as are your own and your packages' plugins, as one plugin or a list; `routes:` and `commands:` each take one file or a list of files. `withMiddleware()` is described under [Middleware](#middleware).
 - **`health: '/up'`** makes `GET /up` answer 200 and `{"status":"up"}`, for a load balancer or a deploy script that needs to know the server takes requests. It says that this worker answers and asks nothing of the database, so that a slow store does not take every server out of rotation at once; route the path to an action of your own to check more.
-- **Each step is optional and they may come in any order:** `create()` loads the environment, then the configuration, makes the application, registers the providers and middleware, and then includes the route and command files, which declare with `Route::` and `Command::`.
+- **Each step is optional and they may come in any order:** `create()` loads the environment, then the configuration, makes the application, registers the plugins and middleware, and then includes the route and command files, which declare with `Route::` and `Command::`.
 
-To leave out a framework provider or replace the default list, choose one form:
+To leave out a core plugin or replace the core list, choose one form:
 
 ~~~php
-->withProviders(remove: [ScheduleProvider::class])
-->withProviders(only: [AppProvider::class])
+->withPlugins(remove: [CachePlugin::class])
+->withPlugins(only: [AppPlugin::class])
 ~~~
 
-`remove:` accepts only classes from `App::PROVIDERS`; `only: []` leaves them all out. Do not combine `remove:` and `only:`. A framework provider named again is registered once. `TokenAuthProvider` and every package stay opt-in. `new App()` used directly registers no providers. See [Services and providers](docs/providers.md).
+`remove:` accepts only classes from `App::PLUGINS`; `only: []` leaves them all out. Do not combine `remove:` and `only:`. A framework plugin named again is registered once. Every package is opt-in. `new App()` used directly registers no plugins. See [Services and plugins](docs/plugins.md).
 
 `Config::load()` reads every PHP file of a directory, keyed by file name:
 
@@ -644,7 +644,7 @@ Inside a worker, a PHP warning or notice is thrown as an `ErrorException`, so it
 
 ## Database
 
-The database provider is registered by default by `App::configure()`; nothing is needed in `app.php`. An application with no database configuration starts, and asking for the database then says what to configure.
+The database plugin is registered by default by `App::configure()`; nothing is needed in `app.php`. An application with no database configuration starts, and asking for the database then says what to configure.
 
 ~~~php
 // config/database.php
@@ -824,7 +824,7 @@ return new class implements Migration {
 - **Migrations run in the order of their file names** and each run is a batch; `migrate:rollback` takes back the last batch, newest first.
 - **On SQLite a migration that fails before commit rolls back its changes.** A failed commit callback leaves the changes and migration record already committed. MySQL commits each change to a table as it is made, so there a migration that fails halfway has done the first half: keep each one small. See [MySQL and SQLite](docs/migrations.md#mysql-and-sqlite).
 - **Rows can be moved in a migration** with `$schema->connection()->table('users')->...`.
-- **SQLite checks foreign keys** on the connections the provider opens.
+- **SQLite checks foreign keys** on the connections the plugin opens.
 - **A column's type cannot be changed** in `$schema->table()`; SQLite has no statement for it. Add a column, copy the values and drop the old one.
 - A package adds its own folder through `Crab\Contracts\Database\Migrator::path()`. To build tables outside a migration, ask for `Crab\Contracts\Database\Schema`.
 
@@ -872,12 +872,12 @@ $disk->temporaryUrl('reports/7.csv', $clock->now()->modify('+10 minutes'));  // 
 
 ## Events
 
-Events are registered by default by `App::configure()`; add your listeners in your own provider.
+Events are registered by default by `App::configure()`; add your listeners in your own plugin.
 
 ~~~php
 use Crab\Contracts\Events\Dispatcher;
 
-// In a provider's register(): who hears what.
+// In a plugin's register(): who hears what.
 $container->get(Dispatcher::class)->listen(UserRegistered::class, SendWelcomeEmail::class);
 
 // Anywhere a Dispatcher is asked for: say that it happened.
@@ -888,7 +888,7 @@ An event is any object and a listener is a closure or a class with `handle()`, m
 
 ## Queue
 
-The queue is registered by default by `App::configure()`; configure a database connection for its default store.
+The queue is optional: list `QueuePlugin` in `withPlugins()`, and configure a database connection for its default store.
 
 ~~~sh
 php cua queue:install        # writes the jobs table's migration into your own migrations
@@ -984,12 +984,12 @@ See [docs/actors.md](docs/actors.md).
 
 ## Scheduling
 
-The schedule is registered by default by `App::configure()`; declare tasks in your own provider.
+The schedule is optional: list `SchedulePlugin` in `withPlugins()` before your own plugin, which declares the tasks.
 
 ~~~php
 use Crab\Contracts\Schedule\Schedule;
 
-// In a provider's register():
+// In a plugin's register():
 $schedule = $container->get(Schedule::class);
 $schedule->command('report:send', '--month=last')->monthly(1, '06:00');
 $schedule->job(PruneTokens::class, olderThanDays: 30)->daily('03:00');
@@ -1074,29 +1074,29 @@ Things to know:
 | `route:list` | Lists the registered routes, each with its action and the middleware around it. |
 | `make:middleware` | Writes a new middleware class in `app/Http/`. |
 
-Providers add theirs:
+Plugins add theirs:
 
-| Provider | Commands |
+| Plugin | Commands |
 | --- | --- |
-| `DatabaseProvider` | `migrate`, `migrate:rollback`, `migrate:status`, `make:migration` |
-| `TokenAuthProvider` | `token:install` |
-| `CacheProvider` | `cache:clear`, `cache:prune`, `cache:install` |
-| `QueueProvider` | `queue:work`, `queue:failed`, `queue:retry`, `queue:forget`, `queue:install` |
-| `ScheduleProvider` | `schedule:work`, `schedule:list` |
+| `DatabasePlugin` | `migrate`, `migrate:rollback`, `migrate:status`, `make:migration` |
+| `TokenAuthPlugin` | `token:install` |
+| `CachePlugin` | `cache:clear`, `cache:prune`, `cache:install` |
+| `QueuePlugin` | `queue:work`, `queue:failed`, `queue:retry`, `queue:forget`, `queue:install` |
+| `SchedulePlugin` | `schedule:work`, `schedule:list` |
 
-Add your own with `Command::add('mail:send', SendMail::class)`, which is `$app->console->add()` under a shorter name. A command is a class implementing `Contracts\Console\Command` (`description()` and `handle(Input $input, Output $output): int`), made by the container when its description or execution is first needed, or a closure taking the input and output. `Input` gives positional arguments and `--name=value` or `--flag` options. Validate a value's entire form and range before casting or doing work; see [Arguments and options](docs/console.md#arguments-and-options). A provider adds commands through the container's `Contracts\Console\Console` entry.
+Add your own with `Command::add('mail:send', SendMail::class)`, which is `$app->console->add()` under a shorter name. A command is a class implementing `Contracts\Console\Command` (`description()` and `handle(Input $input, Output $output): int`), made by the container when its description or execution is first needed, or a closure taking the input and output. `Input` gives positional arguments and `--name=value` or `--flag` options. Validate a value's entire form and range before casting or doing work; see [Arguments and options](docs/console.md#arguments-and-options). A plugin adds commands through the container's `Contracts\Console\Console` entry.
 
-## Services, providers and middleware
+## Services, plugins and middleware
 
 ~~~php
-$app->register(Acme\Mailer\MailerProvider::class);   // a class with register(Container $container)
+$app->register(Acme\Mailer\MailerPlugin::class);   // a class with register(Container $container)
 ->withMiddleware([Acme\Tracing::class])              // in app.php: any PSR-15 middleware, around every request
 Route::get('/users/{id}', ShowUser::class);            // an action class made by the container
 ~~~
 
-A provider reaches the application through contracts in the container: `Contracts\Routing\Router` to add routes, `Contracts\Console\Console` to add commands, `Contracts\Http\MiddlewareStack` to add middleware, `Contracts\Runner` to run worker processes of its own, as the queue and the scheduler do, and `Contracts\Config\Config` to declare its settings with `defaults('cache', [...], $rules)`, which the application's own configuration overrides and which are checked against their rules at startup; see [docs/configuration.md](docs/configuration.md#checked-at-startup).
+A plugin reaches the application through contracts in the container: `Contracts\Routing\Router` to add routes, `Contracts\Console\Console` to add commands, `Contracts\Http\MiddlewareStack` to add middleware, `Contracts\Runner` to run worker processes of its own, as the queue and the scheduler do, and `Contracts\Config\Config` to declare its settings with `defaults('cache', [...], $rules)`, which the application's own configuration overrides and which are checked against their rules at startup; see [docs/configuration.md](docs/configuration.md#checked-at-startup).
 
-A provider that needs something open in every worker, such as a connection or a timer, implements `Contracts\WorkerProvider` too: `start(Worker $worker, Container $container)` runs in each worker after the engine forks and `stop(Worker $worker, Container $container)` after it has drained. A task or timer that fails in a worker is written to the log and the worker keeps running. `Testing\WorkerHarness::run()` runs such a provider through a worker's life inside a test.
+A plugin that needs something open in every worker, such as a connection or a timer, implements `Contracts\WorkerPlugin` too: `start(Worker $worker, Container $container)` runs in each worker after the engine forks and `stop(Worker $worker, Container $container)` after it has drained. A task or timer that fails in a worker is written to the log and the worker keeps running. `Testing\WorkerHarness::run()` runs such a plugin through a worker's life inside a test.
 
 `$app->container` autowires constructors by type and keeps one object of each class per worker; use `bind()` for a new one each time, `singleton()` to say how one is made and `instance()` for an existing value. Because those objects are shared by every request a worker serves, they must not hold the state of one request. Middleware given by class name is made inside each worker as it starts, so a misconfigured application fails at startup; an action given by class name is made when its route is first requested.
 

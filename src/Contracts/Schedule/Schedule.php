@@ -6,7 +6,7 @@ namespace Crab\Contracts\Schedule;
 
 /**
  * The work an application does by the clock. Tasks are declared while the
- * application is defined, in a provider's register(), and `schedule:work`
+ * application is defined, in a plugin's register(), and `schedule:work`
  * runs each when it is due:
  *
  *     $schedule->command('report:send')->daily('07:00');

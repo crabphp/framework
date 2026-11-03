@@ -8,7 +8,7 @@ use Crab\Contracts\Config\Config;
 use Crab\Contracts\Console\Console;
 use Crab\Contracts\Container\Container;
 use Crab\Contracts\Database\Database;
-use Crab\Contracts\Provider;
+use Crab\Contracts\Plugin;
 use Crab\Contracts\Queue\Queue;
 use Crab\Contracts\Runs\Runs as RunsContract;
 use Crab\Runs\Commands\InstallRuns;
@@ -21,7 +21,7 @@ use Psr\Log\LoggerInterface;
  * Binds runs from the "runs" configuration section, and adds the
  * `runs:install`, `runs:list` and `runs:retry` commands. Runs are kept in
  * the database and carried out by queue workers, so the database and the
- * queue providers come before this one.
+ * queue plugins come before this one.
  *
  *     table      the runs' table; "runs"
  *     steps      the table of their steps; "run_steps"
@@ -31,7 +31,7 @@ use Psr\Log\LoggerInterface;
  *     backoff    seconds before the second try, the third, and so on; [10, 60]
  *     lease      seconds a worker's hold on a run lasts unless renewed; 90
  */
-final class RunsProvider implements Provider
+final class RunsPlugin implements Plugin
 {
     public function register(Container $container): void
     {
@@ -61,7 +61,7 @@ final class RunsProvider implements Provider
             $config->check('runs');
             if (!$container->has(Database::class) || !$container->has(Queue::class)) {
                 throw new \LogicException(
-                    'Runs are kept in the database and carried out by queue workers: register DatabaseProvider and QueueProvider as well as RunsProvider.',
+                    'Runs are kept in the database and carried out by queue workers: add QueuePlugin before RunsPlugin in withPlugins(), and keep DatabasePlugin.',
                 );
             }
             $database = $container->get(Database::class);

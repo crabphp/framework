@@ -18,7 +18,7 @@ MySQL and SQLite are supported. SQLite needs no server and suits development, te
 
 ## Configuration
 
-The database provider is registered by default by `App::configure()`, so it needs nothing in `app.php`; configure a connection before using it.
+The database plugin is registered by default by `App::configure()`, so it needs nothing in `app.php`; configure a connection before using it.
 
 ```php
 // config/database.php
@@ -198,7 +198,7 @@ Turn on `async` when MySQL queries keep your HTTP workers waiting while other re
 
 With this enabled, `pool` is the number of queries one worker can have in flight. A pool of one queues queries even though the driver waits on the event loop. Borrow a separate connection for each concurrent operation; two fibers using one borrowed connection at once are refused. `timeout` bounds connection setup and waiting for a free connection. Queries have no deadline of their own.
 
-`async` is each connection's own setting. SQLite and code outside a running provider worker, including ordinary console commands and `migrate`, keep using PDO.
+`async` is each connection's own setting. SQLite and code outside a running plugin worker, including ordinary console commands and `migrate`, keep using PDO.
 
 TLS is off by default. Enable it with `'options' => ['ssl' => true]`, or supply PHP SSL stream options:
 

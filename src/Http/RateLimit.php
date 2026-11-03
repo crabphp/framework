@@ -64,7 +64,7 @@ final readonly class RateLimit implements Middleware, UsesContainer
         }
         if (!$container->has(Cache::class)) {
             throw new \LogicException(
-                'A rate limit keeps its counts in the cache: register the cache provider, CacheProvider.',
+                'A rate limit keeps its counts in the cache: register the cache plugin, CachePlugin.',
             );
         }
         return new self(

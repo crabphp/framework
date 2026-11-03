@@ -48,7 +48,7 @@ final readonly class Ticket implements Middleware, UsesContainer
         }
         if ($this->tickets === null || $this->tokens === null) {
             throw new \LogicException(
-                'Ticket authentication needs its services. Register AuthProvider, CacheProvider and TokenAuthProvider, and put Ticket on a route or supply its tickets and tokens.',
+                'Ticket authentication needs its services. Register AuthPlugin, CachePlugin and TokenAuthPlugin, and put Ticket on a route or supply its tickets and tokens.',
             );
         }
         $query = $request->getQueryParams();

@@ -97,7 +97,7 @@ Route::get('/me', [UserController::class, 'me'])->middleware(TokenAuth::class);
 Route::post('/reports', CreateReport::class)->middleware(TokenAuth::class, new RequireRole('analyst'));
 ```
 
-Give a class name, or an object when the middleware takes options. For `TokenAuth`, add `TokenAuthProvider` as shown in [Authentication](authentication.md#installation); see [Middleware](middleware.md#around-some-routes).
+Give a class name, or an object when the middleware takes options. For `TokenAuth`, add `TokenAuthPlugin` as shown in [Authentication](authentication.md#installation); see [Middleware](middleware.md#around-some-routes).
 
 ## Named routes
 
@@ -170,7 +170,7 @@ Both pass back through the middleware around every request, which is how a `404`
 php cua route:list
 ```
 
-It prints every route with its name, when routes have one, its action and route and group middleware; global middleware from `app.php` and providers is not shown.
+It prints every route with its name, when routes have one, its action and route and group middleware; global middleware from `app.php` and plugins is not shown.
 
 ## Several route files
 
@@ -184,4 +184,4 @@ When `routes/web.php` grows, split it and name each file in `app.php`:
 )
 ```
 
-A package adds routes from its provider, through the router in the container; see [Services and providers](providers.md#reaching-the-application-from-a-provider).
+A package adds routes from its plugin, through the router in the container; see [Services and plugins](plugins.md#reaching-the-application-from-a-plugin).

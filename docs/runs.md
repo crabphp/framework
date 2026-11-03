@@ -51,7 +51,21 @@ Runs are kept in two tables of your database and carried out by [queue](queues.m
 
 ## Installation
 
-Runs are registered by default by `App::configure()`. Write the migration for their tables and run it:
+Runs are an optional plugin that needs the queue's. Add both in `app.php`, the queue first:
+
+```php
+// app.php
+use Crab\Queue\QueuePlugin;
+use Crab\Runs\RunsPlugin;
+
+->withPlugins([
+    QueuePlugin::class,
+    RunsPlugin::class,
+    AppPlugin::class,
+])
+```
+
+Then write the migration for their tables and run it:
 
 ```sh
 php cua runs:install         # writes the runs and run_steps tables' migration into your migrations

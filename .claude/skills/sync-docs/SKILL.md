@@ -21,7 +21,7 @@ Run everything from the framework's root, the folder with `composer.json`.
 
 2. **Read the source, not the old page.** For each page to touch, read what an application developer meets:
    - the contract in `src/Contracts/<Component>/` (method names, parameters, docblocks),
-   - the provider (`*Provider.php`): its `defaults()` are the settings and their defaults, its `console->add()` the commands,
+   - the plugin (`*Plugin.php`): its `defaults()` are the settings and their defaults, its `console->add()` the commands,
    - each command's `description()`, which lists its arguments and options,
    - the component's tests in `tests/<Component>/`, which show real usage and the edge cases worth a sentence,
    - the rules for it in `AGENTS.md`: what it deliberately does not do belongs on the page too.
@@ -57,7 +57,7 @@ Run everything from the framework's root, the folder with `composer.json`.
 | `src/Http/` middleware, `Cors`, `RequestId`, `MiddlewareStack` | `middleware.md` |
 | `src/Http/ErrorHandler.php`, `ErrorResponse.php`, `HttpException.php` | `errors.md` |
 | `src/Log/` | `logging.md` |
-| `src/Container/`, `src/Contracts/Provider.php`, `WorkerProvider.php`, `Runner.php` | `providers.md` |
+| `src/Container/`, `src/Contracts/Plugin.php`, `WorkerPlugin.php`, `Runner.php` | `plugins.md` |
 | `src/Console/`, `src/Commands/`, `src/Command.php` | `console.md` |
 | `src/Auth/` | `authentication.md` |
 | `src/Database/` pool and query layer | `database.md` |
@@ -79,7 +79,7 @@ A component with no row gets a page of its own and a row here.
 - Every page is listed in `documentation.md`, and every listed page exists.
 - Every link between pages, and every `#anchor`, points at something.
 - Every `Crab\...` name on a page is a class, interface or enum that exists.
-- Every console command a provider or `App` registers is documented, and every `php cua <command>` on a page is a real command or one the page itself declares.
-- Every setting a provider declares with `defaults()`, and every key `App`, `Server` and `Serve` read, appears somewhere as `section.key`.
+- Every console command a plugin or `App` registers is documented, and every `php cua <command>` on a page is a real command or one the page itself declares.
+- Every setting a plugin declares with `defaults()`, and every key `App`, `Server` and `Serve` read, appears somewhere as `section.key`.
 
 It cannot tell whether an explanation is right. Reading the source in step 2 is what does that.

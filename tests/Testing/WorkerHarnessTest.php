@@ -5,14 +5,14 @@ declare(strict_types=1);
 namespace Crab\Tests\Testing;
 
 use Crab\Contracts\Container\Container;
-use Crab\Contracts\Provider;
-use Crab\Contracts\WorkerProvider;
+use Crab\Contracts\Plugin;
+use Crab\Contracts\WorkerPlugin;
 use Crab\Engine\Process\Worker;
 use Crab\Testing\WorkerHarness;
 use Crab\Tests\Support\Wait;
 use PHPUnit\Framework\TestCase;
 
-final class Ticker implements WorkerProvider
+final class Ticker implements WorkerPlugin
 {
     /**
      * @var list<string>
@@ -52,10 +52,10 @@ final class Ticker implements WorkerProvider
 
 final class WorkerHarnessTest extends TestCase
 {
-    public function testRunsProvidersThroughAWorkersLife(): void
+    public function testRunsPluginsThroughAWorkersLife(): void
     {
         $ticker = new Ticker();
-        $plain = new class implements Provider {
+        $plain = new class implements Plugin {
             public function register(Container $container): void
             {
                 $container->instance('plain', 'registered');
@@ -64,11 +64,7 @@ final class WorkerHarnessTest extends TestCase
         $result = WorkerHarness::run([$ticker, $plain], static function (Worker $worker, Container $container) use (
             $ticker,
         ): array {
-            Wait::until(
-                $worker->loop,
-                static fn(): bool => count($container->get('ticks')) >= 3,
-                'three provider ticks',
-            );
+            Wait::until($worker->loop, static fn(): bool => count($container->get('ticks')) >= 3, 'three plugin ticks');
             return [$ticker->events, count($container->get('ticks')) > 2, $container->get('plain')];
         });
 
@@ -90,20 +86,20 @@ final class WorkerHarnessTest extends TestCase
         $this->expectExceptionMessage('tick failed');
         $failing = new Ticker(timerFails: true);
         WorkerHarness::run([$failing], static function (Worker $worker) use ($failing): void {
-            Wait::until($worker->loop, static fn(): bool => $failing->attempts > 0, 'the failing provider tick');
+            Wait::until($worker->loop, static fn(): bool => $failing->attempts > 0, 'the failing plugin tick');
         });
     }
 
-    public function testEveryProviderStopsBeforeTheFirstFailureIsThrown(): void
+    public function testEveryPluginStopsBeforeTheFirstFailureIsThrown(): void
     {
         foreach ([null, new \LogicException('body failed')] as $bodyFailure) {
             $stopped = new \ArrayObject();
             $stopFailure = new \RuntimeException('stop failed');
-            $provider = static fn(string $name, ?\Throwable $failure = null): WorkerProvider => new class(
+            $plugin = static fn(string $name, ?\Throwable $failure = null): WorkerPlugin => new class(
                 $name,
                 $stopped,
                 $failure,
-            ) implements WorkerProvider {
+            ) implements WorkerPlugin {
                 public function __construct(
                     private readonly string $name,
                     private readonly \ArrayObject $stopped,
@@ -125,9 +121,9 @@ final class WorkerHarnessTest extends TestCase
             $caught = null;
             try {
                 WorkerHarness::run([
-                    $provider('first'),
-                    $provider('second', new \RuntimeException('another stop failed')),
-                    $provider('third', $stopFailure),
+                    $plugin('first'),
+                    $plugin('second', new \RuntimeException('another stop failed')),
+                    $plugin('third', $stopFailure),
                 ], static function () use ($bodyFailure): void {
                     if ($bodyFailure !== null) {
                         throw $bodyFailure;

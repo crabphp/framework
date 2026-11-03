@@ -7,7 +7,7 @@ namespace Crab\HttpClient;
 use Crab\Contracts\Config\Config;
 use Crab\Contracts\Container\Container;
 use Crab\Contracts\HttpClient\Client as ClientContract;
-use Crab\Contracts\WorkerProvider;
+use Crab\Contracts\WorkerPlugin;
 use Crab\Engine\Process\Worker;
 use Psr\Clock\ClockInterface;
 use Psr\Http\Client\ClientInterface;
@@ -20,7 +20,7 @@ use Psr\Http\Client\ClientInterface;
  * A client for one API, with its base URL and its key, is an object an
  * application makes and binds itself: new Client('https://api...', ...).
  */
-final class HttpClientProvider implements WorkerProvider
+final class HttpClientPlugin implements WorkerPlugin
 {
     public function register(Container $container): void
     {

@@ -259,12 +259,12 @@ final class Scheduler
         foreach ($this->schedule->tasks() as $task) {
             if ($task->runsOnOneServer() && $this->cache === null) {
                 throw new \LogicException(
-                    "The scheduled task {$task->named()} is marked onOneServer(), which servers agree on through the cache, and there is none: register the cache provider, CacheProvider, with a store they share.",
+                    "The scheduled task {$task->named()} is marked onOneServer(), which servers agree on through the cache, and there is none: register the cache plugin, CachePlugin, with a store they share.",
                 );
             }
             if ($task->preventsOverlaps() && $this->cache === null) {
                 throw new \LogicException(
-                    "The scheduled task {$task->named()} is marked withoutOverlapping(), which servers agree on through the cache, and there is none: register the cache provider, CacheProvider, with a store they share.",
+                    "The scheduled task {$task->named()} is marked withoutOverlapping(), which servers agree on through the cache, and there is none: register the cache plugin, CachePlugin, with a store they share.",
                 );
             }
         }

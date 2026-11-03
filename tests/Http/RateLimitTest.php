@@ -7,7 +7,7 @@ namespace Crab\Tests\Http;
 use Crab\App;
 use Crab\Cache\ArrayStore;
 use Crab\Cache\Cache;
-use Crab\Cache\CacheProvider;
+use Crab\Cache\CachePlugin;
 use Crab\Config\Config;
 use Crab\Contracts\Auth\Identity;
 use Crab\Contracts\Clock\Clock;
@@ -135,7 +135,7 @@ final class RateLimitTest extends TestCase
             $app->router->assemble();
             self::fail('A rate limit without a cache was made.');
         } catch (\LogicException $error) {
-            self::assertStringContainsString('CacheProvider', $error->getMessage());
+            self::assertStringContainsString('CachePlugin', $error->getMessage());
         }
 
         // Given a cache, it needs no container.
@@ -152,7 +152,7 @@ final class RateLimitTest extends TestCase
     private static function app(): array
     {
         $app = new App(new Config(['cache' => ['store' => 'array']]));
-        $app->register(CacheProvider::class);
+        $app->register(CachePlugin::class);
         $clock = new FrozenClock('2026-01-31 12:00:00');
         $app->container->instance(Clock::class, $clock);
         return [$app, $clock];

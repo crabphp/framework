@@ -6,7 +6,7 @@ namespace Crab\Contracts\Config;
 
 /**
  * Configuration, addressed with dotted keys such as "log.level". Its values
- * are fixed once the application is defined; providers may only add
+ * are fixed once the application is defined; plugins may only add
  * defaults beneath them.
  */
 interface Config
@@ -30,7 +30,7 @@ interface Config
      * number, since that is what env() gives. A section with rules takes
      * no other keys, unless '*' gives the rule for them. An "enum" given
      * again for a key adds its values to the earlier ones, so that a
-     * provider can offer another choice, as Redis does for "cache.store";
+     * plugin can offer another choice, as Redis does for "cache.store";
      * any other rule given again replaces the earlier one.
      *
      * @param string $section A top-level key such as "cache".

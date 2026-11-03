@@ -66,16 +66,16 @@ Crab keeps no user table and no user model. The table is yours.
 
 ### Installation
 
-`AuthProvider` and its password hasher are registered by default by `App::configure()`, so they need nothing in `app.php`; add `TokenAuthProvider` when you use database tokens.
+`AuthPlugin` and its password hasher are registered by default by `App::configure()`, so they need nothing in `app.php`; add `TokenAuthPlugin` when you use database tokens.
 
 ```php
 // app.php
-use App\Providers\AppProvider;
-use Crab\Auth\TokenAuthProvider;
+use App\Plugins\AppPlugin;
+use Crab\Auth\TokenAuthPlugin;
 
-->withProviders([
-    TokenAuthProvider::class,
-    AppProvider::class,
+->withPlugins([
+    TokenAuthPlugin::class,
+    AppPlugin::class,
 ])
 ```
 
@@ -114,7 +114,7 @@ final readonly class Users implements IdentityResolver
 ```
 
 ```php
-// app/Providers/AppProvider.php
+// app/Plugins/AppPlugin.php
 $container->singleton(IdentityResolver::class, Users::class);
 ```
 
@@ -219,7 +219,7 @@ Route::post('/ws/ticket', IssueTicket::class)->middleware(TokenAuth::class);
 Route::websocket('/orders/{id}/live', WatchOrder::class)->middleware(Ticket::class);
 ```
 
-`AuthProvider` binds `Crab\Contracts\Auth\Tickets` and the same service as `Crab\Auth\Tickets`. It uses the Cache contract and your IdentityResolver; both are required. TokenAuthProvider supplies the middleware's header fallback. IssueTicket works with any authentication middleware that supplies an Identity. `Tickets::issue(Identity $user): string` issues a ticket; `redeem(string $ticket): ?Identity` consumes it once and resolves its user. Storage holds only the identity id under a hash of the ticket.
+`AuthPlugin` binds `Crab\Contracts\Auth\Tickets` and the same service as `Crab\Auth\Tickets`. It uses the Cache contract and your IdentityResolver; both are required. TokenAuthPlugin supplies the middleware's header fallback. IssueTicket works with any authentication middleware that supplies an Identity. `Tickets::issue(Identity $user): string` issues a ticket; `redeem(string $ticket): ?Identity` consumes it once and resolves its user. Storage holds only the identity id under a hash of the ticket.
 
 | Setting | Default | |
 | --- | --- | --- |
@@ -233,7 +233,7 @@ See [Authenticating a browser](websockets.md#authenticating-a-browser) for the c
 
 ## Passwords
 
-`AuthProvider` binds the `PasswordHasher`, over PHP's own password hashing. Its PHP 8.4 bcrypt default uses only the first 72 bytes and rejects NUL bytes; validate passwords at registration and login, or bind a hasher with the limits your application needs:
+`AuthPlugin` binds the `PasswordHasher`, over PHP's own password hashing. Its PHP 8.4 bcrypt default uses only the first 72 bytes and rejects NUL bytes; validate passwords at registration and login, or bind a hasher with the limits your application needs:
 
 ```php
 $hash = $passwords->hash($password);                     // store this, never the password

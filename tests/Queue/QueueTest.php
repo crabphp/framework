@@ -15,7 +15,7 @@ use Crab\Contracts\Queue\Queue as QueueContract;
 use Crab\Contracts\Queue\Store;
 use Crab\Contracts\Queue\TimedOut;
 use Crab\Database\Database;
-use Crab\Database\DatabaseProvider;
+use Crab\Database\DatabasePlugin;
 use Crab\Database\Schema;
 use Crab\Engine\Async\Async;
 use Crab\Engine\Async\Cancellation;
@@ -30,7 +30,7 @@ use Crab\Queue\Consumer;
 use Crab\Queue\DatabaseStore;
 use Crab\Queue\MemoryStore;
 use Crab\Queue\Queue;
-use Crab\Queue\QueueProvider;
+use Crab\Queue\QueuePlugin;
 use Crab\Queue\Retry;
 use Crab\Queue\Supervisor;
 use Crab\Queue\Timeout;
@@ -1688,7 +1688,7 @@ final class QueueTest extends TestCase
         self::assertSame('error', $this->log->records[0][0]);
     }
 
-    public function testTheProviderBindsTheQueueAndItsCommandsRunTheJobs(): void
+    public function testThePluginBindsTheQueueAndItsCommandsRunTheJobs(): void
     {
         $app = new App(new Config([
             'queue' => ['tries' => 1],
@@ -1700,7 +1700,7 @@ final class QueueTest extends TestCase
                 ]],
             ],
         ]));
-        $app->register(DatabaseProvider::class, QueueProvider::class);
+        $app->register(DatabasePlugin::class, QueuePlugin::class);
         self::assertSame(['database', 'jobs', 'default', 90], [
             config('queue.store'),
             config('queue.table'),
@@ -1756,7 +1756,7 @@ final class QueueTest extends TestCase
                 ]],
             ],
         ]));
-        $app->register(DatabaseProvider::class, QueueProvider::class);
+        $app->register(DatabasePlugin::class, QueuePlugin::class);
         self::assertSame(0, $app->console->run(['queue:install'], $this->quiet()));
         self::assertSame(0, $app->console->run(['migrate'], $this->quiet()));
         $database = $app->container->get(\Crab\Contracts\Database\Database::class);
@@ -1904,7 +1904,7 @@ final class QueueTest extends TestCase
                 ? ['supervisors' => ['mail' => ['queues' => ['mail'], $setting => $value]]]
                 : [$setting => $value];
             $app = new App(new Config(['queue' => ['store' => 'memory', ...$settings]]));
-            $app->register(QueueProvider::class);
+            $app->register(QueuePlugin::class);
             $runner = $this->createMock(\Crab\Contracts\Runner::class);
             $runner->expects(self::never())->method('run');
             $runner->expects(self::never())->method('runAll');
@@ -1934,7 +1934,7 @@ final class QueueTest extends TestCase
         foreach ([1, 4, PHP_INT_MAX, '2', (string) PHP_INT_MAX] as $value) {
             $config = new Config(['queue' => ['workers' => $value, 'concurrency' => $value]]);
             $app = new App($config);
-            $app->register(QueueProvider::class);
+            $app->register(QueuePlugin::class);
             $supervisor = Supervisor::from($config, 'queue');
             self::assertSame([(int) $value, (int) $value], [$supervisor->workers, $supervisor->concurrency]);
             $runner = $this->createMock(\Crab\Contracts\Runner::class);
@@ -1968,7 +1968,7 @@ final class QueueTest extends TestCase
             ],
             'log' => ['path' => $this->directory . '/app.log'],
         ]));
-        $app->register(QueueProvider::class);
+        $app->register(QueuePlugin::class);
         $queue = $app->container->get(QueueContract::class);
         $queue->on('mail')->push(FlakyJob::class, id: 1);
         $queue->push(GreetJob::class, name: 'rest');
@@ -2060,16 +2060,16 @@ final class QueueTest extends TestCase
     public function testAMisconfiguredStoreSaysWhatToDo(): void
     {
         $app = new App(new Config());
-        $app->register(QueueProvider::class);
+        $app->register(QueuePlugin::class);
         try {
             $app->container->get(QueueContract::class);
             self::fail('A database store without a database was made.');
         } catch (\LogicException $error) {
-            self::assertStringContainsString('DatabaseProvider', $error->getMessage());
+            self::assertStringContainsString('DatabasePlugin', $error->getMessage());
         }
 
         $app = new App(new Config(['queue' => ['store' => 'memory']]));
-        $app->register(QueueProvider::class);
+        $app->register(QueuePlugin::class);
         $app->container->get(QueueContract::class)->on('emails')->push(GreetJob::class, name: 'test');
         $store = $app->container->get(Store::class);
         self::assertInstanceOf(MemoryStore::class, $store);

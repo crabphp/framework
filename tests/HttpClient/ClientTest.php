@@ -20,7 +20,7 @@ use Crab\Http\Stream;
 use Crab\HttpClient\Client;
 use Crab\HttpClient\ClientException;
 use Crab\HttpClient\CookieJar;
-use Crab\HttpClient\HttpClientProvider;
+use Crab\HttpClient\HttpClientPlugin;
 use Crab\HttpClient\Network;
 use Crab\HttpClient\NetworkException;
 use Crab\HttpClient\Receiving;
@@ -1751,13 +1751,13 @@ final class ClientTest extends TestCase
         self::assertSame(['/first', '/after'], array_column($server->requests, 'target'));
     }
 
-    public function testTheProviderBindsOneClientPerWorkerFromConfiguration(): void
+    public function testThePluginBindsOneClientPerWorkerFromConfiguration(): void
     {
         $container = new \Crab\Container\Container();
         $config = new \Crab\Config\Config(['http_client' => ['headers' => ['X-App' => 'shop'], 'connections' => 2]]);
         $container->instance(\Crab\Contracts\Config\Config::class, $config);
         $answer = WorkerHarness::run(
-            [new HttpClientProvider()],
+            [new HttpClientPlugin()],
             static function (Worker $worker, Container $container): string {
                 // Made here, on the worker's own event loop.
                 $server = new TestServer(static fn(array $request): string => TestServer::reply(
@@ -1784,7 +1784,7 @@ final class ClientTest extends TestCase
         ]);
     }
 
-    public function testTheProviderUsesTheApplicationClockForRetryDates(): void
+    public function testThePluginUsesTheApplicationClockForRetryDates(): void
     {
         $app = new \Crab\App(new \Crab\Config\Config([
             'http_client' => ['timeout' => 2.0, 'retries' => 1],
@@ -1793,7 +1793,7 @@ final class ClientTest extends TestCase
             \Crab\Contracts\Clock\Clock::class,
             new \Crab\Testing\FrozenClock('2001-02-03T04:05:06Z'),
         );
-        $app->register(HttpClientProvider::class);
+        $app->register(HttpClientPlugin::class);
         $server = $this->server(static fn(): string => TestServer::reply(429, 'slow down', [
             'Retry-After' => 'Sat, 03 Feb 2001 04:05:16 GMT',
         ]));
@@ -1805,7 +1805,7 @@ final class ClientTest extends TestCase
         self::assertCount(
             1,
             $server->requests,
-            'The provider passes the frozen clock, so the ten-second wait cannot fit.',
+            'The plugin passes the frozen clock, so the ten-second wait cannot fit.',
         );
     }
 

@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace Crab\Actors\Commands;
 
 use Crab\Actors\Actors;
-use Crab\Actors\ActorsProvider;
+use Crab\Actors\ActorsPlugin;
 use Crab\Contracts\Config\Config;
 use Crab\Contracts\Console\Command;
 use Crab\Contracts\Console\Input;
@@ -39,7 +39,7 @@ final readonly class Work implements Command
     public function handle(Input $input, Output $output): int
     {
         $this->config->check('actors');
-        ActorsProvider::requireCarrier($this->container);
+        ActorsPlugin::requireCarrier($this->container);
         $workers = (int) $this->config->get('actors.workers');
         $single = $input->flag('single');
         if (!$input->flag('quiet')) {

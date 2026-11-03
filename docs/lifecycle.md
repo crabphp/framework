@@ -17,12 +17,12 @@ Under PHP-FPM every request starts from nothing: the framework boots, answers an
 
 | Phase | Runs | What happens |
 | --- | --- | --- |
-| 1. Define | Once, in the parent process | `.env` and `config/` are loaded, providers are registered, routes, middleware and commands are declared |
-| 2. Start | In each worker, as it starts | The middleware is made, and each provider that asked is started |
+| 1. Define | Once, in the parent process | `.env` and `config/` are loaded, plugins are registered, routes, middleware and commands are declared |
+| 2. Start | In each worker, as it starts | The middleware is made, and each plugin that asked is started |
 | 3. Request | In each worker, many times, overlapping | Request, middleware, router, action, response |
-| 4. Stop | In each worker, as it stops | Requests have up to `server.drain` seconds to finish, then remaining connections close and providers stop |
+| 4. Stop | In each worker, as it stops | Requests have up to `server.drain` seconds to finish, then remaining connections close and plugins stop |
 
-Phase 1 runs when you type `php cua start`. The server then forks its workers, and each worker runs phase 2. Settings that do not fit what they take, invalid routes, middleware construction and provider start hooks fail startup; an action service can still fail on its first request.
+Phase 1 runs when you type `php cua start`. The server then forks its workers, and each worker runs phase 2. Settings that do not fit what they take, invalid routes, middleware construction and plugin start hooks fail startup; an action service can still fail on its first request.
 
 ## Where state lives
 
@@ -30,7 +30,7 @@ Everything your application remembers belongs to one of three scopes:
 
 | Scope | Lives | Examples | Rule |
 | --- | --- | --- | --- |
-| Process | The whole run, copied into every worker | Configuration, the routes, the provider list | Fixed after phase 1 |
+| Process | The whole run, copied into every worker | Configuration, the routes, the plugin list | Fixed after phase 1 |
 | Worker | One worker's life | Services from the container, database connections, the logger | Shared by every request the worker serves |
 | Request | One request | The request, its route parameters, the logged-in user | Travels on the request object, nowhere else |
 

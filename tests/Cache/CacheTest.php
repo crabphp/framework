@@ -7,7 +7,7 @@ namespace Crab\Tests\Cache;
 use Crab\App;
 use Crab\Cache\ArrayStore;
 use Crab\Cache\Cache;
-use Crab\Cache\CacheProvider;
+use Crab\Cache\CachePlugin;
 use Crab\Cache\DatabaseStore;
 use Crab\Cache\FileStore;
 use Crab\Cache\InvalidKey;
@@ -18,7 +18,7 @@ use Crab\Contracts\Cache\Lock;
 use Crab\Contracts\Cache\Store;
 use Crab\Contracts\Database\Table;
 use Crab\Database\Database;
-use Crab\Database\DatabaseProvider;
+use Crab\Database\DatabasePlugin;
 use Crab\Database\Schema;
 use Crab\Testing\FrozenClock;
 use PHPUnit\Framework\Attributes\DataProvider;
@@ -1162,7 +1162,7 @@ final class CacheTest extends TestCase
     {
         $app = new App(new Config(['cache' => ['directory' => $this->directory . '/files']]));
         $app->container->instance(\Psr\Clock\ClockInterface::class, $this->clock);
-        $app->register(CacheProvider::class);
+        $app->register(CachePlugin::class);
         $cache = $app->container->get(CacheContract::class);
         $cache->setMultiple(['one' => 1, 'two' => 2, 'three' => 3], 10);
         $cache->set('kept', 'value', 100);
@@ -1370,10 +1370,10 @@ final class CacheTest extends TestCase
         $cache->set('key', 'value');
     }
 
-    public function testTheProviderBindsTheConfiguredStoreAndItsCommands(): void
+    public function testThePluginBindsTheConfiguredStoreAndItsCommands(): void
     {
         $app = new App(new Config(['cache' => ['directory' => $this->directory . '/files', 'prefix' => 'app.']]));
-        $app->register(CacheProvider::class);
+        $app->register(CachePlugin::class);
         self::assertSame(['file', 'cache', null], [config('cache.store'), config('cache.table'), config('cache.ttl')]);
 
         $cache = $app->container->get(CacheContract::class);
@@ -1415,7 +1415,7 @@ final class CacheTest extends TestCase
     public function testAFileCacheWithoutABasePathOrDirectoryAsksForOneInsteadOfUsingTheTempFolder(): void
     {
         $app = new App();
-        $app->register(CacheProvider::class);
+        $app->register(CachePlugin::class);
         try {
             $app->container->get(CacheContract::class);
             self::fail('A file cache without a folder was made.');
@@ -1427,7 +1427,7 @@ final class CacheTest extends TestCase
         }
 
         $app = new App(new Config(['cache' => ['directory' => $this->directory . '/files']]));
-        $app->register(CacheProvider::class);
+        $app->register(CachePlugin::class);
         $app->container->get(CacheContract::class)->set('key', 'value');
         $hash = sha1('value:key');
         self::assertFileExists($this->directory . '/files/' . substr($hash, 0, 2) . '/' . $hash);
@@ -1444,7 +1444,7 @@ final class CacheTest extends TestCase
                 ]],
             ],
         ]));
-        $app->register(DatabaseProvider::class, CacheProvider::class);
+        $app->register(DatabasePlugin::class, CachePlugin::class);
 
         self::assertSame(0, $app->console->run(['cache:install'], $this->quiet()));
         self::assertCount(1, glob($this->directory . '/migrations/*_create_cache_table.php'));
@@ -1462,19 +1462,19 @@ final class CacheTest extends TestCase
     public function testAMisconfiguredStoreSaysWhatToDo(): void
     {
         $app = new App(new Config(['cache' => ['store' => 'database']]));
-        $app->register(CacheProvider::class);
+        $app->register(CachePlugin::class);
         try {
             $app->container->get(CacheContract::class);
             self::fail('A database store without a database was made.');
         } catch (\LogicException $error) {
-            self::assertStringContainsString('DatabaseProvider', $error->getMessage());
+            self::assertStringContainsString('DatabasePlugin', $error->getMessage());
         }
 
         $app = new App(new Config(['cache' => ['store' => 'redis']]));
-        $app->register(CacheProvider::class);
+        $app->register(CachePlugin::class);
         $this->expectException(\LogicException::class);
         $this->expectExceptionMessage(
-            'cache.store is "redis"; it takes "file", "database" or "array". "redis" is one more, with crabphp/redis and its RedisProvider registered after this provider.',
+            'cache.store is "redis"; it takes "file", "database" or "array". "redis" is one more, with crabphp/redis and its RedisPlugin registered after this plugin.',
         );
         $app->container->get(CacheContract::class);
     }

@@ -10,7 +10,7 @@ use Crab\Contracts\Auth\TokenStore;
 use Crab\Contracts\Console\Console;
 use Crab\Contracts\Container\Container;
 use Crab\Contracts\Database\Database;
-use Crab\Contracts\Provider;
+use Crab\Contracts\Plugin;
 use Psr\Clock\ClockInterface;
 
 /**
@@ -18,19 +18,19 @@ use Psr\Clock\ClockInterface;
  * TokenAuth middleware reading "Authorization: Bearer", and the
  * `token:install` command, which writes the migration for the tokens
  * table into the application's migrations. Register it for an application
- * that authenticates this way, together with the database provider.
+ * that authenticates this way, together with the database plugin.
  *
  * The application binds Contracts\Auth\IdentityResolver itself, to say
  * how one of its users is found by the id a token belongs to.
  */
-final class TokenAuthProvider implements Provider
+final class TokenAuthPlugin implements Plugin
 {
     public function register(Container $container): void
     {
         $container->singleton(TokenStore::class, static function (Container $container): DatabaseTokenStore {
             if (!$container->has(Database::class)) {
                 throw new \LogicException(
-                    'Tokens are kept in the database: register the database provider, DatabaseProvider, as well as TokenAuthProvider.',
+                    'Tokens are kept in the database: register the database plugin, DatabasePlugin, as well as TokenAuthPlugin.',
                 );
             }
             return new DatabaseTokenStore(
@@ -44,7 +44,7 @@ final class TokenAuthProvider implements Provider
                 throw new \LogicException(
                     'To authenticate by token, bind '
                     . IdentityResolver::class
-                    . ' in a provider of your own: it finds one of your users by id.',
+                    . ' in a plugin of your own: it finds one of your users by id.',
                 );
             }
             return new TokenAuth($container->get(TokenStore::class), $container->get(IdentityResolver::class));

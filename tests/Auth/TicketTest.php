@@ -5,14 +5,14 @@ declare(strict_types=1);
 namespace Crab\Tests\Auth;
 
 use Crab\App;
-use Crab\Auth\AuthProvider;
+use Crab\Auth\AuthPlugin;
 use Crab\Auth\IssueTicket;
 use Crab\Auth\Ticket;
 use Crab\Auth\Tickets;
-use Crab\Auth\TokenAuthProvider;
+use Crab\Auth\TokenAuthPlugin;
 use Crab\Cache\ArrayStore;
 use Crab\Cache\Cache;
-use Crab\Cache\CacheProvider;
+use Crab\Cache\CachePlugin;
 use Crab\Cache\FileStore;
 use Crab\Config\Config;
 use Crab\Contracts\Auth\Identity;
@@ -57,7 +57,7 @@ final class TicketTest extends TestCase
         $this->user = new TicketUser('0007');
         $this->users = new TicketUsers($this->user);
         $this->app = new App(new Config(['cache' => ['store' => 'array'], 'websocket' => ['ping' => 0]]));
-        $this->app->register(AuthProvider::class, CacheProvider::class, TokenAuthProvider::class);
+        $this->app->register(AuthPlugin::class, CachePlugin::class, TokenAuthPlugin::class);
         $this->app->container->instance(ClockInterface::class, $this->clock);
         $this->app->container->instance(IdentityResolver::class, $this->users);
         $this->app->container->instance(TokenStore::class, new TicketTokens($this->user->id));
@@ -234,7 +234,7 @@ final class TicketTest extends TestCase
                 'server' => ['workers' => $requested === 1 ? 2 : 1],
                 'cache' => ['store' => 'array'],
             ]));
-            $app->register(CacheProvider::class);
+            $app->register(CachePlugin::class);
             $app->router->post('/ws/ticket', IssueTicket::class);
             try {
                 $app->runtime('tcp://127.0.0.1:8291', workers: $requested);
@@ -252,7 +252,7 @@ final class TicketTest extends TestCase
     public function testTheConfiguredTicketLifetimeIsUsedAndInvalidLifetimesAreRefused(): void
     {
         $app = new App(new Config(['auth' => ['ticket_ttl' => 2], 'cache' => ['store' => 'array']]));
-        $app->register(AuthProvider::class, CacheProvider::class);
+        $app->register(AuthPlugin::class, CachePlugin::class);
         $app->container->instance(ClockInterface::class, $this->clock);
         $app->container->instance(IdentityResolver::class, $this->users);
         $tickets = $app->container->get(TicketsContract::class);
@@ -268,7 +268,7 @@ final class TicketTest extends TestCase
         foreach ([Ticket::class, new Ticket()] as $middleware) {
             foreach ([[1, 2], [2, 1]] as [$configured, $requested]) {
                 $app = new App(new Config(['cache' => ['store' => 'array'], 'server' => ['workers' => $configured]]));
-                $app->register(AuthProvider::class, CacheProvider::class, TokenAuthProvider::class);
+                $app->register(AuthPlugin::class, CachePlugin::class, TokenAuthPlugin::class);
                 $app->container->instance(IdentityResolver::class, $this->users);
                 $app->container->instance(TokenStore::class, new TicketTokens($this->user->id));
                 $app->container->get(\Crab\Contracts\Http\MiddlewareStack::class)->add($middleware);

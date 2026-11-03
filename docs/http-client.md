@@ -257,10 +257,10 @@ The limit applies to each answer, redirects included. A `TooLargeException` is n
 
 ## A client for one API
 
-Make a client with the API's address and credentials, once, in a provider, and bind it under a name of your own:
+Make a client with the API's address and credentials, once, in a plugin, and bind it under a name of your own:
 
 ```php
-// app/Providers/AppProvider.php
+// app/Plugins/AppPlugin.php
 use Crab\HttpClient\Client;
 
 $container->singleton(StripeClient::class, static fn (): StripeClient => new StripeClient(

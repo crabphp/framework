@@ -18,7 +18,7 @@ interface Dispatcher extends EventDispatcherInterface
      * extends or implements it. A listener is a closure taking the event,
      * or the name of a class with handle(), which is made only when its
      * first event is dispatched. Listeners are added while the application
-     * is defined, in a provider's register().
+     * is defined, in a plugin's register().
      *
      * @param class-string $event
      * @param \Closure(object): void|class-string $listener

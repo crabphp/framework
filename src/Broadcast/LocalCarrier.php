@@ -25,7 +25,7 @@ final class LocalCarrier implements Carrier
     {
         if ($this->canSend !== null && !($this->canSend)()) {
             throw new \LogicException(
-                'The local broadcast carrier cannot reach the server from a console, queue:work or schedule:work process. Set broadcast.carrier to redis and register RedisProvider.',
+                'The local broadcast carrier cannot reach the server from a console, queue:work or schedule:work process. Set broadcast.carrier to redis and register RedisPlugin.',
             );
         }
         foreach ($channels as $channel) {

@@ -249,7 +249,7 @@ final class Socket implements SocketContract, Recipient
         if ($this->channels === null) {
             if ($this->memberships === null) {
                 throw new \LogicException(
-                    'To join WebSocket channels, register BroadcastProvider or give Connections a channel membership resolver.',
+                    'To join WebSocket channels, add BroadcastPlugin to withPlugins() in app.php, or give Connections a channel membership resolver.',
                 );
             }
             $this->channels = ($this->memberships)();

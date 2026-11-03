@@ -9,7 +9,7 @@ use Crab\Config\Config;
 use Crab\Console\Output;
 use Crab\Contracts\Queue\Queue;
 use Crab\Contracts\Queue\Store;
-use Crab\Queue\QueueProvider;
+use Crab\Queue\QueuePlugin;
 use Crab\Testing\Api;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
@@ -560,7 +560,7 @@ final class ValueOptionsTest extends TestCase
         string $option,
     ): void {
         $app = new App();
-        $app->register(\Crab\Database\DatabaseProvider::class);
+        $app->register(\Crab\Database\DatabasePlugin::class);
         [$status, $output] = $this->command($app, [$name, ...$arguments]);
         self::assertSame(1, $status, $output);
         self::assertStringContainsString('--' . $option . ' needs a value', $output);
@@ -579,7 +579,7 @@ final class ValueOptionsTest extends TestCase
             ],
             'log' => ['path' => 'php://memory'],
         ]));
-        $app->register(QueueProvider::class);
+        $app->register(QueuePlugin::class);
         $queue = $app->container->get(Queue::class);
         $queue->push(EchoQueueValue::class, value: 'default');
         $queue->on('mail')->push(EchoQueueValue::class, value: 'mail');

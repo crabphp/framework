@@ -24,7 +24,7 @@ It is the PSR-14 dispatcher, so a library that asks for `Psr\EventDispatcher\Eve
 
 ## Configuration
 
-Events are registered by default by `App::configure()`, so they need nothing in `app.php`; your providers can add listeners in `register()`.
+Events are registered by default by `App::configure()`, so they need nothing in `app.php`; your plugins can add listeners in `register()`.
 
 There are no settings.
 
@@ -48,10 +48,10 @@ There is nothing to extend or implement.
 
 ## Listening
 
-Listeners are added in a provider's `register()`. That is the one place, so a reader can find every reaction to an event by searching for its class name.
+Listeners are added in a plugin's `register()`. That is the one place, so a reader can find every reaction to an event by searching for its class name.
 
 ```php
-// app/Providers/AppProvider.php
+// app/Plugins/AppPlugin.php
 use App\Events\UserRegistered;
 use App\Actions\SendWelcomeEmail;
 use Crab\Contracts\Container\Container;
@@ -203,7 +203,7 @@ final class PriceRequested implements StoppableEventInterface
 
 ## Events the framework dispatches
 
-With the default events provider, the queue and the scheduler tell you what they ran. Listen for these to measure, alert or keep a record of your own:
+With the default events plugin, the queue and the scheduler tell you what they ran. Listen for these to measure, alert or keep a record of your own:
 
 | Event | Dispatched | Carries |
 | --- | --- | --- |
@@ -220,7 +220,7 @@ $events->listen(JobRan::class, static function (JobRan $event) use ($alerts): vo
 });
 ```
 
-They are dispatched in the worker that did the work: a queue worker or the scheduler, not a worker serving HTTP. A listener here that throws is logged and changes nothing for the job or the task. `App::PROVIDERS` puts events before the queue and the schedule.
+They are dispatched in the worker that did the work: a queue worker or the scheduler, not a worker serving HTTP. A listener here that throws is logged and changes nothing for the job or the task. `App::PLUGINS` puts events before the queue and the schedule.
 
 ## In tests
 

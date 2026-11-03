@@ -73,7 +73,7 @@ final readonly class AccessLog implements Middleware, UsesContainer
         }
         if (!$container->has(LoggerInterface::class)) {
             throw new \LogicException(
-                'An access log needs a PSR-3 logger: register a log provider that binds Psr\Log\LoggerInterface.',
+                'An access log needs a PSR-3 logger: register a log plugin that binds Psr\Log\LoggerInterface.',
             );
         }
         return new self($this->skip, $this->level, $container->get(LoggerInterface::class));
@@ -87,7 +87,7 @@ final readonly class AccessLog implements Middleware, UsesContainer
     {
         if ($this->logger === null) {
             throw new \LogicException(
-                'This access log has no logger. Register a log provider that binds Psr\Log\LoggerInterface and put it in withMiddleware(), or give it one: new AccessLog(logger: $logger).',
+                'This access log has no logger. Register a log plugin that binds Psr\Log\LoggerInterface and put it in withMiddleware(), or give it one: new AccessLog(logger: $logger).',
             );
         }
         try {

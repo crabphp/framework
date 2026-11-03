@@ -12,7 +12,7 @@ use Crab\Http\Request;
 use Crab\Http\Stream;
 use Crab\HttpClient\Client;
 use Crab\HttpClient\FakeClient;
-use Crab\HttpClient\HttpClientProvider;
+use Crab\HttpClient\HttpClientPlugin;
 use Crab\HttpClient\NetworkException;
 use Crab\HttpClient\Response;
 use Crab\HttpClient\TooLargeException;
@@ -237,7 +237,7 @@ final class DownloadTest extends TestCase
         $container = new Container();
         $config = new Config(['http_client' => ['max_bytes' => 3]]);
         $container->instance(ConfigContract::class, $config);
-        new HttpClientProvider()->register($container);
+        new HttpClientPlugin()->register($container);
         $configured = $container->get(Client::class);
         $this->clients[] = $configured;
         $this->expectException(TooLargeException::class);

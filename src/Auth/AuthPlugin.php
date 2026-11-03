@@ -10,17 +10,17 @@ use Crab\Contracts\Auth\Tickets as TicketsContract;
 use Crab\Contracts\Cache\Cache;
 use Crab\Contracts\Config\Config;
 use Crab\Contracts\Container\Container;
-use Crab\Contracts\Provider;
+use Crab\Contracts\Plugin;
 
 /**
  * Binds the password hasher and short-lived browser socket tickets.
  *
  * How a request says who makes it is not decided here. It is middleware:
  * whatever puts an Identity on the request's "user" attribute. Crab ships
- * tokens and their ticket fallback behind TokenAuthProvider; another way
+ * tokens and their ticket fallback behind TokenAuthPlugin; another way
  * writes its own and registers neither more nor less than this.
  */
-final class AuthProvider implements Provider
+final class AuthPlugin implements Plugin
 {
     public function register(Container $container): void
     {
@@ -36,9 +36,9 @@ final class AuthProvider implements Provider
         $container->singleton(TicketsContract::class, static function (Container $container): Tickets {
             if (!$container->has(Cache::class) || !$container->has(IdentityResolver::class)) {
                 throw new \LogicException(
-                    'Tickets need a cache and a user resolver. Register CacheProvider and bind '
+                    'Tickets need a cache and a user resolver. Register CachePlugin and bind '
                     . IdentityResolver::class
-                    . ' in your application provider.',
+                    . ' in your application plugin.',
                 );
             }
             $config = $container->get(Config::class);

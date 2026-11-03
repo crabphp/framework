@@ -656,7 +656,7 @@ final class ServerTest extends TestCase
         self::assertSame(0, $this->cua('stop')[0]);
     }
 
-    public function testAThrowingWarningLoggerPreservesTheCountAndProviderCleanup(): void
+    public function testAThrowingWarningLoggerPreservesTheCountAndPluginCleanup(): void
     {
         $this->checkThrowingLogger(false);
     }
@@ -1263,7 +1263,7 @@ final class ServerTest extends TestCase
     }
 
     /**
-     * Reads pids observed by this test's provider, including old workers
+     * Reads pids observed by this test's plugin, including old workers
      * after their generation crashed. Production keeps no worker record.
      *
      * @return list<array{pid: int, workers: list<int>}>
@@ -1306,7 +1306,7 @@ final class ServerTest extends TestCase
 
     /**
      * Exercises both the configured warning sink and the failure sink;
-     * neither is allowed to prevent the worker's providers from stopping.
+     * neither is allowed to prevent the worker's plugins from stopping.
      */
     private function checkThrowingLogger(bool $failErrors): void
     {
@@ -1359,7 +1359,7 @@ final class ServerTest extends TestCase
                 self::assertStringContainsString('warning sink failed', $stderr);
                 self::assertStringContainsString('error sink failed', $stderr);
             }
-            self::assertFileExists($this->directory . '/providers-stopped');
+            self::assertFileExists($this->directory . '/plugins-stopped');
         } finally {
             fclose($request);
         }
@@ -1823,7 +1823,7 @@ final class ServerTest extends TestCase
     }
 
     /**
-     * Exposes the current worker to the fixture and records provider cleanup.
+     * Exposes the current worker to the fixture and records plugin cleanup.
      */
     private function observeDrain(): void
     {
@@ -1832,12 +1832,12 @@ final class ServerTest extends TestCase
         if (str_contains($source, 'final class DrainObserver')) {
             return;
         }
-        $provider = <<<'PHP'
+        $plugin = <<<'PHP'
 
             /**
-             * A fixture barrier and a record that worker providers were stopped.
+             * A fixture barrier and a record that worker plugins were stopped.
              */
-            final class DrainObserver implements Crab\Contracts\WorkerProvider
+            final class DrainObserver implements Crab\Contracts\WorkerPlugin
             {
                 public function register(Crab\Contracts\Container\Container $container): void {}
                 public function start(Crab\Engine\Process\Worker $worker, Crab\Contracts\Container\Container $container): void
@@ -1846,13 +1846,13 @@ final class ServerTest extends TestCase
                 }
                 public function stop(Crab\Engine\Process\Worker $worker, Crab\Contracts\Container\Container $container): void
                 {
-                    file_put_contents(__DIR__ . '/providers-stopped', 'yes');
+                    file_put_contents(__DIR__ . '/plugins-stopped', 'yes');
                 }
             }
 
             PHP;
-        $source = str_replace('<?php', '<?php' . $provider, $source);
-        $source = str_replace('->create()', '->withProviders([DrainObserver::class])->create()', $source);
+        $source = str_replace('<?php', '<?php' . $plugin, $source);
+        $source = str_replace('->create()', '->withPlugins([DrainObserver::class])->create()', $source);
         file_put_contents($path, $source);
     }
 
@@ -1864,12 +1864,12 @@ final class ServerTest extends TestCase
     {
         $path = $this->directory . '/app.php';
         $source = (string) file_get_contents($path);
-        $provider = <<<'PHP'
+        $plugin = <<<'PHP'
 
             /**
              * Reports worker ownership and inherited streams to its test.
              */
-            final class ProcessObserver implements Crab\Contracts\WorkerProvider
+            final class ProcessObserver implements Crab\Contracts\WorkerPlugin
             {
                 public function register(Crab\Contracts\Container\Container $container): void {}
                 public function start(Crab\Engine\Process\Worker $worker, Crab\Contracts\Container\Container $container): void
@@ -1886,8 +1886,8 @@ final class ServerTest extends TestCase
             }
 
             PHP;
-        $source = str_replace('<?php', '<?php' . $provider, $source);
-        $source = str_replace('->create()', '->withProviders([ProcessObserver::class])->create()', $source);
+        $source = str_replace('<?php', '<?php' . $plugin, $source);
+        $source = str_replace('->create()', '->withPlugins([ProcessObserver::class])->create()', $source);
         file_put_contents($path, $source);
     }
 

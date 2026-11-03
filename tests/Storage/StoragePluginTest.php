@@ -12,10 +12,10 @@ use Crab\Contracts\Storage\Storage;
 use Crab\Storage\LocalDisk;
 use Crab\Storage\MemoryDisk;
 use Crab\Storage\StorageManager;
-use Crab\Storage\StorageProvider;
+use Crab\Storage\StoragePlugin;
 use PHPUnit\Framework\TestCase;
 
-final class StorageProviderTest extends TestCase
+final class StoragePluginTest extends TestCase
 {
     public function testAnApplicationHasALocalDiskInItsStorageFolderWithNothingConfigured(): void
     {
@@ -82,13 +82,13 @@ final class StorageProviderTest extends TestCase
 
         self::assertSame(
             [
-                'The disk "cloud" has the driver "s3", and the drivers are "local", "memory". For "s3", install crabphp/s3 and register its S3Provider after the framework\'s providers.',
+                'The disk "cloud" has the driver "s3", and the drivers are "local", "memory". For "s3", install crabphp/s3 and register its S3Plugin after the framework\'s plugins.',
                 'storage.default is "uplods", which is not one of storage.disks.',
             ],
             $manager->problems(),
         );
         try {
-            new StorageProvider()->start(
+            new StoragePlugin()->start(
                 new \Crab\Engine\Process\Worker(
                     new \Crab\Engine\EventLoop\StreamSelectEventLoop(),
                     new \Crab\Engine\Crab('web'),
@@ -115,7 +115,7 @@ final class StorageProviderTest extends TestCase
     private static function app(array $config, ?string $base = null): App
     {
         $app = new App(new Config($config), basePath: $base);
-        $app->register(new StorageProvider());
+        $app->register(new StoragePlugin());
         return $app;
     }
 }

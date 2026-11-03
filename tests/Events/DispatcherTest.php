@@ -7,7 +7,7 @@ namespace Crab\Tests\Events;
 use Crab\Container\Container;
 use Crab\Contracts\Events\Dispatcher as DispatcherContract;
 use Crab\Events\Dispatcher;
-use Crab\Events\EventsProvider;
+use Crab\Events\EventsPlugin;
 use PHPUnit\Framework\TestCase;
 use Psr\EventDispatcher\EventDispatcherInterface;
 use Psr\EventDispatcher\ListenerProviderInterface;
@@ -161,10 +161,10 @@ final class DispatcherTest extends TestCase
         $dispatcher->listen(UserRegistered::class, \stdClass::class);
     }
 
-    public function testTheProviderBindsOneDispatcherUnderEveryName(): void
+    public function testThePluginBindsOneDispatcherUnderEveryName(): void
     {
         $container = new Container();
-        new EventsProvider()->register($container);
+        new EventsPlugin()->register($container);
 
         $dispatcher = $container->get(DispatcherContract::class);
 
@@ -176,7 +176,7 @@ final class DispatcherTest extends TestCase
     public function testReplacingTheDispatcherAlsoReplacesItsOtherNames(): void
     {
         $container = new Container();
-        new EventsProvider()->register($container);
+        new EventsPlugin()->register($container);
         $container->get(EventDispatcherInterface::class);
         $replacement = new Dispatcher();
         $replacement->listen(UserRegistered::class, static function (UserRegistered $event): void {

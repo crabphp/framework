@@ -8,7 +8,7 @@ use Crab\Contracts\Config\Config;
 use Crab\Contracts\Console\Console;
 use Crab\Contracts\Container\Container;
 use Crab\Contracts\Database\Database;
-use Crab\Contracts\Provider;
+use Crab\Contracts\Plugin;
 use Crab\Contracts\Queue\Queue as QueueContract;
 use Crab\Contracts\Queue\Store;
 use Crab\Contracts\Servers;
@@ -41,9 +41,9 @@ use Psr\Log\LoggerInterface;
  *     supervisors   named sets of workers, each with its queues and limits; see Supervisor. None unless set
  *
  * To keep jobs somewhere else, bind Contracts\Queue\Store to a store of
- * your own after registering this provider.
+ * your own after registering this plugin.
  */
-final class QueueProvider implements Provider
+final class QueuePlugin implements Plugin
 {
     public function register(Container $container): void
     {
@@ -67,7 +67,7 @@ final class QueueProvider implements Provider
             [
                 'store' => [
                     'enum' => ['database', 'memory'],
-                    'description' => '"redis" is one more, with crabphp/redis and its RedisProvider registered after this provider.',
+                    'description' => '"redis" is one more, with crabphp/redis and its RedisPlugin registered after this plugin.',
                 ],
                 'table' => ['type' => 'string', 'minLength' => 1],
                 'database' => ['type' => ['string', 'null'], 'minLength' => 1],
@@ -101,7 +101,7 @@ final class QueueProvider implements Provider
             if ($store === 'database') {
                 if (!$container->has(Database::class)) {
                     throw new \LogicException(
-                        'The queue keeps its jobs in the database ("queue.store" is "database"): register the database provider, DatabaseProvider, as well as QueueProvider.',
+                        'The queue keeps its jobs in the database ("queue.store" is "database"): register the database plugin, DatabasePlugin, as well as QueuePlugin.',
                     );
                 }
                 $database = $container->get(Database::class);
@@ -112,7 +112,7 @@ final class QueueProvider implements Provider
                 );
             }
             throw new \LogicException(
-                "\"queue.store\" is \"{$store}\", and the stores are \"database\" and \"memory\". For \"redis\", install crabphp/redis and register its RedisProvider after this one; for another, bind "
+                "\"queue.store\" is \"{$store}\", and the stores are \"database\" and \"memory\". For \"redis\", install crabphp/redis and register its RedisPlugin after this one; for another, bind "
                 . Store::class
                 . ' to a store of your own.',
             );

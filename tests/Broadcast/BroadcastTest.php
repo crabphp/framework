@@ -6,7 +6,7 @@ namespace Crab\Tests\Broadcast;
 
 use Crab\App;
 use Crab\Broadcast\Broadcaster;
-use Crab\Broadcast\BroadcastProvider;
+use Crab\Broadcast\BroadcastPlugin;
 use Crab\Broadcast\Channels;
 use Crab\Broadcast\Lifecycle;
 use Crab\Broadcast\LocalCarrier;
@@ -519,7 +519,7 @@ final class BroadcastTest extends TestCase
     public function testAReadingClientReceivesSixMaximumSizedMessagesInOneBurst(): void
     {
         $app = new App(new Config(['websocket' => ['ping' => 0]]));
-        $app->register(...App::PROVIDERS);
+        $app->register(...App::PLUGINS, ...App::OPTIONAL_PLUGINS);
         $app->router->websocket('/live', static function (Socket $socket): void {
             $socket->join('orders');
             $socket->send('ready');
@@ -827,19 +827,19 @@ final class BroadcastTest extends TestCase
         self::assertInstanceOf(AssertionFailedError::class, $failure, 'The mutated value was never sent.');
     }
 
-    public function testTheProviderCostsNoWatcherWhenUnusedAndWorksWithoutApp(): void
+    public function testThePluginCostsNoWatcherWhenUnusedAndWorksWithoutApp(): void
     {
         $container = new Container();
         $container->instance(ConfigContract::class, new Config());
-        $provider = new BroadcastProvider();
-        $provider->register($container);
+        $plugin = new BroadcastPlugin();
+        $plugin->register($container);
         $worker = new \Crab\Engine\Process\Worker($this->loop, new \Crab\Engine\Crab('test'), 0, [], 1.0);
-        $provider->start($worker, $container);
+        $plugin->start($worker, $container);
         self::assertNull($container->get(Lifecycle::class)->carrier);
         new Broadcaster(new LocalCarrier())->to('nobody')->send('text');
         self::assertSame([], $this->loop->getIdentifiers());
         self::assertSame([], $this->loop->getIdentifiers());
-        $provider->stop($worker, $container);
+        $plugin->stop($worker, $container);
         self::assertSame([], $this->loop->getIdentifiers());
         self::assertNull($container->get(Lifecycle::class)->carrier);
     }
@@ -847,7 +847,7 @@ final class BroadcastTest extends TestCase
     public function testALocalConsoleSenderSaysWhyItCannotReachTheServer(): void
     {
         $app = new App();
-        $app->register(BroadcastProvider::class);
+        $app->register(BroadcastPlugin::class);
         $this->expectException(\LogicException::class);
         $this->expectExceptionMessage('cannot reach the server from a console, queue:work or schedule:work');
         $app->container->get(BroadcasterContract::class)->to('orders')->send('hello');
@@ -861,7 +861,7 @@ final class BroadcastTest extends TestCase
             ['server' => ['with' => ['schedule']]],
         ] as $settings) {
             $app = new App(new Config($settings));
-            $app->register(...App::PROVIDERS);
+            $app->register(...App::PLUGINS, ...App::OPTIONAL_PLUGINS);
             $app->router->websocket('/live', static function (Socket $socket): void {
                 $socket->receive();
             });
@@ -877,7 +877,7 @@ final class BroadcastTest extends TestCase
     public function testJoinIsTheFirstSocketUseAndDisconnectLeavesNoMembership(): void
     {
         $app = new App(new Config(['websocket' => ['ping' => 0]]));
-        $app->register(BroadcastProvider::class);
+        $app->register(BroadcastPlugin::class);
         $app->router->websocket('/orders/{id}/live', static function (Socket $socket, int $id): void {
             $socket->join("orders.{$id}");
             $socket->join("orders.{$id}");
@@ -908,17 +908,17 @@ final class BroadcastTest extends TestCase
         self::assertSame(0, $channels->stats()['connections']);
     }
 
-    public function testJoinWithoutTheProviderNamesWhatToRegister(): void
+    public function testJoinWithoutThePluginNamesWhatToRegister(): void
     {
         $app = new App(new Config(['app' => ['debug' => true], 'log' => ['path' => '/dev/null']]));
         $app->router->websocket('/live', static fn(Socket $socket) => $socket->join('orders'));
         $api = $this->apis[] = new Api($app);
         try {
             $api->websocket('/live');
-            self::fail('A socket joined without a provider.');
+            self::fail('A socket joined without a plugin.');
         } catch (WebSocketRefused $error) {
             $error->response->assertStatus(500);
-            self::assertStringContainsString('register BroadcastProvider', (string) $error->response->body());
+            self::assertStringContainsString('add BroadcastPlugin to withPlugins()', (string) $error->response->body());
         }
     }
 }

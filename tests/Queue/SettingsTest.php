@@ -14,7 +14,7 @@ use Crab\Contracts\Runner;
 use Crab\Queue\Commands\Work;
 use Crab\Queue\Consumer;
 use Crab\Queue\MemoryStore;
-use Crab\Queue\QueueProvider;
+use Crab\Queue\QueuePlugin;
 use Crab\Queue\Supervisor;
 use Crab\Testing\FrozenClock;
 use PHPUnit\Framework\Attributes\DataProvider;
@@ -138,7 +138,7 @@ final class SettingsTest extends TestCase
     }
 
     #[DataProvider('invalidRetrySettings')]
-    public function testTheProviderRefusesTheSameRetrySettingsBeforeOpeningItsStore(string $setting, mixed $value): void
+    public function testThePluginRefusesTheSameRetrySettingsBeforeOpeningItsStore(string $setting, mixed $value): void
     {
         $app = $this->app([$setting => $value]);
         $opened = 0;
@@ -260,7 +260,7 @@ final class SettingsTest extends TestCase
             'queue' => ['store' => 'memory', ...$settings],
             'log' => ['path' => 'php://memory'],
         ]));
-        $app->register(QueueProvider::class);
+        $app->register(QueuePlugin::class);
         return $app;
     }
 }

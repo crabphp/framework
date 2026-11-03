@@ -8,7 +8,7 @@ use Crab\Contracts\Servers as ServersContract;
 use Crab\Contracts\Workers;
 
 /**
- * The servers providers have registered for `start` to run beside HTTP.
+ * The servers plugins have registered for `start` to run beside HTTP.
  */
 final class Servers implements ServersContract
 {

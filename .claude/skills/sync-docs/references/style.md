@@ -14,8 +14,8 @@ The model is the Laravel documentation: every page answers "what is this, when d
 
 1. `# Title`, one or two words: the topic, as it is named in the menu.
 2. A table of contents: a list of links to every `##` section, with `###` sections nested one level. Anchors are the heading in lower case, spaces as dashes, punctuation dropped.
-3. `## Introduction`, always first. Two short paragraphs at most: what the thing is, and **when you would reach for it**, with a concrete case ("sending the welcome email after a user signs up"). If the component is opt-in, the provider line goes here or in the next section.
-4. `## Configuration` or `## Installation` when there is any: the provider to register, commands to run once, the settings.
+3. `## Introduction`, always first. Two short paragraphs at most: what the thing is, and **when you would reach for it**, with a concrete case ("sending the welcome email after a user signs up"). If the component is opt-in, the plugin line goes here or in the next section.
+4. `## Configuration` or `## Installation` when there is any: the plugin to register, commands to run once, the settings.
 5. Task sections, in the order a newcomer needs them: the common case first, variations after, rarely used things last. Name a section after what the reader wants to do ("Delaying a job"), not after a class ("The Queue contract").
 6. A closing section for testing the thing, when it has a fake or a memory store, linking to `testing.md`.
 
@@ -56,7 +56,7 @@ Keep a page to one topic. When a section grows past a screen and stands on its o
 - Write a setting as `section.key`, in backticks, every time: `queue.tries`. The check finds settings by that form.
 - List a component's settings in one table: setting, default, what it does. Put it in the Configuration section.
 - Show a command where it is first needed, and list a component's commands in a table when it has more than two.
-- End a component page's Introduction or Configuration with what must also be registered (`DatabaseProvider` for the database stores).
+- End a component page's Introduction or Configuration with what must also be registered (`DatabasePlugin` for the database stores).
 
 ## A page to copy
 
@@ -74,12 +74,12 @@ The cache keeps the result of slow work so that the next request does not repeat
 
 ## Configuration
 
-Register the provider in `app.php`:
+Register the plugin in `app.php`:
 
 ```php
 // app.php
-->withProviders([
-    CacheProvider::class,
+->withPlugins([
+    CachePlugin::class,
 ])
 ```
 

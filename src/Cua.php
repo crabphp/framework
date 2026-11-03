@@ -17,7 +17,7 @@ use Crab\Contracts\Container\MissingServices;
  * runs the command typed.
  *
  * When the application cannot be loaded, because of a syntax error or a
- * provider that throws, `status` and `stop` still run, from the files the
+ * plugin that throws, `status` and `stop` still run, from the files the
  * server keeps in storage/; see ServerFiles. A deploy of broken code
  * leaves the server in the background serving the code it started with,
  * and this keeps it in reach. Any other command says why the application

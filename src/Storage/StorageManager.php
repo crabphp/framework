@@ -26,7 +26,7 @@ final class StorageManager implements Storage, Drivers
     private array $disks = [];
 
     /**
-     * Read when a disk is first asked for, so that a package's provider may
+     * Read when a disk is first asked for, so that a package's plugin may
      * add its driver before the settings are final.
      */
     public function __construct(
@@ -69,7 +69,7 @@ final class StorageManager implements Storage, Drivers
     }
 
     /**
-     * Says every disk whose driver no provider added, and a default that
+     * Says every disk whose driver no plugin added, and a default that
      * names no disk, without making any disk.
      *
      * @return list<string>
@@ -104,7 +104,7 @@ final class StorageManager implements Storage, Drivers
         return (
             "The disk \"{$name}\" has the driver \"{$driver}\", and the drivers are \""
             . implode('", "', array_keys($this->drivers))
-            . '". For "s3", install crabphp/s3 and register its S3Provider after the framework\'s providers.'
+            . '". For "s3", install crabphp/s3 and register its S3Plugin after the framework\'s plugins.'
         );
     }
 }

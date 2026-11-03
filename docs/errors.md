@@ -99,15 +99,15 @@ Inside a worker, a PHP warning or notice is thrown as an `ErrorException`. Readi
 | --- | --- |
 | A [queue job](queues.md) | Logged, tried again, and kept as failed when its tries run out |
 | A [scheduled task](scheduling.md) | Logged; the task runs again when next due |
-| A timer or a task a provider started in a worker | Logged; the worker keeps running |
+| A timer or a task a plugin started in a worker | Logged; the worker keeps running |
 | A console command | Printed with its class, message and place; the exit status is 1 |
 
 ## Your own error format
 
-An API with clients of its own, or a standard to follow, can write every error in its own shape. Bind `Crab\Contracts\Http\ErrorRenderer` in a provider's `register()`:
+An API with clients of its own, or a standard to follow, can write every error in its own shape. Bind `Crab\Contracts\Http\ErrorRenderer` in a plugin's `register()`:
 
 ```php
-// app/Providers/AppProvider.php
+// app/Plugins/AppPlugin.php
 use App\Http\Errors;
 use Crab\Contracts\Http\ErrorRenderer;
 

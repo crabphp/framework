@@ -10,9 +10,9 @@ use Crab\Contracts\Config\Config as ConfigContract;
 use Crab\Contracts\Container\Container;
 use Crab\Contracts\Http\MiddlewareStack;
 use Crab\Contracts\Http\Request as RequestContract;
-use Crab\Contracts\Provider;
+use Crab\Contracts\Plugin;
 use Crab\Contracts\Routing\Router as RouterContract;
-use Crab\Contracts\WorkerProvider;
+use Crab\Contracts\WorkerPlugin;
 use Crab\Engine\Http\Request as EngineRequest;
 use Crab\Engine\Process\Worker;
 use Crab\Engine\Runtime;
@@ -39,7 +39,7 @@ final class Greeter
     ) {}
 }
 
-final class GreeterProvider implements Provider
+final class GreeterPlugin implements Plugin
 {
     public function register(Container $container): void
     {
@@ -111,7 +111,7 @@ final class TagMiddleware implements MiddlewareInterface
     }
 }
 
-final class RecordingProvider implements WorkerProvider
+final class RecordingPlugin implements WorkerPlugin
 {
     /**
      * @var list<string>
@@ -218,14 +218,14 @@ final class AppTest extends TestCase
         self::assertInstanceOf(Factory::class, $app->container->get(ResponseFactoryInterface::class));
     }
 
-    public function testProvidersAndNamedHandlers(): void
+    public function testPluginsAndNamedHandlers(): void
     {
-        $app = new App()->register(GreeterProvider::class);
+        $app = new App()->register(GreeterPlugin::class);
         $app->router->get('/greet/{name}', GreetHandler::class);
         self::assertSame('Hello, Crab', (string) $app->handle(new Request('GET', '/greet/Crab'))->getBody());
         self::assertSame($app->container->get(GreetHandler::class), $app->container->get(GreetHandler::class));
 
-        $app->register(new class implements Provider {
+        $app->register(new class implements Plugin {
             public function register(Container $container): void
             {
                 $container->singleton(Greeter::class, static fn() => new Greeter('Hi'));
@@ -246,9 +246,9 @@ final class AppTest extends TestCase
     public function testServicesThatCannotBeMadeAreRefusedBeforeAWorkerStarts(): void
     {
         $app = new App()->register(
-            \Crab\Events\EventsProvider::class,
-            \Crab\Queue\QueueProvider::class,
-            \Crab\Schedule\ScheduleProvider::class,
+            \Crab\Events\EventsPlugin::class,
+            \Crab\Queue\QueuePlugin::class,
+            \Crab\Schedule\SchedulePlugin::class,
         );
         $app->router->post('/roms', ImportRom::class);
         $app->router->get('/greet/{name}', GreetHandler::class)->middleware(TagMiddleware::class);
@@ -279,7 +279,7 @@ final class AppTest extends TestCase
         } catch (\Crab\Contracts\Container\MissingServices) {
         }
 
-        $app->register(GreeterProvider::class);
+        $app->register(GreeterPlugin::class);
         $app->container->singleton(
             RomScanner::class,
             static fn(): RomScanner => throw new \LogicException('Not made.'),
@@ -394,14 +394,14 @@ final class AppTest extends TestCase
         }
     }
 
-    public function testWorkerProvidersStartAndStopWithTheWorkerAndTaskFailuresAreLogged(): void
+    public function testWorkerPluginsStartAndStopWithTheWorkerAndTaskFailuresAreLogged(): void
     {
         $path = sys_get_temp_dir() . '/crab-app-' . bin2hex(random_bytes(6)) . '.log';
-        RecordingProvider::$events = [];
+        RecordingPlugin::$events = [];
         try {
             $app = new App(new Config(['log' => ['path' => $path]]));
-            $app->register(new RecordingProvider('first'), new RecordingProvider('second', failsToStop: true));
-            $app->register(new class implements WorkerProvider {
+            $app->register(new RecordingPlugin('first'), new RecordingPlugin('second', failsToStop: true));
+            $app->register(new class implements WorkerPlugin {
                 public function register(Container $container): void {}
 
                 public function start(Worker $worker, Container $container): void
@@ -424,7 +424,7 @@ final class AppTest extends TestCase
                     'second stop',
                     'first stop',
                 ],
-                RecordingProvider::$events,
+                RecordingPlugin::$events,
             );
             $log = file_get_contents($path);
             self::assertStringContainsString('ERROR Unhandled failure: job broke', $log);
@@ -435,11 +435,11 @@ final class AppTest extends TestCase
         }
     }
 
-    public function testAProviderAddsMiddlewareAndDeclaresDefaults(): void
+    public function testAPluginAddsMiddlewareAndDeclaresDefaults(): void
     {
         $app = new App(new Config(['tags' => ['outer' => 'set by the app']]));
         $app->router->get('/', static fn(ServerRequestInterface $request) => $request->getAttribute('trail'));
-        $app->register(new class implements Provider {
+        $app->register(new class implements Plugin {
             public function register(Container $container): void
             {
                 $config = $container->get(ConfigContract::class);
@@ -507,7 +507,7 @@ final class AppTest extends TestCase
         $seen = [];
         try {
             $app = new App(new Config(['log' => ['path' => $path]]));
-            $app->register(new class($seen) implements WorkerProvider {
+            $app->register(new class($seen) implements WorkerPlugin {
                 public function __construct(
                     private array &$seen,
                 ) {}
@@ -671,7 +671,7 @@ final class AppTest extends TestCase
                 ],
             ],
         ]));
-        $app->register(\Crab\Queue\QueueProvider::class, \Crab\Schedule\ScheduleProvider::class);
+        $app->register(\Crab\Queue\QueuePlugin::class, \Crab\Schedule\SchedulePlugin::class);
         $app->console->add('users:sync', static fn(): int => 0);
         $servers = $app->container->get(\Crab\Contracts\Servers::class);
         // A server of the application's own that joins: no loop of work, only somewhere to listen.

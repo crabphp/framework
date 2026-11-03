@@ -175,7 +175,7 @@ final readonly class Describe implements Command
      */
     private function schedule(): array
     {
-        // Bound only when the schedule's provider is registered.
+        // Bound only when the schedule's plugin is registered.
         if (!$this->app->container->has(Schedule::class)) {
             return [];
         }
@@ -227,8 +227,8 @@ final readonly class Describe implements Command
     private function database(): array
     {
         $connections = $this->app->config->get('database.connections');
-        // The folders the migrators use, defaults included, when the database provider is registered.
-        // Migrators is bound only by the provider; has() of a class is true whenever it could be autowired.
+        // The folders the migrators use, defaults included, when the database plugin is registered.
+        // Migrators is bound only by the plugin; has() of a class is true whenever it could be autowired.
         $databases = $this->app->container->has(Migrators::class)
             ? $this->app->container->get(DatabaseManager::class)
             : null;

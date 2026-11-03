@@ -6,17 +6,17 @@ namespace Crab\Events;
 
 use Crab\Contracts\Container\Container;
 use Crab\Contracts\Events\Dispatcher as DispatcherContract;
-use Crab\Contracts\Provider;
+use Crab\Contracts\Plugin;
 use Psr\EventDispatcher\EventDispatcherInterface;
 use Psr\EventDispatcher\ListenerProviderInterface;
 
 /**
- * Binds the event dispatcher. Register it before the providers that add
+ * Binds the event dispatcher. Register it before the plugins that add
  * listeners, which they do in register():
  *
  *     $container->get(Dispatcher::class)->listen(UserRegistered::class, SendWelcome::class);
  */
-final class EventsProvider implements Provider
+final class EventsPlugin implements Plugin
 {
     public function register(Container $container): void
     {

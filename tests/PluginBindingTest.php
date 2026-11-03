@@ -5,10 +5,10 @@ declare(strict_types=1);
 namespace Crab\Tests;
 
 use Crab\App;
-use Crab\Auth\AuthProvider;
+use Crab\Auth\AuthPlugin;
 use Crab\Auth\DatabaseTokenStore;
 use Crab\Auth\PasswordHasher;
-use Crab\Auth\TokenAuthProvider;
+use Crab\Auth\TokenAuthPlugin;
 use Crab\Config\Config;
 use Crab\Container\Container;
 use Crab\Contracts\Auth\PasswordHasher as PasswordHasherContract;
@@ -18,13 +18,13 @@ use Crab\Contracts\Database\Database as DatabaseContract;
 use Crab\Contracts\Database\Migrator as MigratorContract;
 use Crab\Contracts\Database\Schema as SchemaContract;
 use Crab\Database\Database;
-use Crab\Database\DatabaseProvider;
+use Crab\Database\DatabasePlugin;
 use Crab\Database\Migrator;
 use Crab\Database\Schema;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 
-final class ProviderBindingTest extends TestCase
+final class PluginBindingTest extends TestCase
 {
     /**
      * @return array<string, array{class-string, class-string}>
@@ -89,9 +89,9 @@ final class ProviderBindingTest extends TestCase
         $container->instance(ConfigContract::class, new Config([
             'database' => ['connections' => ['main' => ['dsn' => 'sqlite::memory:']]],
         ]));
-        new DatabaseProvider()->register($container);
-        new AuthProvider()->register($container);
-        new TokenAuthProvider()->register($container);
+        new DatabasePlugin()->register($container);
+        new AuthPlugin()->register($container);
+        new TokenAuthPlugin()->register($container);
 
         $service = $container->get($contract);
         self::assertSame($service, $container->get($concrete));

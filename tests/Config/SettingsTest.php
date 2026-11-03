@@ -5,17 +5,17 @@ declare(strict_types=1);
 namespace Crab\Tests\Config;
 
 use Crab\App;
-use Crab\Auth\AuthProvider;
-use Crab\Broadcast\BroadcastProvider;
-use Crab\Cache\CacheProvider;
+use Crab\Auth\AuthPlugin;
+use Crab\Broadcast\BroadcastPlugin;
+use Crab\Cache\CachePlugin;
 use Crab\Config\Config;
 use Crab\Config\Schema;
 use Crab\Contracts\Config\InvalidSettings;
-use Crab\Database\DatabaseProvider;
-use Crab\Events\EventsProvider;
-use Crab\HttpClient\HttpClientProvider;
-use Crab\Queue\QueueProvider;
-use Crab\Schedule\ScheduleProvider;
+use Crab\Database\DatabasePlugin;
+use Crab\Events\EventsPlugin;
+use Crab\HttpClient\HttpClientPlugin;
+use Crab\Queue\QueuePlugin;
+use Crab\Schedule\SchedulePlugin;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 
@@ -25,15 +25,15 @@ use PHPUnit\Framework\TestCase;
  */
 final class SettingsTest extends TestCase
 {
-    private const PROVIDERS = [
-        EventsProvider::class,
-        AuthProvider::class,
-        BroadcastProvider::class,
-        CacheProvider::class,
-        DatabaseProvider::class,
-        HttpClientProvider::class,
-        QueueProvider::class,
-        ScheduleProvider::class,
+    private const PLUGINS = [
+        EventsPlugin::class,
+        AuthPlugin::class,
+        BroadcastPlugin::class,
+        CachePlugin::class,
+        DatabasePlugin::class,
+        HttpClientPlugin::class,
+        QueuePlugin::class,
+        SchedulePlugin::class,
     ];
 
     /**
@@ -42,7 +42,7 @@ final class SettingsTest extends TestCase
     private static function app(array $settings = []): App
     {
         $app = new App(new Config($settings));
-        $app->register(...self::PROVIDERS);
+        $app->register(...self::PLUGINS);
         return $app;
     }
 
@@ -130,7 +130,7 @@ final class SettingsTest extends TestCase
         self::assertSame(
             [
                 'log.level is "verbose"; it takes "debug", "info", "notice", "warning", "error", "critical", "alert" or "emergency".',
-                'cache.store is "reddis"; it takes "file", "database" or "array". "redis" is one more, with crabphp/redis and its RedisProvider registered after this provider.',
+                'cache.store is "reddis"; it takes "file", "database" or "array". "redis" is one more, with crabphp/redis and its RedisPlugin registered after this plugin.',
                 'cache.stroe is not a setting; cache takes store, directory, table, database, prefix and ttl. Did you mean cache.store?',
                 'queue.backoff.1 is "soon"; it takes a whole number, at least 0.',
                 'queue.supervisors.mail.queues is empty; it takes a non-empty list of non-empty strings.',
@@ -190,7 +190,7 @@ final class SettingsTest extends TestCase
         self::assertStringContainsString('mail.dsn is "smtp://host?password=(hidden)&x=1"', $problems);
     }
 
-    public function testAnotherProviderAddsAChoiceAndAnyOtherRuleReplacesTheEarlierOne(): void
+    public function testAnotherPluginAddsAChoiceAndAnyOtherRuleReplacesTheEarlierOne(): void
     {
         $config = new Config(['cache' => ['store' => 'redis', 'ttl' => 0]]);
         $config->defaults(

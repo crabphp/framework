@@ -66,7 +66,7 @@ final class Config implements ConfigContract
         foreach ($rules as $key => $rule) {
             Schema::assertValid("{$section}.{$key}", $rule);
             $earlier = $this->rules[$section][$key] ?? null;
-            // Another provider offering one more choice adds to the ones there are.
+            // Another plugin offering one more choice adds to the ones there are.
             $this->rules[$section][$key] = isset($earlier['enum'], $rule['enum']) && array_keys($rule) === ['enum']
                 ? ['enum' => array_values(array_unique([...$earlier['enum'], ...$rule['enum']], SORT_REGULAR))]
                 + $earlier

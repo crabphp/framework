@@ -6,7 +6,7 @@ namespace Crab\Contracts;
 
 /**
  * The servers `start` can run beside HTTP, each under an id: "queue",
- * "schedule", "chat", "vite". A provider registers one here, and `start`
+ * "schedule", "chat", "vite". A plugin registers one here, and `start`
  * runs the ones "server.with" names, under the one parent: started,
  * stopped and reloaded with the HTTP workers.
  *
@@ -20,7 +20,7 @@ namespace Crab\Contracts;
  *     ]);
  *
  * Registering an id again takes the place of what was registered under
- * it, so an application can say what "queue" runs: its provider comes
+ * it, so an application can say what "queue" runs: its plugin comes
  * after the framework's.
  *
  * A server registered with `reloads: false` is kept across reloads: in
@@ -38,7 +38,7 @@ interface Servers
     /**
      * Registers a server that joins `start` itself, as groups of its
      * workers. The groups are asked for when the server starts, not when
-     * it is registered, so they may depend on what later providers and
+     * it is registered, so they may depend on what later plugins and
      * the configuration say.
      *
      * @param \Closure(): list<Workers> $groups The groups of workers it runs.

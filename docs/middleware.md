@@ -101,7 +101,7 @@ Route::prefix('/admin')->middleware(TokenAuth::class, RequireAdmin::class)->grou
 
 A route's middleware runs only once its route has matched. The same class given by a group and again by a route inside it runs once.
 
-`php cua route:list` shows route and group middleware; global middleware from `app.php` and providers is not shown.
+`php cua route:list` shows route and group middleware; global middleware from `app.php` and plugins is not shown.
 
 ## The order they run in
 

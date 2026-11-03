@@ -21,7 +21,7 @@
 
 ## Digging deeper
 
-- [Services and providers](providers.md)
+- [Services and plugins](plugins.md)
 - [Console](console.md)
 - [Cache](cache.md)
 - [File storage](storage.md)

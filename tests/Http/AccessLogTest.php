@@ -414,17 +414,17 @@ final class AccessLogTest extends TestCase
         self::assertArrayNotHasKey('user', $logger->records[0]['context']);
     }
 
-    public function testProcessingWithoutALoggerSaysToRegisterALogProvider(): void
+    public function testProcessingWithoutALoggerSaysToRegisterALogPlugin(): void
     {
         $this->expectException(\LogicException::class);
-        $this->expectExceptionMessage('Register a log provider that binds Psr\Log\LoggerInterface');
+        $this->expectExceptionMessage('Register a log plugin that binds Psr\Log\LoggerInterface');
         new AccessLog()->process(new Request('GET', '/'), new ClosureHandler(static fn(): string => 'ok'));
     }
 
     public function testAContainerWithoutALoggerSaysWhatToRegister(): void
     {
         $this->expectException(\LogicException::class);
-        $this->expectExceptionMessage('register a log provider that binds Psr\Log\LoggerInterface');
+        $this->expectExceptionMessage('register a log plugin that binds Psr\Log\LoggerInterface');
         new AccessLog()->withContainer(new Container());
     }
 

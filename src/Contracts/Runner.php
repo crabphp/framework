@@ -10,7 +10,7 @@ use Crab\Engine\Process\Worker;
 /**
  * Runs work in worker processes of the application's own, apart from the
  * ones that serve HTTP: a queue's consumers, the scheduler. Each worker
- * starts as an HTTP worker does, with every WorkerProvider started and
+ * starts as an HTTP worker does, with every WorkerPlugin started and
  * stopped around it and every failure sent to the logger, so that a slow
  * job can never hold up a request.
  */

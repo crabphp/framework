@@ -69,7 +69,7 @@ order = message;
 
 Render from `order`. Keep its version when reconnecting and use the same comparison for a fetched snapshot. Follow the [ownership and authentication setup](websockets.md#checking-ownership) for `App\User` and its identity resolver.
 
-`App::configure()` includes `Crab\Broadcast\BroadcastProvider`. An application constructed with `new App()` registers it explicitly. Use the Redis carrier when another worker or process sends updates.
+Broadcasting is an optional plugin: add `Crab\Broadcast\BroadcastPlugin` to `withPlugins()` in `app.php`. Use the Redis carrier when another worker or process sends updates.
 
 ## Joining channels
 
@@ -150,11 +150,11 @@ return ['carrier' => env('BROADCAST_CARRIER', 'local')];
 
 `local` suits one HTTP worker with sends inside that process. Startup refuses it when socket routes exist and `server.workers` exceeds one or `server.with` includes `queue` or `schedule`. A console sender, including `queue:work` and `schedule:work`, fails with an instruction to choose Redis: it cannot reach another process through local memory.
 
-For `redis`, install `crabphp/redis` and register its `RedisProvider` after the default framework providers. Follow the [Redis package installation example](https://github.com/crabphp/redis#installation).
+For `redis`, install `crabphp/redis` and add its `RedisPlugin` to `withPlugins()` after `BroadcastPlugin`. Follow the [Redis package installation example](https://github.com/crabphp/redis#installation).
 
 Set `BROADCAST_CARRIER=redis` and configure `redis.url`. Joins wait for Redis confirmation; leaves do not delay socket cleanup. Unused broadcasting opens no connection, subscription or timer. Stop and reload release broadcast resources.
 
-To add a third carrier, bind `Crab\Contracts\Broadcast\Carrier` after BroadcastProvider. It carries encoded text, confirms subscriptions, signals lost updates and releases resources without suspending during leave or stop.
+To add a third carrier, bind `Crab\Contracts\Broadcast\Carrier` after BroadcastPlugin. It carries encoded text, confirms subscriptions, signals lost updates and releases resources without suspending during leave or stop.
 
 ## Delivery and slow clients
 
@@ -173,7 +173,7 @@ Reconnect with jitter and fetch current state after the post-join ready message 
 
 ## Testing
 
-Exercise the real in-process path through [Testing\Api](testing.md). Your test application's socket action must join the channel, and BroadcastProvider must be registered. For the ownership example, `$user` is the order's owner:
+Exercise the real in-process path through [Testing\Api](testing.md). Your test application's socket action must join the channel, and BroadcastPlugin must be registered. For the ownership example, `$user` is the order's owner:
 
 ```php
 use Crab\Contracts\Broadcast\Broadcaster;
@@ -204,7 +204,7 @@ The fake shares records across selections and respects commit and rollback when 
 
 ## Standalone use
 
-The broadcaster and memberships work without App, a provider or a container:
+The broadcaster and memberships work without App, a plugin or a container:
 
 ```php
 use Crab\Broadcast\Broadcaster;

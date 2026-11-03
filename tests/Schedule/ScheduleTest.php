@@ -25,10 +25,10 @@ use Crab\Engine\FailureReporter;
 use Crab\Engine\Process\Worker;
 use Crab\Events\Dispatcher;
 use Crab\Queue\MemoryStore;
-use Crab\Queue\QueueProvider;
+use Crab\Queue\QueuePlugin;
 use Crab\Schedule\Cron;
 use Crab\Schedule\Schedule;
-use Crab\Schedule\ScheduleProvider;
+use Crab\Schedule\SchedulePlugin;
 use Crab\Schedule\Scheduler;
 use Crab\Testing\FrozenClock;
 use Crab\Testing\WorkerHarness;
@@ -379,7 +379,7 @@ final class ScheduleTest extends TestCase
         self::assertSame(2, Beat::$count);
 
         $this->expectException(\LogicException::class);
-        $this->expectExceptionMessage('CacheProvider');
+        $this->expectExceptionMessage('CachePlugin');
         new Scheduler($schedule)->check();
     }
 
@@ -793,10 +793,10 @@ final class ScheduleTest extends TestCase
         self::assertCount(1, $this->log->records);
     }
 
-    public function testTheProviderBindsTheScheduleAndItsCommandsAndJobs(): void
+    public function testThePluginBindsTheScheduleAndItsCommandsAndJobs(): void
     {
         $app = new App(new Config(['queue' => ['store' => 'memory'], 'schedule' => ['timezone' => 'UTC']]));
-        $app->register(QueueProvider::class, ScheduleProvider::class);
+        $app->register(QueuePlugin::class, SchedulePlugin::class);
         $said = [];
         Command::add('reports:send', static function (Input $input, OutputContract $output) use (&$said): int {
             $said[] = $input->option('month');
@@ -834,14 +834,14 @@ final class ScheduleTest extends TestCase
         // A task for one server and no cache: refused before anything runs.
         [$output, $read] = $this->captured();
         self::assertSame(1, $app->console->run(['schedule:work', '--single'], $output));
-        self::assertStringContainsString('CacheProvider', $read());
+        self::assertStringContainsString('CachePlugin', $read());
     }
 
     public function testTheSchedulerUsesAReplacementScheduleFromTheContainer(): void
     {
         $container = new Container();
         $container->instance(\Crab\Contracts\Config\Config::class, new Config());
-        new ScheduleProvider()->register($container);
+        new SchedulePlugin()->register($container);
         $container->get(Schedule::class);
         $replacement = new Schedule();
         $ran = false;
@@ -863,7 +863,7 @@ final class ScheduleTest extends TestCase
     {
         $container = new Container();
         $container->instance(\Crab\Contracts\Config\Config::class, new Config());
-        new ScheduleProvider()->register($container);
+        new SchedulePlugin()->register($container);
         $task = new Schedule()->call(Beat::class);
         $replacement = $this->createStub(ScheduleContract::class);
         $replacement->method('tasks')->willReturn([$task]);

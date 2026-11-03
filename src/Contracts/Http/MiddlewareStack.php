@@ -7,7 +7,7 @@ namespace Crab\Contracts\Http;
 use Psr\Http\Server\MiddlewareInterface;
 
 /**
- * The PSR-15 middleware around every route, and the way a provider adds to
+ * The PSR-15 middleware around every route, and the way a plugin adds to
  * it.
  */
 interface MiddlewareStack

@@ -13,7 +13,7 @@ use Crab\Contracts\Config\Config;
 use Crab\Contracts\Console\Console;
 use Crab\Contracts\Container\Container;
 use Crab\Contracts\Database\Database;
-use Crab\Contracts\Provider;
+use Crab\Contracts\Plugin;
 use Psr\Clock\ClockInterface;
 use Psr\SimpleCache\CacheInterface;
 
@@ -29,9 +29,9 @@ use Psr\SimpleCache\CacheInterface;
  *     ttl         seconds an entry lives when none is given; forever when null
  *
  * To keep entries somewhere else, bind Contracts\Cache\Store to a store of
- * your own after registering this provider.
+ * your own after registering this plugin.
  */
-final class CacheProvider implements Provider
+final class CachePlugin implements Plugin
 {
     public function register(Container $container): void
     {
@@ -48,7 +48,7 @@ final class CacheProvider implements Provider
             [
                 'store' => [
                     'enum' => ['file', 'database', 'array'],
-                    'description' => '"redis" is one more, with crabphp/redis and its RedisProvider registered after this provider.',
+                    'description' => '"redis" is one more, with crabphp/redis and its RedisPlugin registered after this plugin.',
                 ],
                 'directory' => ['type' => ['string', 'null'], 'minLength' => 1],
                 'table' => ['type' => 'string', 'minLength' => 1],
@@ -81,7 +81,7 @@ final class CacheProvider implements Provider
             if ($store === 'database') {
                 if (!$container->has(Database::class)) {
                     throw new \LogicException(
-                        'The cache is set to keep its entries in the database ("cache.store" is "database"): register the database provider, DatabaseProvider, as well as CacheProvider.',
+                        'The cache is set to keep its entries in the database ("cache.store" is "database"): register the database plugin, DatabasePlugin, as well as CachePlugin.',
                     );
                 }
                 $database = $container->get(Database::class);
@@ -92,7 +92,7 @@ final class CacheProvider implements Provider
                 );
             }
             throw new \LogicException(
-                "\"cache.store\" is \"{$store}\", and the stores are \"file\", \"database\" and \"array\". For \"redis\", install crabphp/redis and register its RedisProvider after this one; for another, bind "
+                "\"cache.store\" is \"{$store}\", and the stores are \"file\", \"database\" and \"array\". For \"redis\", install crabphp/redis and register its RedisPlugin after this one; for another, bind "
                 . Store::class
                 . ' to a store of your own.',
             );

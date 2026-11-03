@@ -28,7 +28,7 @@ final readonly class ListTasks implements Command
         $tasks = $this->schedule->tasks();
         if ($tasks === []) {
             $output->line(
-                'Nothing is scheduled. Declare tasks on Contracts\Schedule\Schedule in a provider\'s register().',
+                'Nothing is scheduled. Declare tasks on Contracts\Schedule\Schedule in a plugin\'s register().',
             );
             return 0;
         }

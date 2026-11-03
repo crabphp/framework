@@ -9,14 +9,14 @@ use Crab\Contracts\Broadcast\Carrier;
 use Crab\Contracts\Config\Config;
 use Crab\Contracts\Container\Container;
 use Crab\Contracts\WebSocket\Channels as ChannelsContract;
-use Crab\Contracts\WorkerProvider;
+use Crab\Contracts\WorkerPlugin;
 use Crab\Engine\Process\Worker;
 
 /**
  * Lazy broadcasting and membership bindings. Carriers belong to workers,
  * and no subscription, connection or timer exists until first use.
  */
-final class BroadcastProvider implements WorkerProvider
+final class BroadcastPlugin implements WorkerPlugin
 {
     public function register(Container $container): void
     {
@@ -33,7 +33,7 @@ final class BroadcastProvider implements WorkerProvider
             [
                 'carrier' => [
                     'enum' => ['local'],
-                    'description' => '"redis" is one more, with crabphp/redis and its RedisProvider registered after this provider.',
+                    'description' => '"redis" is one more, with crabphp/redis and its RedisPlugin registered after this plugin.',
                 ],
                 'prefix' => ['type' => 'string'],
                 'max_channels' => ['type' => 'integer', 'minimum' => 1],
@@ -48,7 +48,7 @@ final class BroadcastProvider implements WorkerProvider
             $name = $container->get(Config::class)->get('broadcast.carrier');
             if ($name !== 'local') {
                 throw new \LogicException(
-                    "Unknown broadcast carrier {$name}. For redis, install crabphp/redis and register RedisProvider after BroadcastProvider; otherwise bind "
+                    "Unknown broadcast carrier {$name}. For redis, install crabphp/redis and add RedisPlugin to withPlugins() after BroadcastPlugin; otherwise bind "
                     . Carrier::class
                     . '.',
                 );

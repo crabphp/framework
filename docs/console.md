@@ -207,15 +207,15 @@ php cua stop --force
 
 Success means the background server, including registered programs, has ended; a keeper that does not lead its own session is ended alone, with a non-zero result saying its workers may remain and must be ended by whatever started it. Foreground `start` writes no background PID file: stop its terminal job or process manager. See [Deployment](deployment.md#finishing-requests-on-stop) for drain limits.
 
-The default framework providers add their commands automatically; `TokenAuthProvider` adds its command when you register it:
+The core plugins add their commands automatically; an optional plugin, such as `QueuePlugin` or `TokenAuthPlugin`, adds its commands when you list it:
 
-| Provider | Commands |
+| Plugin | Commands |
 | --- | --- |
-| `DatabaseProvider` | `migrate`, `migrate:rollback`, `migrate:fresh`, `migrate:status`, `make:migration` |
-| `TokenAuthProvider` | `token:install` |
-| `CacheProvider` | `cache:clear`, `cache:prune`, `cache:install` |
-| `QueueProvider` | `queue:work`, `queue:failed`, `queue:retry`, `queue:forget`, `queue:install` |
-| `ScheduleProvider` | `schedule:work`, `schedule:list` |
+| `DatabasePlugin` | `migrate`, `migrate:rollback`, `migrate:fresh`, `migrate:status`, `make:migration` |
+| `TokenAuthPlugin` | `token:install` |
+| `CachePlugin` | `cache:clear`, `cache:prune`, `cache:install` |
+| `QueuePlugin` | `queue:work`, `queue:failed`, `queue:retry`, `queue:forget`, `queue:install` |
+| `SchedulePlugin` | `schedule:work`, `schedule:list` |
 
 ## Describing the application
 

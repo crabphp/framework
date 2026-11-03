@@ -4,11 +4,12 @@ declare(strict_types=1);
 
 namespace Crab;
 
-use Crab\Actors\ActorsProvider;
-use Crab\Auth\AuthProvider;
-use Crab\Broadcast\BroadcastProvider;
+use Crab\Actors\ActorsPlugin;
+use Crab\Auth\AuthPlugin;
+use Crab\Auth\TokenAuthPlugin;
+use Crab\Broadcast\BroadcastPlugin;
 use Crab\Broadcast\Lifecycle as BroadcastLifecycle;
-use Crab\Cache\CacheProvider;
+use Crab\Cache\CachePlugin;
 use Crab\Clock\SystemClock;
 use Crab\Commands\Describe;
 use Crab\Commands\Dev;
@@ -36,7 +37,7 @@ use Crab\Contracts\Http\ErrorRenderer;
 use Crab\Contracts\Http\Factory as FactoryContract;
 use Crab\Contracts\Http\MiddlewareStack as MiddlewareStackContract;
 use Crab\Contracts\Log\Logger as LoggerContract;
-use Crab\Contracts\Provider;
+use Crab\Contracts\Plugin;
 use Crab\Contracts\Routing\Router as RouterContract;
 use Crab\Contracts\Routing\Urls as UrlsContract;
 use Crab\Contracts\Runner;
@@ -44,9 +45,9 @@ use Crab\Contracts\Schedule\Schedule as ScheduleContract;
 use Crab\Contracts\Servers as ServersContract;
 use Crab\Contracts\Validation\Validator as ValidatorContract;
 use Crab\Contracts\WebSocket\Channels as SocketChannels;
-use Crab\Contracts\WorkerProvider;
+use Crab\Contracts\WorkerPlugin;
 use Crab\Contracts\Workers;
-use Crab\Database\DatabaseProvider;
+use Crab\Database\DatabasePlugin;
 use Crab\Engine\Async\Async;
 use Crab\Engine\Async\Cancellation;
 use Crab\Engine\Async\CancelledException;
@@ -57,21 +58,21 @@ use Crab\Engine\Process\Interpreter;
 use Crab\Engine\Process\Worker;
 use Crab\Engine\Runtime;
 use Crab\Engine\Server\HttpServer;
-use Crab\Events\EventsProvider;
+use Crab\Events\EventsPlugin;
 use Crab\Http\EngineHandler;
 use Crab\Http\ErrorHandler;
 use Crab\Http\Factory;
 use Crab\Http\MiddlewareStack;
 use Crab\Http\RenderedErrors;
-use Crab\HttpClient\HttpClientProvider;
+use Crab\HttpClient\HttpClientPlugin;
 use Crab\Log\Logger;
-use Crab\Queue\QueueProvider;
+use Crab\Queue\QueuePlugin;
 use Crab\Routing\Router;
 use Crab\Routing\Urls;
-use Crab\Runs\RunsProvider;
-use Crab\Schedule\ScheduleProvider;
+use Crab\Runs\RunsPlugin;
+use Crab\Schedule\SchedulePlugin;
 use Crab\Schedule\Task;
-use Crab\Storage\StorageProvider;
+use Crab\Storage\StoragePlugin;
 use Crab\Validation\Validator;
 use Crab\WebSocket\Connections;
 use Crab\WebSocket\Settings as SocketSettings;
@@ -119,7 +120,7 @@ final class App implements RequestHandlerInterface, Runner
     public readonly RouterContract $router;
     public readonly ConsoleContract $console;
     /**
-     * The servers `start` can run beside HTTP, as providers have registered them.
+     * The servers `start` can run beside HTTP, as plugins have registered them.
      */
     public readonly Servers $servers;
     private readonly MiddlewareStack $stack;
@@ -131,9 +132,9 @@ final class App implements RequestHandlerInterface, Runner
      */
     private array $deprecations = [];
     /**
-     * @var list<WorkerProvider>
+     * @var list<WorkerPlugin>
      */
-    private array $workerProviders = [];
+    private array $workerPlugins = [];
     /**
      * The router as the class it is, for what only the application asks of it.
      */
@@ -147,26 +148,36 @@ final class App implements RequestHandlerInterface, Runner
     public const MIDDLEWARE = [ErrorHandler::class];
 
     /**
-     * The framework's own providers, which an application made with
-     * App::configure() starts with, in the order they depend on one
-     * another: events before the queue and the schedule, which report
-     * through them, and the queue before runs, which it carries out. Each
+     * The core plugins, which an application made with App::configure()
+     * starts with, events first among those that report through them. Each
      * binds on first use, so one the application never touches opens
-     * nothing. An application's own and a package's come
-     * after them, and AppBuilder::withProviders() can leave one out.
+     * nothing. AppBuilder::withPlugins() adds the rest after them, in the
+     * order given, and can leave one of these out.
+     *
+     * The framework's optional plugins, OPTIONAL_PLUGINS, are listed only
+     * by an application that wants them.
      */
-    public const PROVIDERS = [
-        DatabaseProvider::class,
-        AuthProvider::class,
-        CacheProvider::class,
-        StorageProvider::class,
-        EventsProvider::class,
-        QueueProvider::class,
-        ScheduleProvider::class,
-        RunsProvider::class,
-        HttpClientProvider::class,
-        BroadcastProvider::class,
-        ActorsProvider::class,
+    public const PLUGINS = [
+        DatabasePlugin::class,
+        AuthPlugin::class,
+        CachePlugin::class,
+        StoragePlugin::class,
+        EventsPlugin::class,
+        HttpClientPlugin::class,
+    ];
+
+    /**
+     * The framework's plugins an application lists in withPlugins() when it
+     * wants them, in an order that works: the queue before runs, which it
+     * carries out, and broadcast before actors, which travel on its carrier.
+     */
+    public const OPTIONAL_PLUGINS = [
+        QueuePlugin::class,
+        SchedulePlugin::class,
+        RunsPlugin::class,
+        BroadcastPlugin::class,
+        ActorsPlugin::class,
+        TokenAuthPlugin::class,
     ];
 
     /**
@@ -176,7 +187,7 @@ final class App implements RequestHandlerInterface, Runner
 
     /**
      * @param string|null $basePath The application's own directory, which path() resolves against.
-     * @param list<MiddlewareInterface|class-string<MiddlewareInterface>> $middleware The middleware around every request, the first outermost. A provider adds inside it through the MiddlewareStack contract.
+     * @param list<MiddlewareInterface|class-string<MiddlewareInterface>> $middleware The middleware around every request, the first outermost. A plugin adds inside it through the MiddlewareStack contract.
      * @param string|null $storagePath Where it writes; see storageDirectory() when null.
      */
     public function __construct(
@@ -263,7 +274,7 @@ final class App implements RequestHandlerInterface, Runner
         ]);
         self::$current = $this;
         $container->instance(self::class, $this);
-        // What runs workers that serve no requests, for a provider's commands.
+        // What runs workers that serve no requests, for a plugin's commands.
         $container->instance(Runner::class, $this);
         // What `status` and `stop` act on, where the settings put it.
         $container->singleton(ServerFiles::class, fn(): ServerFiles => new Server($this)->files());
@@ -318,7 +329,7 @@ final class App implements RequestHandlerInterface, Runner
             ): SocketChannels {
                 if (!$container->has(SocketChannels::class)) {
                     throw new \LogicException(
-                        'To join WebSocket channels, register BroadcastProvider with the application.',
+                        'To join WebSocket channels, add BroadcastPlugin to withPlugins() in app.php.',
                     );
                 }
                 // A socket-pair application is serving in this process too.
@@ -484,23 +495,23 @@ final class App implements RequestHandlerInterface, Runner
     }
 
     /**
-     * Lets providers add their bindings; one given by class name is made
-     * by the container. A WorkerProvider is also started and stopped in
+     * Lets plugins add their bindings; one given by class name is made
+     * by the container. A WorkerPlugin is also started and stopped in
      * each worker.
      */
-    public function register(Provider|string ...$providers): static
+    public function register(Plugin|string ...$plugins): static
     {
-        foreach ($providers as $provider) {
-            if (is_string($provider)) {
-                $name = $provider;
-                $provider = $this->container->get($name);
-                if (!$provider instanceof Provider) {
-                    throw new \LogicException("{$name} must implement " . Provider::class . '.');
+        foreach ($plugins as $plugin) {
+            if (is_string($plugin)) {
+                $name = $plugin;
+                $plugin = $this->container->get($name);
+                if (!$plugin instanceof Plugin) {
+                    throw new \LogicException("{$name} must implement " . Plugin::class . '.');
                 }
             }
-            $provider->register($this->container);
-            if ($provider instanceof WorkerProvider) {
-                $this->workerProviders[] = $provider;
+            $plugin->register($this->container);
+            if ($plugin instanceof WorkerPlugin) {
+                $this->workerPlugins[] = $plugin;
             }
         }
         return $this;
@@ -588,7 +599,7 @@ final class App implements RequestHandlerInterface, Runner
     /**
      * A runtime serving this application over HTTP; the `start` command
      * runs it. Each worker assembles its middleware and starts the worker
-     * providers as it starts, so a misconfigured application fails then
+     * plugins as it starts, so a misconfigured application fails then
      * and not on its first request. A task or timer that fails in a
      * worker is logged.
      *
@@ -663,7 +674,7 @@ final class App implements RequestHandlerInterface, Runner
             )
         ) {
             throw new \LogicException(
-                'The local broadcast carrier reaches one HTTP process only. Set broadcast.carrier to redis and register RedisProvider before serving multiple workers or queue/schedule servers.',
+                'The local broadcast carrier reaches one HTTP process only. Set broadcast.carrier to redis and register RedisPlugin before serving multiple workers or queue/schedule servers.',
             );
         }
         // Every service that cannot be made, at once, after what is said more precisely above.
@@ -1177,8 +1188,8 @@ final class App implements RequestHandlerInterface, Runner
             }
             $this->stack->assemble();
             $this->routes->assemble();
-            foreach ($this->workerProviders as $provider) {
-                $provider->start($worker, $this->container);
+            foreach ($this->workerPlugins as $plugin) {
+                $plugin->start($worker, $this->container);
             }
         } catch (\Throwable $error) {
             // stop() will not run for a worker that did not start.
@@ -1190,11 +1201,11 @@ final class App implements RequestHandlerInterface, Runner
     private function stop(Worker $worker): void
     {
         restore_error_handler();
-        foreach (array_reverse($this->workerProviders) as $provider) {
+        foreach (array_reverse($this->workerPlugins) as $plugin) {
             try {
-                $provider->stop($worker, $this->container);
+                $plugin->stop($worker, $this->container);
             } catch (\Throwable $error) {
-                // One provider's failure must not keep the others open.
+                // One plugin's failure must not keep the others open.
                 $this->report($error);
             }
         }
@@ -1227,7 +1238,7 @@ final class App implements RequestHandlerInterface, Runner
 
     /**
      * Logs a failure the engine caught in a worker: a task, a timer, a
-     * provider that could not stop, or a request failure that escaped the
+     * plugin that could not stop, or a request failure that escaped the
      * error handler.
      */
     private function report(\Throwable $error): void
