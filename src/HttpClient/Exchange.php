@@ -70,31 +70,29 @@ final class Exchange
         }
 
         $method = $request->getMethod();
-        $lengths = $headers['content-length'] ?? [];
+        // Repeated lengths must agree; anything else could be read as two different bodies.
         $length = null;
-        if ($lengths !== []) {
-            $normalized = [];
-            foreach ($lengths as $value) {
-                if (preg_match('/^\d{1,18}$/D', $value) !== 1) {
-                    throw new \RuntimeException('the answer\'s length is not a number');
-                }
-                $normalized[] = ltrim($value, '0') ?: '0';
+        foreach ($headers['content-length'] ?? [] as $value) {
+            if (preg_match('/^\d{1,18}$/D', $value) !== 1) {
+                throw new \RuntimeException('the answer\'s length is not a number');
             }
-            if (count(array_unique($normalized)) !== 1) {
+            if ($length !== null && $length !== (int) $value) {
                 throw new \RuntimeException('the answer has conflicting Content-Length values');
             }
-            $length = (int) $normalized[0];
+            $length = (int) $value;
         }
-        $transfer = $headers['transfer-encoding'] ?? [];
-        $codings = $transfer === [] ? [] : array_map(trim(...), explode(',', strtolower(implode(',', $transfer))));
-        if ($codings !== [] && $codings !== ['chunked']) {
-            throw new \RuntimeException('the answer has unsupported transfer encoding');
-        }
-        if ($codings !== [] && $lengths !== []) {
-            throw new \RuntimeException('the answer has both Transfer-Encoding and Content-Length');
+        // Chunked is the only transfer coding read, and it leaves no room for a length.
+        $chunked = isset($headers['transfer-encoding']);
+        if ($chunked) {
+            $codings = array_map(trim(...), explode(',', strtolower(implode(',', $headers['transfer-encoding']))));
+            if ($codings !== ['chunked']) {
+                throw new \RuntimeException('the answer has unsupported transfer encoding');
+            }
+            if ($length !== null) {
+                throw new \RuntimeException('the answer has both Transfer-Encoding and Content-Length');
+            }
         }
         $bodiless = $method === 'HEAD' || $status === 204 || $status === 304 || $status < 200;
-        $chunked = $codings === ['chunked'];
         if (!$bodiless && !$chunked && $length !== null) {
             // Refused before a byte of it is read.
             $this->receiving->expect($length);
@@ -256,8 +254,11 @@ final class Exchange
         }
         $lines = explode("\r\n", substr($this->buffer, 0, $end));
         $this->buffer = substr($this->buffer, $end + 4);
-        if (preg_match('~^HTTP/(1\.[01]) ([1-5][0-9]{2})(?: (.*))?$~D', array_shift($lines), $status) !== 1) {
+        if (preg_match('~^HTTP/(1\.[01]) (\d{3})(?: (.*))?$~D', array_shift($lines), $status) !== 1) {
             throw new \RuntimeException('the answer is not HTTP/1.1');
+        }
+        if ((int) $status[2] < 100 || (int) $status[2] > 599) {
+            throw new \RuntimeException("the answer's status {$status[2]} is not one HTTP has");
         }
         $headers = [];
         $last = null;

@@ -341,9 +341,7 @@ abstract class FiberEventLoop extends EventLoop
 
     private function timer(int $type, float $seconds, \Closure $callback): string
     {
-        if (!is_finite($seconds) || $seconds < 0) {
-            throw new \Error('A timer needs a finite, nonnegative number of seconds.');
-        }
+        self::assertDuration($seconds);
         $watcher = new Watcher($this->nextId(), $type, $callback, null, $seconds);
         $watcher->expiration = self::now() + $seconds;
         return $this->add($watcher);

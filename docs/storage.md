@@ -55,6 +55,8 @@ A `local` disk takes two settings:
 | `root` | `files` in the storage directory, `storage/files` unless moved | The folder; made when the first file is written |
 | `url` | none | Where the folder is served from, for [`url()`](#urls) |
 
+A local disk never follows a symbolic link inside its folder, since a link could lead anywhere on the machine. A path through one throws `StorageException`, and `files()` leaves links out. The `root` itself may be a link.
+
 A local disk reads and writes in the worker, which is fast enough for files on this machine's disk. A folder on a network mount is not: each read would hold up every request on that worker. Keep such files on a disk that speaks to the service instead.
 
 ### S3, R2 and MinIO

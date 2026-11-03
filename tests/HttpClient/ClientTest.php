@@ -511,6 +511,7 @@ final class ClientTest extends TestCase
             'unsupported transfer coding' => "HTTP/1.1 200 OK\r\nTransfer-Encoding: chunkedx\r\n\r\n",
             'non-final chunked coding' => "HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked, gzip\r\n\r\n",
             'invalid status' => "HTTP/1.1 600 Weird\r\nContent-Length: 0\r\n\r\n",
+            'chunked and a length' => "HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\nContent-Length: 5\r\n\r\n",
         ];
         foreach ($responses as $name => $response) {
             $server = $this->server(static fn() => $response);
@@ -519,6 +520,9 @@ final class ClientTest extends TestCase
                 self::fail("{$name} response was accepted.");
             } catch (NetworkException $error) {
                 self::assertStringContainsString(' failed: ', $error->getMessage());
+                if ($name === 'invalid status') {
+                    self::assertStringContainsString('status 600 is not one HTTP has', $error->getMessage());
+                }
             }
         }
 

@@ -69,11 +69,13 @@ final class RevoltEventLoop extends EventLoop
 
     public function delay(float $seconds, \Closure $callback): string
     {
+        self::assertDuration($seconds);
         return $this->driver->delay($seconds, $callback);
     }
 
     public function repeat(float $interval, \Closure $callback): string
     {
+        self::assertDuration($interval);
         return $this->driver->repeat($interval, $callback);
     }
 

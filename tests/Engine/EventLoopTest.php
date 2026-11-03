@@ -69,14 +69,15 @@ final class EventLoopTest extends TestCase
 
     public function testTimersRejectNegativeAndNonFiniteDurations(): void
     {
-        $loop = new StreamSelectEventLoop();
-        foreach ([-1.0, NAN, INF] as $seconds) {
-            foreach ([$loop->delay(...), $loop->repeat(...)] as $timer) {
-                try {
-                    $timer($seconds, static function (): void {});
-                    self::fail('A non-finite or negative timer duration was accepted.');
-                } catch (\Error $error) {
-                    self::assertStringContainsString('finite, nonnegative', $error->getMessage());
+        foreach ([new StreamSelectEventLoop(), RevoltEventLoop::create('select')] as $loop) {
+            foreach ([-1.0, NAN, INF] as $seconds) {
+                foreach ([$loop->delay(...), $loop->repeat(...)] as $timer) {
+                    try {
+                        $timer($seconds, static function (): void {});
+                        self::fail($loop::class . ' accepted a non-finite or negative timer duration.');
+                    } catch (\Error $error) {
+                        self::assertStringContainsString('finite, nonnegative', $error->getMessage());
+                    }
                 }
             }
         }

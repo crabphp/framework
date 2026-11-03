@@ -302,6 +302,11 @@ final class HttpFastPathTest extends TestCase
             'http://example.org:8080/p',
             ['host' => ['example.org:8080']],
         ];
+        yield 'absolute-form with a bracketed host and a query' => [
+            "GET HTTPS://[::1]:65535?q HTTP/1.1\r\nHost: other\r\n\r\n",
+            'HTTPS://[::1]:65535?q',
+            ['host' => ['[::1]:65535']],
+        ];
         yield 'asterisk with OPTIONS' => ["OPTIONS * HTTP/1.1\r\nHost: x\r\n\r\n", '*', ['host' => ['x']]];
         yield 'expectation without a body' => [
             "GET / HTTP/1.1\r\nHost: x\r\nExpect: 100-continue\r\n\r\n",
@@ -351,6 +356,12 @@ final class HttpFastPathTest extends TestCase
         yield 'fragment' => ["GET /a#b HTTP/1.1\r\nHost: x\r\n\r\n", 400];
         yield 'asterisk without OPTIONS' => ["GET * HTTP/1.1\r\nHost: x\r\n\r\n", 400];
         yield 'credentials in absolute-form' => ["GET http://u:p@x/ HTTP/1.1\r\nHost: x\r\n\r\n", 400];
+        yield 'absolute-form of another scheme' => ["GET ftp://x/ HTTP/1.1\r\nHost: x\r\n\r\n", 400];
+        yield 'empty absolute authority' => ["GET http:///p HTTP/1.1\r\nHost: x\r\n\r\n", 400];
+        yield 'bracketed absolute authority port too large' => [
+            "GET http://[::1]:65536/ HTTP/1.1\r\nHost: x\r\n\r\n",
+            400,
+        ];
         yield 'malformed absolute authority' => ["GET http://[::1]x/ HTTP/1.1\r\nHost: x\r\n\r\n", 400];
         yield 'empty absolute authority port' => ["GET http://example.com:/ HTTP/1.1\r\nHost: x\r\n\r\n", 400];
         yield 'absolute authority port too large' => ["GET http://example.com:65536/ HTTP/1.1\r\nHost: x\r\n\r\n", 400];

@@ -266,6 +266,9 @@ final class ProcessToolsTest extends TestCase
 
     public function testLifecycleSignalsCannotBeTakenByApplicationCallbacks(): void
     {
+        if (!extension_loaded('pcntl')) {
+            self::markTestSkipped('Signal numbers need pcntl.');
+        }
         foreach ([SIGINT, SIGTERM, SIGUSR1] as $signal) {
             try {
                 new Runtime()->onSignal($signal, static function (): void {});
