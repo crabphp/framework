@@ -16,6 +16,8 @@ use Crab\Engine\Async\Cancellation;
 use Crab\Engine\Async\CancelledException;
 use Crab\Engine\Async\Task;
 use Crab\Engine\EventLoop;
+use Crab\Queue\Signature;
+use Crab\Queue\Words;
 use Psr\Clock\ClockInterface;
 use Psr\Log\LoggerInterface;
 
@@ -33,14 +35,6 @@ use Psr\Log\LoggerInterface;
  */
 final class Runs implements RunsContract
 {
-    /**
-     * For each run class already looked at: its data parameters, the
-     * required ones, and the names its Run and Cancellation are given by.
-     *
-     * @var array<string, array{list<string>, list<string>, ?string, ?string}>
-     */
-    private static array $signatures = [];
-
     /**
      * @param string $table The runs' table.
      * @param string $steps The steps' table.
@@ -242,10 +236,12 @@ final class Runs implements RunsContract
         $renewal = $this->renew($id, $ended);
         $run = new Execution($id, $this->db, $this->steps, $this->clock, $this->loadSteps($id));
         try {
-            [, , $given, $cancellationName] = self::$signatures[$class] ??= self::signature($class);
+            $signature = self::signature($class);
+            $given = $signature->given[Run::class];
+            $cancellationName = $signature->given[Cancellation::class] ?? null;
             $job = $this->container?->has($class) ? $this->container->get($class) : new $class();
             $arguments = (array) self::decode((string) $row['data']);
-            $arguments[(string) $given] = $run;
+            $arguments[$given] = $run;
             if ($cancellationName !== null) {
                 $arguments[$cancellationName] = $cancellation ?? new Cancellation();
             }
@@ -485,101 +481,28 @@ final class Runs implements RunsContract
      */
     private static function check(string $run, array $data): void
     {
-        [$names, $required] = self::$signatures[$run] ??= self::signature($run);
-        foreach ($data as $name => $value) {
-            if (is_int($name)) {
-                throw new \LogicException(
-                    "The data of {$run} was given by position. Give each value by the name of the parameter it is for, as in start({$run}::class, "
-                    . ($names[0] ?? 'name')
-                    . ': ...).',
-                );
-            }
-            if (!in_array($name, $names, true)) {
-                $takes = $names === [] ? 'takes no data' : 'takes ' . implode(', ', $names);
-                throw new \LogicException(
-                    "{$run} was started with \"{$name}\", which its handle() has no parameter for; it {$takes}.",
-                );
-            }
-            if (self::plain($value) !== $value) {
-                throw new \LogicException(
-                    "{$run} was started with \"{$name}\" as "
-                    . get_debug_type($value)
-                    . ', which does not come back the same from JSON. Give numbers, text, booleans, null and arrays of them: an id, not the object.',
-                );
-            }
-        }
-        $missing = array_diff($required, array_keys($data));
-        if ($missing !== []) {
-            throw new \LogicException(
-                "{$run} was started without " . implode(', ', $missing) . ', which its handle() requires.',
-            );
-        }
+        self::signature($run)->check($data);
     }
 
     /**
-     * @return array{list<string>, list<string>, ?string, ?string}
+     * What a run's handle() takes: its data, the Run that keeps its steps,
+     * and the Cancellation, as a job's does.
      */
-    private static function signature(string $run): array
+    private static function signature(string $run): Signature
     {
-        if (!class_exists($run) || !method_exists($run, 'handle')) {
-            throw new \LogicException(
-                "{$run} cannot be a run: a run is a class whose constructor takes services and whose handle(Run \$run, ...) takes its data.",
-            );
-        }
-        $handle = new \ReflectionMethod($run, 'handle');
-        if (!$handle->isPublic() || $handle->isStatic()) {
-            throw new \LogicException(
-                "{$run}::handle() must be a public method of an object, for a worker to call it.",
-            );
-        }
-        $names = [];
-        $required = [];
-        $given = null;
-        $cancellation = null;
-        foreach ($handle->getParameters() as $parameter) {
-            $type = $parameter->getType();
-            $typeName = $type instanceof \ReflectionNamedType ? $type->getName() : null;
-            if ($typeName === Run::class) {
-                if ($given !== null) {
-                    throw new \LogicException(
-                        "{$run}::handle() takes the " . Run::class . ' more than once; declare one Run parameter.',
-                    );
-                }
-                $given = $parameter->getName();
-                continue;
-            }
-            if ($typeName === Cancellation::class) {
-                if ($cancellation !== null) {
-                    throw new \LogicException(
-                        "{$run}::handle() takes the cancellation more than once; declare one Cancellation parameter.",
-                    );
-                }
-                $cancellation = $parameter->getName();
-                continue;
-            }
-            if ($parameter->isVariadic()) {
-                throw new \LogicException(
-                    "{$run}::handle() takes a variable number of arguments; name each value a run takes.",
-                );
-            }
-            // start() takes this name itself, so a value could not be given under it.
-            if ($parameter->getName() === 'run') {
-                throw new \LogicException(
-                    "{$run}::handle() takes \$run as data, a name start() uses for itself. Give the parameter another name.",
-                );
-            }
-            $names[] = $parameter->getName();
-            if (!$parameter->isOptional()) {
-                $required[] = $parameter->getName();
-            }
-        }
-        if ($given === null) {
+        $signature = Signature::of(
+            $run,
+            new Words('run', 'started', 'start', 'start() uses for itself'),
+            ['run'],
+            [Run::class, Cancellation::class],
+        );
+        if (!isset($signature->given[Run::class])) {
             throw new \LogicException(
                 "{$run}::handle() takes no "
                 . Run::class
                 . ', which is how it keeps its steps. Declare handle(Run $run, ...).',
             );
         }
-        return [$names, $required, $given, $cancellation];
+        return $signature;
     }
 }

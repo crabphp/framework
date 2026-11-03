@@ -9,6 +9,7 @@ Crab follows [semantic versioning](https://semver.org). Before 1.0, a minor vers
 - **One way to send bytes on a socket (breaking):** `Socket::sendBinary($bytes)` is gone; send `new Binary($bytes)` with `send()`, in an action and on a `TestSocket` alike. `Crab\WebSocket\Binary`, an alias, is gone too: import `Crab\Contracts\WebSocket\Binary`.
 - **`server.with` takes `true` or `false` for each id (breaking):** the undocumented `['enabled' => true]` form is no longer read.
 - **`config:publish storage`** writes the storage section, which had no file to publish.
+- **A run's data is checked as a job's is:** `Runs::start()` now refuses a value of the wrong type for its parameter and a `handle()` taking a class such as `DateTimeImmutable`, where the worker failed later. Text that is not UTF-8 is refused where a job is pushed or a run started, rather than by the store.
 - **A run's data cannot be named `$run`:** `start()` takes that name itself, so such a run is refused with a message saying so, where PHP's own error came before.
 - **`Async::sleep($loop, 0)`** resumes on the next turn of the loop, as it says, rather than through a zero-second timer.
 - **Less engine (breaking for code using these):** UDP (`Crab::udp()`, `UdpEndpoint`, `UdpServer`), `Worker::connect()` with `Network\Connector`, and `Async\ConnectionStream` are removed; nothing in the framework or its packages used them. Outbound connections are made by the clients that need them (HTTP, MySQL, Redis). `Worker::stats()` no longer has `pendingConnects` or `datagrams`.

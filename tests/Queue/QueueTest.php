@@ -1384,6 +1384,7 @@ final class QueueTest extends TestCase
             'takes $when as DateTimeImmutable' => static fn() => $queue->push(DatedJob::class, when: '2026-01-01'),
             'must be a public method' => static fn() => $queue->push(HiddenJob::class),
             'takes $job, a name push() and later() use for themselves' => static fn() => $queue->push(NamedJob::class),
+            'text that is not UTF-8 as "name"' => static fn() => $queue->push(GreetJob::class, name: "\xff"),
             'takes the cancellation more than once' => static fn() => $queue->push(
                 DuplicateCancellationJob::class,
                 id: 1,

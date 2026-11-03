@@ -103,6 +103,11 @@ final readonly class NoRun
     public function handle(int $id): void {}
 }
 
+final readonly class DatedRun
+{
+    public function handle(Run $run, \DateTimeImmutable $when): void {}
+}
+
 final readonly class RunNamedData
 {
     public function handle(Run $step, int $run): void {}
@@ -339,11 +344,18 @@ final class RunsTest extends TestCase
                 colour: 'red',
             ),
             'without topic' => static fn(Runs $runs) => $runs->start(ResearchTopic::class),
-            'does not come back the same' => static fn(Runs $runs) => $runs->start(
+            'stored as JSON' => static fn(Runs $runs) => $runs->start(
                 ResearchTopic::class,
                 topic: 'x',
                 depth: new \stdClass(),
             ),
+            'string as "depth", which its handle() takes as int' => static fn(Runs $runs) => $runs->start(
+                ResearchTopic::class,
+                topic: 'x',
+                depth: 'deep',
+            ),
+            'takes $when as DateTimeImmutable' => static fn(Runs $runs) => $runs->start(DatedRun::class, when: 'x'),
+            'text that is not UTF-8' => static fn(Runs $runs) => $runs->start(ResearchTopic::class, topic: "\xff"),
             'takes no ' . Run::class => static fn(Runs $runs) => $runs->start(NoRun::class, id: 1),
             'a name start() uses for itself' => static fn(Runs $runs) => $runs->start(RunNamedData::class),
             'takes the ' . Run::class . ' more than once' => static fn(Runs $runs) => $runs->start(
