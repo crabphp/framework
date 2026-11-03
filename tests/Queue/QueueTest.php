@@ -351,6 +351,11 @@ final class BoundedJob
     }
 }
 
+final class DuplicateCancellationJob
+{
+    public function handle(Cancellation $first, int $id, Cancellation $second): void {}
+}
+
 /**
  * Runs what a test gives it to do, with the cancellation it was given.
  */
@@ -1379,6 +1384,10 @@ final class QueueTest extends TestCase
             'takes $when as DateTimeImmutable' => static fn() => $queue->push(DatedJob::class, when: '2026-01-01'),
             'must be a public method' => static fn() => $queue->push(HiddenJob::class),
             'takes $job, a name push() and later() use for themselves' => static fn() => $queue->push(NamedJob::class),
+            'takes the cancellation more than once' => static fn() => $queue->push(
+                DuplicateCancellationJob::class,
+                id: 1,
+            ),
         ];
         foreach ($mistakes as $says => $mistake) {
             try {

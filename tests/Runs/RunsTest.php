@@ -11,6 +11,7 @@ use Crab\Contracts\Runs\Run;
 use Crab\Contracts\Runs\Status;
 use Crab\Database\Database;
 use Crab\Database\Schema;
+use Crab\Engine\Async\Cancellation;
 use Crab\Queue\Consumer;
 use Crab\Queue\MemoryStore;
 use Crab\Queue\Queue;
@@ -100,6 +101,16 @@ final class LeaseProbe
 final readonly class NoRun
 {
     public function handle(int $id): void {}
+}
+
+final readonly class DuplicateRun
+{
+    public function handle(Run $run, Run $other, int $id): void {}
+}
+
+final readonly class DuplicateCancellationRun
+{
+    public function handle(Run $run, Cancellation $first, int $id, Cancellation $second): void {}
 }
 
 final class RunsTest extends TestCase
@@ -329,6 +340,14 @@ final class RunsTest extends TestCase
                 depth: new \stdClass(),
             ),
             'takes no ' . Run::class => static fn(Runs $runs) => $runs->start(NoRun::class, id: 1),
+            'takes the ' . Run::class . ' more than once' => static fn(Runs $runs) => $runs->start(
+                DuplicateRun::class,
+                id: 1,
+            ),
+            'takes the cancellation more than once' => static fn(Runs $runs) => $runs->start(
+                DuplicateCancellationRun::class,
+                id: 1,
+            ),
             'cannot be a run' => static fn(Runs $runs) => $runs->start('Nowhere'),
         ] as $expected => $start) {
             try {

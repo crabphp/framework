@@ -540,10 +540,20 @@ final class Runs implements RunsContract
             $type = $parameter->getType();
             $typeName = $type instanceof \ReflectionNamedType ? $type->getName() : null;
             if ($typeName === Run::class) {
+                if ($given !== null) {
+                    throw new \LogicException(
+                        "{$run}::handle() takes the " . Run::class . ' more than once; declare one Run parameter.',
+                    );
+                }
                 $given = $parameter->getName();
                 continue;
             }
             if ($typeName === Cancellation::class) {
+                if ($cancellation !== null) {
+                    throw new \LogicException(
+                        "{$run}::handle() takes the cancellation more than once; declare one Cancellation parameter.",
+                    );
+                }
                 $cancellation = $parameter->getName();
                 continue;
             }
