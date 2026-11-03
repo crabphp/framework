@@ -594,6 +594,15 @@ final class ScheduleTest extends TestCase
         self::assertNull($task->hourly()->interval());
         self::assertSame('0 * * * *', $task->expression());
 
+        foreach ([NAN, INF] as $seconds) {
+            try {
+                $schedule->call(Beat::class)->everySeconds($seconds);
+                self::fail('A non-finite interval was accepted.');
+            } catch (\InvalidArgumentException $error) {
+                self::assertStringContainsString('at least 0.01', $error->getMessage());
+            }
+        }
+
         $this->expectException(\InvalidArgumentException::class);
         $this->expectExceptionMessage('at least 0.01');
         $schedule->call(Beat::class)->everySeconds(0);
