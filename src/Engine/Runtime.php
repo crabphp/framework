@@ -93,6 +93,13 @@ final class Runtime
         if ($this->running) {
             throw new \LogicException('Say what a signal does before startup.');
         }
+        if (
+            defined('SIGINT') && $signal === SIGINT
+            || defined('SIGTERM') && $signal === SIGTERM
+            || defined('SIGUSR1') && $signal === SIGUSR1
+        ) {
+            throw new \LogicException('SIGINT, SIGTERM and SIGUSR1 are reserved for runtime lifecycle control.');
+        }
         $this->onSignal[$signal] = $callback(...);
         return $this;
     }
