@@ -64,11 +64,17 @@ final class Subprocess
         $setsid = self::setsid();
         $argv = $setsid === false ? $command : [$setsid, '--', ...$command];
         $pipes = [];
-        $process = @proc_open($argv, [
-            0 => $input === null ? ['file', '/dev/null', 'r'] : ['pipe', 'r'],
-            1 => ['pipe', 'w'],
-            2 => ['pipe', 'w'],
-        ], $pipes, $directory, $environment);
+        $process = @proc_open(
+            $argv,
+            [
+                0 => $input === null ? ['file', '/dev/null', 'r'] : ['pipe', 'r'],
+                1 => ['pipe', 'w'],
+                2 => ['pipe', 'w'],
+            ],
+            $pipes,
+            $directory,
+            $environment,
+        );
         if (!is_resource($process)) {
             $error = error_get_last()['message'] ?? 'unknown error';
             throw new \RuntimeException("Could not start {$command[0]}: {$error}");
@@ -169,7 +175,7 @@ final class Subprocess
                 &$truncated,
             ): void {
                 $chunk = @fread($pipes[$fd], 65_536);
-                if ($chunk === false || ($chunk === '' && feof($pipes[$fd]))) {
+                if ($chunk === false || $chunk === '' && feof($pipes[$fd])) {
                     $loop->cancel($watchers["read{$fd}"]);
                     unset($watchers["read{$fd}"]);
                     $open[$fd] = false;
@@ -234,7 +240,13 @@ final class Subprocess
             });
         }
         // A command that exits while something it started still holds its output open.
-        $watchers['exit'] = $loop->repeat(0.05, static function () use ($loop, $poll, $kill, $finish, &$watchers): void {
+        $watchers['exit'] = $loop->repeat(0.05, static function () use (
+            $loop,
+            $poll,
+            $kill,
+            $finish,
+            &$watchers,
+        ): void {
             if (!$poll()) {
                 return;
             }
@@ -245,7 +257,10 @@ final class Subprocess
                 $finish();
             });
         });
-        $unsubscribe = $cancellation?->subscribe(static function (CancelledException $error) use ($kill, $finish): void {
+        $unsubscribe = $cancellation?->subscribe(static function (CancelledException $error) use (
+            $kill,
+            $finish,
+        ): void {
             $kill();
             $finish($error);
         });

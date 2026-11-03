@@ -58,8 +58,12 @@ final class Process
      * @param string|null $directory Where it runs; null for this process's working directory.
      * @param array<string, string>|null $environment Its whole environment; null to inherit this process's.
      */
-    public static function start(array $command, ?string $directory = null, ?array $environment = null, ?EventLoop $loop = null): self
-    {
+    public static function start(
+        array $command,
+        ?string $directory = null,
+        ?array $environment = null,
+        ?EventLoop $loop = null,
+    ): self {
         if ($command === [] || !array_is_list($command)) {
             throw new \InvalidArgumentException('A process needs a command given as a list of arguments.');
         }
@@ -67,7 +71,13 @@ final class Process
         $setsid = self::setsid();
         $argv = $setsid === false ? $command : [$setsid, '--', ...$command];
         $pipes = [];
-        $process = @proc_open($argv, [0 => ['pipe', 'r'], 1 => ['pipe', 'w'], 2 => ['pipe', 'w']], $pipes, $directory, $environment);
+        $process = @proc_open(
+            $argv,
+            [0 => ['pipe', 'r'], 1 => ['pipe', 'w'], 2 => ['pipe', 'w']],
+            $pipes,
+            $directory,
+            $environment,
+        );
         if (!is_resource($process)) {
             $error = error_get_last()['message'] ?? 'unknown error';
             throw new \RuntimeException("Could not start {$command[0]}: {$error}");
@@ -228,7 +238,7 @@ final class Process
         foreach ([1, 2] as $fd) {
             $this->watchers["read{$fd}"] = $this->loop->onReadable($this->pipes[$fd], function () use ($fd): void {
                 $chunk = @fread($this->pipes[$fd], 65_536);
-                if ($chunk === false || ($chunk === '' && feof($this->pipes[$fd]))) {
+                if ($chunk === false || $chunk === '' && feof($this->pipes[$fd])) {
                     $this->loop->cancel($this->watchers["read{$fd}"]);
                     unset($this->watchers["read{$fd}"]);
                     return;
@@ -237,7 +247,7 @@ final class Process
                     return;
                 }
                 if (isset($this->listeners[$fd])) {
-                    ($this->listeners[$fd])($chunk);
+                    $this->listeners[$fd]($chunk);
                 } else {
                     $this->held[$fd] .= $chunk;
                 }
@@ -276,7 +286,7 @@ final class Process
             if (is_resource($this->pipes[$fd] ?? null)) {
                 $rest = (string) @stream_get_contents($this->pipes[$fd]);
                 if ($rest !== '') {
-                    isset($this->listeners[$fd]) ? ($this->listeners[$fd])($rest) : $this->held[$fd] .= $rest;
+                    isset($this->listeners[$fd]) ? $this->listeners[$fd]($rest) : ($this->held[$fd] .= $rest);
                 }
             }
         }

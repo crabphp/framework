@@ -113,15 +113,25 @@ final class SubprocessTest extends TestCase
         }
         $marker = 'sleep 30.' . random_int(100_000, 999_999);
         $started = microtime(true);
-        $result = Subprocess::run(
-            ['/bin/sh', '-c', "{$marker} & echo started"],
-            loop: $this->loop,
-        );
+        $result = Subprocess::run(['/bin/sh', '-c', "{$marker} & echo started"], loop: $this->loop);
 
         self::assertSame("started\n", $result->stdout);
         self::assertLessThan(2.0, microtime(true) - $started, 'A background child held the command open.');
         Async::sleep($this->loop, 0.1);
-        self::assertSame('', trim((string) shell_exec('pgrep -f ' . escapeshellarg($marker))), 'The background child survived.');
+        // A killed child may linger as a zombie until whatever adopted it reaps it; only a live one has survived.
+        $alive = [];
+        foreach (preg_split(
+            '/\s+/',
+            trim((string) shell_exec('pgrep -f ' . escapeshellarg($marker))),
+            -1,
+            PREG_SPLIT_NO_EMPTY,
+        ) as $pid) {
+            $state = trim((string) shell_exec('ps -o stat= -p ' . (int) $pid));
+            if ($state !== '' && !str_starts_with($state, 'Z')) {
+                $alive[] = "{$pid} ({$state})";
+            }
+        }
+        self::assertSame([], $alive, 'The background child survived.');
     }
 
     public function testItRefusesWhatItCannotRun(): void
