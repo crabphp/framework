@@ -104,9 +104,10 @@ final class RunsPlugin implements Plugin
     {
         $longest = (int) Supervisor::retrySettings($config)['retry_after'];
         foreach (Supervisor::all($config) as $supervisor) {
-            if (in_array($queue, $supervisor->queues, true)) {
-                $longest = max($longest, $supervisor->retryAfter);
+            if (!in_array($queue, $supervisor->queues, true)) {
+                continue;
             }
+            $longest = max($longest, $supervisor->retryAfter);
         }
         return $longest;
     }
