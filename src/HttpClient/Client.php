@@ -202,7 +202,7 @@ class Client implements ClientContract
         if ($query !== []) {
             $url .= (str_contains($url, '?') ? '&' : '?') . http_build_query($query, '', '&', PHP_QUERY_RFC3986);
         }
-        $headers = [...$this->headers, ...$headers];
+        $headers = self::merged($this->headers, $headers);
         $names = array_change_key_case($headers, CASE_LOWER);
         if ($json !== null) {
             $body = json_encode($json, JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
@@ -550,5 +550,26 @@ class Client implements ClientContract
             return null;
         }
         return in_array(strtolower($to->getScheme()), ['http', 'https'], true) && $to->getHost() !== '' ? $to : null;
+    }
+
+    /**
+     * The client's headers with a request's own over them. A header's name
+     * has no case, so a request's `authorization` replaces the client's
+     * `Authorization` rather than being sent beside it.
+     *
+     * @param array<string, string|list<string>> $defaults
+     * @param array<string, string|list<string>> $given
+     * @return array<string, string|list<string>>
+     */
+    private static function merged(array $defaults, array $given): array
+    {
+        $overridden = array_change_key_case($given, CASE_LOWER);
+        foreach (array_keys($defaults) as $name) {
+            if (!array_key_exists(strtolower((string) $name), $overridden)) {
+                continue;
+            }
+            unset($defaults[$name]);
+        }
+        return [...$defaults, ...$given];
     }
 }

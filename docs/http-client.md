@@ -288,7 +288,7 @@ A redirect to another origin drops only `Authorization` and `Cookie`; other cred
 
 ## Cookies
 
-A client keeps no cookies unless it is given a jar, because one jar on a client that every request shares would hand one caller's cookies to the next. Give each caller a separate jar for each site. A jar accepts cookies for parent domains and does not check a public suffix list, so a jar shared across unrelated hosts can be given a parent-domain cookie that reaches another site:
+A client keeps no cookies unless it is given a jar, because one jar on a client that every request shares would hand one caller's cookies to the next. Give each caller a separate jar for each site. A jar accepts a cookie for a parent domain, such as `shop.co.uk` from `api.shop.co.uk`, but never for a public suffix such as `co.uk` or `github.io`, under which unrelated sites live: it checks the [Public Suffix List](https://publicsuffix.org), which ships with the framework. A cookie whose domain is the public suffix it came from is kept for that host alone:
 
 ```php
 use Crab\HttpClient\CookieJar;

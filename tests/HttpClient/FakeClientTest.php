@@ -100,6 +100,16 @@ final class FakeClientTest extends TestCase
         self::assertSame('before', $http->sent()[0]->getBody()->getContents());
     }
 
+    public function testARequestsHeaderReplacesTheClientsWhateverItsCase(): void
+    {
+        $http = new FakeClient(['*' => 'ok'], headers: ['Authorization' => 'Bearer default', 'X-Team' => 'a']);
+        $http->get('https://api.example.test/', headers: ['authorization' => 'Bearer override']);
+        $sent = $http->requests[0];
+        // One credential, the one asked for: never the default beside it.
+        self::assertSame(['Bearer override'], $sent->getHeader('Authorization'));
+        self::assertSame(['a'], $sent->getHeader('X-Team'));
+    }
+
     public function testAReplyWhoseLengthCannotBeTrustedIsRefusedAsOnTheWire(): void
     {
         $http = new FakeClient([

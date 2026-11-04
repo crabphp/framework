@@ -49,6 +49,12 @@ final class BodySink
      */
     private ?string $part = null;
     private ?\InflateContext $inflate = null;
+    /**
+     * The first byte of a deflate body, held until the second comes: the
+     * two together tell whether it has zlib's header. A piece of one byte is
+     * as likely as any other on a network.
+     */
+    private string $prefix = '';
     private readonly string $coding;
     private int $received = 0;
     private int $kept = 0;
@@ -129,6 +135,14 @@ final class BodySink
             $this->keep($bytes);
             return;
         }
+        if ($this->inflate === null && $this->coding === 'deflate') {
+            $bytes = $this->prefix . $bytes;
+            if (strlen($bytes) < 2) {
+                $this->prefix = $bytes;
+                return;
+            }
+            $this->prefix = '';
+        }
         foreach (str_split($bytes, self::INFLATE_STEP) as $piece) {
             if ($piece === '') {
                 continue;
@@ -157,6 +171,7 @@ final class BodySink
      */
     public function body(): StreamInterface
     {
+        $this->finish();
         if ($this->destination !== null) {
             return $this->destination;
         }
@@ -176,6 +191,26 @@ final class BodySink
         }
         rewind($this->storage);
         return new Stream($this->storage);
+    }
+
+    /**
+     * A compressed body must have come to its end: decoded bytes alone do
+     * not say so, as a body cut short decodes as far as it got. Its length
+     * was right for what was sent, so only the stream itself can tell.
+     */
+    private function finish(): void
+    {
+        if (!$this->decoding || $this->inflate === null && $this->prefix === '') {
+            // Not compressed, or nothing came, as for an empty body.
+            return;
+        }
+        // Each piece was decoded as it came; the stream says whether it reached its end and trailer.
+        if ($this->inflate !== null && inflate_get_status($this->inflate) === ZLIB_STREAM_END) {
+            return;
+        }
+        // What went beside the call's path is not moved over a good file.
+        $this->discard();
+        throw new \RuntimeException('the answer\'s compressed body was cut short before its end');
     }
 
     private function keep(string $bytes): void

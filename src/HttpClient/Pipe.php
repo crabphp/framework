@@ -40,6 +40,11 @@ final class Pipe implements StreamInterface
     private string $buffer = '';
     private bool $finished = false;
     private ?\Throwable $failure = null;
+    /**
+     * Whether a reader has been told of the failure: until then the body has
+     * not ended, so that one reading until eof() reads once more and is told.
+     */
+    private bool $reported = false;
     private bool $abandoned = false;
     private ?Suspension $reader = null;
     private ?Suspension $writer = null;
@@ -141,6 +146,7 @@ final class Pipe implements StreamInterface
         }
         if ($this->buffer === '') {
             if ($this->failure !== null) {
+                $this->reported = true;
                 throw $this->failure;
             }
             return '';
@@ -155,7 +161,7 @@ final class Pipe implements StreamInterface
 
     public function ended(): bool
     {
-        return $this->buffer === '' && $this->finished;
+        return $this->buffer === '' && $this->finished && ($this->failure === null || $this->reported);
     }
 
     public function __toString(): string

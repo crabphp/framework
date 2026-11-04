@@ -88,6 +88,54 @@ final class CookieSecurityTest extends TestCase
         self::assertSame('after-expiry', $jar->for('https://shop.example/account')['session']);
     }
 
+    /**
+     * @return iterable<string, array{string, string, string, string}>
+     */
+    public static function publicSuffixCookies(): iterable
+    {
+        // From, the cookie it sets, to where it is then asked, and what is sent there.
+        yield 'a country\'s second level' => ['https://attacker.co.uk/', 'Domain=co.uk', 'https://victim.co.uk/', ''];
+        yield 'shared hosting' => ['https://attacker.github.io/', 'Domain=github.io', 'https://victim.github.io/', ''];
+        yield 'a wildcard rule' => ['https://a.b.ck/', 'Domain=b.ck', 'https://c.b.ck/', ''];
+        yield 'a top-level domain the list does not name' => [
+            'https://a.example/',
+            'Domain=example',
+            'https://b.example/',
+            '',
+        ];
+        yield 'a registrable domain under one' => [
+            'https://api.shop.co.uk/',
+            'Domain=shop.co.uk',
+            'https://www.shop.co.uk/',
+            'id=1',
+        ];
+        yield 'an exception to a wildcard' => ['https://a.www.ck/', 'Domain=www.ck', 'https://b.www.ck/', 'id=1'];
+        yield 'a public suffix that is the host itself' => [
+            'https://github.io/',
+            'Domain=github.io',
+            'https://github.io/',
+            'id=1',
+        ];
+        yield 'which then stays with that host' => [
+            'https://github.io/',
+            'Domain=github.io',
+            'https://victim.github.io/',
+            '',
+        ];
+    }
+
+    #[DataProvider('publicSuffixCookies')]
+    public function testACookieIsNeverSetForEverySiteUnderAPublicSuffix(
+        string $from,
+        string $domain,
+        string $to,
+        string $sent,
+    ): void {
+        $jar = new CookieJar();
+        $jar->store(new Uri($from), ["id=1; {$domain}; Path=/; Secure"]);
+        self::assertSame($sent, $jar->header(new Uri($to)));
+    }
+
     public function testAParentDomainCannotOverlayAChildHostsSecureCookie(): void
     {
         $jar = new CookieJar();

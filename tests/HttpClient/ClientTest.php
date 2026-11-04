@@ -430,6 +430,75 @@ final class ClientTest extends TestCase
         }
     }
 
+    public function testACompressedBodyCutShortIsRefusedAndLeavesTheOldFile(): void
+    {
+        $payload = str_repeat("expected file contents\n", 1000);
+        // The length is right for what is sent: only the gzip stream knows it was cut.
+        $cut = substr((string) gzencode($payload), 0, -12);
+        $server = $this->server(static fn(): string => TestServer::reply(200, $cut, ['Content-Encoding' => 'gzip']));
+        $path = tempnam(sys_get_temp_dir(), 'crab-cut-download-');
+        file_put_contents($path, 'previous good file');
+        try {
+            foreach ([['sink' => $path], []] as $options) {
+                try {
+                    $this->client()->request('GET', $server->url('/'), ...$options);
+                    self::fail('A cut compressed body was accepted.');
+                } catch (NetworkException $error) {
+                    self::assertStringContainsString('compressed body was cut short', $error->getMessage());
+                }
+            }
+            // Streamed, its reader is told, not handed a quiet end: one reading until eof() reads once more.
+            $streamed = $this->client()->stream('GET', $server->url('/'))->getBody();
+            try {
+                while (!$streamed->eof()) {
+                    $streamed->read(65_536);
+                }
+                self::fail('A cut compressed stream ended quietly.');
+            } catch (NetworkException $error) {
+                self::assertStringContainsString('compressed body was cut short', $error->getMessage());
+                self::assertTrue($streamed->eof(), 'Once told, the stream has ended.');
+            }
+            self::assertSame('previous good file', file_get_contents($path));
+            self::assertSame(
+                [basename($path)],
+                array_values(array_filter(scandir(dirname($path)) ?: [], static fn(string $file): bool => str_contains(
+                    $file,
+                    basename($path),
+                ))),
+                'A part file was left beside the download.',
+            );
+        } finally {
+            unlink($path);
+        }
+    }
+
+    public function testADeflateBodyIsReadWhateverPieceItsFirstByteComesIn(): void
+    {
+        $payload = str_repeat("expected file contents\n", 1000);
+        foreach ([
+            'zlib' => (string) gzcompress($payload),
+            'raw' => (string) gzdeflate($payload),
+        ] as $form => $deflate) {
+            foreach ([1, 2, 3] as $first) {
+                $server = $this->server(
+                    static fn(): \Generator => (static function () use ($deflate, $first): \Generator {
+                        yield "HTTP/1.1 200 OK\r\nContent-Encoding: deflate\r\nContent-Length: "
+                        . strlen($deflate)
+                        . "\r\n\r\n"
+                        . substr($deflate, 0, $first);
+                        Async::sleep(EventLoop::current(), 0.02);
+                        yield substr($deflate, $first);
+                    })(),
+                );
+                self::assertSame(
+                    $payload,
+                    (string) $this->client()->get($server->url('/'))->getBody(),
+                    "{$form}, {$first} first",
+                );
+            }
+        }
+    }
+
     public function testEveryWayABodyIsFramedIsRead(): void
     {
         $big = str_repeat('0123456789abcdef', 200_000);

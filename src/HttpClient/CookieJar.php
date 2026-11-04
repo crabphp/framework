@@ -96,15 +96,17 @@ final class CookieJar implements CookieJarContract
             if ($cookie['secure'] && strtolower($from->getScheme()) !== 'https') {
                 continue;
             }
-            // A server speaks for itself and for the hosts under it, never for another domain or for every site of an ending such as "com".
-            if (
-                !$cookie['hostOnly']
-                && (
-                    $cookie['domain'] !== $host
-                    && (!self::under($host, $cookie['domain']) || !str_contains($cookie['domain'], '.'))
-                )
-            ) {
+            // A server speaks for itself and for the hosts under it, never for another domain.
+            if (!$cookie['hostOnly'] && $cookie['domain'] !== $host && !self::under($host, $cookie['domain'])) {
                 continue;
+            }
+            // Nor for every site under a public suffix, such as "co.uk" or "github.io": one that names
+            // its own host keeps the cookie to that host alone, as RFC 6265 says, and any other is refused.
+            if (!$cookie['hostOnly'] && PublicSuffixes::isPublic($cookie['domain'])) {
+                if ($cookie['domain'] !== $host) {
+                    continue;
+                }
+                $cookie['hostOnly'] = true;
             }
             if (strtolower($from->getScheme()) !== 'https' && $this->overlaysSecure($cookie)) {
                 continue;
