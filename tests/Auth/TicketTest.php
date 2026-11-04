@@ -129,6 +129,26 @@ final class TicketTest extends TestCase
         self::assertSame(401, $this->refusal($this->api, ['ticket' => $ticket]));
     }
 
+    public function testAnInvalidTicketIsChallengedWithTheSchemeTheHeaderWayTakes(): void
+    {
+        $tokens = new \Crab\Auth\TokenAuth(
+            $this->app->container->get(TokenStore::class),
+            $this->app->container->get(IdentityResolver::class),
+            scheme: 'Token',
+        );
+        $ticket = new Ticket(tickets: $this->app->container->get(Tickets::class), tokens: $tokens);
+        $response = $ticket->process(
+            new \Crab\Http\Request('GET', '/live?ticket=bad')->withQueryParams(['ticket' => 'bad']),
+            new class implements \Psr\Http\Server\RequestHandlerInterface {
+                public function handle(\Psr\Http\Message\ServerRequestInterface $request): \Psr\Http\Message\ResponseInterface
+                {
+                    throw new \LogicException('An invalid ticket reached the route.');
+                }
+            },
+        );
+        self::assertSame([401, 'Token'], [$response->getStatusCode(), $response->getHeaderLine('WWW-Authenticate')]);
+    }
+
     public function testOnlyTheIdentityIdIsStoredUnderTheTicketsHash(): void
     {
         $ticket = $this->issue();

@@ -61,9 +61,18 @@ final readonly class TokenAuth implements Middleware
         if (!$this->required && $token === null) {
             return $handler->handle($request);
         }
-        // What a client is told to send, as the standard asks of a 401.
-        $challenge = $this->scheme !== '' ? $this->scheme : $this->header;
-        return ErrorResponse::make($request, 401, 'Authentication is required.', ['WWW-Authenticate' => $challenge]);
+        return ErrorResponse::make($request, 401, 'Authentication is required.', [
+            'WWW-Authenticate' => $this->challenge(),
+        ]);
+    }
+
+    /**
+     * What a client is told to send, as the standard asks of a 401: the
+     * scheme, or the header when the token comes alone.
+     */
+    public function challenge(): string
+    {
+        return $this->scheme !== '' ? $this->scheme : $this->header;
     }
 
     /**

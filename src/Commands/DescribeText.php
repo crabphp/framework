@@ -213,6 +213,10 @@ final class DescribeText
     private static function servers(array $servers): string
     {
         $lines = ['servers'];
+        if ($servers === []) {
+            // HTTP alone: no plugin listed has a server of its own.
+            $lines[] = '  none';
+        }
         foreach ($servers as $server) {
             $lines[] =
                 "  {$server['id']} runs {$server['runs']}"

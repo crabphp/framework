@@ -4,6 +4,20 @@ These pages were written while the engine was its own repository. Its source is 
 
 See [HTTP request path](benchmarks/HTTP-REQUEST-PATH.md) for the latest measurement of requests with browser-sized fields and a breakdown of where a request's time goes, [HTTP lazy request fields](benchmarks/HTTP-LAZY-FIELDS.md) for the step before it, [HTTP fast path](benchmarks/HTTP-FAST-PATH.md) for the preceding matched before/after HTTP measurements, request-shape workloads and the WebSocket regression check, [HTTP codec optimization](benchmarks/HTTP-CODEC-OPTIMIZATION.md) for the preceding codec measurements, [PHP HTTP headroom](benchmarks/HTTP-HEADROOM.md) for the earlier layer diagnostics, and [Crab versus Elysia](benchmarks/ELYSIA.md) for the earlier combined comparison. The historical snapshots below predate later docblock, request-body storage and codec changes; their hashes identify the source measured at the time.
 
+## The 0.4 refactor, 2026-11-04
+
+A matched check that the 0.4 refactor (plugins, `Async::await`, the shared HTTP client rules, the Validator split and the rest) did not slow requests down. Both versions served the same application, the [framework fixture](benchmarks/frameworks/crab), as one process with OPcache on and JIT off, on an **Intel i5-9400F, 6 cores, Fedora 44, PHP 8.4.22**. Load came from wrk 4.x at 64 connections for 8 seconds, after a 3-second warmup, and the two versions alternated every round so the machine's noise fell on both alike. These are single-process figures on another machine, not comparable with the tables below.
+
+| Request | v0.3.0 | 0.4 (`main`) | Change |
+| --- | ---: | ---: | ---: |
+| `GET /hello`, JSON | 43,121 req/s | 43,406 req/s | +0.7% |
+| `GET /users/7`, one SQLite query | 15,063 req/s | 15,103 req/s | +0.3% |
+| `POST /users`, a validated body (6 rounds) | 20,035 req/s | 19,836 req/s | −1.0% |
+| `GET /hello`, `$app->handle()` in process | 3.12 µs | 3.12 µs | 0 |
+| `POST /users`, in process, 5 × 200,000 | 17.30 µs | 17.39 µs | +0.5% |
+
+Medians. The `POST` difference is within the spread of the trials (17.09–17.64 µs before, 17.19–17.55 µs after), and no code that runs per request changed on that path. Nothing measured got slower.
+
 These local measurements show useful HTTP and WebSocket throughput with PHP streams and a select loop. They measure small, persistent-connection workloads on one development machine; they do not establish production capacity or performance for database-backed applications.
 
 Measured on **Apple M1 Pro, 8 cores, 16 GiB RAM, macOS 26.7.1 arm64**, with **PHP 8.4.19 NTS** and **Revolt 1.0.9 `StreamSelectDriver`**. HTTP used wrk 4.2.0; WebSocket used the included Node.js v24.10.0 client. Server and client shared the host. Harnesses acquire an exclusive lock at `/tmp/crab-engine-benchmark.lock` to prevent overlapping benchmark runs.

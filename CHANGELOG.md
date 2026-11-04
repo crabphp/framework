@@ -11,6 +11,7 @@ Crab follows [semantic versioning](https://semver.org). Before 1.0, a minor vers
 - **`config:publish storage`** writes the storage section, which had no file to publish.
 - **A run's data is checked as a job's is:** `Runs::start()` now refuses a value of the wrong type for its parameter and a `handle()` taking a class such as `DateTimeImmutable`, where the worker failed later. Text that is not UTF-8 is refused where a job is pushed or a run started, rather than by the store.
 - **A run's data cannot be named `$run`:** `start()` takes that name itself, so such a run is refused with a message saying so, where PHP's own error came before.
+- **An invalid WebSocket ticket is challenged as the header way is:** `Ticket` answered `WWW-Authenticate: Bearer` whatever scheme `TokenAuth` was given; it now uses `TokenAuth::challenge()`.
 - **Fewer queries:** `Runs::latest()` reads its runs and all their steps in two queries, where it made two for each run, and the database queue's `counts()`, which the dashboard asks for, in one where it made four.
 - **`stop --force` no longer leaves the pid file now and then:** telling whether the server had ended raced with its parent collecting it, and could answer that it was still running.
 - **`Async::sleep($loop, 0)`** resumes on the next turn of the loop, as it says, rather than through a zero-second timer.

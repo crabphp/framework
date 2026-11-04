@@ -57,7 +57,10 @@ final readonly class Ticket implements Middleware, UsesContainer
         }
         $user = is_string($query['ticket']) ? $this->tickets->redeem($query['ticket']) : null;
         if ($user === null) {
-            return ErrorResponse::make($request, 401, 'Authentication is required.', ['WWW-Authenticate' => 'Bearer']);
+            // The same challenge as the header way, so a client is told what this application takes.
+            return ErrorResponse::make($request, 401, 'Authentication is required.', [
+                'WWW-Authenticate' => $this->tokens->challenge(),
+            ]);
         }
         return $handler->handle($request->withAttribute(Identity::ATTRIBUTE, $user));
     }

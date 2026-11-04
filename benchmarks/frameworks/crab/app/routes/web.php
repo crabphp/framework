@@ -4,22 +4,14 @@ declare(strict_types=1);
 
 use Crab\Http\Response;
 use Crab\Route;
-use Crab\Validation\Email;
-use Crab\Validation\Length;
-use Crab\Validation\Range;
 
 Route::get('/hello', static fn(): array => ['message' => 'Hello, world']);
 Route::get('/users/{id}', App\Actions\ShowUser::class);
-Route::post('/users', static function (
-    #[Length(min: 1, max: 100)]
-    string $name,
-    #[Email]
-    string $email,
-    #[Range(min: 18, max: 120)]
-    int $age,
-): Response {
-    return Response::created(['name' => $name, 'email' => $email, 'age' => $age]);
-});
+Route::post('/users', static fn(App\NewUser $user): Response => Response::created([
+    'name' => $user->name,
+    'email' => $user->email,
+    'age' => $user->age,
+]));
 Route::get('/__bench', static function (): array {
     $loader = require dirname(__DIR__) . '/vendor/autoload.php';
     $status = opcache_get_status(false);
