@@ -177,7 +177,7 @@ A run is resumed by running its `handle()` again from the top. Each step already
 - when a signal it waits for is given;
 - after the worker running it died, once its lease runs out.
 
-One worker runs a run at a time. It holds a lease on it, renewed every third of `runs.lease` while it runs. A resumption that finds the run held by another worker does nothing, and looks again when the lease would have run out, so a run whose worker died is taken up again. Each claim carries a token of its own: a worker that stalled past its lease and was overtaken can no longer renew the run or say how it ended, and what it came to is logged as a warning and dropped.
+One worker runs a run at a time. It holds a lease on it, renewed every third of `runs.lease` while it runs. A resumption that finds the run held by another worker does nothing, and looks again when the lease would have run out, so a run whose worker died is taken up again. Each claim carries a token of its own: a worker that stalled past its lease and was overtaken can no longer renew the run, keep a step, or say how it ended, and what it came to is logged as a warning and dropped.
 
 ### The rules a run follows
 
@@ -196,7 +196,7 @@ php cua runs:list --status=failed
 php cua runs:retry 12              # with all its tries, from the step that failed
 ```
 
-`$runs->retry($id)` does the same from code. A run left running by a worker that died, whose job the queue then gave up on, is retried the same way once its lease has run out.
+`$runs->retry($id)` does the same from code. A run left running by a worker that died, whose job the queue then gave up on, is retried the same way once its lease has run out. The run stays failed until a worker takes it up, which then starts its tries again: retrying it twice meanwhile is harmless, and a retry whose job did not reach the queue can simply be asked again.
 
 ## Looking at runs
 

@@ -153,40 +153,30 @@ final class Runs implements RunsContract
 
     public function retry(int|string $id): bool
     {
-        $now = $this->now();
-        $retried = $this->db
-            ->table($this->table)
-            ->where('id', $id)
-            ->where(static function ($query) use ($now): void {
-                // Failed, or left running by a worker that is gone and whose job the queue gave up on.
-                $query
-                    ->where('status', Status::Failed->value)
-                    ->orWhere(static function ($query) use ($now): void {
-                        $query->where('status', Status::Running->value)->where('lease_until', '<', $now);
-                    });
-            })
-            ->update([
-                'status' => Status::Pending->value,
-                'attempts' => 0,
-                'error' => null,
-                'lease_until' => null,
-                'claim' => null,
-                'updated_at' => $now,
-            ]) === 1;
-        if ($retried) {
-            try {
-                $this->queue->push(ResumeRun::class, run: $id);
-            } catch (\Throwable $error) {
-                // Not left pending with no job to resume it: failed again, it can be retried again.
-                $this->db
-                    ->table($this->table)
-                    ->where('id', $id)
-                    ->where('status', Status::Pending->value)
-                    ->update(['status' => Status::Failed->value, 'updated_at' => $this->now()]);
-                throw $error;
-            }
+        if (!$this->retryable($id)) {
+            return false;
         }
-        return $retried;
+        // Nothing is changed here: the worker that takes this job claims the run from failed, in one
+        // update. A push that fails, is lost, or is never made leaves the run failed, to retry again.
+        $this->queue->push(ResumeRun::class, run: $id, retry: true);
+        return true;
+    }
+
+    /**
+     * Whether a run can be tried again: failed, or left running by a worker
+     * that is gone and whose job the queue gave up on.
+     */
+    private function retryable(int|string $id): bool
+    {
+        $row = $this->db->table($this->table)->find($id);
+        if ($row === null) {
+            return false;
+        }
+        return (
+            $row['status'] === Status::Failed->value
+            || $row['status'] === Status::Running->value
+            && (int) $row['lease_until'] < $this->now()
+        );
     }
 
     /**
@@ -220,28 +210,52 @@ final class Runs implements RunsContract
      *
      * @param Cancellation|null $cancellation Stops the run where it waits, when the worker must.
      */
-    public function resume(int|string $id, ?Cancellation $cancellation = null): void
+    public function resume(int|string $id, ?Cancellation $cancellation = null, bool $retry = false): void
     {
         $now = $this->now();
         // This claim's own token: a worker that outlives its lease and is overtaken writes nothing after.
         $claim = bin2hex(random_bytes(16));
-        $claimed = $this->db
-            ->table($this->table)
-            ->where('id', $id)
-            ->where(static function ($query) use ($now): void {
-                $query
-                    ->whereIn('status', [Status::Pending->value, Status::Sleeping->value, Status::Waiting->value])
-                    ->orWhere(static function ($query) use ($now): void {
-                        $query->where('status', Status::Running->value)->where('lease_until', '<', $now);
-                    });
-            })
-            ->update([
-                'status' => Status::Running->value,
-                'lease_until' => $now + $this->lease,
-                'claim' => $claim,
-                'wake_at' => null,
-                'updated_at' => $now,
-            ]);
+        // A retry takes a failed run, or one whose worker is gone, afresh: its tries start again.
+        $claimed = $retry
+            ? $this->db
+                ->table($this->table)
+                ->where('id', $id)
+                ->where(static function ($query) use ($now): void {
+                    $query
+                        ->where('status', Status::Failed->value)
+                        ->orWhere(static function ($query) use ($now): void {
+                            $query->where('status', Status::Running->value)->where('lease_until', '<', $now);
+                        });
+                })
+                ->update([
+                    'status' => Status::Running->value,
+                    'attempts' => 0,
+                    'error' => null,
+                    'lease_until' => $now + $this->lease,
+                    'claim' => $claim,
+                    'wake_at' => null,
+                    'updated_at' => $now,
+                ])
+            : 0;
+        $claimed = $claimed === 1
+            ? 1
+            : $this->db
+                ->table($this->table)
+                ->where('id', $id)
+                ->where(static function ($query) use ($now): void {
+                    $query
+                        ->whereIn('status', [Status::Pending->value, Status::Sleeping->value, Status::Waiting->value])
+                        ->orWhere(static function ($query) use ($now): void {
+                            $query->where('status', Status::Running->value)->where('lease_until', '<', $now);
+                        });
+                })
+                ->update([
+                    'status' => Status::Running->value,
+                    'lease_until' => $now + $this->lease,
+                    'claim' => $claim,
+                    'wake_at' => null,
+                    'updated_at' => $now,
+                ]);
         if ($claimed !== 1) {
             $held = $this->db
                 ->table($this->table)
@@ -261,7 +275,7 @@ final class Runs implements RunsContract
         $class = (string) $row['run'];
         $ended = new Cancellation();
         $renewal = $this->renew($id, $claim, $ended);
-        $run = new Execution($id, $this->db, $this->steps, $this->clock, $this->loadSteps($id));
+        $run = new Execution($id, $this->db, $this->steps, $this->clock, $this->loadSteps($id), $this->table, $claim);
         try {
             $signature = self::signature($class);
             $given = $signature->given[Run::class];
@@ -273,6 +287,12 @@ final class Runs implements RunsContract
                 $arguments[$cancellationName] = $cancellation ?? new Cancellation();
             }
             $result = $job->handle(...$arguments);
+        } catch (Overtaken) {
+            // Another worker has it now: this one keeps nothing more, and tells nothing.
+            $ended->cancel();
+            $renewal?->cancel();
+            $this->overtaken($id, 'stopped');
+            return;
         } catch (Suspended $suspended) {
             $ended->cancel();
             $renewal?->cancel();
@@ -410,22 +430,16 @@ final class Runs implements RunsContract
     }
 
     /**
-     * Pushes a ResumeRun for a run that waits, then marks it pending, so that
-     * one is pushed only. The job goes first: if pushing it fails the run is
-     * still waiting, and sending the signal again wakes it. A job that is
-     * taken before the run is marked finds it waiting, which resume() claims.
+     * Pushes a ResumeRun for a run that waits, and changes nothing else: the
+     * worker that takes it claims the waiting run. A late status change could
+     * overwrite a newer wait the run had come to meanwhile. Another ResumeRun
+     * for the same run, as for a signal sent twice, finds it held or ended.
      */
     private function wake(int|string $id): void
     {
-        if ($this->db->table($this->table)->where('id', $id)->value('status') !== Status::Waiting->value) {
-            return;
+        if ($this->db->table($this->table)->where('id', $id)->value('status') === Status::Waiting->value) {
+            $this->queue->push(ResumeRun::class, run: $id);
         }
-        $this->queue->push(ResumeRun::class, run: $id);
-        $this->db
-            ->table($this->table)
-            ->where('id', $id)
-            ->where('status', Status::Waiting->value)
-            ->update(['status' => Status::Pending->value, 'updated_at' => $this->now()]);
     }
 
     /**

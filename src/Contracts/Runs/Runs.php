@@ -66,7 +66,10 @@ interface Runs
      * failed; or one left running by a worker that died and whose lease
      * has run out.
      *
-     * @return bool Whether it is now to be tried again.
+     * It stays failed until a worker takes the run up, so retrying it twice
+     * meanwhile is harmless: it is tried once.
+     *
+     * @return bool Whether it can be, and a worker has been asked to.
      */
     public function retry(int|string $id): bool;
 }

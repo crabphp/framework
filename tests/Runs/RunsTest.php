@@ -182,6 +182,63 @@ final class FailingOnceQueue implements \Crab\Contracts\Queue\Queue
     }
 }
 
+final class RacedStepRun
+{
+    public static int $calls = 0;
+
+    public function handle(Run $run): string
+    {
+        return $run->step('quote', static function (): string {
+            // Each worker stops inside the step, until the test lets it go on.
+            $call = ++self::$calls;
+            \Fiber::suspend();
+            return $call === 1 ? 'stale quote' : 'current quote';
+        });
+    }
+}
+
+final class TwoAwaitsRun
+{
+    public function handle(Run $run): string
+    {
+        return $run->await('one') . ' ' . $run->await('two');
+    }
+}
+
+/**
+ * A queue whose pushed job is taken and run before push() returns, as a quick worker can.
+ */
+final class EagerQueue implements \Crab\Contracts\Queue\Queue
+{
+    public ?\Closure $taken = null;
+
+    public function __construct(
+        private \Crab\Contracts\Queue\Queue $inner,
+    ) {}
+
+    public function push(string $job, mixed ...$data): int|string
+    {
+        $id = $this->inner->push($job, ...$data);
+        $this->taken?->__invoke();
+        return $id;
+    }
+
+    public function later(int|\DateInterval $delay, string $job, mixed ...$data): int|string
+    {
+        return $this->inner->later($delay, $job, ...$data);
+    }
+
+    public function on(string $queue): \Crab\Contracts\Queue\Queue
+    {
+        return $this;
+    }
+
+    public function within(\Crab\Contracts\Database\Connection $transaction): \Crab\Contracts\Queue\Queue
+    {
+        return $this;
+    }
+}
+
 final class RunsTest extends TestCase
 {
     private string $directory;
@@ -323,6 +380,41 @@ final class RunsTest extends TestCase
         self::assertSame($queued, $this->store->size('default'), 'The overtaken worker queued another try.');
     }
 
+    public function testAStepAnOvertakenWorkerFinishesIsNotKeptForTheOneThatHasTheRun(): void
+    {
+        RacedStepRun::$calls = 0;
+        $runs = new Runs($this->db, new Queue($this->store, clock: $this->clock), clock: $this->clock, lease: 3);
+        $id = $runs->start(RacedStepRun::class);
+        $first = new \Fiber(static fn() => $runs->resume($id));
+        $first->start();
+        $this->clock->advance('+4 seconds');
+        $second = new \Fiber(static fn() => $runs->resume($id));
+        $second->start();
+
+        // The first worker, overtaken, finishes its step first: it may not keep it.
+        $first->resume();
+        $second->resume();
+        $done = $runs->find($id);
+        self::assertSame([Status::Completed, 'current quote'], [$done?->status, $done?->result]);
+    }
+
+    public function testAWakingJobTakenBeforeItsPushReturnsLeavesTheRunToBeWokenAgain(): void
+    {
+        $queue = new EagerQueue(new Queue($this->store, clock: $this->clock));
+        $runs = new Runs($this->db, $queue, clock: $this->clock);
+        $id = $runs->start(TwoAwaitsRun::class);
+        $this->work();
+        $queue->taken = fn() => $this->work();
+        $runs = new Runs($this->db, $queue, clock: $this->clock);
+
+        // Woken, taken and back at its second await, all before push() has returned.
+        self::assertTrue($runs->signal($id, 'one', 'first'));
+        self::assertSame(Status::Waiting, $runs->find($id)?->status);
+        // So the second signal still wakes it.
+        self::assertTrue($runs->signal($id, 'two', 'second'));
+        self::assertSame([Status::Completed, 'first second'], [$runs->find($id)?->status, $runs->find($id)?->result]);
+    }
+
     public function testASignalWhoseWakingDidNotReachTheQueueWakesTheRunWhenSentAgain(): void
     {
         $queue = new FailingOnceQueue(new Queue($this->store, clock: $this->clock));
@@ -367,7 +459,10 @@ final class RunsTest extends TestCase
         }
         self::assertSame(Status::Failed, $runs->find($id)?->status);
         self::assertTrue($runs->retry($id));
-        self::assertSame(Status::Pending, $runs->find($id)?->status);
+        // The worker that takes the job claims it from failed, with its tries afresh.
+        $this->journal->failures = [];
+        $this->work();
+        self::assertSame([Status::Sleeping, 0], [$runs->find($id)?->status, $runs->find($id)?->attempts]);
     }
 
     public function testARunThatFailsEveryTryIsFailedAndCanBeRetried(): void
@@ -384,7 +479,9 @@ final class RunsTest extends TestCase
         self::assertFalse($this->work(), 'A failed run waits to be retried.');
 
         self::assertTrue($this->runs->retry($id));
-        self::assertFalse($this->runs->retry($id), 'Only a failed run is retried.');
+        // Failed until a worker takes it up: asked again meanwhile, it is asked for again, and still tried once.
+        self::assertSame(Status::Failed, $this->runs->find($id)?->status);
+        self::assertTrue($this->runs->retry($id));
         $this->work();
         self::assertSame([Status::Sleeping, 0, null], [
             $this->runs->find($id)?->status,

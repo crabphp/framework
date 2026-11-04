@@ -24,6 +24,9 @@ final class Execution implements Run
     private array $used = [];
 
     /**
+     * @param string $table The steps' table.
+     * @param string $runs The runs' table, where the claim this try holds is checked.
+     * @param string $claim This try's claim on the run.
      * @param array<string, array{kind: string, result: ?string, wake_at: ?int}> $kept
      */
     public function __construct(
@@ -32,6 +35,8 @@ final class Execution implements Run
         private readonly string $table,
         private readonly ?ClockInterface $clock,
         private array $kept,
+        private readonly string $runs = 'runs',
+        private readonly string $claim = '',
     ) {}
 
     public function id(): int|string
@@ -115,9 +120,20 @@ final class Execution implements Run
      */
     private function keep(string $name, string $kind, ?array $result, ?int $wakeAt): array
     {
-        $this->db
-            ->table($this->table)
-            ->insertOrIgnore([
+        // Kept only while this try holds the run: touching its row with the claim takes the row's lock,
+        // so a worker claiming it meanwhile waits for this to be kept, or this finds the claim gone.
+        $this->db->transaction(function (Connection $db) use ($name, $kind, $result, $wakeAt): void {
+            $held = $db
+                ->table($this->runs)
+                ->where('id', $this->id)
+                ->where('claim', $this->claim)
+                ->update(['updated_at' => $this->now()]);
+            if ($held !== 1) {
+                throw new Overtaken(
+                    "Run {$this->id} was taken over by another worker before \"{$name}\" could be kept.",
+                );
+            }
+            $db->table($this->table)->insertOrIgnore([
                 'run_id' => $this->id,
                 'name' => $name,
                 'kind' => $kind,
@@ -125,6 +141,7 @@ final class Execution implements Run
                 'wake_at' => $wakeAt,
                 'created_at' => $this->now(),
             ]);
+        });
         $kept = $this->read($name) ?? throw new \LogicException(
             "The step \"{$name}\" of run {$this->id} was kept and is gone.",
         );
