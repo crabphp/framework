@@ -161,13 +161,22 @@ final readonly class DatabaseStore implements TransactionalStore
 
     public function counts(string $queue, int $now): array
     {
-        $jobs = fn(): Query => $this->connection->table($this->table)->where('queue', $queue)->whereNull('failed_at');
-        $oldest = $jobs()->whereNull('reserved_at')->where('available_at', '<=', $now)->min('available_at');
+        // One pass over the queue's jobs, where four queries each read it again. The aliases avoid
+        // MySQL's reserved words, such as DELAYED.
+        $row = $this->connection
+            ->table($this->table)
+            ->where('queue', $queue)
+            ->whereNull('failed_at')
+            ->selectRaw('min(case when reserved_at is null and available_at <= ? then available_at end) as oldest_due,'
+            . ' sum(case when reserved_at is null and available_at <= ? then 1 else 0 end) as due,'
+            . ' sum(case when reserved_at is null and available_at > ? then 1 else 0 end) as later,'
+            . ' sum(case when reserved_at is not null then 1 else 0 end) as held', [$now, $now, $now])
+            ->first();
         return [
-            'oldest' => $oldest === null ? null : (int) $oldest,
-            'pending' => $jobs()->whereNull('reserved_at')->where('available_at', '<=', $now)->count(),
-            'delayed' => $jobs()->whereNull('reserved_at')->where('available_at', '>', $now)->count(),
-            'processing' => $jobs()->whereNotNull('reserved_at')->count(),
+            'oldest' => $row === null || $row['oldest_due'] === null ? null : (int) $row['oldest_due'],
+            'pending' => (int) ($row['due'] ?? 0),
+            'delayed' => (int) ($row['later'] ?? 0),
+            'processing' => (int) ($row['held'] ?? 0),
         ];
     }
 

@@ -127,6 +127,17 @@ final class Runs implements RunsContract
             return null;
         }
         $steps = $this->db->table($this->steps)->where('run_id', $id)->orderBy('id')->pluck('name');
+        return $this->state($row, array_map(strval(...), $steps));
+    }
+
+    /**
+     * A run's row and the names of its steps as the state it is in.
+     *
+     * @param array<string, mixed> $row
+     * @param list<string> $steps
+     */
+    private function state(array $row, array $steps): RunState
+    {
         return new RunState(
             $row['id'],
             (string) $row['run'],
@@ -135,7 +146,7 @@ final class Runs implements RunsContract
             $row['result'] === null ? null : self::decode((string) $row['result'])['value'] ?? null,
             $row['error'] === null ? null : (string) $row['error'],
             (int) $row['attempts'],
-            array_map(strval(...), $steps),
+            $steps,
             new \DateTimeImmutable('@' . $row['created_at']),
             new \DateTimeImmutable('@' . $row['updated_at']),
         );
@@ -179,14 +190,17 @@ final class Runs implements RunsContract
         if ($status !== null) {
             $query->where('status', $status->value);
         }
-        $states = [];
-        foreach ($query->pluck('id') as $id) {
-            $state = $this->find($id);
-            if ($state !== null) {
-                $states[] = $state;
-            }
+        $rows = $query->get();
+        if ($rows === []) {
+            return [];
         }
-        return $states;
+        // Every run's steps in one query, not one each.
+        $steps = [];
+        $ids = array_column($rows, 'id');
+        foreach ($this->db->table($this->steps)->whereIn('run_id', $ids)->orderBy('id')->get() as $step) {
+            $steps[$step['run_id']][] = (string) $step['name'];
+        }
+        return array_map(fn(array $row): RunState => $this->state($row, $steps[$row['id']] ?? []), $rows);
     }
 
     /**

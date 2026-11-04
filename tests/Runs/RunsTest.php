@@ -230,6 +230,20 @@ final class RunsTest extends TestCase
         self::assertSame(['answers' => ['SEA 1'], 'approved' => 'yes'], $this->runs->find($id)?->result);
     }
 
+    public function testLatestGivesEachRunItsOwnStepsAsFindDoes(): void
+    {
+        $first = $this->runs->start(ResearchTopic::class, topic: 'sea', depth: 1);
+        $second = $this->runs->start(ResearchTopic::class, topic: 'sky', depth: 2);
+        $this->work();
+        $this->work();
+        $one = $this->runs->find($first);
+        $two = $this->runs->find($second);
+        self::assertNotSame($one?->steps, $two?->steps, 'The two runs took different steps.');
+        // Newest first, each with the steps it took.
+        self::assertEquals([$two, $one], $this->runs->latest());
+        self::assertEquals([$two], $this->runs->latest(limit: 1));
+    }
+
     public function testARunThatFailsEveryTryIsFailedAndCanBeRetried(): void
     {
         $this->journal->failures = ['sky 1' => 2];
