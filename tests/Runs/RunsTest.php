@@ -579,9 +579,11 @@ final class RunsTest extends TestCase
                 'claim' => 'gone',
                 'lease_until' => $this->clock->now()->getTimestamp() + 90,
             ]);
-        $this->clock->advance('+150 seconds');
-        self::assertSame(0, $this->runs->recover(), 'Its lease ran out only now: the queue may yet take it up.');
-        $this->clock->advance('+31 seconds');
+        // Its lease has run out a lease ago, but the queue holds its job 90 seconds (queue.retry_after) before
+        // giving it to another worker, which is then given a lease to take the run over: it may only be stalled.
+        $this->clock->advance('+270 seconds');
+        self::assertSame(0, $this->runs->recover(), 'A worker that may only be stalled was counted dead.');
+        $this->clock->advance('+1 second');
         self::assertSame(1, $this->runs->recover());
         $state = $this->runs->find($id);
         self::assertSame([Status::Pending, 1], [$state?->status, $state?->attempts]);
@@ -600,10 +602,32 @@ final class RunsTest extends TestCase
                 'claim' => 'gone again',
                 'lease_until' => $this->clock->now()->getTimestamp(),
             ]);
-        $this->clock->advance('+91 seconds');
+        $this->clock->advance('+181 seconds');
         self::assertSame(0, $this->runs->recover());
         self::assertSame([Status::Failed, 2], [$this->runs->find($id)?->status, $this->runs->find($id)?->attempts]);
         self::assertTrue($this->runs->retry($id));
+    }
+
+    public function testARetryOfARunLeftRunningFailsItFirstSoRecoveryCannotTakeItsTryAway(): void
+    {
+        $id = $this->runs->start(ResearchTopic::class, topic: 'sky', depth: 1);
+        $this->lose();
+        $this->db
+            ->table('runs')
+            ->where('id', $id)
+            ->update([
+                'status' => Status::Running->value,
+                'claim' => 'gone',
+                'attempts' => 1,
+                'lease_until' => $this->clock->now()->getTimestamp(),
+            ]);
+        $this->clock->advance('+1 day');
+        self::assertTrue($this->runs->retry($id));
+        // Failed by the retry, before its job comes: recovery has no run left running to count.
+        self::assertSame(Status::Failed, $this->runs->find($id)?->status);
+        self::assertSame(0, $this->runs->recover());
+        $this->work();
+        self::assertSame([Status::Sleeping, 0], [$this->runs->find($id)?->status, $this->runs->find($id)?->attempts]);
     }
 
     public function testWhatAStepReturnsComesBackAsJsonReadsItTheFirstTimeToo(): void

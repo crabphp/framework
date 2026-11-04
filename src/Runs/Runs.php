@@ -35,6 +35,8 @@ use Psr\Log\LoggerInterface;
  */
 final class Runs implements RunsContract
 {
+    private const ABANDONED = 'The worker running it stopped before it ended, and no job took it up.';
+
     /**
      * @param string $table The runs' table.
      * @param string $steps The steps' table.
@@ -55,6 +57,7 @@ final class Runs implements RunsContract
         private readonly array $backoff = [10, 60],
         private readonly int $lease = 90,
         private readonly ?Connection $transaction = null,
+        private readonly int $retryAfter = 90,
     ) {
         if ($tries < 1 || $lease < 3) {
             throw new \InvalidArgumentException('Runs need at least one try and a lease of at least 3 seconds.');
@@ -157,7 +160,29 @@ final class Runs implements RunsContract
         if ($row === null) {
             return false;
         }
-        // Nothing is changed here: the worker that takes this job claims the run from failed, in one
+        if ($row['status'] === Status::Running->value) {
+            // Its worker is gone: failed first, as recover() would count it, so that the retry asked for
+            // is of that failure, and recover() finds nothing of it to count again before the job comes.
+            $failed = $this->db
+                ->table($this->table)
+                ->where('id', $id)
+                ->where('status', Status::Running->value)
+                ->where('lease_until', $row['lease_until'])
+                ->where(static function ($query) use ($row): void {
+                    $row['claim'] === null ? $query->whereNull('claim') : $query->where('claim', $row['claim']);
+                })
+                ->update([
+                    'status' => Status::Failed->value,
+                    'error' => self::ABANDONED,
+                    'lease_until' => null,
+                    'updated_at' => $this->now(),
+                ]);
+            if ($failed !== 1) {
+                // Taken up meanwhile, by a worker or recover(): it is being tried already.
+                return false;
+            }
+        }
+        // Nothing more is changed here: the worker that takes this job claims the run from failed, in one
         // update. A push that fails, is lost, or is never made leaves the run failed, to retry again.
         // The job names the claim the run ended under, so it restarts that failure and no later one: a
         // second retry asked meanwhile finds the run claimed afresh, or failed again, and does nothing.
@@ -193,7 +218,9 @@ final class Runs implements RunsContract
             ->orderBy('id')
             ->limit($limit)
             ->get();
-        $pushed = $this->recoverAbandoned($now, $before, $limit);
+        // A worker that stalled is given up on only once the queue would have given its job to another,
+        // and that one has had a lease to take the run over: until then the job may yet carry it on.
+        $pushed = $this->recoverAbandoned($now, $now - max($this->lease, $this->retryAfter) - $this->lease, $limit);
         foreach ($rows as $row) {
             // Touched first, so the next look leaves it a lease longer; a worker that took it meanwhile wins.
             $touched = $this->db
@@ -226,13 +253,13 @@ final class Runs implements RunsContract
      *
      * @return int How many runs it pushed a job for.
      */
-    private function recoverAbandoned(int $now, int $before, int $limit): int
+    private function recoverAbandoned(int $now, int $abandoned, int $limit): int
     {
         $rows = $this->db
             ->table($this->table)
             ->select('id', 'run', 'claim', 'attempts', 'lease_until')
             ->where('status', Status::Running->value)
-            ->where('lease_until', '<', $before)
+            ->where('lease_until', '<', $abandoned)
             ->orderBy('id')
             ->limit($limit)
             ->get();
@@ -241,7 +268,7 @@ final class Runs implements RunsContract
             $attempts = (int) $row['attempts'] + 1;
             $failed = $attempts >= $this->tries;
             $wait = $this->backoff === [] ? 0 : $this->backoff[min($attempts, count($this->backoff)) - 1];
-            $error = 'The worker running it stopped before it ended, and no job took it up.';
+            $error = self::ABANDONED;
             // Only as the dead worker left it: one that took it over meanwhile has it.
             $counted = $this->db
                 ->table($this->table)
@@ -346,13 +373,7 @@ final class Runs implements RunsContract
                     // The failure it was asked for, not one since.
                     $retry === '' ? $query->whereNull('claim') : $query->where('claim', $retry);
                 })
-                ->where(static function ($query) use ($now): void {
-                    $query
-                        ->where('status', Status::Failed->value)
-                        ->orWhere(static function ($query) use ($now): void {
-                            $query->where('status', Status::Running->value)->where('lease_until', '<', $now);
-                        });
-                })
+                ->where('status', Status::Failed->value)
                 ->update([
                     'status' => Status::Running->value,
                     'attempts' => 0,

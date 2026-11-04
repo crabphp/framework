@@ -11,6 +11,7 @@ use Crab\Contracts\Database\Database;
 use Crab\Contracts\Plugin;
 use Crab\Contracts\Queue\Queue;
 use Crab\Contracts\Runs\Runs as RunsContract;
+use Crab\Queue\Supervisor;
 use Crab\Runs\Commands\InstallRuns;
 use Crab\Runs\Commands\ListRuns;
 use Crab\Runs\Commands\RecoverRuns;
@@ -80,6 +81,8 @@ final class RunsPlugin implements Plugin
                 (int) $config->get('runs.tries'),
                 array_map(intval(...), (array) $config->get('runs.backoff')),
                 (int) $config->get('runs.lease'),
+                // How long the queue holds a job taken by a worker that stopped: recover() waits that out.
+                retryAfter: (int) Supervisor::retrySettings($config)['retry_after'],
             );
         });
         $container->singleton(RunsContract::class, Runs::class);

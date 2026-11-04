@@ -181,13 +181,15 @@ One worker runs a run at a time. It holds a lease on it, renewed every third of 
 
 ### A run whose job was lost
 
-Each of those resumptions is a job on the queue. A run's state is kept first and its job pushed after, so a process that dies between the two, or a queue that loses the job, leaves the run without one: pending, or sleeping past its end, with nothing to carry it on. `runs:recover` gives each such run a job again, once its time came more than `runs.lease` seconds ago. A run still marked running whose lease ran out more than a lease ago, with no job taking it up, had its worker die: it counts that as a failed try, and the run is tried again after its backoff, or failed when no try is left. Schedule it:
+Each of those resumptions is a job on the queue. A run's state is kept first and its job pushed after, so a process that dies between the two, or a queue that loses the job, leaves the run without one: pending, or sleeping past its end, with nothing to carry it on. `runs:recover` gives each such run a job again, once its time came more than `runs.lease` seconds ago. A run still marked running whose worker stopped, with no job taking it up, had its worker die: it counts that as a failed try, and the run is tried again after its backoff, or failed when no try is left. It waits for that until the queue would have given the worker's job to another (`queue.retry_after` after its lease ran out) and that one has had a lease to take the run over, so a worker that only stalled is not counted dead. Schedule it:
 
 ```php
 $schedule->command('runs:recover')->everyMinute()->onOneServer();
 ```
 
 A job that is only late, behind others in a busy queue, may be pushed again this way, at most once a lease; the run is still run once, by whichever job claims it first, and never before its time: a job that comes during a backoff or a sleep waits for its end. A run waiting for a signal is woken by giving the signal again, and a failed one by retrying it. `$runs->recover()` does the same from code and says how many runs it gave a job.
+
+Leases, backoffs and sleeps are times kept in the database and compared with the clock of whichever process reads them, as the queue's delays are. Keep the clocks of the machines that run your workers in step, with NTP or the like: one that is a few seconds ahead takes a run's next try or the end of its sleep that much early, and one far ahead takes over the runs of workers whose leases it thinks have run out.
 
 ### The rules a run follows
 
