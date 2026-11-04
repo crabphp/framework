@@ -4,6 +4,34 @@ These pages were written while the engine was its own repository. Its source is 
 
 See [HTTP request path](benchmarks/HTTP-REQUEST-PATH.md) for the latest measurement of requests with browser-sized fields and a breakdown of where a request's time goes, [HTTP lazy request fields](benchmarks/HTTP-LAZY-FIELDS.md) for the step before it, [HTTP fast path](benchmarks/HTTP-FAST-PATH.md) for the preceding matched before/after HTTP measurements, request-shape workloads and the WebSocket regression check, [HTTP codec optimization](benchmarks/HTTP-CODEC-OPTIMIZATION.md) for the preceding codec measurements, [PHP HTTP headroom](benchmarks/HTTP-HEADROOM.md) for the earlier layer diagnostics, and [Crab versus Elysia](benchmarks/ELYSIA.md) for the earlier combined comparison. The historical snapshots below predate later docblock, request-body storage and codec changes; their hashes identify the source measured at the time.
 
+## After the 0.4 review fixes, and against Elysia, 2026-11-05
+
+Two single-process checks on an **Intel i5-9400F, 6 cores, Fedora 44, PHP 8.4.22**, with OPcache on. Every server is one process; wrk runs at 64 connections for 8 seconds after a warmup. The database reads cycle through 10,000 users, in SQLite and in a disposable MySQL 8.4 on the same machine. `benchmarks/single-process/setup.sh` builds everything, `run.sh` and `compare.sh` run the two checks, and the raw lines are in [its results](benchmarks/single-process/results). No trial had an error. These are single-process figures on one machine, not comparable with the tables below.
+
+**v0.4.0 against `main`**, three alternating rounds, medians:
+
+| Request | JIT off, v0.4.0 → `main` | Change | Tracing JIT, v0.4.0 → `main` | Change |
+| --- | ---: | ---: | ---: | ---: |
+| `GET /hello` | 43,097 → 43,187 | +0.2% | 49,413 → 48,027 | −2.8% |
+| `GET /users/{id}`, SQLite | 14,836 → 15,208 | +2.5% | 18,129 → 17,663 | −2.6% |
+| `GET /mysql/users/{id}`, PDO | 6,826 → 6,768 | −0.9% | 7,568 → 7,757 | +2.5% |
+| `GET /mysql-async/users/{id}`, `async` driver | 8,898 → 9,094 | +2.2% | 11,520 → 11,638 | +1.0% |
+| `POST /users`, validated body | 20,465 → 19,829 | −3.1% | 24,839 → 24,741 | −0.4% |
+
+Nothing that runs per request changed between them: since v0.4.0, `src/` changed in runs, actors, the HTTP client and the connection pool, none of which these requests use. The `GET /hello` gap with JIT was the order of the runs: over six more rounds with `main` first in each, `main` measured 0.5% ahead. Nothing measured got slower.
+
+**Crab (`main`) against Elysia 1.4.30 on Bun 1.4.2**, three rounds with the order of the three servers rotated, medians:
+
+| Request | Crab, JIT off | Crab, tracing JIT | Elysia | Crab with JIT, of Elysia |
+| --- | ---: | ---: | ---: | ---: |
+| `GET /hello` | 43,675 | 46,605 | 81,483 | 57% |
+| `GET /users/{id}`, SQLite | 15,077 | 17,739 | 44,133 | 40% |
+| MySQL read, Crab's PDO driver | 6,865 | 7,732 | 26,821 | 29% |
+| MySQL read, Crab's `async` driver | 9,172 | 11,541 | 26,821 | 43% |
+| `POST /users`, validated body | 20,158 | 25,120 | 39,959 | 63% |
+
+Elysia's p99 latency is about half of Crab's throughout: 1.54 against 2.69 ms for `GET /hello`, 3.60 against 6.80 ms for MySQL with the `async` driver. Its SQLite and MySQL clients are part of the Bun runtime, in native code, and its SQLite route runs a statement prepared once; Crab's MySQL `async` driver is written in PHP, and each Crab read goes through the query builder. Bun's MySQL client does not block, so Crab's `async` driver is the one to compare it with; with PDO, a query holds up the whole process. Validation is the closest case.
+
 ## The 0.4 refactor, 2026-11-04
 
 A matched check that the 0.4 refactor (plugins, `Async::await`, the shared HTTP client rules, the Validator split and the rest) did not slow requests down. Both versions served the same application, the [framework fixture](benchmarks/frameworks/crab), as one process with OPcache on and JIT off, on an **Intel i5-9400F, 6 cores, Fedora 44, PHP 8.4.22**. Load came from wrk 4.x at 64 connections for 8 seconds, after a 3-second warmup, and the two versions alternated every round so the machine's noise fell on both alike. These are single-process figures on another machine, not comparable with the tables below.
