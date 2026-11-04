@@ -119,18 +119,26 @@ final class Pool
     public function discard(object $resource): void
     {
         $this->assertBorrowed($resource);
-        $this->drop($resource);
-        if ($this->closed || $this->waiting === []) {
-            return;
-        }
+        unset($this->borrowed[spl_object_id($resource)]);
+        // Its place stays taken while it is cleaned up and a replacement made: either may wait, and
+        // a newcomer meanwhile must queue behind the waiters rather than take the place for itself.
+        ++$this->creating;
         try {
-            $replacement = $this->create();
-        } catch (Throwable $error) {
-            // Told to whoever waits first now: the one waiting when creation began may have left.
-            if ($this->waiting !== []) {
-                $this->waiting[array_key_first($this->waiting)](null, $error);
+            $this->destroy($resource);
+            if ($this->closed || $this->waiting === []) {
+                return;
             }
-            return;
+            try {
+                $replacement = ($this->create)();
+            } catch (Throwable $error) {
+                // Told to whoever waits first now: the one waiting when creation began may have left.
+                if ($this->waiting !== []) {
+                    $this->waiting[array_key_first($this->waiting)](null, $error);
+                }
+                return;
+            }
+        } finally {
+            --$this->creating;
         }
         // Creation may have waited: who is owed the replacement is decided now, not before.
         if ($this->closed) {

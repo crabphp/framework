@@ -12,8 +12,8 @@ Crab follows [semantic versioning](https://semver.org). Before 1.0, a minor vers
 - **A deflate body is read whatever piece its first byte comes in:** whether it has zlib's header was judged from the first piece alone, and a one-byte piece made a valid body fail.
 - **A request's header replaces the client's whatever its case:** a client's `Authorization` and a call's `authorization` were both sent; the call's now wins.
 
-- **A pool's replacement is never lent to no one:** `Pool::discard()` chose the waiter before making the replacement, and one that left while it was made lost it, leaving it counted as borrowed forever. Who gets it is decided once it is made: a waiter then, or the idle ones.
-- **An actor's first `ask()` keeps to its timeout and cancellation:** it waited for the reply channel to be ready first, for as long as that took. That wait now counts against its timeout and ends with its cancellation, without giving up the channel other asks share.
+- **A pool's replacement is never lent to no one:** `Pool::discard()` chose the waiter before making the replacement, and one that left while it was made lost it, leaving it counted as borrowed forever. Who gets it is decided once it is made: a waiter then, or the idle ones. Its place also stays taken while the old resource is cleaned up, so a cleanup that waits can no longer let a newcomer in and the pool lend more than its limit.
+- **An actor's first `ask()` keeps to its timeout and cancellation:** it waited for the reply channel to be ready first, for as long as that took. That wait now counts against its timeout and ends with its cancellation, without giving up the channel other asks share. Sending the message no longer holds it either: a carrier slow to publish cannot keep an ask past its timeout or cancellation, and an ask that ended before it was sent is not sent.
 
 ## 0.4.0 — 2026-11-04
 

@@ -174,6 +174,47 @@ final class PoolTest extends TestCase
         self::assertSame(2, $pool->acquire()->number);
     }
 
+    public function testACleanupThatWaitsKeepsItsPlaceSoTheLimitHolds(): void
+    {
+        $loop = $this->newLoop();
+        $made = 0;
+        $finish = null;
+        $pool = new Pool(
+            $loop,
+            static function () use (&$made): stdClass {
+                $resource = new stdClass();
+                $resource->number = ++$made;
+                return $resource;
+            },
+            max: 1,
+            destroy: static function (object $resource) use ($loop, &$finish): void {
+                if ($resource->number === 1) {
+                    Async::await($loop, static function (\Closure $resume) use (&$finish): null {
+                        $finish = $resume;
+                        return null;
+                    });
+                }
+            },
+        );
+        $held = $pool->acquire();
+        $waiter = $this->spawn($loop, static fn(): object => $pool->acquire());
+        $discard = $this->spawn($loop, static fn() => $pool->discard($held));
+        while ($finish === null) {
+            Async::sleep($loop, 0.0);
+        }
+        // The old resource is still being cleaned up: a newcomer queues rather than take its place.
+        $newcomer = $this->spawn($loop, static fn(): object => $pool->acquire());
+        Async::sleep($loop, 0.0);
+        self::assertFalse($newcomer->isComplete(), 'A newcomer took the place of a resource still being cleaned up.');
+        $finish();
+        $this->awaitTask($loop, $discard);
+        $first = $this->awaitTask($loop, $waiter);
+        self::assertSame(2, $first->number, 'The replacement goes to the caller that waited first.');
+        self::assertSame(['max' => 1, 'idle' => 0, 'borrowed' => 1, 'waiting' => 1], $pool->stats());
+        $pool->release($first);
+        self::assertSame(2, $this->awaitTask($loop, $newcomer)->number);
+    }
+
     public function testAFailedCreateFreesItsPlaceAndReachesAWaiter(): void
     {
         $loop = $this->newLoop();

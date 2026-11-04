@@ -63,6 +63,43 @@ final class ActorsTest extends TestCase
         $actors->stop();
     }
 
+    public function testAnAskKeepsToItsTimeoutAndCancellationWhileItsMessageIsPublished(): void
+    {
+        $loop = EventLoop::current();
+        $carrier = new SlowPublishingCarrier();
+        $actors = new Actors(carrier: $carrier);
+        $ask = static fn(
+            float $timeout,
+            ?Cancellation $cancellation = null,
+        ): Task => Task::spawn($loop, static function () use ($actors, $timeout, $cancellation): string {
+            try {
+                $actors->ask(Counter::class, 'k', 'add', timeout: $timeout, cancellation: $cancellation);
+                return 'answered';
+            } catch (NoReply) {
+                return 'timed out';
+            } catch (CancelledException) {
+                return 'cancelled';
+            }
+        });
+        $timed = $ask(0.02);
+        while ($carrier->held === []) {
+            Async::sleep($loop, 0.0);
+        }
+        // Its message is still being published: the ask gives up at its time all the same.
+        self::assertSame('timed out', $timed->await());
+        $stopped = new Cancellation();
+        $cancelled = $ask(30.0, $stopped);
+        while (count($carrier->held) < 2) {
+            Async::sleep($loop, 0.0);
+        }
+        $stopped->cancel();
+        self::assertSame('cancelled', $cancelled->await());
+        foreach ($carrier->held as $finish) {
+            $finish();
+        }
+        $actors->stop();
+    }
+
     public function testEachKeyHasOneActorThatKeepsItsStateBetweenMessages(): void
     {
         $actors = new Actors();
@@ -350,6 +387,26 @@ final class SlowSubscribingCarrier implements Carrier
             return null;
         });
     }
+
+    public function unsubscribe(string $channel): void {}
+
+    public function close(): void {}
+}
+
+final class SlowPublishingCarrier implements Carrier
+{
+    /** @var list<\Closure> */
+    public array $held = [];
+
+    public function publish(array $channels, string $message): void
+    {
+        Async::await(EventLoop::current(), function (\Closure $resume): null {
+            $this->held[] = $resume;
+            return null;
+        });
+    }
+
+    public function subscribe(string $channel, \Closure $receive, \Closure $gap): void {}
 
     public function unsubscribe(string $channel): void {}
 

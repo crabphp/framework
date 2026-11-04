@@ -137,7 +137,7 @@ final class PublicSuffixes
                 }
                 $q = $delta;
                 for ($k = 36;; $k += 36) {
-                    $t = $k <= $bias ? 1 : ($k >= ($bias + 26) ? 26 : $k - $bias);
+                    $t = min(26, max(1, $k - $bias));
                     if ($q < $t) {
                         break;
                     }

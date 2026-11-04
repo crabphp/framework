@@ -141,12 +141,27 @@ final class Actors implements ActorsContract
                     unset($this->waiting[$id]);
                     $loop->cancel($timer);
                 };
-                try {
-                    $this->route($actor, $key, $data, $id);
-                } catch (\Throwable $error) {
-                    $undo();
-                    throw $error;
+                if (!$this->remote($actor, $key)) {
+                    try {
+                        $this->route($actor, $key, $data, $id);
+                    } catch (\Throwable $error) {
+                        $undo();
+                        throw $error;
+                    }
+                    return $undo;
                 }
+                // Published apart from the wait, which a slow carrier would otherwise hold past its
+                // deadline and cancellation. An ask that ended before its turn to be sent is not sent.
+                $loop->defer(function () use ($actor, $key, $data, $id, $fail): void {
+                    if (!isset($this->waiting[$id])) {
+                        return;
+                    }
+                    try {
+                        $this->route($actor, $key, $data, $id);
+                    } catch (\Throwable $error) {
+                        $fail($error);
+                    }
+                });
                 return $undo;
             },
             $cancellation,
