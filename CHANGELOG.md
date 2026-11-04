@@ -2,7 +2,7 @@
 
 Crab follows [semantic versioning](https://semver.org). Before 1.0, a minor version may break what an application writes; the entry says what to change.
 
-## Unreleased
+## 0.4.0 — 2026-11-04
 
 - **Plugins, in place of providers (breaking):** a provider is now called a plugin. `Contracts\Provider` is `Contracts\Plugin`, `WorkerProvider` is `WorkerPlugin`, `withProviders()` is `withPlugins()` with the same `remove:` and `only:`, `App::PROVIDERS` is `App::PLUGINS`, and every framework `*Provider` class is a `*Plugin` (`QueueProvider` → `QueuePlugin`, and so on). The application's own provider is its setup: the skeleton's `app/Providers/AppProvider.php` is `app/Setup.php`, class `App\Setup`, given to `->withSetup(Setup::class)` in `app.php`, which registers it after every plugin. See [Services and plugins](docs/plugins.md).
 - **Core and optional plugins (breaking):** only the core plugins are on without being listed: database, auth, cache, storage, events and the HTTP client (`App::PLUGINS`). The queue, the schedule, runs, broadcasting and actors are optional, like token authentication already was (`App::OPTIONAL_PLUGINS`). To upgrade, list the ones the application uses in `app.php`, in this order: `->withPlugins([QueuePlugin::class, SchedulePlugin::class, RunsPlugin::class, BroadcastPlugin::class, ActorsPlugin::class, ...])->withSetup(Setup::class)`. A framework plugin named twice, core or optional, is registered once.
