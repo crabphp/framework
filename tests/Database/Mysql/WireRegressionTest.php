@@ -228,6 +228,42 @@ final class WireRegressionTest extends TestCase
         }
     }
 
+    public function testAConnectionRefusedDuringLoginConnectsAfreshForTheNextQuery(): void
+    {
+        ScriptedServer::run(
+            static function (ScriptedServer $server, int $index): void {
+                $server->greeting('mysql_native_password');
+                $server->receive();
+                if ($index === 0) {
+                    // The first login is refused, as a server at its connection limit does.
+                    $server->send("\xff" . pack('v', 1040) . '#08004Too many connections');
+                    return;
+                }
+                $server->ok();
+                $server->prepare(1);
+                $server->sequence = 0;
+                self::assertSame("\x17" . pack('V', 1), substr($server->receive(), 0, 5));
+                $server->ok();
+            },
+            static function (string $dsn): void {
+                $connection = new Connection($dsn);
+                try {
+                    try {
+                        $connection->execute('UPDATE example SET n = 1');
+                        self::fail('A refused login was not reported.');
+                    } catch (DatabaseException $error) {
+                        self::assertSame(1040, $error->code());
+                    }
+                    // The half-made session is not kept: the next query logs in again.
+                    self::assertSame(0, $connection->execute('UPDATE example SET n = 1'));
+                } finally {
+                    $connection->close();
+                }
+            },
+            connections: 2,
+        );
+    }
+
     private static function login(ScriptedServer $server): void
     {
         $server->greeting('mysql_native_password');

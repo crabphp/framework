@@ -53,7 +53,8 @@ final class ScriptedServer
         $bytes = '';
         while (strlen($bytes) < $length) {
             $chunk = fread($this->socket, $length - strlen($bytes));
-            if ($chunk === '' && feof($this->socket)) {
+            // A client that closes with our bytes unread resets the socket: fread then gives false.
+            if ($chunk === false || $chunk === '' && feof($this->socket)) {
                 throw new \RuntimeException('The fake MySQL client closed its socket.');
             }
             if ($chunk === '') {
@@ -68,6 +69,11 @@ final class ScriptedServer
     {
         while (true) {
             $bytes = fread($this->socket, 1);
+            // A client that closes with our bytes unread resets the socket rather than ending it:
+            // fread gives false, and that is a client gone, not one that sent more.
+            if ($bytes === false) {
+                return true;
+            }
             if ($bytes !== '') {
                 return false;
             }
