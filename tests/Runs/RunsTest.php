@@ -123,6 +123,65 @@ final readonly class DuplicateCancellationRun
     public function handle(Run $run, Cancellation $first, int $id, Cancellation $second): void {}
 }
 
+final class OvertakenRun
+{
+    public static int $calls = 0;
+
+    public function handle(Run $run): string
+    {
+        // The first worker stops here, past its lease, until the test lets it go on.
+        if (++self::$calls === 1) {
+            \Fiber::suspend();
+            throw new \RuntimeException('the first worker failed after losing its lease');
+        }
+        return 'the second worker finished';
+    }
+}
+
+final class AwaitedRun
+{
+    public function handle(Run $run): mixed
+    {
+        return $run->await('approval');
+    }
+}
+
+/**
+ * A queue whose next push fails, as a store or its connection can.
+ */
+final class FailingOnceQueue implements \Crab\Contracts\Queue\Queue
+{
+    public bool $failNext = false;
+
+    public function __construct(
+        private \Crab\Contracts\Queue\Queue $inner,
+    ) {}
+
+    public function push(string $job, mixed ...$data): int|string
+    {
+        if ($this->failNext) {
+            $this->failNext = false;
+            throw new \RuntimeException('the queue is down for a moment');
+        }
+        return $this->inner->push($job, ...$data);
+    }
+
+    public function later(int|\DateInterval $delay, string $job, mixed ...$data): int|string
+    {
+        return $this->inner->later($delay, $job, ...$data);
+    }
+
+    public function on(string $queue): \Crab\Contracts\Queue\Queue
+    {
+        return $this;
+    }
+
+    public function within(\Crab\Contracts\Database\Connection $transaction): \Crab\Contracts\Queue\Queue
+    {
+        return $this;
+    }
+}
+
 final class RunsTest extends TestCase
 {
     private string $directory;
@@ -242,6 +301,73 @@ final class RunsTest extends TestCase
         // Newest first, each with the steps it took.
         self::assertEquals([$two, $one], $this->runs->latest());
         self::assertEquals([$two], $this->runs->latest(limit: 1));
+    }
+
+    public function testAWorkerThatLostItsLeaseChangesNothingAfterAnotherTookTheRunOver(): void
+    {
+        OvertakenRun::$calls = 0;
+        $runs = new Runs($this->db, new Queue($this->store, clock: $this->clock), clock: $this->clock, lease: 3);
+        $id = $runs->start(OvertakenRun::class);
+        $first = new \Fiber(static fn() => $runs->resume($id));
+        $first->start();
+        // Its lease runs out, and a second worker claims the run and finishes it.
+        $this->clock->advance('+4 seconds');
+        $runs->resume($id);
+        $finished = $runs->find($id);
+        self::assertSame([Status::Completed, 'the second worker finished'], [$finished?->status, $finished?->result]);
+        $queued = $this->store->size('default');
+
+        // The first worker comes back and fails: the run is not its own any more.
+        $first->resume();
+        self::assertEquals($finished, $runs->find($id));
+        self::assertSame($queued, $this->store->size('default'), 'The overtaken worker queued another try.');
+    }
+
+    public function testASignalWhoseWakingDidNotReachTheQueueWakesTheRunWhenSentAgain(): void
+    {
+        $queue = new FailingOnceQueue(new Queue($this->store, clock: $this->clock));
+        $runs = new Runs($this->db, $queue, clock: $this->clock);
+        $id = $runs->start(AwaitedRun::class);
+        $runs->resume($id);
+        self::assertSame(Status::Waiting, $runs->find($id)?->status);
+        $before = $this->store->size('default');
+
+        $queue->failNext = true;
+        try {
+            $runs->signal($id, 'approval', 'yes');
+            self::fail('The failed push was hidden.');
+        } catch (\RuntimeException $error) {
+            self::assertSame('the queue is down for a moment', $error->getMessage());
+        }
+        // Not stranded: still waiting, with its signal kept, and no job pretended.
+        self::assertSame(Status::Waiting, $runs->find($id)?->status);
+        self::assertSame($before, $this->store->size('default'));
+
+        // Sent again, the signal is not new, but the run is woken and finishes with it.
+        self::assertFalse($runs->signal($id, 'approval', 'yes'));
+        self::assertSame($before + 1, $this->store->size('default'));
+        $runs->resume($id);
+        self::assertSame([Status::Completed, 'yes'], [$runs->find($id)?->status, $runs->find($id)?->result]);
+    }
+
+    public function testARetryWhosePushFailsLeavesTheRunFailedToBeRetriedAgain(): void
+    {
+        $this->journal->failures = ['sky 1' => 2];
+        $queue = new FailingOnceQueue(new Queue($this->store, clock: $this->clock));
+        $runs = new Runs($this->db, $queue, clock: $this->clock, tries: 1);
+        $id = $runs->start(ResearchTopic::class, topic: 'sky', depth: 1);
+        $runs->resume($id);
+        self::assertSame(Status::Failed, $runs->find($id)?->status);
+
+        $queue->failNext = true;
+        try {
+            $runs->retry($id);
+            self::fail('The failed push was hidden.');
+        } catch (\RuntimeException) {
+        }
+        self::assertSame(Status::Failed, $runs->find($id)?->status);
+        self::assertTrue($runs->retry($id));
+        self::assertSame(Status::Pending, $runs->find($id)?->status);
     }
 
     public function testARunThatFailsEveryTryIsFailedAndCanBeRetried(): void

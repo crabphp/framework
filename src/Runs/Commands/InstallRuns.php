@@ -68,6 +68,8 @@ final readonly class InstallRuns implements Command
                         \$table->integer('attempts')->default(0);
                         // Unix timestamps: until when a worker holds it, when its sleep ends.
                         \$table->bigInteger('lease_until')->nullable();
+                        // Which claim holds it: only that worker may renew it or say how it ended.
+                        \$table->string('claim', 32)->nullable();
                         \$table->bigInteger('wake_at')->nullable();
                         \$table->bigInteger('created_at');
                         \$table->bigInteger('updated_at');

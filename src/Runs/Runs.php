@@ -113,10 +113,9 @@ final class Runs implements RunsContract
                 'result' => self::encode(['value' => self::plain($value)]),
                 'created_at' => $this->now(),
             ]) === 1;
-        if ($kept) {
-            // A run that is running finds it at its await(), and one that is not is woken.
-            $this->wake($id);
-        }
+        // A run that is running finds it at its await(), and one that is not is woken. A signal
+        // kept before wakes a run still waiting too: its waking may not have reached the queue.
+        $this->wake($id);
         return $kept;
     }
 
@@ -171,10 +170,21 @@ final class Runs implements RunsContract
                 'attempts' => 0,
                 'error' => null,
                 'lease_until' => null,
+                'claim' => null,
                 'updated_at' => $now,
             ]) === 1;
         if ($retried) {
-            $this->queue->push(ResumeRun::class, run: $id);
+            try {
+                $this->queue->push(ResumeRun::class, run: $id);
+            } catch (\Throwable $error) {
+                // Not left pending with no job to resume it: failed again, it can be retried again.
+                $this->db
+                    ->table($this->table)
+                    ->where('id', $id)
+                    ->where('status', Status::Pending->value)
+                    ->update(['status' => Status::Failed->value, 'updated_at' => $this->now()]);
+                throw $error;
+            }
         }
         return $retried;
     }
@@ -213,6 +223,8 @@ final class Runs implements RunsContract
     public function resume(int|string $id, ?Cancellation $cancellation = null): void
     {
         $now = $this->now();
+        // This claim's own token: a worker that outlives its lease and is overtaken writes nothing after.
+        $claim = bin2hex(random_bytes(16));
         $claimed = $this->db
             ->table($this->table)
             ->where('id', $id)
@@ -226,6 +238,7 @@ final class Runs implements RunsContract
             ->update([
                 'status' => Status::Running->value,
                 'lease_until' => $now + $this->lease,
+                'claim' => $claim,
                 'wake_at' => null,
                 'updated_at' => $now,
             ]);
@@ -247,7 +260,7 @@ final class Runs implements RunsContract
         );
         $class = (string) $row['run'];
         $ended = new Cancellation();
-        $renewal = $this->renew($id, $ended);
+        $renewal = $this->renew($id, $claim, $ended);
         $run = new Execution($id, $this->db, $this->steps, $this->clock, $this->loadSteps($id));
         try {
             $signature = self::signature($class);
@@ -263,49 +276,74 @@ final class Runs implements RunsContract
         } catch (Suspended $suspended) {
             $ended->cancel();
             $renewal?->cancel();
-            $this->suspend($id, $suspended, $run);
+            $this->suspend($id, $claim, $suspended, $run);
             return;
         } catch (\Throwable $error) {
             $ended->cancel();
             $renewal?->cancel();
             if ($error instanceof CancelledException && $cancellation?->isCancelled() === true) {
                 // The worker was told to stop, or lost the job: the run is let go for whoever resumes it next.
-                $this->release($id);
+                $this->release($id, $claim);
                 throw $error;
             }
-            $this->fail($id, $class, (int) $row['attempts'] + 1, $error);
+            $this->fail($id, $claim, $class, (int) $row['attempts'] + 1, $error);
             return;
         }
         $ended->cancel();
         $renewal?->cancel();
-        $this->db
-            ->table($this->table)
-            ->where('id', $id)
-            ->update([
-                'status' => Status::Completed->value,
-                'result' => self::encode(['value' => self::plain($result)]),
-                'error' => null,
-                'lease_until' => null,
-                'updated_at' => $this->now(),
-            ]);
+        $completed = $this->held($id, $claim)->update([
+            'status' => Status::Completed->value,
+            'result' => self::encode(['value' => self::plain($result)]),
+            'error' => null,
+            'lease_until' => null,
+            'claim' => null,
+            'updated_at' => $this->now(),
+        ]);
+        if ($completed !== 1) {
+            $this->overtaken($id, 'completed');
+        }
+    }
+
+    /**
+     * The run as long as this claim still holds it.
+     */
+    private function held(int|string $id, string $claim): \Crab\Contracts\Database\Query
+    {
+        return $this->db->table($this->table)->where('id', $id)->where('claim', $claim);
+    }
+
+    /**
+     * Says that a run was taken over while this worker ran it: its lease ran
+     * out, and another claimed it. What this one came to is let go.
+     */
+    private function overtaken(int|string $id, string $outcome): void
+    {
+        $this->logger?->warning(
+            'Run {id} {outcome} on a worker that no longer held it: its lease ran out and another took it over. That outcome is dropped.',
+            ['id' => $id, 'outcome' => $outcome],
+        );
     }
 
     /**
      * Puts a run aside in a sleep or an await, and arranges its waking.
      */
-    private function suspend(int|string $id, Suspended $suspended, Execution $run): void
+    private function suspend(int|string $id, string $claim, Suspended $suspended, Execution $run): void
     {
         $status = $suspended->wakeAt === null ? Status::Waiting : Status::Sleeping;
-        $this->db
-            ->table($this->table)
-            ->where('id', $id)
+        $put = $this
+            ->held($id, $claim)
             ->where('status', Status::Running->value)
             ->update([
                 'status' => $status->value,
                 'wake_at' => $suspended->wakeAt,
                 'lease_until' => null,
+                'claim' => null,
                 'updated_at' => $this->now(),
             ]);
+        if ($put !== 1) {
+            $this->overtaken($id, $status === Status::Waiting ? 'waited' : 'slept');
+            return;
+        }
         if ($suspended->wakeAt !== null) {
             $this->queue->later(max(0, $suspended->wakeAt - $this->now()), ResumeRun::class, run: $id);
             return;
@@ -319,19 +357,22 @@ final class Runs implements RunsContract
     /**
      * Counts a failed try, and tries again after the backoff or fails the run.
      */
-    private function fail(int|string $id, string $class, int $attempts, \Throwable $error): void
+    private function fail(int|string $id, string $claim, string $class, int $attempts, \Throwable $error): void
     {
         $failed = $attempts >= $this->tries;
-        $this->db
-            ->table($this->table)
-            ->where('id', $id)
-            ->update([
-                'status' => $failed ? Status::Failed->value : Status::Pending->value,
-                'attempts' => $attempts,
-                'error' => self::describe($error),
-                'lease_until' => null,
-                'updated_at' => $this->now(),
-            ]);
+        $counted = $this->held($id, $claim)->update([
+            'status' => $failed ? Status::Failed->value : Status::Pending->value,
+            'attempts' => $attempts,
+            'error' => self::describe($error),
+            'lease_until' => null,
+            'claim' => null,
+            'updated_at' => $this->now(),
+        ]);
+        if ($counted !== 1) {
+            // Not this worker's to count, nor to try again: the run is another's now.
+            $this->overtaken($id, 'failed');
+            return;
+        }
         $context = [
             'run' => $class,
             'id' => $id,
@@ -355,41 +396,45 @@ final class Runs implements RunsContract
         $this->queue->later($wait, ResumeRun::class, run: $id);
     }
 
-    private function release(int|string $id): void
+    private function release(int|string $id, string $claim): void
     {
-        $this->db
-            ->table($this->table)
-            ->where('id', $id)
+        $this
+            ->held($id, $claim)
             ->where('status', Status::Running->value)
             ->update([
                 'status' => Status::Pending->value,
                 'lease_until' => null,
+                'claim' => null,
                 'updated_at' => $this->now(),
             ]);
     }
 
     /**
-     * Pushes a ResumeRun for a run that waits, so that one only.
+     * Pushes a ResumeRun for a run that waits, then marks it pending, so that
+     * one is pushed only. The job goes first: if pushing it fails the run is
+     * still waiting, and sending the signal again wakes it. A job that is
+     * taken before the run is marked finds it waiting, which resume() claims.
      */
     private function wake(int|string $id): void
     {
-        $woken = $this->db
+        if ($this->db->table($this->table)->where('id', $id)->value('status') !== Status::Waiting->value) {
+            return;
+        }
+        $this->queue->push(ResumeRun::class, run: $id);
+        $this->db
             ->table($this->table)
             ->where('id', $id)
             ->where('status', Status::Waiting->value)
             ->update(['status' => Status::Pending->value, 'updated_at' => $this->now()]);
-        if ($woken === 1) {
-            $this->queue->push(ResumeRun::class, run: $id);
-        }
     }
 
     /**
      * Keeps the lease on a run while it runs, renewing it every third of its length.
      */
-    private function renew(int|string $id, Cancellation $ended): ?Task
+    private function renew(int|string $id, string $claim, Cancellation $ended): ?Task
     {
         $loop = EventLoop::current();
-        return Task::spawn($loop, function () use ($loop, $id, $ended): void {
+        return Task::spawn($loop, function () use ($loop, $id, $claim, $ended): void {
             while (true) {
                 try {
                     Async::sleep($loop, max(1, intdiv($this->lease, 3)), $ended);
@@ -397,9 +442,9 @@ final class Runs implements RunsContract
                     return;
                 }
                 try {
-                    $this->db
-                        ->table($this->table)
-                        ->where('id', $id)
+                    // Only while this claim holds it: one that was overtaken must not extend another's lease.
+                    $this
+                        ->held($id, $claim)
                         ->where('status', Status::Running->value)
                         ->update([
                             'lease_until' => $this->now() + $this->lease,

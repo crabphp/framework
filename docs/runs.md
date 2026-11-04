@@ -142,7 +142,7 @@ final readonly class ApproveResearch
 }
 ```
 
-The first signal under a name is the one kept; `signal()` returns false for a later one, for a run that has ended and for one that does not exist. A signal may come before the run reaches its `await()`: it is kept for it, and the run does not wait.
+The first signal under a name is the one kept; `signal()` returns false for a later one, for a run that has ended and for one that does not exist. Sending one again is safe: if the run's waking did not reach the queue, as when the queue was down, the run is still waiting, and a repeated signal wakes it. A signal may come before the run reaches its `await()`: it is kept for it, and the run does not wait.
 
 ## Starting a run
 
@@ -177,7 +177,7 @@ A run is resumed by running its `handle()` again from the top. Each step already
 - when a signal it waits for is given;
 - after the worker running it died, once its lease runs out.
 
-One worker runs a run at a time. It holds a lease on it, renewed every third of `runs.lease` while it runs. A resumption that finds the run held by another worker does nothing, and looks again when the lease would have run out, so a run whose worker died is taken up again.
+One worker runs a run at a time. It holds a lease on it, renewed every third of `runs.lease` while it runs. A resumption that finds the run held by another worker does nothing, and looks again when the lease would have run out, so a run whose worker died is taken up again. Each claim carries a token of its own: a worker that stalled past its lease and was overtaken can no longer renew the run or say how it ended, and what it came to is logged as a warning and dropped.
 
 ### The rules a run follows
 
