@@ -28,6 +28,41 @@ final class ActorsTest extends TestCase
         self::assertInstanceOf(\Crab\Engine\Runtime::class, $app->runtime('tcp://127.0.0.1:0'));
     }
 
+    public function testAnAskKeepsToItsTimeoutAndCancellationWhileTheReplyChannelIsMade(): void
+    {
+        $loop = EventLoop::current();
+        $carrier = new SlowSubscribingCarrier();
+        $actors = new Actors(carrier: $carrier);
+        $ask = static fn(
+            float $timeout,
+            ?Cancellation $cancellation = null,
+        ): Task => Task::spawn($loop, static function () use ($actors, $timeout, $cancellation): string {
+            try {
+                $actors->ask(Counter::class, 'k', 'add', timeout: $timeout, cancellation: $cancellation);
+                return 'answered';
+            } catch (NoReply $error) {
+                return 'timed out';
+            } catch (CancelledException) {
+                return 'cancelled';
+            }
+        });
+        $timed = $ask(0.02);
+        $stopped = new Cancellation();
+        $cancelled = $ask(30.0, $stopped);
+        $patient = $ask(30.0);
+        while ($carrier->finish === null) {
+            Async::sleep($loop, 0.0);
+        }
+        // The subscription is still being made: the short ask gives up at its time, the cancelled one at once.
+        self::assertSame('timed out', $timed->await());
+        $stopped->cancel();
+        self::assertSame('cancelled', $cancelled->await());
+        self::assertFalse($patient->isComplete(), 'One caller giving up gave up the shared subscription.');
+        $patient->cancel();
+        ($carrier->finish)();
+        $actors->stop();
+    }
+
     public function testEachKeyHasOneActorThatKeepsItsStateBetweenMessages(): void
     {
         $actors = new Actors();
@@ -297,6 +332,28 @@ final class Forwarder
 final class NotAnActor
 {
     public function handle(string $key): void {}
+}
+
+/**
+ * A carrier whose subscription is held until the test lets it finish, as a slow connection holds it.
+ */
+final class SlowSubscribingCarrier implements Carrier
+{
+    public ?\Closure $finish = null;
+
+    public function publish(array $channels, string $message): void {}
+
+    public function subscribe(string $channel, \Closure $receive, \Closure $gap): void
+    {
+        Async::await(EventLoop::current(), function (\Closure $resume): null {
+            $this->finish = $resume;
+            return null;
+        });
+    }
+
+    public function unsubscribe(string $channel): void {}
+
+    public function close(): void {}
 }
 
 /**

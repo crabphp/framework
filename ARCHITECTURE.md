@@ -53,7 +53,7 @@ A contract exists for everything a package touches, including where no PSR exist
 | `Http\Request` | PSR-7 `ServerRequestInterface` | today |
 | `Http\MiddlewareStack` | none | today |
 | `Container\Container` | PSR-11 `ContainerInterface` | today |
-| `Provider`, `WorkerProvider` | none | today |
+| `Plugin`, `WorkerPlugin` | none | today |
 | `Console\Command`, `Input`, `Output` | none | today |
 | `Config\Config` | none | today |
 | `Database\Database`, `Database\Connection`, `Database\Query` | none | today |
@@ -86,7 +86,7 @@ A contract exists for everything a package touches, including where no PSR exist
 | `Schedule\Schedule`, `Schedule\Task` | none | today |
 | `Queue\JobRan`, `Schedule\TaskRan` | none; events dispatched through PSR-14 after each try of a job and each run of a task | today |
 | `Runner`, `Workers` | none; runs worker processes that serve no requests, as one group or several | today |
-| `Servers` | none; what `start` can run beside HTTP, registered by providers under an id | today |
+| `Servers` | none; what `start` can run beside HTTP, registered by plugins under an id | today |
 
 Contracts are the stable surface. Once there is a release, a contract changes only in a major version; component classes may change freely behind it.
 
@@ -97,18 +97,18 @@ Every component has the same shape, so the tenth looks like the first.
 | Part | Rule |
 | --- | --- |
 | Folder | `src/<Component>/`, namespace `Crab\<Component>` |
-| Standalone | Works with `new`, without `App`, the container or a provider |
+| Standalone | Works with `new`, without `App`, the container or a plugin |
 | Contract | In `src/Contracts/<Component>/` if packages touch it |
-| Provider | A component ships `<Component>Provider` that binds its contract; core components are bound by `App`, and `App::configure()` applies the framework's list `App::PROVIDERS` |
+| Plugin | A component ships `<Component>Plugin` that binds its contract; core components are bound by `App`, and `App::configure()` applies the framework's list `App::PLUGINS` |
 | Helpers | `helpers.php` in the folder, only for functions that need this component alone |
 | Tests | `tests/<Component>/`, exercising the component without `App` |
 | Package *(proposed)* | Its own `composer.json`, published read-only from this repository as `crabphp/<component>`, the way the engine already is |
 
 Publishing components separately is what lets someone use the router or container without the framework. It costs a split step at release time and nothing day to day.
 
-An application made with `App::configure()` starts with `App::PROVIDERS`, in order: Database, Auth, Cache, Events, Queue, Schedule, HttpClient, Broadcast. Its own and its packages' providers follow through `withProviders()`. `remove:` leaves out a framework provider; `only:` replaces the framework's list, and the two cannot be combined. A framework provider named again is registered once. `TokenAuthProvider`, a concrete way of authenticating, and every package stay opt-in; nothing is found by convention. `new App()` used directly registers no providers.
+An application made with `App::configure()` starts with the core plugins, `App::PLUGINS`: Database, Auth, Cache, Storage, Events, HttpClient. The framework's optional ones, `App::OPTIONAL_PLUGINS` (Queue, Schedule, Runs, Broadcast, Actors, TokenAuth), and its packages' follow through `withPlugins()`, in the order given; the application's own setup comes last, through `withSetup()`. `remove:` leaves out a core plugin; `only:` replaces the core list, and the two cannot be combined. A framework plugin, core or optional, named again is registered once. Nothing is found by convention. `new App()` used directly registers no plugins.
 
-Registration declares bindings, commands and servers; it opens no connection and starts no job. With no database configured, a worker still starts and a database request names the settings to add. Queue and schedule servers run only when `server.with` switches them on.
+Registration declares bindings, commands and servers; it opens no connection and starts no job. With no database configured, a worker still starts and a database request names the settings to add. A plugin that registers a server, as the queue's and the schedule's do, has `start` run it: listing the plugin is what switches it on.
 
 ## Actions *(today)*
 
@@ -136,18 +136,18 @@ A long-running server has four phases. The most common bug in this style of fram
 
 | Phase | Runs in | What happens | State created here |
 | --- | --- | --- | --- |
-| 1. Define | Parent process, once | Load `.env` and config, create `App`, register providers, declare routes, middleware and commands | Definitions only: closures, class names, read-only config. No sockets, no files, no connections. |
+| 1. Define | Parent process, once | Load `.env` and config, create `App`, register plugins, declare routes, middleware and commands | Definitions only: closures, class names, read-only config. No sockets, no files, no connections. |
 | 2. Start | Each worker, after the engine forks | Build the middleware chain; run worker-start hooks | Worker-scoped objects: connections, pools, timers |
 | 3. Request | Each worker, many times, possibly overlapping | Request → error handler → middleware → router → action → response | Request-scoped data, carried **only** on the request object |
 | 4. Stop | Each worker | Drain in-flight requests, run worker-stop hooks, close connections | none |
 
-All four phases exist today. A provider that implements `WorkerProvider` gets `start(Worker $worker)` in phase 2 and `stop(Worker $worker)` in phase 4. Providers start in the order registered and stop in reverse. `stop()` runs only in a worker where every provider started, and after the event loop has stopped, so it cannot suspend.
+All four phases exist today. A plugin that implements `WorkerPlugin` gets `start(Worker $worker)` in phase 2 and `stop(Worker $worker)` in phase 4. Plugins start in the order registered and stop in reverse. `stop()` runs only in a worker where every plugin started, and after the event loop has stopped, so it cannot suspend.
 
 ### The three scopes
 
 | Scope | Lifetime | Examples | Rule |
 | --- | --- | --- | --- |
-| Process | Whole run, copied into every worker at fork | Config, route table, provider list | Fixed after phase 1; during it, providers may add defaults beneath the application's configuration |
+| Process | Whole run, copied into every worker at fork | Config, route table, plugin list | Fixed after phase 1; during it, plugins may add defaults beneath the application's configuration |
 | Worker | One worker's life | Container singletons, connection pools, logger | Shared by every request in that worker; must hold nothing belonging to one request |
 | Request | One request | The request, its attributes (route parameters, authenticated user, request id) | Travels as the PSR-7 request and its attributes; never stored in a service or a static |
 
@@ -253,19 +253,19 @@ Small and explicit; there are six, and no others are planned.
 
 | Point | How | Status |
 | --- | --- | --- |
-| Services | `Provider::register(Container)` | today |
-| Per-worker work | `WorkerProvider::start(Worker)` / `stop(Worker)` | today |
-| Around requests | Middleware. Around every request: `withMiddleware()` in `app.php`, or the `MiddlewareStack` contract from a provider. Around some: `middleware:` on a route or a group. | today |
+| Services | `Plugin::register(Container)` | today |
+| Per-worker work | `WorkerPlugin::start(Worker)` / `stop(Worker)` | today |
+| Around requests | Middleware. Around every request: `withMiddleware()` in `app.php`, or the `MiddlewareStack` contract from a plugin. Around some: `middleware:` on a route or a group. | today |
 | Commands | `Console` contract, `add()` | today |
-| Reacting to events | The `Events\Dispatcher` contract, PSR-14: `listen()` in a provider's `register()` | today, registered by default by `App::configure()` |
+| Reacting to events | The `Events\Dispatcher` contract, PSR-14: `listen()` in a plugin's `register()` | today, registered by default by `App::configure()` |
 | Worker processes | The `Runner` contract: `run($group, $work, $workers)` from a command, or `runAll()` for several groups under one parent | today |
-| Servers beside HTTP | The `Servers` contract: `add('chat', fn () => [new Workers(...)])` joins `start` as its own workers, `command()` and `process()` run in a process of their own; `server.with` switches each on; `reloads: false` keeps one across reloads | today |
+| Servers beside HTTP | The `Servers` contract: `add('chat', fn () => [new Workers(...)])` joins `start` as its own workers, `command()` and `process()` run in a process of their own; every one registered runs with `start`; `reloads: false` keeps one across reloads | today |
 
 No auto-discovery, no `boot()` phase, no global container accessor. `Route::get()` and `Command::add()` are static names for `$app->router` and `$app->console`, for declaring routes and commands before workers start; they are the only ones, and there is none for anything a request or a worker owns.
 
 ## Errors and observability
 
-- **One error path per entry point.** HTTP requests go through `ErrorHandler` *(today)*. Console commands report through `Console::run()` *(today)*. A task spawned on a worker that fails, a failure that escapes a timer, and a provider that fails to stop are written to the application's logger, and the worker keeps running *(today)*. A queue job that throws is logged, tried again and in the end kept as failed; a scheduled task that throws is logged and runs again when next due; neither stops its worker *(today)*.
+- **One error path per entry point.** HTTP requests go through `ErrorHandler` *(today)*. Console commands report through `Console::run()` *(today)*. A task spawned on a worker that fails, a failure that escapes a timer, and a plugin that fails to stop are written to the application's logger, and the worker keeps running *(today)*. A queue job that throws is logged, tried again and in the end kept as failed; a scheduled task that throws is logged and runs again when next due; neither stops its worker *(today)*.
 - **The engine drops nothing.** Whatever it catches goes to the group's failure callbacks, and so to the application's logger, or to standard error when there are none *(today)*.
 - **Fail at startup, not at first use.** Misconfiguration stops `start` with its cause *(today for every setting, middleware and the logger)*. Each setting is declared with a rule beside its default, and every one that does not fit is named at once with what it takes.
 - **Request ids** *(today, opt-in)*. `Http\RequestId` is middleware an application adds with `withMiddleware(prepend: [RequestId::class])`; it assigns an id, stores it as the `request_id` attribute, returns it in `X-Request-Id` and the error handler adds it to the failure's log record. It is opt-in because it costs about 2 µs per request. The logger is shared by overlapping requests, so it cannot add the id by itself; code that logs passes it in the context.
@@ -279,7 +279,7 @@ No auto-discovery, no `boot()` phase, no global container accessor. `Route::get(
 
 | Level | What | Where |
 | --- | --- | --- |
-| Component | Each component alone, no `App`, no sockets; providers with worker hooks through `Testing\WorkerHarness` | `tests/<Component>/` |
+| Component | Each component alone, no `App`, no sockets; plugins with worker hooks through `Testing\WorkerHarness` | `tests/<Component>/` |
 | Application | `$app->handle($request)` end to end, no sockets | `tests/AppTest.php` |
 | Engine | Real sockets, workers, shutdown | `tests/Engine/` |
 | Boundary | Layer rules | `tests/EngineBoundaryTest.php`, `tests/LayerBoundaryTest.php` |
@@ -290,11 +290,11 @@ A PSR implementation should also pass that PSR's public conformance suite where 
 ## Build order
 
 1. **Close the contract gaps:** `Config`, `Router`, `Console` contracts; boundary tests for the layer rules. *Done.*
-2. **Worker lifecycle hooks:** `start` and `stop` for providers; error path for background tasks. *Done.*
+2. **Worker lifecycle hooks:** `start` and `stop` for plugins; error path for background tasks. *Done.*
 3. **Finish Http:** response cookies, multipart uploads, JSON bodies, bodies for router 404 and 405, request id middleware, warnings to exceptions. *Done.* A multipart body is read where the engine stored it, and an uploaded file is never held in memory. Still open: `getBody()` copies a body from the engine's storage when it is asked for.
 4. **Small PSR components:** clock (PSR-20), events (PSR-14), cache (PSR-16), HTTP client (PSR-18). *Done.* The client speaks HTTP/2 and HTTP/1.1 on the event loop, with TLS through PHP's streams, an HTTP proxy, a cookie jar, retries and a fake for tests, and finds addresses with the engine's `DnsResolver`. The cache keeps its entries in files, in a database table or in memory, behind a `Store` contract that a Redis store can later implement. File storage keeps files on named disks behind `Contracts\Storage\Disk`: a local folder and a memory disk in the framework, S3 and the services that speak its API in `crabphp/s3`, on the HTTP client rather than a blocking SDK.
 5. **Database.** *Connection pool, the thin query layer, the query builder, the schema builder and migrations are done, tested on SQLite and MySQL.* Models with relationships are not planned; see the decisions. `into()` reads rows into readonly record classes of the application's, with casts from their types, and writes them back. Crab's own MySQL driver waits on the event loop behind the `Connection` contract, so a worker serves other requests while a query runs; it is a connection's `async`.
-6. **Queue**, then **Scheduling**, each as its own worker group. *Done.* Jobs are kept in a database table and run by `queue:work`; scheduled tasks are run by `schedule:work`, with no cron entry. `start` starts both beside the HTTP workers when `server.with` switches them on, under the keeper, through the `Servers` contract, so that one command and one reload cover all three; a provider offers a server of its own the same way.
+6. **Queue**, then **Scheduling**, each as its own worker group. *Done.* Jobs are kept in a database table and run by `queue:work`; scheduled tasks are run by `schedule:work`, with no cron entry. `start` starts both beside the HTTP workers when their plugins are listed, under the keeper, through the `Servers` contract, so that one command and one reload cover all three; a plugin offers a server of its own the same way.
 7. **Validation, Auth.** *Validation is done, together with typed actions. Authentication is done: a way of authenticating is middleware that puts the user on the request, an action takes the user as a parameter, and tokens in the database are one such way, opt-in, with a migration the application owns.* Roles and permissions, and sessions, are not planned; see the decisions.
 8. **Application skeleton** (`crabphp/crab`) and the `make:*` commands. *The skeleton exists, kept minimal; it grows a folder when a component arrives. The `make:*` commands are `make:migration`, `make:middleware` and `make:command`; `config:publish` writes a section's complete configuration file, and `migrate:fresh` starts a development database over.*
 9. **Per-component packages**, CI and the first tagged release. Nothing above needs to be finished first: what exists is a usable API framework, and use will say what is missing.
@@ -317,7 +317,7 @@ All agreed on 2026-10-04:
 
 1. **Contracts:** Crab keeps its own contract for everything a package touches.
 2. **Concurrency model:** contracts are written for async drivers; blocking drivers ship first.
-3. **Worker hooks:** a provider may also implement `WorkerProvider`, with `start(Worker)` and `stop(Worker)`.
+3. **Worker hooks:** a plugin may also implement `WorkerPlugin`, with `start(Worker)` and `stop(Worker)`.
 4. **Packaging:** each component is published as its own package, at step 9 of the build order.
 5. **Global helpers:** process-scope values only (`config()`, `env()`), permanently.
 

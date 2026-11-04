@@ -107,10 +107,20 @@ final class Actors implements ActorsContract
         $this->check($actor, $key);
         $data = self::plain($message);
         $cancellation?->throwIfCancelled();
-        if ($this->remote($actor, $key)) {
-            $this->listen();
-        }
         $loop = EventLoop::current();
+        // One deadline for all of it: waiting for the reply channel counts against the timeout too.
+        $deadline = microtime(true) + $timeout;
+        if ($this->remote($actor, $key)) {
+            $this->listen(
+                $loop,
+                $timeout,
+                $cancellation,
+                static fn(): NoReply => new NoReply(
+                    "{$actor} for \"{$key}\" did not reply within {$timeout} seconds: the reply channel was not ready.",
+                ),
+            );
+            $timeout = max(0.0, $deadline - microtime(true));
+        }
         $id = bin2hex(random_bytes(8));
         // Settled once, by the reply, the timeout or the cancellation; a reply may come while it is still being sent.
         return Async::await(
@@ -327,7 +337,14 @@ final class Actors implements ActorsContract
     /**
      * Subscribes to this process's replies, once.
      */
-    private function listen(): void
+    /**
+     * Subscribes to this process's reply channel, once, for every ask. A
+     * caller waits for it no longer than its own timeout, and its
+     * cancellation ends only its own wait: the others still share it.
+     *
+     * @param \Closure(): \Throwable $late What the caller is told when its time runs out first.
+     */
+    private function listen(EventLoop $loop, float $timeout, ?Cancellation $cancellation, \Closure $late): void
     {
         if ($this->replies !== null) {
             return;
@@ -346,9 +363,17 @@ final class Actors implements ActorsContract
                 );
                 $this->replies = $channel;
             });
+        $wait = new Cancellation();
+        $unsubscribe = $cancellation?->subscribe($wait->cancel(...));
+        $timer = $loop->delay($timeout, static fn() => $wait->cancel($late()));
         try {
-            $task->await();
+            $task->await($wait);
+        } catch (CancelledException $error) {
+            // The caller's own cancellation, or the time it was given running out.
+            throw $error->getPrevious() instanceof NoReply ? $error->getPrevious() : $error;
         } finally {
+            $loop->cancel($timer);
+            $unsubscribe?->__invoke();
             if ($this->subscribing === $task && $task->isComplete()) {
                 $this->subscribing = null;
             }

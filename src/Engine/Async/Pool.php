@@ -123,14 +123,25 @@ final class Pool
         if ($this->closed || $this->waiting === []) {
             return;
         }
-        $waiter = $this->waiting[array_key_first($this->waiting)];
         try {
-            $replacement = $this->lend($this->create());
+            $replacement = $this->create();
         } catch (Throwable $error) {
-            $waiter(null, $error);
+            // Told to whoever waits first now: the one waiting when creation began may have left.
+            if ($this->waiting !== []) {
+                $this->waiting[array_key_first($this->waiting)](null, $error);
+            }
             return;
         }
-        $waiter($replacement);
+        // Creation may have waited: who is owed the replacement is decided now, not before.
+        if ($this->closed) {
+            $this->destroy($replacement);
+            return;
+        }
+        if ($this->waiting !== []) {
+            $this->waiting[array_key_first($this->waiting)]($this->lend($replacement));
+            return;
+        }
+        $this->idle[] = $replacement;
     }
 
     /**

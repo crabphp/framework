@@ -138,6 +138,42 @@ final class PoolTest extends TestCase
         self::assertSame(1, $pool->stats()['borrowed']);
     }
 
+    public function testAReplacementGoesToWhoeverWaitsWhenItIsMadeNotWhenItWasAskedFor(): void
+    {
+        $loop = $this->newLoop();
+        $made = 0;
+        $leaving = new Cancellation();
+        $pool = new Pool(
+            $loop,
+            static function () use (&$made, $loop, $leaving): stdClass {
+                $resource = new stdClass();
+                $resource->number = ++$made;
+                if ($made === 2) {
+                    // The waiter it was for leaves while it is made, which takes a turn of the loop.
+                    $leaving->cancel();
+                    Async::sleep($loop, 0.0);
+                }
+                return $resource;
+            },
+            max: 1,
+        );
+        $held = $pool->acquire();
+        $left = $this->spawn($loop, static function () use ($pool, $leaving): string {
+            try {
+                $pool->acquire($leaving);
+                return 'acquired';
+            } catch (CancelledException) {
+                return 'left';
+            }
+        });
+        $discard = $this->spawn($loop, static fn() => $pool->discard($held));
+        $this->awaitTask($loop, $discard);
+        self::assertSame('left', $this->awaitTask($loop, $left));
+        // Not lent to no one: it is idle, and the next caller is given it.
+        self::assertSame(['max' => 1, 'idle' => 1, 'borrowed' => 0, 'waiting' => 0], $pool->stats());
+        self::assertSame(2, $pool->acquire()->number);
+    }
+
     public function testAFailedCreateFreesItsPlaceAndReachesAWaiter(): void
     {
         $loop = $this->newLoop();

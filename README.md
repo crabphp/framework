@@ -1,6 +1,6 @@
 # Crab Framework
 
-A minimal PHP 8.4 framework for JSON APIs, built on the Crab networking engine. It is written to be read and understood, by people and by AI agents alike: explicit types, no hidden state, one way to do each thing. It is at an early stage and has no release yet: the engine is implemented and measured, and the components an API needs are built on it, from routing and validation to the database, a cache, a queue and a scheduler. Components follow the PHP-FIG standards: PSR-7 messages, PSR-17 factories, PSR-15 handlers and middleware, a PSR-11 container, a PSR-3 logger, a PSR-14 dispatcher, a PSR-16 cache, a PSR-18 client and a PSR-20 clock.
+A minimal PHP 8.4 framework for JSON APIs, built on the Crab networking engine. It is written to be read and understood, by people and by AI agents alike: explicit types, no hidden state, one way to do each thing. It is at an early stage, with releases tagged on GitHub and not yet on Packagist: the engine is implemented and measured, and the components an API needs are built on it, from routing and validation to the database, a cache, a queue and a scheduler. Components follow the PHP-FIG standards: PSR-7 messages, PSR-17 factories, PSR-15 handlers and middleware, a PSR-11 container, a PSR-3 logger, a PSR-14 dispatcher, a PSR-16 cache, a PSR-18 client and a PSR-20 clock.
 
 The guide for writing an application is in [docs/](docs/documentation.md); run `composer docs` to read it in a browser.
 
@@ -137,7 +137,8 @@ The type of a parameter says what is accepted, and attributes add rules. This ho
 | Declaration | Accepts |
 | --- | --- |
 | `int`, `float`, `string`, `bool` | That value. JSON is not converted: `"36"` is not a whole number. A query string is text, so there `page=3` is read as `3`. |
-| `?type`, or a default value | May be left out |
+| `?type` | That, or null; sent all the same, as `"note": null` |
+| A default value, `int $page = 1`, or `?string $note = null` | May be left out |
 | A backed enum | One of its values |
 | `DateTimeImmutable` | A date, or a date and time with an offset, such as `2026-01-31` or `2026-01-31T12:00:00Z`; not a phrase such as `now` |
 | Another class | An object, checked the same way |

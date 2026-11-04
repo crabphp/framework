@@ -11,7 +11,7 @@ Write the answers down before any code. They decide everything that follows.
 | Question | Why it matters | Cache example |
 | --- | --- | --- |
 | Is there a PSR for it? | The Crab contract extends it | PSR-16 `CacheInterface` |
-| Is it core or optional? | Core is bound by `App`; optional ships a provider | Optional |
+| Is it core or optional? | Core is bound by `App`; optional ships a plugin | Optional |
 | What scope is its state? | Process, worker or request; see the table in step 4 | Worker: one store connection per worker |
 | Does it do I/O? | I/O components expose a pool and open nothing in the parent | Yes for Redis, no for an in-memory array |
 | Which components does it build on? | Each one must be listed in `LayerBoundaryTest::ALLOWED` | None |
@@ -25,7 +25,7 @@ Decide what a package will type-hint, before writing the class.
 - **A PSR exists:** add `Crab\Contracts\<Component>\<Name>` extending the PSR interface, with the extra methods Crab needs, or none. Cache does this with `Crab\Contracts\Cache\Cache extends Psr\SimpleCache\CacheInterface`.
 - **No PSR exists:** add `Crab\Contracts\<Component>\<Name>` on its own.
 
-Every service has a Crab contract, even one that adds nothing to its PSR interface: it is the name applications ask for, and the place a method goes when Crab needs one. The provider binds the contract and also binds the PSR interface to the same object.
+Every service has a Crab contract, even one that adds nothing to its PSR interface: it is the name applications ask for, and the place a method goes when Crab needs one. The plugin binds the contract and also binds the PSR interface to the same object.
 
 A contract references PSR interfaces, other contracts and engine types, nothing else. Keep it to what a package needs; methods only the glue uses do not belong in it.
 
@@ -78,10 +78,10 @@ There is no per-request container scope. A `bind()` entry is new each time it is
 
 Tests go in `tests/<Component>/` and construct the class directly. No `App`, no container, no sockets. Cover the failure paths (missing key, unwritable directory, expired entry), not only the success path. If a public conformance suite exists for the PSR, run the component against it.
 
-A provider with `start()` and `stop()` is tested with `Testing\WorkerHarness`, which runs it through a real worker's life in the test process:
+A plugin with `start()` and `stop()` is tested with `Testing\WorkerHarness`, which runs it through a real worker's life in the test process:
 
 ~~~php
-$hits = WorkerHarness::run([new CacheProvider()], static function (Worker $worker, Container $container): int {
+$hits = WorkerHarness::run([new CachePlugin()], static function (Worker $worker, Container $container): int {
     $cache = $container->get(Cache::class);
     $cache->set('key', 'value');
     Async::sleep($worker->loop, 0.01);   // the body may wait
@@ -89,11 +89,11 @@ $hits = WorkerHarness::run([new CacheProvider()], static function (Worker $worke
 });
 ~~~
 
-It registers the providers, starts them, runs the body, stops them, and throws again anything the body, a provider or a timer threw.
+It registers the plugins, starts them, runs the body, stops them, and throws again anything the body, a plugin or a timer threw.
 
-## 6. Write the provider
+## 6. Write the plugin
 
-An optional component ships `<Component>Provider` in its own folder. This is the only place the component meets configuration and the container.
+An optional component ships `<Component>Plugin` in its own folder. This is the only place the component meets configuration and the container.
 
 ~~~php
 namespace Crab\Cache;
@@ -101,10 +101,10 @@ namespace Crab\Cache;
 use Crab\Contracts\Cache\Cache;
 use Crab\Contracts\Config\Config;
 use Crab\Contracts\Container\Container;
-use Crab\Contracts\Provider;
+use Crab\Contracts\Plugin;
 use Psr\SimpleCache\CacheInterface;
 
-final class CacheProvider implements Provider
+final class CachePlugin implements Plugin
 {
     public function register(Container $container): void
     {
@@ -126,9 +126,9 @@ final class CacheProvider implements Provider
 - Declare every setting and its default once, with `Config::defaults()`. The component then works with no configuration file, a value the application sets wins, and `config('cache.ttl')` reads the same value everywhere.
 - Bind the **interface**, not the class.
 - Reach other parts of the application through their contracts in the container: `Contracts\Routing\Router` to add routes, `Contracts\Console\Console` to add commands, `Contracts\Http\MiddlewareStack` to add middleware around every route.
-- If something must be open for the worker's whole life, or released when it stops, implement `Contracts\WorkerProvider` as well. `start(Worker $worker, Container $container)` opens it and `stop(Worker $worker, Container $container)` releases it; `stop()` must not suspend. The provider itself stays stateless, since both receive the container.
+- If something must be open for the worker's whole life, or released when it stops, implement `Contracts\WorkerPlugin` as well. `start(Worker $worker, Container $container)` opens it and `stop(Worker $worker, Container $container)` releases it; `stop()` must not suspend. The plugin itself stays stateless, since both receive the container.
 
-The application then opts in with one line: `$app->register(CacheProvider::class)`.
+The application then opts in with one line: `$app->register(CachePlugin::class)`.
 
 ## 7. Give every entry point an error path
 
@@ -157,7 +157,7 @@ In the same change:
 - [ ] The contract, or the decision to use a PSR directly, is in place before the class.
 - [ ] The class works with `new`, opens nothing in its constructor and holds no request state.
 - [ ] Tests in `tests/<Component>/` pass without `App`, and cover failures.
-- [ ] An optional component has a provider that only declares defaults and binds.
+- [ ] An optional component has a plugin that only declares defaults and binds.
 - [ ] Per-worker resources are opened in `start()` and released in `stop()`, tested with `WorkerHarness`.
 - [ ] Every entry point outside a request logs its failures.
 - [ ] `composer test` passes, including the boundary tests.
@@ -174,4 +174,4 @@ In the same change:
 | Calling `env()` outside a config file | Configuration has two sources and cannot be cached | Read `config()` |
 | Putting the interface inside the component folder | Packages must depend on the implementation to use it | Put it in `Crab\Contracts\<Component>` |
 | Passing a default at every `config()` call | The same setting has different defaults in different places | Declare it once with `Config::defaults()` |
-| Adding a `boot()` step | It reintroduces ordering between providers | Bind closures; they run after every provider has registered |
+| Adding a `boot()` step | It reintroduces ordering between plugins | Bind closures; they run after every plugin has registered |

@@ -1694,7 +1694,7 @@ final class ServerTest extends TestCase
     public function testALargeUploadIsTakenUpToTheSizeAllowedAndTheApplicationSaysItIsUp(): void
     {
         mkdir($this->directory . '/config');
-        file_put_contents($this->directory . '/config/server.php', "<?php\nreturn ['max_body' => 24 * 1024 * 1024];\n");
+        file_put_contents($this->directory . '/config/server.php', "<?php\nreturn ['max_body' => 12 * 1024 * 1024];\n");
         file_put_contents(
             $this->directory . '/app.php',
             "<?php\nreturn Crab\\App::configure(__DIR__)->withRouting(routes: 'app/routes.php', health: '/up')->create();\n",
@@ -1739,7 +1739,8 @@ final class ServerTest extends TestCase
             );
 
             $content = random_bytes(1024 * 1024);
-            $content = str_repeat($content, 16);
+            // Four times what a worker keeps in memory, and small enough for PHP's default memory limit.
+            $content = str_repeat($content, 8);
             $upload = static fn(string $content): \Crab\Contracts\HttpClient\Response => $http->request(
                 'POST',
                 '/upload',
@@ -1758,7 +1759,7 @@ final class ServerTest extends TestCase
             self::assertLessThan(
                 2 * 1024 * 1024,
                 $stored->json()['memory'],
-                'A 16 MiB file was stored without being held in memory.',
+                'An 8 MiB file was stored without being held in memory.',
             );
 
             self::assertSame(
