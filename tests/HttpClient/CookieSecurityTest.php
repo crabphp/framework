@@ -122,6 +122,31 @@ final class CookieSecurityTest extends TestCase
             'https://victim.github.io/',
             '',
         ];
+        yield 'the base of a wildcard rule' => [
+            'https://a.b.kawasaki.jp/',
+            'Domain=kawasaki.jp',
+            'https://c.d.kawasaki.jp/',
+            '',
+        ];
+        yield 'another wildcard base' => ['https://a.b.nom.br/', 'Domain=nom.br', 'https://c.d.nom.br/', ''];
+        yield 'an exception under a wildcard base' => [
+            'https://a.city.kawasaki.jp/',
+            'Domain=city.kawasaki.jp',
+            'https://b.city.kawasaki.jp/',
+            'id=1',
+        ];
+        yield 'a punycode public suffix' => [
+            'https://attacker.xn--55qx5d.cn/',
+            'Domain=xn--55qx5d.cn',
+            'https://victim.xn--55qx5d.cn/',
+            '',
+        ];
+        yield 'a Unicode domain, which cannot be checked' => [
+            'https://attacker.aéroport.ci/',
+            'Domain=AÉROPORT.ci',
+            'https://victim.aéroport.ci/',
+            '',
+        ];
     }
 
     #[DataProvider('publicSuffixCookies')]

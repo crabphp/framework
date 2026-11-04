@@ -50,6 +50,10 @@ final class BodySink
     private ?string $part = null;
     private ?\InflateContext $inflate = null;
     /**
+     * Compressed bytes given to the current decoder, to tell where its stream ended.
+     */
+    private int $fed = 0;
+    /**
      * The first byte of a deflate body, held until the second comes: the
      * two together tell whether it has zlib's header. A piece of one byte is
      * as likely as any other on a network.
@@ -144,23 +148,9 @@ final class BodySink
             $this->prefix = '';
         }
         foreach (str_split($bytes, self::INFLATE_STEP) as $piece) {
-            if ($piece === '') {
-                continue;
+            while ($piece !== '') {
+                $piece = $this->inflate($piece);
             }
-            // "deflate" is sent both with and without its two-byte header; the first bytes tell which.
-            $this->inflate ??= inflate_init(match (true) {
-                $this->coding === 'gzip' => ZLIB_ENCODING_GZIP,
-                strlen($piece) > 1
-                    && (ord($piece[0]) & 0x0F) === 8
-                    && (((ord($piece[0]) << 8) | ord($piece[1])) % 31) === 0
-                    => ZLIB_ENCODING_DEFLATE,
-                default => ZLIB_ENCODING_RAW,
-            });
-            $inflated = @inflate_add($this->inflate, $piece);
-            if ($inflated === false) {
-                throw new \RuntimeException('the answer says it is compressed and is not');
-            }
-            $this->keep($inflated);
         }
     }
 
@@ -191,6 +181,47 @@ final class BodySink
         }
         rewind($this->storage);
         return new Stream($this->storage);
+    }
+
+    /**
+     * Decodes what it can of a piece, and gives back what is left of it for
+     * the next gzip member: a gzip body may be several, one after another.
+     * Anything after a deflate stream, or after a gzip member that is not
+     * another member, is refused rather than left unread.
+     */
+    private function inflate(string $piece): string
+    {
+        if ($this->inflate !== null && inflate_get_status($this->inflate) === ZLIB_STREAM_END) {
+            if ($this->coding !== 'gzip') {
+                throw new \RuntimeException('the answer has more after the end of its compressed body');
+            }
+            // The member before is complete: this is the start of the next one.
+            $this->inflate = null;
+        }
+        if ($this->inflate === null) {
+            // "deflate" is sent both with and without its two-byte header; the first bytes tell which.
+            $this->inflate = inflate_init(match (true) {
+                $this->coding === 'gzip' => ZLIB_ENCODING_GZIP,
+                strlen($piece) > 1
+                    && (ord($piece[0]) & 0x0F) === 8
+                    && (((ord($piece[0]) << 8) | ord($piece[1])) % 31) === 0
+                    => ZLIB_ENCODING_DEFLATE,
+                default => ZLIB_ENCODING_RAW,
+            });
+            $this->fed = 0;
+        }
+        $inflated = @inflate_add($this->inflate, $piece);
+        if ($inflated === false) {
+            throw new \RuntimeException('the answer says it is compressed and is not');
+        }
+        $this->fed += strlen($piece);
+        $this->keep($inflated);
+        if (inflate_get_status($this->inflate) !== ZLIB_STREAM_END) {
+            return '';
+        }
+        // Where the stream ended in this piece: what is after it is the next member's.
+        $left = $this->fed - inflate_get_read_len($this->inflate);
+        return $left > 0 ? substr($piece, -$left) : '';
     }
 
     /**

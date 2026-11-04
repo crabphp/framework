@@ -110,6 +110,35 @@ final class FakeClientTest extends TestCase
         self::assertSame(['a'], $sent->getHeader('X-Team'));
     }
 
+    public function testEveryGzipMemberIsReadAndOneCutShortOrAnythingAfterTheEndIsRefused(): void
+    {
+        $gzip = static fn(string $body): \Crab\Http\Response => new \Crab\Http\Response(
+            200,
+            ['Content-Encoding' => 'gzip'],
+            $body,
+        );
+        $http = new FakeClient([
+            'GET https://api.example.test/two' => $gzip(gzencode('first member') . gzencode('second member')),
+            'GET https://api.example.test/cut' => $gzip(
+                gzencode('first member') . substr((string) gzencode('second member'), 0, -6),
+            ),
+            'GET https://api.example.test/after' => new \Crab\Http\Response(
+                200,
+                ['Content-Encoding' => 'deflate'],
+                gzcompress('one') . 'x',
+            ),
+        ]);
+        self::assertSame('first membersecond member', (string) $http->get('https://api.example.test/two')->getBody());
+        foreach (['cut' => 'cut short', 'after' => 'more after the end'] as $path => $says) {
+            try {
+                $http->get("https://api.example.test/{$path}");
+                self::fail("/{$path} was accepted.");
+            } catch (\RuntimeException $error) {
+                self::assertStringContainsString($says, $error->getMessage());
+            }
+        }
+    }
+
     public function testAReplyWhoseLengthCannotBeTrustedIsRefusedAsOnTheWire(): void
     {
         $http = new FakeClient([

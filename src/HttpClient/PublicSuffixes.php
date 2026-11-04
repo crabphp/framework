@@ -23,19 +23,23 @@ final class PublicSuffixes
     private static ?array $list = null;
 
     /**
-     * Whether a domain is itself a public suffix: "co.uk" is, "example.co.uk" is not.
+     * Whether a domain is itself a public suffix: "co.uk" is, "example.co.uk"
+     * is not. The domain is ASCII, as a cookie's must be: a Unicode name is
+     * given in its punycode form, "xn--55qx5d.cn" for "公司.cn". One that is
+     * not ASCII is taken for a public suffix, as it cannot be checked safely.
      */
     public static function isPublic(string $domain): bool
     {
         $domain = strtolower(rtrim($domain, '.'));
-        if ($domain === '') {
+        if ($domain === '' || preg_match('/^[\x00-\x7F]*$/D', $domain) !== 1) {
             return true;
         }
         $list = self::$list ??= self::read();
         if (isset($list['exceptions'][$domain])) {
             return false;
         }
-        if (isset($list['rules'][$domain])) {
+        // "*.kawasaki.jp" leaves "kawasaki.jp" itself shared, as browsers take it.
+        if (isset($list['rules'][$domain]) || isset($list['wildcards'][$domain])) {
             return true;
         }
         $dot = strpos($domain, '.');
@@ -76,14 +80,15 @@ final class PublicSuffixes
     }
 
     /**
-     * A rule as written, and as a cookie's domain names it when it is not
-     * plain ASCII: in its punycode form.
+     * A rule in the form a cookie's domain gives it: ASCII, its Unicode labels
+     * in punycode. The list is normalized already, so no IDNA mapping is
+     * needed, and no extension: the encoding is done here.
      *
      * @return list<string>
      */
     private static function forms(string $rule): array
     {
-        if (preg_match('/^[\x00-\x7F]*$/D', $rule) === 1 || !function_exists('idn_to_ascii')) {
+        if (preg_match('/^[\x00-\x7F]*$/D', $rule) === 1) {
             return [$rule];
         }
         $marks = '';
@@ -95,7 +100,75 @@ final class PublicSuffixes
             $marks = $mark;
             $name = substr($name, strlen($mark));
         }
-        $ascii = idn_to_ascii($name, IDNA_DEFAULT, INTL_IDNA_VARIANT_UTS46);
-        return is_string($ascii) && $ascii !== $name ? [$rule, $marks . $ascii] : [$rule];
+        $labels = [];
+        foreach (explode('.', mb_strtolower($name, 'UTF-8')) as $label) {
+            $labels[] = preg_match('/^[\x00-\x7F]*$/D', $label) === 1 ? $label : 'xn--' . self::punycode($label);
+        }
+        return [$marks . implode('.', $labels)];
+    }
+
+    /**
+     * One label in punycode, RFC 3492's encoding, without its "xn--".
+     */
+    private static function punycode(string $label): string
+    {
+        $points = array_map(mb_ord(...), mb_str_split($label, 1, 'UTF-8'));
+        $output = implode('', array_map(chr(...), array_filter($points, static fn(int $point): bool => $point < 0x80)));
+        $basic = strlen($output);
+        $handled = $basic;
+        if ($basic > 0) {
+            $output .= '-';
+        }
+        $n = 0x80;
+        $delta = 0;
+        $bias = 72;
+        $total = count($points);
+        while ($handled < $total) {
+            $next = min(array_filter($points, static fn(int $point): bool => $point >= $n));
+            $delta += ($next - $n) * ($handled + 1);
+            $n = $next;
+            foreach ($points as $point) {
+                if ($point < $n) {
+                    ++$delta;
+                    continue;
+                }
+                if ($point !== $n) {
+                    continue;
+                }
+                $q = $delta;
+                for ($k = 36;; $k += 36) {
+                    $t = $k <= $bias ? 1 : ($k >= ($bias + 26) ? 26 : $k - $bias);
+                    if ($q < $t) {
+                        break;
+                    }
+                    $output .= self::digit($t + (($q - $t) % (36 - $t)));
+                    $q = intdiv($q - $t, 36 - $t);
+                }
+                $output .= self::digit($q);
+                $bias = self::adapt($delta, $handled + 1, $handled === $basic);
+                $delta = 0;
+                ++$handled;
+            }
+            ++$delta;
+            ++$n;
+        }
+        return $output;
+    }
+
+    private static function digit(int $value): string
+    {
+        return chr($value < 26 ? $value + 97 : $value + 22);
+    }
+
+    private static function adapt(int $delta, int $points, bool $first): int
+    {
+        $delta = $first ? intdiv($delta, 700) : intdiv($delta, 2);
+        $delta += intdiv($delta, $points);
+        $k = 0;
+        while ($delta > 455) {
+            $delta = intdiv($delta, 35);
+            $k += 36;
+        }
+        return $k + intdiv(36 * $delta, $delta + 38);
     }
 }
