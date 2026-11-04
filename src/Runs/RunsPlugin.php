@@ -82,7 +82,7 @@ final class RunsPlugin implements Plugin
                 array_map(intval(...), (array) $config->get('runs.backoff')),
                 (int) $config->get('runs.lease'),
                 // How long the queue holds a job taken by a worker that stopped: recover() waits that out.
-                retryAfter: (int) Supervisor::retrySettings($config)['retry_after'],
+                retryAfter: self::retryAfter($config, is_string($on) ? $on : (string) $config->get('queue.queue')),
             );
         });
         $container->singleton(RunsContract::class, Runs::class);
@@ -93,5 +93,21 @@ final class RunsPlugin implements Plugin
             $console->add('runs:recover', RecoverRuns::class);
             $console->add('runs:install', InstallRuns::class);
         }
+    }
+
+    /**
+     * The longest a worker of the runs' queue may hold a job without
+     * renewing it before the queue gives it to another: the queue's own
+     * retry_after, or a longer one of a supervisor that takes from it.
+     */
+    private static function retryAfter(Config $config, string $queue): int
+    {
+        $longest = (int) Supervisor::retrySettings($config)['retry_after'];
+        foreach (Supervisor::all($config) as $supervisor) {
+            if (in_array($queue, $supervisor->queues, true)) {
+                $longest = max($longest, $supervisor->retryAfter);
+            }
+        }
+        return $longest;
     }
 }

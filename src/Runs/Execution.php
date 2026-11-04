@@ -6,6 +6,7 @@ namespace Crab\Runs;
 
 use Crab\Contracts\Database\Connection;
 use Crab\Contracts\Runs\Run;
+use Crab\Contracts\Runs\Status;
 use Psr\Clock\ClockInterface;
 
 /**
@@ -127,6 +128,7 @@ final class Execution implements Run
                 ->table($this->runs)
                 ->where('id', $this->id)
                 ->where('claim', $this->claim)
+                ->where('status', Status::Running->value)
                 ->update(['updated_at' => $this->now()]);
             // MySQL counts the rows changed, not those found: touched again within the same second,
             // the row is unchanged and counted 0. The update has locked it all the same; look it up.
@@ -135,6 +137,7 @@ final class Execution implements Run
                     ->table($this->runs)
                     ->where('id', $this->id)
                     ->where('claim', $this->claim)
+                    ->where('status', Status::Running->value)
                     ->lockForUpdate()
                     ->first() === null
                     ? 0

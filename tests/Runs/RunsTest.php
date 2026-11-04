@@ -398,6 +398,53 @@ final class RunsTest extends TestCase
         self::assertSame([Status::Completed, 'current quote'], [$done?->status, $done?->result]);
     }
 
+    public function testAWorkerThatOnlyStalledWritesNothingOnceItsRunIsRetried(): void
+    {
+        RacedStepRun::$calls = 0;
+        $runs = new Runs($this->db, new Queue($this->store, clock: $this->clock), clock: $this->clock, lease: 3);
+        $id = $runs->start(RacedStepRun::class);
+        $this->lose();
+        $stalled = new \Fiber(static fn() => $runs->resume($id));
+        $stalled->start();
+        $this->clock->advance('+10 seconds');
+        // Its lease ran out: retried, as a run whose worker is gone.
+        self::assertTrue($runs->retry($id));
+        self::assertSame(Status::Failed, $runs->find($id)?->status);
+
+        // The stalled worker goes on: what it comes to is not kept, and the run is still the retry's.
+        $stalled->resume();
+        self::assertSame([Status::Failed, []], [$runs->find($id)?->status, $runs->find($id)?->steps]);
+        $job = $this->store->reserve($this->store->queues(), PHP_INT_MAX, 0);
+        self::assertNotNull($job);
+        $retried = new \Fiber(static fn() => $runs->resume($id, null, $job->data['retry']));
+        $retried->start();
+        $retried->resume();
+        $done = $runs->find($id);
+        self::assertSame([Status::Completed, 'current quote'], [$done?->status, $done?->result]);
+    }
+
+    public function testRecoveryWaitsAsLongAsTheLongestSupervisorOfTheRunsQueueHoldsAJob(): void
+    {
+        $app = new \Crab\App(new \Crab\Config\Config([
+            'database' => ['connections' => ['default' => ['driver' => 'sqlite', 'database' => ':memory:']]],
+            'queue' => [
+                'store' => 'memory',
+                'retry_after' => 90,
+                'supervisors' => [
+                    'runs' => ['queues' => ['high', 'default'], 'retry_after' => 600],
+                    'mail' => ['queues' => ['mail'], 'retry_after' => 3600],
+                ],
+            ],
+        ]));
+        $app->register(
+            \Crab\Database\DatabasePlugin::class,
+            \Crab\Queue\QueuePlugin::class,
+            \Crab\Runs\RunsPlugin::class,
+        );
+        $runs = $app->container->get(Runs::class);
+        self::assertSame(600, new \ReflectionProperty(Runs::class, 'retryAfter')->getValue($runs));
+    }
+
     public function testAWakingJobTakenBeforeItsPushReturnsLeavesTheRunToBeWokenAgain(): void
     {
         $queue = new EagerQueue(new Queue($this->store, clock: $this->clock));
