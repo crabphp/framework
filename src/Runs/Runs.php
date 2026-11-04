@@ -153,30 +153,83 @@ final class Runs implements RunsContract
 
     public function retry(int|string $id): bool
     {
-        if (!$this->retryable($id)) {
+        $row = $this->retryable($id);
+        if ($row === null) {
             return false;
         }
         // Nothing is changed here: the worker that takes this job claims the run from failed, in one
         // update. A push that fails, is lost, or is never made leaves the run failed, to retry again.
-        $this->queue->push(ResumeRun::class, run: $id, retry: true);
+        // The job names the claim the run ended under, so it restarts that failure and no later one: a
+        // second retry asked meanwhile finds the run claimed afresh, or failed again, and does nothing.
+        $this->queue->push(ResumeRun::class, run: $id, retry: (string) ($row['claim'] ?? ''));
         return true;
     }
 
     /**
-     * Whether a run can be tried again: failed, or left running by a worker
-     * that is gone and whose job the queue gave up on.
+     * Pushes a job for each run whose own was lost: one pending or sleeping
+     * whose time came more than a lease ago, untouched since. A process that
+     * died between keeping a run's state and pushing its job, or a queue
+     * that lost the job, leaves a run so; schedule `runs:recover` to find
+     * them. A job that is only late, behind others in its queue, is pushed
+     * again at most once a lease, and runs the run once: the first to
+     * claim it does, and the others find it taken.
+     *
+     * @return int How many runs it pushed a job for.
      */
-    private function retryable(int|string $id): bool
+    public function recover(int $limit = 1000): int
+    {
+        $now = $this->now();
+        $before = $now - $this->lease;
+        $rows = $this->db
+            ->table($this->table)
+            ->select('id', 'status', 'updated_at')
+            ->whereIn('status', [Status::Pending->value, Status::Sleeping->value])
+            ->where('updated_at', '<', $before)
+            ->where(static function ($query) use ($before): void {
+                $query->whereNull('wake_at')->orWhere('wake_at', '<', $before);
+            })
+            ->orderBy('id')
+            ->limit($limit)
+            ->get();
+        $pushed = 0;
+        foreach ($rows as $row) {
+            // Touched first, so the next look leaves it a lease longer; a worker that took it meanwhile wins.
+            $touched = $this->db
+                ->table($this->table)
+                ->where('id', $row['id'])
+                ->where('status', $row['status'])
+                ->where('updated_at', $row['updated_at'])
+                ->update(['updated_at' => $now]);
+            if ($touched !== 1) {
+                continue;
+            }
+            $this->queue->push(ResumeRun::class, run: $row['id']);
+            ++$pushed;
+        }
+        if ($pushed > 0) {
+            $this->logger?->warning('{count} runs had no job to carry them on, and were given one.', [
+                'count' => $pushed,
+            ]);
+        }
+        return $pushed;
+    }
+
+    /**
+     * Whether a run can be tried again: failed, or left running by a worker
+     * that is gone and whose job the queue gave up on. Its row if so.
+     *
+     * @return array<string, mixed>|null
+     */
+    private function retryable(int|string $id): ?array
     {
         $row = $this->db->table($this->table)->find($id);
         if ($row === null) {
-            return false;
+            return null;
         }
-        return (
+        $retryable =
             $row['status'] === Status::Failed->value
-            || $row['status'] === Status::Running->value
-            && (int) $row['lease_until'] < $this->now()
-        );
+            || $row['status'] === Status::Running->value && (int) $row['lease_until'] < $this->now();
+        return $retryable ? $row : null;
     }
 
     /**
@@ -209,17 +262,22 @@ final class Runs implements RunsContract
      * ResumeRun; a test may call it to carry a run forward.
      *
      * @param Cancellation|null $cancellation Stops the run where it waits, when the worker must.
+     * @param string|null $retry For a retry, the claim the run ended under, '' for none; null to resume it.
      */
-    public function resume(int|string $id, ?Cancellation $cancellation = null, bool $retry = false): void
+    public function resume(int|string $id, ?Cancellation $cancellation = null, ?string $retry = null): void
     {
         $now = $this->now();
         // This claim's own token: a worker that outlives its lease and is overtaken writes nothing after.
         $claim = bin2hex(random_bytes(16));
         // A retry takes a failed run, or one whose worker is gone, afresh: its tries start again.
-        $claimed = $retry
+        $claimed = $retry !== null
             ? $this->db
                 ->table($this->table)
                 ->where('id', $id)
+                ->where(static function ($query) use ($retry): void {
+                    // The failure it was asked for, not one since.
+                    $retry === '' ? $query->whereNull('claim') : $query->where('claim', $retry);
+                })
                 ->where(static function ($query) use ($now): void {
                     $query
                         ->where('status', Status::Failed->value)
@@ -237,6 +295,11 @@ final class Runs implements RunsContract
                     'updated_at' => $now,
                 ])
             : 0;
+        if ($retry !== null && $claimed !== 1) {
+            // Its failure was retried already, by another job asked for it, and what came of that is
+            // that job's to carry on. This one is not an ordinary resumption, to run it ahead of time.
+            return;
+        }
         $claimed = $claimed === 1
             ? 1
             : $this->db
@@ -380,12 +443,16 @@ final class Runs implements RunsContract
     private function fail(int|string $id, string $claim, string $class, int $attempts, \Throwable $error): void
     {
         $failed = $attempts >= $this->tries;
+        $wait = $this->backoff === [] ? 0 : $this->backoff[min($attempts, count($this->backoff)) - 1];
         $counted = $this->held($id, $claim)->update([
             'status' => $failed ? Status::Failed->value : Status::Pending->value,
             'attempts' => $attempts,
+            // When its next try is due, by which recover() knows its job is late.
+            'wake_at' => $failed ? null : $this->now() + $wait,
             'error' => self::describe($error),
             'lease_until' => null,
-            'claim' => null,
+            // A failed run keeps the claim it ended under, which a retry names to restart this failure.
+            'claim' => $failed ? $claim : null,
             'updated_at' => $this->now(),
         ]);
         if ($counted !== 1) {
@@ -408,7 +475,6 @@ final class Runs implements RunsContract
             );
             return;
         }
-        $wait = $this->backoff === [] ? 0 : $this->backoff[min($attempts, count($this->backoff)) - 1];
         $this->logger?->warning('Run {run} {id} failed on try {attempt} of {tries} and will be tried again in {wait} seconds: {message}', [
             ...$context,
             'wait' => $wait,

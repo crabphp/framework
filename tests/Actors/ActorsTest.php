@@ -87,16 +87,36 @@ final class ActorsTest extends TestCase
         }
         // Its message is still being published: the ask gives up at its time all the same.
         self::assertSame('timed out', $timed->await());
+        // The next ask is in line behind that publish, and its cancellation ends it there.
         $stopped = new Cancellation();
         $cancelled = $ask(30.0, $stopped);
-        while (count($carrier->held) < 2) {
-            Async::sleep($loop, 0.0);
-        }
+        Async::sleep($loop, 0.0);
         $stopped->cancel();
         self::assertSame('cancelled', $cancelled->await());
-        foreach ($carrier->held as $finish) {
-            $finish();
-        }
+        $carrier->held[0]();
+        Async::sleep($loop, 0.0);
+        self::assertCount(1, $carrier->sent, 'An ask cancelled before its turn was sent all the same.');
+        $actors->stop();
+    }
+
+    public function testARemoteAskAndALaterTellArePublishedInTheOrderSent(): void
+    {
+        $loop = EventLoop::current();
+        $carrier = new SlowPublishingCarrier(hold: false);
+        $actors = new Actors(carrier: $carrier);
+        $asked = Task::spawn($loop, static function () use ($actors): void {
+            try {
+                $actors->ask(Counter::class, 'k', 'first', timeout: 0.05);
+            } catch (NoReply) {
+            }
+        });
+        Async::sleep($loop, 0.0);
+        $actors->tell(Counter::class, 'k', 'second');
+        $asked->await();
+        self::assertSame(
+            ['first', 'second'],
+            array_map(static fn(string $sent): mixed => json_decode($sent, true)['d'], $carrier->sent),
+        );
         $actors->stop();
     }
 
@@ -397,9 +417,19 @@ final class SlowPublishingCarrier implements Carrier
 {
     /** @var list<\Closure> */
     public array $held = [];
+    /** @var list<string> */
+    public array $sent = [];
+
+    public function __construct(
+        private readonly bool $hold = true,
+    ) {}
 
     public function publish(array $channels, string $message): void
     {
+        $this->sent[] = $message;
+        if (!$this->hold) {
+            return;
+        }
         Async::await(EventLoop::current(), function (\Closure $resume): null {
             $this->held[] = $resume;
             return null;

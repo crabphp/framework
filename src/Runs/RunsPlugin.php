@@ -13,13 +13,14 @@ use Crab\Contracts\Queue\Queue;
 use Crab\Contracts\Runs\Runs as RunsContract;
 use Crab\Runs\Commands\InstallRuns;
 use Crab\Runs\Commands\ListRuns;
+use Crab\Runs\Commands\RecoverRuns;
 use Crab\Runs\Commands\RetryRun;
 use Psr\Clock\ClockInterface;
 use Psr\Log\LoggerInterface;
 
 /**
  * Binds runs from the "runs" configuration section, and adds the
- * `runs:install`, `runs:list` and `runs:retry` commands. Runs are kept in
+ * `runs:install`, `runs:list`, `runs:retry` and `runs:recover` commands. Runs are kept in
  * the database and carried out by queue workers, so the database and the
  * queue plugins come before this one.
  *
@@ -86,6 +87,7 @@ final class RunsPlugin implements Plugin
             $console = $container->get(Console::class);
             $console->add('runs:list', ListRuns::class);
             $console->add('runs:retry', RetryRun::class);
+            $console->add('runs:recover', RecoverRuns::class);
             $console->add('runs:install', InstallRuns::class);
         }
     }

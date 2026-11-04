@@ -20,7 +20,7 @@ final readonly class ResumeRun
         private Runs $runs,
     ) {}
 
-    public function handle(int|string $run, Cancellation $cancellation, bool $retry = false): void
+    public function handle(int|string $run, Cancellation $cancellation, ?string $retry = null): void
     {
         $this->runs->resume($run, $cancellation, $retry);
     }

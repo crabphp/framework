@@ -67,6 +67,21 @@ final class Actors implements ActorsContract
      */
     private ?string $replies = null;
 
+    /**
+     * Messages for other processes not yet published, by channel, in the
+     * order they were sent.
+     *
+     * @var array<string, list<Outgoing>>
+     */
+    private array $outbox = [];
+
+    /**
+     * The channels whose messages are being published.
+     *
+     * @var array<string, true>
+     */
+    private array $draining = [];
+
     private ?Task $subscribing = null;
     private bool $stopping = false;
 
@@ -94,7 +109,18 @@ final class Actors implements ActorsContract
     public function tell(string $actor, string $key, mixed $message): void
     {
         $this->check($actor, $key);
-        $this->route($actor, $key, self::plain($message), null);
+        $data = self::plain($message);
+        if (!$this->remote($actor, $key)) {
+            $this->local($actor, $key, $data, null);
+            return;
+        }
+        // In line behind whatever was sent before it, an ask's included, and waited for: a failure is told.
+        Async::await(EventLoop::current(), function (\Closure $resume, \Closure $fail) use ($actor, $key, $data): null {
+            $outgoing = $this->send($actor, $key, $data, null);
+            $outgoing->done = static fn(?\Throwable $error) => $error === null ? $resume() : $fail($error);
+            $this->ready($outgoing);
+            return null;
+        });
     }
 
     public function ask(
@@ -110,22 +136,39 @@ final class Actors implements ActorsContract
         $loop = EventLoop::current();
         // One deadline for all of it: waiting for the reply channel counts against the timeout too.
         $deadline = microtime(true) + $timeout;
+        $id = bin2hex(random_bytes(8));
+        $outgoing = null;
         if ($this->remote($actor, $key)) {
-            $this->listen(
-                $loop,
-                $timeout,
-                $cancellation,
-                static fn(): NoReply => new NoReply(
-                    "{$actor} for \"{$key}\" did not reply within {$timeout} seconds: the reply channel was not ready.",
-                ),
-            );
+            // In line from now, so a tell sent after it is published after it, even while the reply channel
+            // is still being made; nothing behind it is published until it is, or it is withdrawn.
+            $outgoing = $this->send($actor, $key, $data, $id);
+            try {
+                $this->listen(
+                    $loop,
+                    $timeout,
+                    $cancellation,
+                    static fn(): NoReply => new NoReply(
+                        "{$actor} for \"{$key}\" did not reply within {$timeout} seconds: the reply channel was not ready.",
+                    ),
+                );
+            } catch (\Throwable $error) {
+                $this->withdraw($outgoing);
+                throw $error;
+            }
             $timeout = max(0.0, $deadline - microtime(true));
         }
-        $id = bin2hex(random_bytes(8));
         // Settled once, by the reply, the timeout or the cancellation; a reply may come while it is still being sent.
         return Async::await(
             $loop,
-            function (\Closure $resume, \Closure $fail) use ($loop, $id, $actor, $key, $data, $timeout): \Closure {
+            function (\Closure $resume, \Closure $fail) use (
+                $loop,
+                $id,
+                $actor,
+                $key,
+                $data,
+                $timeout,
+                $outgoing,
+            ): \Closure {
                 $this->waiting[$id] = static function (bool $replied, mixed $value) use (
                     $resume,
                     $fail,
@@ -137,31 +180,26 @@ final class Actors implements ActorsContract
                 $timer = $loop->delay($timeout, static function () use ($fail, $actor, $key, $timeout): void {
                     $fail(new NoReply("{$actor} for \"{$key}\" did not reply within {$timeout} seconds."));
                 });
-                $undo = function () use ($loop, $id, $timer): void {
+                $undo = function () use ($loop, $id, $timer, $outgoing): void {
                     unset($this->waiting[$id]);
                     $loop->cancel($timer);
+                    if ($outgoing !== null) {
+                        $this->withdraw($outgoing);
+                    }
                 };
-                if (!$this->remote($actor, $key)) {
+                if ($outgoing === null) {
                     try {
-                        $this->route($actor, $key, $data, $id);
+                        $this->local($actor, $key, $data, $id);
                     } catch (\Throwable $error) {
                         $undo();
                         throw $error;
                     }
                     return $undo;
                 }
-                // Published apart from the wait, which a slow carrier would otherwise hold past its
-                // deadline and cancellation. An ask that ended before its turn to be sent is not sent.
-                $loop->defer(function () use ($actor, $key, $data, $id, $fail): void {
-                    if (!isset($this->waiting[$id])) {
-                        return;
-                    }
-                    try {
-                        $this->route($actor, $key, $data, $id);
-                    } catch (\Throwable $error) {
-                        $fail($error);
-                    }
-                });
+                // Published apart from the wait, which a slow carrier would otherwise hold past its deadline
+                // and cancellation; its reply now has somewhere to go.
+                $outgoing->done = static fn(?\Throwable $error) => $error === null ? null : $fail($error);
+                $this->ready($outgoing);
                 return $undo;
             },
             $cancellation,
@@ -316,24 +354,94 @@ final class Actors implements ActorsContract
         }
     }
 
-    private function route(string $actor, string $key, mixed $data, ?string $id): void
+    /**
+     * Gives a message to an actor that runs in this process.
+     */
+    private function local(string $actor, string $key, mixed $data, ?string $id): void
     {
         $answer = $id === null
             ? null
             : function (bool $replied, mixed $value) use ($id): void {
                 ($this->waiting[$id] ?? null)?->__invoke($replied, $value);
             };
-        if (!$this->remote($actor, $key)) {
-            $this->deliver($actor, $key, $data, $answer);
+        $this->deliver($actor, $key, $data, $answer);
+    }
+
+    /**
+     * Puts a message for another process in line on its channel, to be
+     * published once it is ready and those before it have been.
+     */
+    private function send(string $actor, string $key, mixed $data, ?string $id): Outgoing
+    {
+        $channel = self::CHANNEL . $this->shardOf($actor, $key);
+        $outgoing = new Outgoing(
+            $channel,
+            fn(): string => json_encode([
+                'a' => $actor,
+                'k' => $key,
+                'd' => $data,
+                'r' => $id === null ? null : $this->replies,
+                'i' => $id,
+            ], JSON_THROW_ON_ERROR | JSON_PRESERVE_ZERO_FRACTION),
+            static function (?\Throwable $error): void {},
+        );
+        $this->outbox[$channel][] = $outgoing;
+        return $outgoing;
+    }
+
+    private function ready(Outgoing $outgoing): void
+    {
+        $outgoing->ready = true;
+        $this->drain($outgoing->channel);
+    }
+
+    /**
+     * Takes a message out of line if it has not been published yet.
+     */
+    private function withdraw(Outgoing $outgoing): void
+    {
+        if ($outgoing->published || $outgoing->withdrawn) {
             return;
         }
-        $this->carrier?->publish([self::CHANNEL . $this->shardOf($actor, $key)], json_encode([
-            'a' => $actor,
-            'k' => $key,
-            'd' => $data,
-            'r' => $id === null ? null : $this->replies,
-            'i' => $id,
-        ], JSON_THROW_ON_ERROR | JSON_PRESERVE_ZERO_FRACTION));
+        $outgoing->withdrawn = true;
+        $this->drain($outgoing->channel);
+    }
+
+    /**
+     * Has a channel's messages published one at a time, in the order they
+     * were put in line, while the first is ready; by one sender, apart from
+     * whoever asks for it.
+     */
+    private function drain(string $channel): void
+    {
+        if (isset($this->draining[$channel])) {
+            return;
+        }
+        $this->draining[$channel] = true;
+        EventLoop::current()->defer(function () use ($channel): void {
+            try {
+                while (($outgoing = $this->outbox[$channel][0] ?? null) !== null) {
+                    if (!$outgoing->withdrawn && !$outgoing->ready) {
+                        return;
+                    }
+                    array_shift($this->outbox[$channel]);
+                    if ($outgoing->withdrawn) {
+                        continue;
+                    }
+                    $outgoing->published = true;
+                    try {
+                        $this->carrier?->publish([$channel], ($outgoing->text)());
+                    } catch (\Throwable $error) {
+                        ($outgoing->done)($error);
+                        continue;
+                    }
+                    ($outgoing->done)(null);
+                }
+                unset($this->outbox[$channel]);
+            } finally {
+                unset($this->draining[$channel]);
+            }
+        });
     }
 
     /**

@@ -123,22 +123,25 @@ final class Pool
         // Its place stays taken while it is cleaned up and a replacement made: either may wait, and
         // a newcomer meanwhile must queue behind the waiters rather than take the place for itself.
         ++$this->creating;
+        $replacement = null;
         try {
             $this->destroy($resource);
-            if ($this->closed || $this->waiting === []) {
-                return;
-            }
-            try {
-                $replacement = ($this->create)();
-            } catch (Throwable $error) {
-                // Told to whoever waits first now: the one waiting when creation began may have left.
-                if ($this->waiting !== []) {
-                    $this->waiting[array_key_first($this->waiting)](null, $error);
+            while ($replacement === null && !$this->closed && $this->waiting !== []) {
+                try {
+                    $replacement = ($this->create)();
+                } catch (Throwable $error) {
+                    // Told to whoever waits first now: the one waiting when creation began may have left.
+                    // The place is still free, and kept, for the next waiter to be tried for in turn.
+                    if ($this->waiting !== []) {
+                        $this->waiting[array_key_first($this->waiting)](null, $error);
+                    }
                 }
-                return;
             }
         } finally {
             --$this->creating;
+        }
+        if ($replacement === null) {
+            return;
         }
         // Creation may have waited: who is owed the replacement is decided now, not before.
         if ($this->closed) {

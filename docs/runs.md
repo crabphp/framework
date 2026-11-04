@@ -179,6 +179,16 @@ A run is resumed by running its `handle()` again from the top. Each step already
 
 One worker runs a run at a time. It holds a lease on it, renewed every third of `runs.lease` while it runs. A resumption that finds the run held by another worker does nothing, and looks again when the lease would have run out, so a run whose worker died is taken up again. Each claim carries a token of its own: a worker that stalled past its lease and was overtaken can no longer renew the run, keep a step, or say how it ended, and what it came to is logged as a warning and dropped.
 
+### A run whose job was lost
+
+Each of those resumptions is a job on the queue. A run's state is kept first and its job pushed after, so a process that dies between the two, or a queue that loses the job, leaves the run without one: pending, or sleeping past its end, with nothing to carry it on. `runs:recover` gives each such run a job again, once its time came more than `runs.lease` seconds ago. Schedule it:
+
+```php
+$schedule->command('runs:recover')->everyMinute()->onOneServer();
+```
+
+A job that is only late, behind others in a busy queue, may be pushed again this way, at most once a lease; the run is still run once, by whichever job claims it first. A run waiting for a signal is woken by giving the signal again, and a failed one by retrying it. `$runs->recover()` does the same from code and says how many runs it gave a job.
+
 ### The rules a run follows
 
 Because a run is run again from the top, the code between its steps must come out the same every time:
@@ -196,7 +206,7 @@ php cua runs:list --status=failed
 php cua runs:retry 12              # with all its tries, from the step that failed
 ```
 
-`$runs->retry($id)` does the same from code. A run left running by a worker that died, whose job the queue then gave up on, is retried the same way once its lease has run out. The run stays failed until a worker takes it up, which then starts its tries again: retrying it twice meanwhile is harmless, and a retry whose job did not reach the queue can simply be asked again.
+`$runs->retry($id)` does the same from code. A run left running by a worker that died, whose job the queue then gave up on, is retried the same way once its lease has run out. The run stays failed until a worker takes it up, which then starts its tries again: retrying it twice meanwhile is harmless, even if the run fails again before the second is taken up, and a retry whose job did not reach the queue can simply be asked again.
 
 ## Looking at runs
 

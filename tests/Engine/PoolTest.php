@@ -251,6 +251,45 @@ final class PoolTest extends TestCase
         self::assertSame(['max' => 1, 'idle' => 0, 'borrowed' => 0, 'waiting' => 0], $pool->stats());
     }
 
+    public function testAFailedReplacementIsTriedAgainForTheNextWaiter(): void
+    {
+        $loop = $this->newLoop();
+        $made = 0;
+        $pool = new Pool(
+            $loop,
+            static function () use (&$made): stdClass {
+                if (++$made === 2) {
+                    throw new RuntimeException('cannot connect');
+                }
+                $resource = new stdClass();
+                $resource->number = $made;
+                return $resource;
+            },
+            max: 1,
+        );
+        $held = $pool->acquire();
+        $first = $this->spawn($loop, static function () use ($pool): string {
+            try {
+                $pool->acquire();
+                return 'acquired';
+            } catch (RuntimeException $error) {
+                return $error->getMessage();
+            }
+        });
+        $second = $this->spawn($loop, static fn(): object => $pool->acquire());
+        Async::sleep($loop, 0.0);
+        $discard = $this->spawn($loop, static fn() => $pool->discard($held));
+        // While the place is being filled for the second waiter, a newcomer queues behind it.
+        $newcomer = $this->spawn($loop, static fn(): object => $pool->acquire());
+        $this->awaitTask($loop, $discard);
+        self::assertSame('cannot connect', $this->awaitTask($loop, $first));
+        $got = $this->awaitTask($loop, $second);
+        self::assertSame(3, $got->number);
+        self::assertFalse($newcomer->isComplete(), 'A newcomer went before a caller already waiting.');
+        $pool->release($got);
+        self::assertSame(3, $this->awaitTask($loop, $newcomer)->number);
+    }
+
     public function testCloseDestroysResourcesAndRefusesCallers(): void
     {
         $loop = $this->newLoop();

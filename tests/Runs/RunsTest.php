@@ -465,6 +465,28 @@ final class RunsTest extends TestCase
         self::assertSame([Status::Sleeping, 0], [$runs->find($id)?->status, $runs->find($id)?->attempts]);
     }
 
+    public function testTwoRetriesAskedForOneFailureRestartItOnceThoughTheRunFailsAgain(): void
+    {
+        $this->journal->failures = ['sky 1' => 4];
+        $id = $this->runs->start(ResearchTopic::class, topic: 'sky', depth: 1);
+        $this->work();
+        $this->clock->advance('+30 seconds');
+        $this->work();
+        self::assertSame(Status::Failed, $this->runs->find($id)?->status);
+
+        self::assertTrue($this->runs->retry($id));
+        self::assertTrue($this->runs->retry($id));
+        // The first job's try fails at once; the second, asked for the same failure, neither restarts the
+        // run nor takes its next try ahead of its backoff.
+        $this->work();
+        self::assertSame([Status::Pending, 1], [$this->runs->find($id)?->status, $this->runs->find($id)?->attempts]);
+        $this->clock->advance('+30 seconds');
+        $this->work();
+        self::assertSame([Status::Failed, 2], [$this->runs->find($id)?->status, $this->runs->find($id)?->attempts]);
+        self::assertSame(['plan', 'search sky 1', 'search sky 1', 'search sky 1', 'search sky 1'], $this->journal->did);
+        self::assertFalse($this->work(), 'A retry asked for the first failure restarted the second.');
+    }
+
     public function testARunThatFailsEveryTryIsFailedAndCanBeRetried(): void
     {
         $this->journal->failures = ['sky 1' => 2];
@@ -493,6 +515,40 @@ final class RunsTest extends TestCase
             $this->journal->did,
             'The plan was not made again.',
         );
+    }
+
+    public function testARunWhoseJobWasLostIsGivenOneOnceItIsALeaseLate(): void
+    {
+        // Started, and its job lost, as by a process that died before the push reached the queue.
+        $this->journal->failures = ['sky 1' => 1];
+        $id = $this->runs->start(ResearchTopic::class, topic: 'sky', depth: 1);
+        $this->lose();
+        self::assertSame(0, $this->runs->recover(), 'A run was recovered before its job could be late.');
+        $this->clock->advance('+91 seconds');
+        self::assertSame(1, $this->runs->recover());
+        self::assertSame(0, $this->runs->recover(), 'A run given a job was given another at once.');
+        // Its try fails; the job for the next, after the backoff, is lost too.
+        $this->work();
+        self::assertSame(Status::Pending, $this->runs->find($id)?->status);
+        $this->lose();
+        $this->clock->advance('+91 seconds');
+        self::assertSame(0, $this->runs->recover(), 'Its next try was not a lease late yet: it was due 30 seconds on.');
+        $this->clock->advance('+30 seconds');
+        self::assertSame(1, $this->runs->recover());
+        // Its try runs to the sleep; the job that would end it is lost.
+        $this->work();
+        self::assertSame(Status::Sleeping, $this->runs->find($id)?->status);
+        $this->lose();
+        $this->clock->advance('+300 seconds');
+        self::assertSame(0, $this->runs->recover(), 'Its sleep has only just ended.');
+        $this->clock->advance('+91 seconds');
+        self::assertSame(1, $this->runs->recover());
+        $this->work();
+        // A run waiting for its signal has no job to lose.
+        self::assertSame(Status::Waiting, $this->runs->find($id)?->status);
+        $this->clock->advance('+1 day');
+        self::assertSame(0, $this->runs->recover());
+        self::assertSame(['plan', 'search sky 1', 'search sky 1'], $this->journal->did);
     }
 
     public function testWhatAStepReturnsComesBackAsJsonReadsItTheFirstTimeToo(): void
@@ -618,6 +674,16 @@ final class RunsTest extends TestCase
     /**
      * Runs every job that is due now, as a worker would; false when there was none.
      */
+    /**
+     * Takes every job off the queue without running it.
+     */
+    private function lose(): void
+    {
+        while (($message = $this->store->reserve($this->store->queues(), PHP_INT_MAX, 0)) !== null) {
+            $this->store->complete($message);
+        }
+    }
+
     private function work(): bool
     {
         $any = false;

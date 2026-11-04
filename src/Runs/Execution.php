@@ -128,6 +128,18 @@ final class Execution implements Run
                 ->where('id', $this->id)
                 ->where('claim', $this->claim)
                 ->update(['updated_at' => $this->now()]);
+            // MySQL counts the rows changed, not those found: touched again within the same second,
+            // the row is unchanged and counted 0. The update has locked it all the same; look it up.
+            if ($held !== 1) {
+                $held = $db
+                    ->table($this->runs)
+                    ->where('id', $this->id)
+                    ->where('claim', $this->claim)
+                    ->lockForUpdate()
+                    ->first() === null
+                    ? 0
+                    : 1;
+            }
             if ($held !== 1) {
                 throw new Overtaken(
                     "Run {$this->id} was taken over by another worker before \"{$name}\" could be kept.",
