@@ -142,7 +142,9 @@ final class Actors implements ActorsContract
             // In line from now, so a tell sent after it is published after it, even while the reply channel
             // is still being made; nothing behind it is published until it is, or it is withdrawn.
             $outgoing = $this->send($actor, $key, $data, $id);
-            try {
+        }
+        try {
+            if ($outgoing !== null) {
                 $this->listen(
                     $loop,
                     $timeout,
@@ -151,59 +153,63 @@ final class Actors implements ActorsContract
                         "{$actor} for \"{$key}\" did not reply within {$timeout} seconds: the reply channel was not ready.",
                     ),
                 );
-            } catch (\Throwable $error) {
-                $this->withdraw($outgoing);
-                throw $error;
+                $timeout = max(0.0, $deadline - microtime(true));
             }
-            $timeout = max(0.0, $deadline - microtime(true));
-        }
-        // Settled once, by the reply, the timeout or the cancellation; a reply may come while it is still being sent.
-        return Async::await(
-            $loop,
-            function (\Closure $resume, \Closure $fail) use (
+            // Settled once, by the reply, the timeout or the cancellation; a reply may come while it is still being sent.
+            return Async::await(
                 $loop,
-                $id,
-                $actor,
-                $key,
-                $data,
-                $timeout,
-                $outgoing,
-            ): \Closure {
-                $this->waiting[$id] = static function (bool $replied, mixed $value) use (
-                    $resume,
-                    $fail,
+                function (\Closure $resume, \Closure $fail) use (
+                    $loop,
+                    $id,
                     $actor,
                     $key,
-                ): void {
-                    $replied ? $resume($value) : $fail(new NoReply("{$actor} for \"{$key}\" did not reply: {$value}"));
-                };
-                $timer = $loop->delay($timeout, static function () use ($fail, $actor, $key, $timeout): void {
-                    $fail(new NoReply("{$actor} for \"{$key}\" did not reply within {$timeout} seconds."));
-                });
-                $undo = function () use ($loop, $id, $timer, $outgoing): void {
-                    unset($this->waiting[$id]);
-                    $loop->cancel($timer);
-                    if ($outgoing !== null) {
-                        $this->withdraw($outgoing);
+                    $data,
+                    $timeout,
+                    $outgoing,
+                ): \Closure {
+                    $this->waiting[$id] = static function (bool $replied, mixed $value) use (
+                        $resume,
+                        $fail,
+                        $actor,
+                        $key,
+                    ): void {
+                        $replied
+                            ? $resume($value)
+                            : $fail(new NoReply("{$actor} for \"{$key}\" did not reply: {$value}"));
+                    };
+                    $timer = $loop->delay($timeout, static function () use ($fail, $actor, $key, $timeout): void {
+                        $fail(new NoReply("{$actor} for \"{$key}\" did not reply within {$timeout} seconds."));
+                    });
+                    $undo = function () use ($loop, $id, $timer, $outgoing): void {
+                        unset($this->waiting[$id]);
+                        $loop->cancel($timer);
+                        if ($outgoing !== null) {
+                            $this->withdraw($outgoing);
+                        }
+                    };
+                    if ($outgoing === null) {
+                        try {
+                            $this->local($actor, $key, $data, $id);
+                        } catch (\Throwable $error) {
+                            $undo();
+                            throw $error;
+                        }
+                        return $undo;
                     }
-                };
-                if ($outgoing === null) {
-                    try {
-                        $this->local($actor, $key, $data, $id);
-                    } catch (\Throwable $error) {
-                        $undo();
-                        throw $error;
-                    }
+                    // Published apart from the wait, which a slow carrier would otherwise hold past its deadline
+                    // and cancellation; its reply now has somewhere to go.
+                    $outgoing->done = static fn(?\Throwable $error) => $error === null ? null : $fail($error);
+                    $this->ready($outgoing);
                     return $undo;
-                }
-                // Published apart from the wait, which a slow carrier would otherwise hold past its deadline
-                // and cancellation; its reply now has somewhere to go.
-                $outgoing->done = static fn(?\Throwable $error) => $error === null ? null : $fail($error);
-                $this->ready($outgoing);
-                return $undo;
-            },
-            $cancellation,
-        );
+                },
+                $cancellation,
+            );
+        } finally {
+            // However it ends, it leaves the line: one never published would hold up all behind it.
+            if ($outgoing !== null) {
+                $this->withdraw($outgoing);
+            }
+        }
     }
 
     /**

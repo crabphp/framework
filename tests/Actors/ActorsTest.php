@@ -120,6 +120,41 @@ final class ActorsTest extends TestCase
         $actors->stop();
     }
 
+    public function testAnAskCancelledAsItsReplyChannelIsReadyLeavesTheLineForTheMessagesAfterIt(): void
+    {
+        $loop = EventLoop::current();
+        $stopped = new Cancellation();
+        $carrier = new SlowPublishingCarrier(hold: false);
+        // Cancelled by a task woken as the reply channel is made: it runs before the ask goes on to wait.
+        $wake = null;
+        Task::spawn($loop, static function () use ($loop, $stopped, &$wake): void {
+            Async::await($loop, static function (\Closure $resume) use (&$wake): null {
+                $wake = $resume;
+                return null;
+            });
+            $stopped->cancel();
+        });
+        $carrier->subscribed = static function () use (&$wake): void {
+            $wake();
+        };
+        $actors = new Actors(carrier: $carrier);
+        $asked = Task::spawn($loop, static function () use ($actors, $stopped): string {
+            try {
+                $actors->ask(Counter::class, 'k', 'first', cancellation: $stopped);
+                return 'answered';
+            } catch (CancelledException) {
+                return 'cancelled';
+            }
+        });
+        self::assertSame('cancelled', $asked->await());
+        $actors->tell(Counter::class, 'k', 'second');
+        self::assertSame(
+            ['second'],
+            array_map(static fn(string $sent): mixed => json_decode($sent, true)['d'], $carrier->sent),
+        );
+        $actors->stop();
+    }
+
     public function testEachKeyHasOneActorThatKeepsItsStateBetweenMessages(): void
     {
         $actors = new Actors();
@@ -436,7 +471,12 @@ final class SlowPublishingCarrier implements Carrier
         });
     }
 
-    public function subscribe(string $channel, \Closure $receive, \Closure $gap): void {}
+    public ?\Closure $subscribed = null;
+
+    public function subscribe(string $channel, \Closure $receive, \Closure $gap): void
+    {
+        $this->subscribed?->__invoke();
+    }
 
     public function unsubscribe(string $channel): void {}
 

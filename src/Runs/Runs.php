@@ -172,7 +172,9 @@ final class Runs implements RunsContract
      * that lost the job, leaves a run so; schedule `runs:recover` to find
      * them. A job that is only late, behind others in its queue, is pushed
      * again at most once a lease, and runs the run once: the first to
-     * claim it does, and the others find it taken.
+     * claim it does, and the others find it taken, or not due yet. A run
+     * left running by a worker that died, with no job to take it up, is
+     * counted a failed try.
      *
      * @return int How many runs it pushed a job for.
      */
@@ -191,7 +193,7 @@ final class Runs implements RunsContract
             ->orderBy('id')
             ->limit($limit)
             ->get();
-        $pushed = 0;
+        $pushed = $this->recoverAbandoned($now, $before, $limit);
         foreach ($rows as $row) {
             // Touched first, so the next look leaves it a lease longer; a worker that took it meanwhile wins.
             $touched = $this->db
@@ -210,6 +212,72 @@ final class Runs implements RunsContract
             $this->logger?->warning('{count} runs had no job to carry them on, and were given one.', [
                 'count' => $pushed,
             ]);
+        }
+        return $pushed;
+    }
+
+    /**
+     * Counts a failed try for each run left running by a worker that died,
+     * whose lease ran out more than a lease ago with no job taking it up:
+     * one whose job the queue gave up on, or a retry's whose job was done
+     * with when its worker died. The run is tried again after its backoff,
+     * or failed when it has no try left, so one whose code kills its worker
+     * each time ends.
+     *
+     * @return int How many runs it pushed a job for.
+     */
+    private function recoverAbandoned(int $now, int $before, int $limit): int
+    {
+        $rows = $this->db
+            ->table($this->table)
+            ->select('id', 'run', 'claim', 'attempts', 'lease_until')
+            ->where('status', Status::Running->value)
+            ->where('lease_until', '<', $before)
+            ->orderBy('id')
+            ->limit($limit)
+            ->get();
+        $pushed = 0;
+        foreach ($rows as $row) {
+            $attempts = (int) $row['attempts'] + 1;
+            $failed = $attempts >= $this->tries;
+            $wait = $this->backoff === [] ? 0 : $this->backoff[min($attempts, count($this->backoff)) - 1];
+            $error = 'The worker running it stopped before it ended, and no job took it up.';
+            // Only as the dead worker left it: one that took it over meanwhile has it.
+            $counted = $this->db
+                ->table($this->table)
+                ->where('id', $row['id'])
+                ->where('status', Status::Running->value)
+                ->where('lease_until', $row['lease_until'])
+                ->where(static function ($query) use ($row): void {
+                    $row['claim'] === null ? $query->whereNull('claim') : $query->where('claim', $row['claim']);
+                })
+                ->update([
+                    'status' => $failed ? Status::Failed->value : Status::Pending->value,
+                    'attempts' => $attempts,
+                    'error' => $error,
+                    'lease_until' => null,
+                    // As fail() leaves it: a failed run keeps its claim, for a retry to name.
+                    'claim' => $failed ? $row['claim'] : null,
+                    'wake_at' => $failed ? null : $now + $wait,
+                    'updated_at' => $now,
+                ]);
+            if ($counted !== 1) {
+                continue;
+            }
+            $context = ['run' => $row['run'], 'id' => $row['id'], 'attempt' => $attempts, 'tries' => $this->tries];
+            if ($failed) {
+                $this->logger?->error(
+                    'Run {run} {id} was left running by a worker that stopped, on try {attempt} of {tries}, and is given up on.',
+                    $context,
+                );
+                continue;
+            }
+            $this->logger?->warning(
+                'Run {run} {id} was left running by a worker that stopped, on try {attempt} of {tries}, and will be tried again.',
+                $context,
+            );
+            $this->queue->later($wait, ResumeRun::class, run: $row['id']);
+            ++$pushed;
         }
         return $pushed;
     }
@@ -306,11 +374,21 @@ final class Runs implements RunsContract
                 ->table($this->table)
                 ->where('id', $id)
                 ->where(static function ($query) use ($now): void {
-                    $query
-                        ->whereIn('status', [Status::Pending->value, Status::Sleeping->value, Status::Waiting->value])
-                        ->orWhere(static function ($query) use ($now): void {
-                            $query->where('status', Status::Running->value)->where('lease_until', '<', $now);
-                        });
+                    $query->where(static function ($query) use ($now): void {
+                        // Not before its time: a job that comes early, as a duplicate may, must not take
+                        // a try that waits out its backoff, nor wake a sleep.
+                        $query
+                            ->whereIn('status', [
+                                Status::Pending->value,
+                                Status::Sleeping->value,
+                                Status::Waiting->value,
+                            ])
+                            ->where(static function ($query) use ($now): void {
+                                $query->whereNull('wake_at')->orWhere('wake_at', '<=', $now);
+                            });
+                    })->orWhere(static function ($query) use ($now): void {
+                        $query->where('status', Status::Running->value)->where('lease_until', '<', $now);
+                    });
                 })
                 ->update([
                     'status' => Status::Running->value,
@@ -320,16 +398,16 @@ final class Runs implements RunsContract
                     'updated_at' => $now,
                 ]);
         if ($claimed !== 1) {
-            $held = $this->db
-                ->table($this->table)
-                ->where('id', $id)
-                ->where('status', Status::Running->value)
-                ->value('lease_until');
-            if ($held !== null) {
+            $row = $this->db->table($this->table)->select('status', 'lease_until', 'wake_at')->find($id);
+            $status = $row['status'] ?? null;
+            if ($status === Status::Running->value) {
                 // Another worker has it, or had it and died: look again once its lease would have run out.
-                $this->queue->later(max(1, (int) $held - $now + 1), ResumeRun::class, run: $id);
+                $this->queue->later(max(1, (int) $row['lease_until'] - $now + 1), ResumeRun::class, run: $id);
+            } elseif (in_array($status, [Status::Pending->value, Status::Sleeping->value], true)) {
+                // Early: come back when it is due, should this be the job that was to carry it on.
+                $this->queue->later(max(1, (int) $row['wake_at'] - $now), ResumeRun::class, run: $id);
             }
-            // Otherwise it has ended or is gone.
+            // Otherwise it has ended, waits for a signal, or is gone.
             return;
         }
         $row = $this->db->table($this->table)->find($id) ?? throw new \LogicException(

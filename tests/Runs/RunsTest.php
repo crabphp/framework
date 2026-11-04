@@ -551,6 +551,61 @@ final class RunsTest extends TestCase
         self::assertSame(['plan', 'search sky 1', 'search sky 1'], $this->journal->did);
     }
 
+    public function testADuplicateJobThatComesDuringABackoffWaitsForItsEnd(): void
+    {
+        $this->journal->failures = ['sky 1' => 2];
+        $id = $this->runs->start(ResearchTopic::class, topic: 'sky', depth: 1);
+        // A second job for it, as a queue that delivers at least once, or recover(), may make.
+        new Queue($this->store, clock: $this->clock)->push(\Crab\Runs\ResumeRun::class, run: $id);
+        $this->work();
+        self::assertSame([Status::Pending, 1], [$this->runs->find($id)?->status, $this->runs->find($id)?->attempts]);
+        self::assertSame(['plan', 'search sky 1'], $this->journal->did, 'A duplicate took the next try at once.');
+        $this->clock->advance('+30 seconds');
+        $this->work();
+        self::assertSame([Status::Failed, 2], [$this->runs->find($id)?->status, $this->runs->find($id)?->attempts]);
+        self::assertSame(['plan', 'search sky 1', 'search sky 1'], $this->journal->did);
+    }
+
+    public function testARunLeftRunningWithNoJobToTakeItUpIsCountedAFailedTryAndGoesOn(): void
+    {
+        $id = $this->runs->start(ResearchTopic::class, topic: 'sky', depth: 1);
+        // Claimed by a worker that died, and its job done with, as a retry's is when redelivered.
+        $this->lose();
+        $this->db
+            ->table('runs')
+            ->where('id', $id)
+            ->update([
+                'status' => Status::Running->value,
+                'claim' => 'gone',
+                'lease_until' => $this->clock->now()->getTimestamp() + 90,
+            ]);
+        $this->clock->advance('+150 seconds');
+        self::assertSame(0, $this->runs->recover(), 'Its lease ran out only now: the queue may yet take it up.');
+        $this->clock->advance('+31 seconds');
+        self::assertSame(1, $this->runs->recover());
+        $state = $this->runs->find($id);
+        self::assertSame([Status::Pending, 1], [$state?->status, $state?->attempts]);
+        self::assertStringContainsString('stopped before it ended', (string) $state?->error);
+        $this->clock->advance('+30 seconds');
+        $this->work();
+        self::assertSame(Status::Sleeping, $this->runs->find($id)?->status);
+
+        // A second worker death, with no try left: the run is failed, and can be retried.
+        $this->lose();
+        $this->db
+            ->table('runs')
+            ->where('id', $id)
+            ->update([
+                'status' => Status::Running->value,
+                'claim' => 'gone again',
+                'lease_until' => $this->clock->now()->getTimestamp(),
+            ]);
+        $this->clock->advance('+91 seconds');
+        self::assertSame(0, $this->runs->recover());
+        self::assertSame([Status::Failed, 2], [$this->runs->find($id)?->status, $this->runs->find($id)?->attempts]);
+        self::assertTrue($this->runs->retry($id));
+    }
+
     public function testWhatAStepReturnsComesBackAsJsonReadsItTheFirstTimeToo(): void
     {
         $id = $this->runs->start(Returns::class);

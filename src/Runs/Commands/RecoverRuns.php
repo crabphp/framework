@@ -20,7 +20,8 @@ final readonly class RecoverRuns implements Command
         return <<<'TEXT'
             Give a job to each run whose own was lost
             A run pending or sleeping whose time came more than `runs.lease` seconds ago, untouched since, lost
-            its job: its process died before pushing it, or the queue lost it. Schedule this every minute.
+            its job: its process died before pushing it, or the queue lost it. One left running a lease after
+            its lease ran out had its worker die: that counts as a failed try. Schedule this every minute.
             TEXT;
     }
 
