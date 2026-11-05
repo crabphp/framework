@@ -78,7 +78,7 @@ final class QueryTest extends TestCase
                 ->offset(20)
                 ->lockForUpdate();
         };
-        $bindings = [2, true, 18, 'A%', true, 0, 'admin', 1, 2, 1, 9, 3, 'x', 1, 10, 20];
+        $bindings = [2, true, 18, 'A%', true, 0, 'admin', 1, 2, 1, 9, 3, 'x', 1, 20];
 
         $sqlite = $build(new SqliteGrammar());
         self::assertSame(
@@ -89,7 +89,7 @@ final class QueryTest extends TestCase
             . ' and `u`.`id` in (select `user_id` from `roles` where `name` = ?) and `age` not in (?, ?)'
             . ' and `votes` between ? and ? and (length(name) > ?)'
             . ' group by `u`.`id`, `name` having `label` != ? and (count(*) > ?)'
-            . ' order by `name` asc, `u`.`id` desc, length(name) desc limit ? offset ?',
+            . ' order by `name` asc, `u`.`id` desc, length(name) desc limit 10 offset ?',
             $sqlite->toSql(),
         );
         self::assertSame($bindings, $sqlite->bindings());
@@ -99,7 +99,7 @@ final class QueryTest extends TestCase
             'select distinct `u`.`id`, `name` as `label`, `u`.*, age * ? as doubled from `users` as `u` inner join `posts`',
             $mysql->toSql(),
         );
-        self::assertStringEndsWith('limit ? offset ? for update', $mysql->toSql());
+        self::assertStringEndsWith('limit 10 offset ? for update', $mysql->toSql());
         self::assertSame($bindings, $mysql->bindings());
     }
 

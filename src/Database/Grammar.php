@@ -454,8 +454,10 @@ abstract class Grammar
         if ($query->limit === null) {
             $sql = ' limit ' . $this->noLimit();
         } else {
-            $sql = ' limit ?';
-            $bindings[] = $query->limit;
+            // Written in, not bound: SQLite plans a bound limit again on every run, which more than
+            // doubles the cost of a lookup by key. It is a checked int, and its few values, one and a
+            // page's size, each make one statement to keep. The offset, which a page changes, stays bound.
+            $sql = ' limit ' . $query->limit;
         }
         if ($query->offset !== null) {
             $sql .= ' offset ?';
