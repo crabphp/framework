@@ -318,6 +318,7 @@ final class ProcessToolsTest extends TestCase
         self::assertSame("ready\n", fgets($pipes[1]));
 
         // Three clients the server cannot tell apart yet: all connected, none has sent anything.
+        $connected = microtime(true);
         $late = stream_socket_client($address);
         $kept = stream_socket_client($address);
         $silent = stream_socket_client($address);
@@ -333,10 +334,20 @@ final class ProcessToolsTest extends TestCase
         fwrite($kept, "GET / HTTP/1.1\r\nHost: x\r\n\r\n");
         fwrite($pipes[0], "queued\n");
         fclose($pipes[0]);
-        foreach ([$late, $kept] as $client) {
+        foreach (['late' => $late, 'kept' => $kept] as $name => $client) {
             stream_set_timeout($client, 5);
             $response = (string) stream_get_contents($client);
-            self::assertStringContainsString('200 OK', $response);
+            // Rarely a client is answered 408 instead; say when, so that the next failure shows where the time went.
+            self::assertStringContainsString(
+                '200 OK',
+                $response,
+                sprintf(
+                    'The %s client, %.3f s after connecting and %.3f s after the server was asked to stop.',
+                    $name,
+                    microtime(true) - $connected,
+                    microtime(true) - $asked,
+                ),
+            );
             self::assertStringContainsString('served', $response);
             self::assertMatchesRegularExpression(
                 '/connection: close/i',
