@@ -4,6 +4,27 @@ These pages were written while the engine was its own repository. Its source is 
 
 See [HTTP request path](benchmarks/HTTP-REQUEST-PATH.md) for the latest measurement of requests with browser-sized fields and a breakdown of where a request's time goes, [HTTP lazy request fields](benchmarks/HTTP-LAZY-FIELDS.md) for the step before it, [HTTP fast path](benchmarks/HTTP-FAST-PATH.md) for the preceding matched before/after HTTP measurements, request-shape workloads and the WebSocket regression check, [HTTP codec optimization](benchmarks/HTTP-CODEC-OPTIMIZATION.md) for the preceding codec measurements, [PHP HTTP headroom](benchmarks/HTTP-HEADROOM.md) for the earlier layer diagnostics, and [Crab versus Elysia](benchmarks/ELYSIA.md) for the earlier combined comparison. The historical snapshots below predate later docblock, request-body storage and codec changes; their hashes identify the source measured at the time.
 
+## Database reads and validation, 2026-11-05
+
+The same single-process setup as the section below (`benchmarks/single-process/`), comparing `main` before these changes with the changes, six alternating rounds, JIT off, medians in requests per second. No trial had an error.
+
+| Request | Before | After | Change |
+| --- | ---: | ---: | ---: |
+| `GET /hello` | 43,584 | 43,552 | 0% |
+| `GET /users/{id}`, SQLite | 15,353 | 19,301 | +25.7% |
+| `GET /mysql/users/{id}`, PDO | 6,771 | 7,310 | +7.9% |
+| `GET /mysql-async/users/{id}`, `async` driver | 8,947 | 9,476 | +5.9% |
+| `POST /users`, validated body | 19,683 | 24,156 | +22.7% |
+
+Where the time went, measured in process (user CPU per request through the real engine and framework over a socket pair, the best of nine trials): the SQLite read fell from 33.3 to 21.8 µs and the `POST` from 21.9 to 16.0 µs.
+
+- A bound `LIMIT ?` made SQLite plan the statement again on every run: 7.4 µs a lookup against 3.2 µs with the limit written in. A bound offset costs 0.2 µs, so it stays bound, and a page keeps one statement.
+- `filter_var(FILTER_VALIDATE_EMAIL)` took 3.5 µs on an everyday address; a strict pattern that it accepts in full takes 0.4 µs, and anything else is still left to it. A test holds the two to the same answer.
+- A header field was found with a pattern made for its name: 961 ns, against 368 ns for a case-insensitive search.
+- The query builder made a grammar for every query and quoted every name again; `Database` made a closure for every query.
+
+Tried and dropped: making the engine's response when a JSON response is made, which made the JSON path slower (725 to 823 ns), and trims in the validator's loop, which did not measure. Removing PSR-7 was measured too: on `GET /hello` it would save at most 2.3 µs of a 21 µs request, about 8–11%, and is not pursued.
+
 ## After the 0.4 review fixes, and against Elysia, 2026-11-05
 
 Two single-process checks on an **Intel i5-9400F, 6 cores, Fedora 44, PHP 8.4.22**, with OPcache on. Every server is one process; wrk runs at 64 connections for 8 seconds after a warmup. The database reads cycle through 10,000 users, in SQLite and in a disposable MySQL 8.4 on the same machine. `benchmarks/single-process/setup.sh` builds everything, `run.sh` and `compare.sh` run the two checks, and the raw lines are in [its results](benchmarks/single-process/results). No trial had an error. These are single-process figures on one machine, not comparable with the tables below.
