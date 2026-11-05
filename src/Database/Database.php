@@ -134,22 +134,46 @@ final class Database implements DatabaseContract
 
     public function select(string $sql, array $bindings = []): array
     {
-        return $this->run(static fn(Connection $connection): array => $connection->select($sql, $bindings));
+        // As run() does, without a closure made for every query.
+        $connection = $this->acquire();
+        try {
+            return $connection->select($sql, $bindings);
+        } finally {
+            $this->release($connection);
+        }
     }
 
     public function first(string $sql, array $bindings = []): ?array
     {
-        return $this->run(static fn(Connection $connection): ?array => $connection->first($sql, $bindings));
+        // As run() does, without a closure made for every query.
+        $connection = $this->acquire();
+        try {
+            return $connection->first($sql, $bindings);
+        } finally {
+            $this->release($connection);
+        }
     }
 
     public function insert(string $sql, array $bindings = []): int|string
     {
-        return $this->run(static fn(Connection $connection): int|string => $connection->insert($sql, $bindings));
+        // As run() does, without a closure made for every query.
+        $connection = $this->acquire();
+        try {
+            return $connection->insert($sql, $bindings);
+        } finally {
+            $this->release($connection);
+        }
     }
 
     public function execute(string $sql, array $bindings = []): int
     {
-        return $this->run(static fn(Connection $connection): int => $connection->execute($sql, $bindings));
+        // As run() does, without a closure made for every query.
+        $connection = $this->acquire();
+        try {
+            return $connection->execute($sql, $bindings);
+        } finally {
+            $this->release($connection);
+        }
     }
 
     public function transaction(\Closure $callback): mixed
