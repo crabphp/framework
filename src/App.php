@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace Crab;
 
-use Crab\Actors\ActorsPlugin;
 use Crab\Auth\AuthPlugin;
 use Crab\Auth\TokenAuthPlugin;
 use Crab\Broadcast\BroadcastPlugin;
@@ -67,7 +66,6 @@ use Crab\Log\Logger;
 use Crab\Queue\QueuePlugin;
 use Crab\Routing\Router;
 use Crab\Routing\Urls;
-use Crab\Runs\RunsPlugin;
 use Crab\Schedule\SchedulePlugin;
 use Crab\Schedule\Task;
 use Crab\Storage\StoragePlugin;
@@ -166,15 +164,13 @@ final class App implements RequestHandlerInterface, Runner
 
     /**
      * The framework's plugins an application lists in withPlugins() when it
-     * wants them, in an order that works: the queue before runs, which it
-     * carries out, and broadcast before actors, which travel on its carrier.
+     * wants them. A package's plugins, such as crabphp/runs' after the
+     * queue's or crabphp/actors' after broadcast's, are listed the same way.
      */
     public const OPTIONAL_PLUGINS = [
         QueuePlugin::class,
         SchedulePlugin::class,
-        RunsPlugin::class,
         BroadcastPlugin::class,
-        ActorsPlugin::class,
         TokenAuthPlugin::class,
     ];
 

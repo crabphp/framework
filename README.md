@@ -608,7 +608,7 @@ return App::configure(__DIR__)
 
 - **The base path** is the directory given to `configure()`. Its `.env` file and `config` folder are loaded by default, because `App::configure()` begins the chain with `withEnv('.env')` and `withConfig('config', required: false)`; call either again to name another. Nothing else is found by convention.
 - **Paths may be relative** to the base path, and `$app->path('storage/app.log')` gives one in full anywhere else.
-- **Plugins** start with the core ones, `App::PLUGINS`: Database, Auth, Cache, Storage, Events and HttpClient. The optional ones, `App::OPTIONAL_PLUGINS` (Queue, Schedule, Runs, Broadcast, Actors and TokenAuth), are listed only when you want them, as are your own and your packages' plugins, as one plugin or a list; `routes:` and `commands:` each take one file or a list of files. `withMiddleware()` is described under [Middleware](#middleware).
+- **Plugins** start with the core ones, `App::PLUGINS`: Database, Auth, Cache, Storage, Events and HttpClient. The optional ones, `App::OPTIONAL_PLUGINS` (Queue, Schedule, Broadcast and TokenAuth), are listed only when you want them, as are your own and your packages' plugins, as one plugin or a list; `routes:` and `commands:` each take one file or a list of files. `withMiddleware()` is described under [Middleware](#middleware).
 - **`health: '/up'`** makes `GET /up` answer 200 and `{"status":"up"}`, for a load balancer or a deploy script that needs to know the server takes requests. It says that this worker answers and asks nothing of the database, so that a slow store does not take every server out of rotation at once; route the path to an action of your own to check more.
 - **Each step is optional and they may come in any order:** `create()` loads the environment, then the configuration, makes the application, registers the plugins and middleware, and then includes the route and command files, which declare with `Route::` and `Command::`.
 
@@ -925,62 +925,14 @@ $queue->on('emails')->push(SendWelcomeEmail::class, userId: 7);          // on a
 
 See [docs/queues.md](docs/queues.md).
 
-## Runs
+## Runs and actors
 
-A run is work of many steps that goes on from where it was after a crash, a deploy or a failure, and may wait minutes or days between steps without holding a worker. It is a class like a job, whose `handle()` also takes the `Run` it keeps its steps through:
+Two packages of their own add durable work and stateful actors to an application that needs them; they were part of the framework up to 0.5.0:
 
-~~~php
-final readonly class ResearchTopic
-{
-    public function __construct(private Llm $llm) {}
+- **[crabphp/runs](https://github.com/crabphp/runs)**: work of many steps that goes on from where it was after a crash, a deploy or a failure, and may wait minutes or days between steps without holding a worker, such as an AI agent's plan, searches and report, or an order that waits for a person.
+- **[crabphp/actors](https://github.com/crabphp/actors)**: one for each key, taking its messages one at a time in the order sent and remembering what it was told while it runs, such as a customer's conversation with an assistant.
 
-    public function handle(Run $run, string $topic): string
-    {
-        $plan = $run->step('plan', fn () => $this->llm->plan($topic));      // done once, kept
-        $run->sleep('cool-down', 300);                                       // holds no worker
-        $approved = $run->await('approval');                                 // until signal()
-        return $run->step('report', fn () => $this->llm->report($plan, $approved));
-    }
-}
-
-$id = $runs->start(ResearchTopic::class, topic: 'tides');
-$runs->signal($id, 'approval', ['by' => $user->id]);
-~~~
-
-- **A run is resumed from the top,** each step already done returning what it returned before, so the code between steps must come out the same each time: what is slow, random or outside the process goes in a step.
-- **Runs are kept in two tables** that `php cua runs:install` writes the migration for, and carried out by queue workers; one worker holds a run at a time, on a lease renewed while it runs.
-- **A failed try is tried again** after `runs.backoff` seconds, `runs.tries` times in all (3), from the step that failed. `runs:list --status=failed` lists the failed ones and `runs:retry <id>` tries one again.
-
-See [docs/runs.md](docs/runs.md). For when to stream, when to run and how the two fit together in an AI application, see [docs/ai.md](docs/ai.md).
-
-## Actors
-
-An actor has a key, an inbox and a memory: one runs for each key, takes its messages one at a time in the order sent, and remembers what it was told while it runs. A customer's conversation, a game's table, a device that must get one command at a time:
-
-~~~php
-final readonly class Assistant
-{
-    public function __construct(private Llm $llm) {}
-
-    public function handle(Inbox $inbox, string $key): void
-    {
-        $history = [];                                          // its memory, while it runs
-        foreach ($inbox as $message) {                          // one at a time; ends when idle
-            $history[] = $message->data['text'];
-            $message->reply(['answer' => $this->llm->chat($history)]);
-        }
-    }
-}
-
-$actors->tell(Assistant::class, "user:{$id}", ['text' => 'hi']);                 // returns at once
-$reply = $actors->ask(Assistant::class, "user:{$id}", ['text' => 'and in blue?']); // waits for reply()
-~~~
-
-- **With the local carrier, an actor runs in the process that sends to it;** with Redis, in the `actors` server beside HTTP, each key in the one process a hash picks, so one key has one actor however many workers there are.
-- **Messages and replies are JSON, delivered at most once.** `ask()` ends with the reply, its timeout, its cancellation or `NoReply`.
-- **Its memory lasts while it runs:** it ends after `actors.idle` seconds without a message, or with its process. What must outlast it goes in the database or a run.
-
-See [docs/actors.md](docs/actors.md).
+For how they fit an AI application beside streaming, see [docs/ai.md](docs/ai.md).
 
 ## Scheduling
 

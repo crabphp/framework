@@ -183,7 +183,7 @@ $queue->later(600, SendReminder::class, orderId: $order['id']);                 
 $queue->later(new \DateInterval('P1D'), ExpireTrial::class, userId: $id);         // tomorrow
 ```
 
-Use `later()` for something that follows from one event. For work at a fixed time of day, use the [schedule](scheduling.md). For work of many steps that waits between them, use a [run](runs.md).
+Use `later()` for something that follows from one event. For work at a fixed time of day, use the [schedule](scheduling.md). For work of many steps that waits between them, use a run, from the [crabphp/runs](https://github.com/crabphp/runs) package.
 
 ### Named queues
 

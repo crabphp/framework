@@ -161,7 +161,7 @@ final class AppBuilderTest extends TestCase
             self::assertSame(
                 ['migrate', 'cache:clear'],
                 array_values(array_filter(
-                    ['migrate', 'cache:clear', 'queue:work', 'schedule:list', 'runs:list', 'actors:work'],
+                    ['migrate', 'cache:clear', 'queue:work', 'schedule:list'],
                     $app->console->has(...),
                 )),
             );
@@ -175,13 +175,9 @@ final class AppBuilderTest extends TestCase
             foreach ([Queue::class, Schedule::class, Broadcaster::class] as $contract) {
                 self::assertInstanceOf($contract, $full->container->get($contract));
             }
-            self::assertSame(['queue', 'schedule', 'actors'], $full->servers->ids());
-            self::assertSame(
-                ['queue', 'schedule', 'actors'],
-                $full->with(),
-                'A listed plugin\'s server runs with start.',
-            );
-            foreach (['queue:work', 'schedule:list', 'runs:list', 'actors:work', 'token:install'] as $command) {
+            self::assertSame(['queue', 'schedule'], $full->servers->ids());
+            self::assertSame(['queue', 'schedule'], $full->with(), 'A listed plugin\'s server runs with start.');
+            foreach (['queue:work', 'schedule:list', 'token:install'] as $command) {
                 self::assertTrue($full->console->has($command), $command);
             }
             self::assertFalse($app->container->has(\Crab\Contracts\Auth\TokenStore::class));

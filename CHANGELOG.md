@@ -2,6 +2,10 @@
 
 Crab follows [semantic versioning](https://semver.org). Before 1.0, a minor version may break what an application writes; the entry says what to change.
 
+## Unreleased
+
+- **Runs and actors are packages of their own (breaking for an application that uses them):** they move to [crabphp/runs](https://github.com/crabphp/runs) and [crabphp/actors](https://github.com/crabphp/actors), for the applications that need them, and the framework keeps to what every API uses. Their classes, plugins, commands, settings and tables keep their names. To upgrade, require the package beside the framework, `composer require crabphp/runs` or `crabphp/actors`. `App::OPTIONAL_PLUGINS` no longer lists `RunsPlugin` and `ActorsPlugin`, and `config:publish` no longer writes `runs` or `actors`: their packages' READMEs describe their settings.
+
 ## 0.5.0 — 2026-11-05
 
 - **A run is fenced by its claim (breaking for the runs table):** a worker that stalled past `runs.lease` and was overtaken could still renew, complete, fail or release the run another worker had taken, turning a completed run back to pending. Each claim now carries a token, and only its holder may write the run. To upgrade, add a nullable `claim` column of 32 characters to the runs table: `$schema->table('runs', fn (Table $t) => $t->string('claim', 32)->nullable());`. `runs:install` writes it for a new application.

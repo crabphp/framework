@@ -27,8 +27,6 @@
 - [File storage](storage.md)
 - [Events](events.md)
 - [Queues](queues.md)
-- [Runs](runs.md)
-- [Actors](actors.md)
 - [AI applications](ai.md)
 - [Task scheduling](scheduling.md)
 - [HTTP client](http-client.md)
@@ -48,3 +46,12 @@
 ## Testing
 
 - [Testing](testing.md)
+
+## Packages
+
+- [Runs](https://github.com/crabphp/runs): work of many steps that goes on from where it was
+- [Actors](https://github.com/crabphp/actors): one for each key, taking its messages one at a time
+- [Redis](https://github.com/crabphp/redis): a cache store, a queue store and a broadcast carrier
+- [S3](https://github.com/crabphp/s3): a disk on S3, R2, MinIO and other services that speak its API
+- [OpenAPI](https://github.com/crabphp/openapi): OpenAPI documents from the routes and actions
+- [Clockwerk](https://github.com/crabphp/clockwerk): a dashboard for requests, the queue, scheduled tasks and workers

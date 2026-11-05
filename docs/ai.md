@@ -5,11 +5,7 @@
 - [Relaying a model's reply](#relaying-a-models-reply)
     - [Before the first word](#before-the-first-word)
     - [When the reader leaves](#when-the-reader-leaves)
-- [Work that outlasts a request](#work-that-outlasts-a-request)
-    - [Calling a model in a step](#calling-a-model-in-a-step)
-    - [A person in the loop](#a-person-in-the-loop)
-- [Showing a run as it goes](#showing-a-run-as-it-goes)
-- [A conversation that remembers](#a-conversation-that-remembers)
+- [Long work and conversations](#long-work-and-conversations)
 - [In tests](#in-tests)
 
 ## Introduction
@@ -18,8 +14,8 @@ An application built on a language model spends most of its time waiting: for th
 
 - **A reply that comes word by word** is an action that returns a generator. Each value it yields reaches the browser as a server-sent event at once. See [Streaming](responses.md#streaming).
 - **Another server's reply that comes word by word,** a model's API, is read with the HTTP client's `stream()`, an event at a time. See [Streaming answers](http-client.md#streaming-answers).
-- **Work of many steps that must not start over,** an agent that plans, searches and writes, is a [run](runs.md). Its steps are kept, so a crash, a deploy or a failed call goes on from where it was, and it may wait days for a person without holding a worker.
-- **A conversation that remembers,** an assistant each customer talks to over many requests, is an [actor](actors.md): one for each customer, taking their messages one at a time and keeping the conversation in memory while it runs.
+- **Work of many steps that must not start over,** an agent that plans, searches and writes, is a run, from [crabphp/runs](https://github.com/crabphp/runs). Its steps are kept, so a crash, a deploy or a failed call goes on from where it was, and it may wait days for a person without holding a worker.
+- **A conversation that remembers,** an assistant each customer talks to over many requests, is an actor, from [crabphp/actors](https://github.com/crabphp/actors): one for each customer, taking their messages one at a time and keeping the conversation in memory while it runs.
 
 This page shows when to use which, and how they fit together.
 
@@ -29,10 +25,10 @@ This page shows when to use which, and how they fit together.
 | --- | --- | --- |
 | A chat reply, a summary, one model call the user watches | A generator action relaying `stream()` | Seconds long; the user sees each word as it is written, and leaving stops the call |
 | One model call nobody watches: tagging, a translation | A [job](queues.md) | One step; if it fails, doing it again is the whole of the work |
-| Several model or tool calls in a row | A run, each call a step | A failure at the fifth call does not pay for the first four again |
+| Several model or tool calls in a row | A [run](https://github.com/crabphp/runs), each call a step | A failure at the fifth call does not pay for the first four again |
 | Anything that waits for a person, or for hours | A run with `await()` or `sleep()` | Waiting holds no worker, and survives deploys |
 | A run the user watches | A run, and a generator action that follows it | The work goes on when the browser closes; the page shows how far it got |
-| A conversation over many requests | An actor for each user | One at a time, in order, with the conversation in memory; nothing to load and save for each message |
+| A conversation over many requests | An [actor](https://github.com/crabphp/actors) for each user | One at a time, in order, with the conversation in memory; nothing to load and save for each message |
 
 ## Relaying a model's reply
 
@@ -96,196 +92,12 @@ When the browser goes away, the generator is stopped at its `yield`, and `$reque
 
 A stream may last as long as it keeps moving. One quiet for 30 seconds is cut off, so a model that thinks for longer before its first word needs something yielded meanwhile, such as `yield 'thinking' => []`.
 
-## Work that outlasts a request
+## Long work and conversations
 
-An agent's work, a plan, ten searches and a report, takes minutes, costs money at each step, and fails at some step now and then. Make it a run, so that what was done is kept:
+Work of many steps that must not start over, and a conversation that remembers, come in packages of their own, each with a section on AI applications:
 
-```php
-use Crab\Contracts\Runs\Run;
-
-final readonly class ResearchTopic
-{
-    public function __construct(private Llm $llm, private Search $search)
-    {
-    }
-
-    public function handle(Run $run, string $topic): array
-    {
-        $questions = $run->step('plan', fn () => $this->llm->plan($topic));
-
-        $notes = [];
-        foreach ($questions as $i => $question) {
-            $notes[] = $run->step("search.{$i}", fn () => $this->search->find($question));
-        }
-
-        return $run->step('report', fn () => $this->llm->report($topic, $notes));
-    }
-}
-```
-
-Start it from an action and answer at once with its id; a [queue](queues.md) worker carries it out:
-
-```php
-final readonly class StartResearch
-{
-    public function __construct(private Runs $runs)
-    {
-    }
-
-    public function handle(#[Fields(['topic' => 'string'])] Data $input): array
-    {
-        return ['run' => $this->runs->start(ResearchTopic::class, topic: $input->topic)];
-    }
-}
-```
-
-If the seventh search fails, the run is tried again after a pause, from the seventh search; the plan and the six searches before it are not paid for again.
-
-### Calling a model in a step
-
-A run is run again from the top each time it is resumed, so everything that is slow, costly or different each time goes in a step: each call to a model, each tool it calls, the time. The code between steps only arranges what steps returned. See [The rules a run follows](runs.md#the-rules-a-run-follows).
-
-A step's result is kept as JSON, so return a model's text, or the array its JSON decodes to, rather than a response object.
-
-An agent that decides its own next step, a model that answers with a tool to call until it answers with text, is a loop of steps numbered as they go:
-
-```php
-$messages = [['role' => 'user', 'content' => $task]];
-for ($turn = 0; $turn < 20; $turn++) {
-    $answer = $run->step("model.{$turn}", fn () => $this->llm->chat($messages, tools: $this->tools->schema()));
-    $messages[] = $answer;
-    if ($answer['tool'] === null) {
-        return $answer['content'];
-    }
-    $messages[] = $run->step("tool.{$turn}", fn () => $this->tools->call($answer['tool']));
-}
-```
-
-Resumed after a failure, the loop goes again through the turns already taken, each step returning what it returned before, so the messages come out the same and the agent goes on from the turn that failed.
-
-### A person in the loop
-
-`await()` puts the run aside until a person, or anything else, gives it a value. Nothing is held while it waits, for a minute or for a week:
-
-```php
-$draft = $run->step('draft', fn () => $this->llm->draft($ticket));
-$review = $run->await('review');                 // until signal()
-if ($review['approved'] !== true) {
-    return 'dropped';
-}
-$run->step('send', fn () => $this->mailer->send($ticket['email'], $review['text'] ?? $draft));
-```
-
-The action behind the reviewer's button gives it, with the run's id:
-
-```php
-$this->runs->signal($id, 'review', ['approved' => true, 'text' => $input->text]);
-```
-
-See [Waiting for a signal](runs.md#waiting-for-a-signal).
-
-## Showing a run as it goes
-
-The browser that started a run may watch it with a generator action that follows the run's state. The run goes on whether anyone watches or not, so the page may be closed and opened again:
-
-```php
-use Crab\Contracts\Runs\Runs;
-use Crab\Contracts\Runs\Status;
-use Crab\Engine\Async\Async;
-use Crab\Engine\EventLoop;
-use Crab\Http\HttpException;
-
-final readonly class WatchResearch
-{
-    public function __construct(private Runs $runs)
-    {
-    }
-
-    public function handle(int $id, Request $request): \Generator
-    {
-        $state = $this->runs->find($id) ?? throw new HttpException(404);
-
-        return (function () use ($id, $state, $request): \Generator {
-            $seen = 0;
-            while (true) {
-                foreach (array_slice($state->steps, $seen) as $step) {
-                    yield 'step' => ['name' => $step];
-                }
-                $seen = count($state->steps);
-
-                if ($state->status === Status::Completed) {
-                    yield 'done' => ['result' => $state->result];
-                    return;
-                }
-                if ($state->status === Status::Failed) {
-                    yield 'failed' => ['error' => $state->error];
-                    return;
-                }
-
-                Async::sleep(EventLoop::current(), 1.0, $request->cancellation());
-                $state = $this->runs->find($id);
-            }
-        })();
-    }
-}
-```
-
-It reads the run once a second, which is cheap at the scale of a person watching a page. For many watchers, have the run's steps [broadcast](broadcasting.md) as they finish, and let the page listen for them.
-
-## A conversation that remembers
-
-A chat whose every request loads the conversation from the database, calls the model and saves it back works, until a customer sends two messages at once and one answer is written over the other. An actor for each customer takes their messages one at a time, in the order sent, and keeps the conversation in its variables:
-
-```php
-use Crab\Contracts\Actors\Inbox;
-
-final readonly class Assistant
-{
-    public function __construct(private Llm $llm)
-    {
-    }
-
-    public function handle(Inbox $inbox, string $key): void
-    {
-        $history = [];
-        foreach ($inbox as $message) {
-            $history[] = ['role' => 'user', 'content' => $message->data['text']];
-            $answer = $this->llm->chat($history, cancellation: $inbox->cancellation());
-            $history[] = ['role' => 'assistant', 'content' => $answer];
-            $message->reply(['answer' => $answer]);
-        }
-    }
-}
-```
-
-The action asks the customer's actor and answers with its reply:
-
-```php
-use Crab\Contracts\Actors\Actors;
-use Crab\Contracts\Actors\NoReply;
-use Crab\Http\HttpException;
-
-final readonly class Chat
-{
-    public function __construct(private Actors $actors)
-    {
-    }
-
-    public function handle(User $user, #[Fields(['text' => 'string'])] Data $input, Request $request): array
-    {
-        try {
-            return $this->actors->ask(Assistant::class, "user:{$user->id}", ['text' => $input->text],
-                timeout: 60,
-                cancellation: $request->cancellation(),
-            );
-        } catch (NoReply) {
-            throw new HttpException(503, 'The assistant is not available.');
-        }
-    }
-}
-```
-
-The conversation lasts while the actor runs, and it ends after `actors.idle` seconds without a message. To keep a conversation for good, save each turn to the database as well, and have the actor load it when it starts. With several HTTP workers, carry the messages over Redis so that one customer has one actor; see [Across processes](actors.md#across-processes).
+- **[Runs](https://github.com/crabphp/runs#in-ai-applications):** an agent's plan, searches and report as steps that are kept, so that a failure at the seventh search does not pay for the six before it again; a person in the loop with `await()`; and a generator action that shows a run as it goes.
+- **[Actors](https://github.com/crabphp/actors#in-ai-applications):** an assistant for each customer, taking their messages one at a time, in the order sent, and keeping the conversation in memory.
 
 An actor and a run go together: the actor takes the conversation, and starts a run for work that must not be lost, such as an order the customer asked it to place.
 
@@ -313,4 +125,4 @@ self::assertSame([
 ], $response->events());
 ```
 
-A run is tested by running the queue's jobs, with a `FrozenClock` to end its sleeps; see [Runs in tests](runs.md#in-tests).
+A run is tested by running the queue's jobs, with a `FrozenClock` to end its sleeps; see [its package's tests](https://github.com/crabphp/runs#in-tests).

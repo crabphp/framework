@@ -86,7 +86,7 @@ The framework's plugins are of two kinds.
 
 **Core plugins** are on in every application made with `App::configure()`, without being listed: `DatabasePlugin`, `AuthPlugin`, `CachePlugin`, `StoragePlugin`, `EventsPlugin` and `HttpClientPlugin`, the list `App::PLUGINS`. Each binds on first use, so one you never touch opens nothing.
 
-**Optional plugins** are off until you list them in `app.php`, because not every API wants them: `QueuePlugin`, `SchedulePlugin`, `RunsPlugin`, `BroadcastPlugin`, `ActorsPlugin` and `TokenAuthPlugin`, the list `App::OPTIONAL_PLUGINS`. List them in that order where you use several: runs need the queue, and actors travel on broadcast's carrier.
+**Optional plugins** are off until you list them in `app.php`, because not every API wants them: `QueuePlugin`, `SchedulePlugin`, `BroadcastPlugin` and `TokenAuthPlugin`, the list `App::OPTIONAL_PLUGINS`. Packages add plugins of their own, listed the same way: [crabphp/runs](https://github.com/crabphp/runs)' after `QueuePlugin`, whose workers carry runs out, and [crabphp/actors](https://github.com/crabphp/actors)' after `BroadcastPlugin`, whose carrier actors travel on.
 
 ```php
 // app.php

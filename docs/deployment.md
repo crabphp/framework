@@ -321,7 +321,7 @@ Name only the addresses of proxies you control; use your proxy's address if it i
 
 ## The other processes
 
-`start` runs, beside HTTP, the server of every plugin listed in `app.php` that has one: the queue's workers for `QueuePlugin`, the scheduler for `SchedulePlugin`, and the actors for `ActorsPlugin` when the broadcast carrier is Redis. No cron or separate process manager is needed, and no setting switches them on: listing the plugin is what does.
+`start` runs, beside HTTP, the server of every plugin listed in `app.php` that has one: the queue's workers for `QueuePlugin`, the scheduler for `SchedulePlugin`, and any a package's plugin adds, such as the actors of [crabphp/actors](https://github.com/crabphp/actors) when the broadcast carrier is Redis. No cron or separate process manager is needed, and no setting switches them on: listing the plugin is what does.
 
 ```text
 $ php cua start

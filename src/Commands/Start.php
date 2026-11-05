@@ -142,7 +142,7 @@ final readonly class Start implements Command
         foreach ($with as $id) {
             $groups = $app->alongside([$id]);
             if ($groups === []) {
-                // Registered, with nothing to run in this setup, such as actors on the local carrier.
+                // Registered, with nothing to run in this setup, such as crabphp/actors' server on the local carrier.
                 continue;
             }
             $runs = $servers->label($id);
