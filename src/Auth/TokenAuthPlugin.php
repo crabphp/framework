@@ -53,27 +53,30 @@ final class TokenAuthPlugin implements Plugin
         $container->singleton(CookieAuth::class, static function (Container $container): CookieAuth {
             $config = $container->get(Config::class);
             $config->check('auth');
-            $cookie = (array) $config->get('auth.cookie', []);
-            $url = $config->get('app.url');
-            $origins = array_values((array) ($cookie['origins'] ?? []));
-            if (is_string($url) && $url !== '') {
-                $origins[] = $url;
+            if (!$container->has(IdentityResolver::class)) {
+                throw new \LogicException(
+                    'To authenticate by cookie, bind '
+                    . IdentityResolver::class
+                    . ' in a plugin of your own: it finds one of your users by id.',
+                );
             }
+            $url = $config->get('app.url');
+            $site = is_string($url) && $url !== '' ? $url : null;
+            // The checked values may still be text from env(): "0", "true", "3600".
+            $secure = $config->get('auth.cookie.secure');
+            $maxAge = $config->get('auth.cookie.max_age');
             return new CookieAuth(
-                login: $cookie['login'] ?? null,
+                login: $config->get('auth.cookie.login'),
                 tokens: $container->get(TokenStore::class),
-                users: $container->has(IdentityResolver::class)
-                    ? $container->get(IdentityResolver::class)
-                    : throw new \LogicException(
-                        'To authenticate by cookie, bind '
-                        . IdentityResolver::class
-                        . ' in a plugin of your own: it finds one of your users by id.',
-                    ),
-                name: (string) ($cookie['name'] ?? 'auth'),
-                origins: $origins,
+                users: $container->get(IdentityResolver::class),
+                name: (string) $config->get('auth.cookie.name'),
+                site: $site,
+                origins: array_values((array) $config->get('auth.cookie.origins')),
                 // Secure unless the application says it is served over plain HTTP, as while developing.
-                secure: $cookie['secure'] ?? !(is_string($url) && str_starts_with(strtolower($url), 'http://')),
-                maxAge: $cookie['max_age'] ?? null,
+                secure: $secure === null
+                    ? !($site !== null && str_starts_with(strtolower($site), 'http://'))
+                    : filter_var($secure, FILTER_VALIDATE_BOOL),
+                maxAge: $maxAge === null ? null : (int) $maxAge,
             );
         });
         if ($container->has(Console::class)) {

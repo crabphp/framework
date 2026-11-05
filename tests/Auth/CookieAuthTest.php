@@ -148,6 +148,53 @@ final class CookieAuthTest extends TestCase
         ])[0], 'Reading is not checked.');
     }
 
+    public function testAWebSocketHandshakeMustComeFromTheApplicationsOwnPages(): void
+    {
+        [$tokens, $auth] = $this->auth();
+        $token = $tokens->issue(7);
+        $handshake = ['Cookie' => "auth={$token}", 'Upgrade' => 'websocket', 'Connection' => 'Upgrade'];
+        self::assertSame(403, $this->through($auth, 'GET', [...$handshake, 'Origin' => 'https://evil.test'])[0]);
+        self::assertSame(403, $this->through($auth, 'GET', [...$handshake, 'Sec-Fetch-Site' => 'same-site'])[0]);
+        self::assertSame(403, $this->through($auth, 'GET', $handshake)[0], 'A handshake without an Origin is refused.');
+        self::assertSame([200, 'user 7', ''], $this->through($auth, 'GET', [
+            ...$handshake,
+            'Origin' => 'http://shop.test',
+        ]));
+    }
+
+    public function testWithAPublicAddressOnlyItsOriginIsTheApplicationsOwn(): void
+    {
+        [$tokens] = $this->auth();
+        // Behind a proxy that ends TLS the request says http://shop.test, and anyone can send any Host.
+        $auth = new CookieAuth(tokens: $tokens, users: new Shoppers(), site: 'https://shop.test');
+        self::assertSame(403, $this->through($auth, 'POST', ['Origin' => 'http://shop.test'])[0]);
+        $evil = $auth->process(new Request('POST', 'http://evil.test/login', [
+            'Origin' => 'http://evil.test',
+        ]), new Answer());
+        self::assertSame(403, $evil->getStatusCode());
+        // Past the origin check, to authentication, which has no cookie to read.
+        self::assertSame(401, $this->through($auth, 'POST', ['Origin' => 'https://shop.test'])[0]);
+        self::assertSame(401, $this->through($auth, 'POST', ['Origin' => 'https://shop.test:443'])[0]);
+    }
+
+    public function testALoginOverAStaleCookieKeepsItsNewCookie(): void
+    {
+        [$tokens] = $this->auth();
+        $auth = new CookieAuth(required: false, tokens: $tokens, users: new Shoppers());
+        $login = new class implements RequestHandlerInterface {
+            public function handle(ServerRequestInterface $request): ResponseInterface
+            {
+                return Response::redirect('/', 303)->withCookie(new \Crab\Http\Cookie('auth', 'new-token'));
+            }
+        };
+        $response = $auth->process(new Request('POST', 'http://shop.test/login', [
+            'Cookie' => 'auth=stale',
+            'Sec-Fetch-Site' => 'same-origin',
+        ]), $login);
+        self::assertCount(1, $response->getHeader('Set-Cookie'));
+        self::assertStringStartsWith('auth=new-token;', $response->getHeaderLine('Set-Cookie'));
+    }
+
     public function testTheCookieLogsInAndLogoutRevokesTheToken(): void
     {
         [$tokens, $auth] = $this->auth();
@@ -222,6 +269,51 @@ final class CookieAuthTest extends TestCase
         self::assertSame(403, $app->handle(new Request('POST', 'http://127.0.0.1:8080/login', [
             'Origin' => 'https://evil.test',
         ]))->getStatusCode());
+    }
+
+    public function testARoutesOptionsWinOverTheBoundOnesAndAMissingPluginStopsStartup(): void
+    {
+        [$tokens] = $this->auth();
+        $bound = new CookieAuth(
+            tokens: $tokens,
+            users: new Shoppers(),
+            name: 'bound',
+            secure: false,
+            origins: ['https://bound.test'],
+        );
+        $container = new \Crab\Container\Container();
+        $container->instance(CookieAuth::class, $bound);
+        $route = new CookieAuth(name: 'route', secure: true, origins: ['https://route.test'])->withContainer(
+            $container,
+        );
+        self::assertStringStartsWith('route=t; Path=/; Secure;', (string) $route->cookie('t'));
+        $post = static fn(CookieAuth $auth, string $origin): int => $auth->process(new Request(
+            'POST',
+            'http://shop.test/orders',
+            ['Origin' => $origin],
+        ), new Answer())->getStatusCode();
+        self::assertSame(401, $post($route, 'https://route.test'), 'Allowed through to authentication.');
+        self::assertSame(403, $post($route, 'https://bound.test'));
+        $inherits = new CookieAuth(required: false)->withContainer($container);
+        self::assertStringStartsWith('bound=t; Path=/; HttpOnly', (string) $inherits->cookie('t'));
+
+        $this->expectExceptionMessage('list TokenAuthPlugin in app.php');
+        new CookieAuth()->withContainer(new \Crab\Container\Container());
+    }
+
+    public function testSettingsWrittenAsEnvironmentTextWork(): void
+    {
+        $app = new App(new Config([
+            'app' => ['url' => 'https://shop.test'],
+            'auth' => ['cookie' => ['secure' => '0', 'max_age' => '3600']],
+            'database' => ['connections' => ['main' => ['dsn' => 'sqlite:' . $this->file]]],
+        ]));
+        $app->register(AuthPlugin::class, TokenAuthPlugin::class, DatabasePlugin::class);
+        $app->container->instance(IdentityResolver::class, new Shoppers());
+        self::assertSame(
+            'auth=t; Max-Age=3600; Path=/; HttpOnly; SameSite=Lax',
+            (string) $app->container->get(CookieAuth::class)->cookie('t'),
+        );
     }
 
     /**

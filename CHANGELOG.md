@@ -4,7 +4,7 @@ Crab follows [semantic versioning](https://semver.org). Before 1.0, a minor vers
 
 ## Unreleased
 
-- **Cookie authentication for browsers:** `CookieAuth`, bound by `TokenAuthPlugin`, reads the user's database token from an `HttpOnly`, `SameSite=Lax` cookie, the same token `TokenAuth` reads from a header, so there is still no session. `$auth->cookie($token)` logs a browser in, and `$auth->logout($request)` revokes the token and clears the cookie. Any request that can change something must come from the application's own pages, by the browser's `Sec-Fetch-Site` or `Origin`, so forms need no hidden token. A page can send the browser to a login page instead of answering `401`, and a cookie whose token stopped working is cleared. Its settings are `auth.cookie.*`. See [Cookie authentication](docs/authentication.md#cookie-authentication).
+- **Cookie authentication for browsers:** `CookieAuth`, bound by `TokenAuthPlugin`, reads the user's database token from an `HttpOnly`, `SameSite=Lax` cookie, the same token `TokenAuth` reads from a header, so there is still no session. `$auth->cookie($token)` logs a browser in, and `$auth->logout($request)` revokes the token and clears the cookie. Any request that can change something, and any WebSocket handshake, must come from the application's own pages, by the browser's `Sec-Fetch-Site` or `Origin` against `app.url`, so forms need no hidden token. A page can send the browser to a login page instead of answering `401`, and a cookie whose token stopped working is cleared. Its settings are `auth.cookie.*`. See [Cookie authentication](docs/authentication.md#cookie-authentication).
 
 ## 0.6.1 — 2026-11-06
 

@@ -199,6 +199,7 @@
 - A way of authenticating is a middleware and nothing more. Core `Auth` is `Identity`, that convention, and the `PasswordHasher`; it decides no scheme.
 - Tokens are one way, opt-in through `TokenAuthPlugin`: the `TokenAuth` middleware, the `TokenStore` and the `IdentityResolver` an application binds so that a user can be found from the id a token belongs to. Crab keeps no user table of its own.
 - A secret is never stored as it is: a token is kept as its SHA-256 hash and a password through `PasswordHasher`. Neither appears in a log or an exception's message.
+- A browser's pages authenticate with `CookieAuth`: the same database token in an `HttpOnly`, `SameSite=Lax` cookie, never a session. Every request it guards that can change something, any method but `GET`, `HEAD`, `OPTIONS` and `TRACE` and every WebSocket handshake, must come from the application's own pages by `Sec-Fetch-Site` or `Origin`, whether or not a cookie is present; the own origin is `app.url`'s, and the request's only when there is none. Do not add form tokens or a session to it.
 - A browser cannot send a header on a WebSocket, so it trades its credential for a ticket: `Auth\Ticket` in place of `TokenAuth` on the socket route, `Auth\IssueTicket` behind whatever authenticates the application. A ticket is random, kept only as its hash with the identity's id, used once through `Cache::take()` and gone after `auth.ticket_ttl`. Every refusal is the same 401, and a ticket that is present but wrong never falls back to another credential.
 
 ## Scope

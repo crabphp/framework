@@ -266,18 +266,18 @@ Actions take `User $user` as with tokens. A request without a known user is answ
 
 ### Requests from other sites
 
-A browser sends cookies with requests that other sites start, so any request that can change something, with a method other than `GET`, `HEAD`, `OPTIONS` or `TRACE`, must come from your own pages. `CookieAuth` checks this whether or not there is a cookie, which covers the login form too:
+A browser sends cookies with requests that other sites start, so any request that can change something must come from your own pages: one with a method other than `GET`, `HEAD`, `OPTIONS` or `TRACE`, and every WebSocket handshake, which a browser makes with the page's cookies too. `CookieAuth` checks this whether or not there is a cookie, which covers the login form too:
 
 - the browser's `Sec-Fetch-Site` header says `same-origin`, or
-- its `Origin` header is the request's own origin, `app.url`'s, or one in `auth.cookie.origins`.
+- its `Origin` header is the application's own origin, or one in `auth.cookie.origins`.
 
-Anything else is answered `403`, a request with neither header included. Every current browser sends them, so forms need no hidden token. Behind a proxy that ends TLS, set `app.url` to the public address. Requests that only read are not checked, so keep `GET` routes free of side effects.
+The application's own origin is `app.url`'s. Without `app.url` it is the request's, as its scheme and `Host` say, which a proxy that ends TLS changes to `http`: set `app.url` to the public address in production. Anything else is answered `403`, a request with neither header included. Every current browser sends them, so forms need no hidden token. Requests that only read are not checked, so keep `GET` routes free of side effects.
 
 Keep APIs called by other programs on `TokenAuth`: a program has no cookie and sends no `Origin`.
 
 ### Cookie settings
 
-The bound `CookieAuth` reads `auth.cookie` from `config/auth.php`. An object on a route, `new CookieAuth(required: false)` or `new CookieAuth(login: '/login')`, takes everything it does not set from it.
+The bound `CookieAuth` reads `auth.cookie` from `config/auth.php`, and `app.url` for the application's own origin. An object on a route, `new CookieAuth(required: false)` or `new CookieAuth(login: '/login')`, takes everything it does not set from it. Without `TokenAuthPlugin`, a route that names `CookieAuth` stops the server from starting.
 
 | Setting | Default | |
 | --- | --- | --- |
