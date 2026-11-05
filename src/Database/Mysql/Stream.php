@@ -137,6 +137,60 @@ final class Stream
     {
         $this->checkDeadline($deadline);
         $cancellation?->throwIfCancelled();
+        if ((strlen($this->buffer) - $this->offset) < $length) {
+            $this->fill($length, $deadline, $cancellation);
+        }
+        $this->checkDeadline($deadline);
+        $cancellation?->throwIfCancelled();
+        $bytes = substr($this->buffer, $this->offset, $length);
+        $this->offset += $length;
+        if ($this->offset === strlen($this->buffer)) {
+            $this->buffer = '';
+            $this->offset = 0;
+        }
+        return $bytes;
+    }
+
+    /**
+     * One MySQL packet's payload, read from the buffer: the header is read in
+     * place and the payload copied once. A payload of 16 MiB or more comes in
+     * parts, which are joined.
+     */
+    public function packet(int &$sequence, ?Cancellation $cancellation = null): string
+    {
+        $cancellation?->throwIfCancelled();
+        $parts = [];
+        do {
+            if ((strlen($this->buffer) - $this->offset) < 4) {
+                $this->fill(4, INF, $cancellation);
+            }
+            $word = unpack('V', $this->buffer, $this->offset)[1];
+            $length = $word & Packets::LIMIT;
+            if (($word >> 24) !== $sequence) {
+                throw new \UnexpectedValueException(
+                    'MySQL packet sequence is out of order; reconnect before trying again.',
+                );
+            }
+            $sequence = ($sequence + 1) & 255;
+            $this->offset += 4;
+            if ((strlen($this->buffer) - $this->offset) < $length) {
+                $this->fill($length, INF, $cancellation);
+            }
+            $parts[] = substr($this->buffer, $this->offset, $length);
+            $this->offset += $length;
+            if ($this->offset === strlen($this->buffer)) {
+                $this->buffer = '';
+                $this->offset = 0;
+            }
+        } while ($length === Packets::LIMIT);
+        return count($parts) === 1 ? $parts[0] : implode('', $parts);
+    }
+
+    /**
+     * Reads until at least $length bytes are buffered past the offset.
+     */
+    private function fill(int $length, float $deadline, ?Cancellation $cancellation): void
+    {
         $woken = false;
         while ((strlen($this->buffer) - $this->offset) < $length) {
             $this->checkDeadline($deadline);
@@ -166,15 +220,6 @@ final class Stream
                 $this->yieldRead();
             }
         }
-        $this->checkDeadline($deadline);
-        $cancellation?->throwIfCancelled();
-        $bytes = substr($this->buffer, $this->offset, $length);
-        $this->offset += $length;
-        if ($this->offset === strlen($this->buffer)) {
-            $this->buffer = '';
-            $this->offset = 0;
-        }
-        return $bytes;
     }
 
     /**

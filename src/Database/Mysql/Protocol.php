@@ -21,17 +21,21 @@ final class Protocol
     private int $sequence = 0;
     public int $status = 0;
     public int $serverVersion = 999_999;
-    private readonly \Closure $read;
 
     public function __construct(
         private readonly Stream $stream,
         private readonly ?Cancellation $cancellation = null,
-    ) {
-        $this->read = fn(int $length): string => $this->stream->read($length, cancellation: $this->cancellation);
-    }
+    ) {}
 
     public function command(string $payload, bool &$sent): void
     {
+        $length = strlen($payload);
+        if ($length < Packets::LIMIT) {
+            // One packet, as nearly every command is: its header is the length and sequence 0.
+            $this->sequence = 1;
+            $this->stream->write(pack('V', $length) . $payload, $sent, cancellation: $this->cancellation);
+            return;
+        }
         $this->sequence = 0;
         foreach (Packets::encode($payload, $this->sequence) as $packet) {
             $this->stream->write($packet, $sent, cancellation: $this->cancellation);
@@ -40,7 +44,7 @@ final class Protocol
 
     public function receive(): string
     {
-        $packet = Packets::read($this->read, $this->sequence);
+        $packet = $this->stream->packet($this->sequence, $this->cancellation);
         if (($packet[0] ?? '') === "\xff") {
             throw Codec::error($packet);
         }
