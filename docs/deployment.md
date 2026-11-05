@@ -189,6 +189,8 @@ php cua reload --workers=8           # eight from now on, with no gap
 
 A new `--address` is bound before the new process starts, and the old one lets the old address go when it stops.
 
+**After upgrading the framework, restart once.** `reload` gives the new code to a new server process, but the process that holds the socket and starts each one stays as it is for as long as the service runs, and keeps the framework it started with. Its fixes, and any change to how it talks to its server processes, apply only after `php cua restart` (with systemd, `systemctl restart`), at the cost of a short gap. Upgrading your own code or other packages needs only `reload`.
+
 ### Services that cannot be made
 
 Before a server starts, and before a reload hands over, the framework follows what each piece of unattended code needs from the container, without making any of it:
