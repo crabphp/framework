@@ -17,6 +17,19 @@ final class Response extends Message implements ResponseInterface
     private ?Problem $problem = null;
 
     /**
+     * The fields of a JSON or text response that has no other, as constant
+     * arrays: assigning one copies nothing, and toEngine() knows it by
+     * identity and hands the engine its own, whose encoding it keeps.
+     */
+    private const JSON_FIELDS = ['content-type' => ['application/json']];
+    private const TEXT_FIELDS = ['content-type' => ['text/plain; charset=utf-8']];
+
+    /**
+     * Copied for each typed response, rather than running the constructor.
+     */
+    private static ?self $blank = null;
+
+    /**
      * @param array<string, string|list<string>> $headers
      */
     public function __construct(
@@ -268,6 +281,12 @@ final class Response extends Message implements ResponseInterface
         if ($this->names !== []) {
             return new EngineResponse($this->status, $this->getHeaders(), $this->body);
         }
+        if ($this->headers === self::JSON_FIELDS) {
+            return new EngineResponse($this->status, EngineResponse::JSON_HEADERS, $this->body);
+        }
+        if ($this->headers === self::TEXT_FIELDS) {
+            return new EngineResponse($this->status, EngineResponse::TEXT_HEADERS, $this->body);
+        }
         $headers = $this->headers;
         // Alone and spelled this way, the type matches the fields the
         // engine has already encoded for its own text and JSON responses.
@@ -308,9 +327,18 @@ final class Response extends Message implements ResponseInterface
 
     private static function typed(string $type, string $body, int $status, array $headers): self
     {
-        $response = new self($status, [], $body);
+        if ($status !== 200) {
+            self::assertStatus($status);
+        }
+        $response = clone self::$blank ??= new self();
+        $response->status = $status;
+        $response->body = $body;
         // A known-valid field needs no validation.
-        $response->headers['content-type'] = [$type];
+        $response->headers = match ($type) {
+            'application/json' => self::JSON_FIELDS,
+            'text/plain; charset=utf-8' => self::TEXT_FIELDS,
+            default => ['content-type' => [$type]],
+        };
         foreach ($headers as $name => $value) {
             $response->put((string) $name, $value, false);
         }

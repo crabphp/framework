@@ -6,14 +6,25 @@ namespace Crab\Engine\Http;
 
 final readonly class Response
 {
-    private const TEXT_HEADERS = ['Content-Type' => 'text/plain; charset=utf-8'];
+    /**
+     * The fields of text(). Given this very array, a response is known to be
+     * text without its fields being compared.
+     *
+     * @internal
+     */
+    public const TEXT_HEADERS = ['Content-Type' => 'text/plain; charset=utf-8'];
     /**
      * Encoded fields of text(); a string returned by a handler uses them too.
      *
      * @internal
      */
     public const TEXT_BLOCK = "content-type: text/plain; charset=utf-8\r\n";
-    private const JSON_HEADERS = ['Content-Type' => 'application/json'];
+    /**
+     * The fields of json(); see TEXT_HEADERS.
+     *
+     * @internal
+     */
+    public const JSON_HEADERS = ['Content-Type' => 'application/json'];
     private const JSON_BLOCK = "content-type: application/json\r\n";
 
     private bool $headersNormalized;
