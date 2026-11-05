@@ -105,6 +105,18 @@ final class Request extends Message implements RequestContract
         return parent::getBody();
     }
 
+    /**
+     * The body's bytes, read from the engine's body while no stream has been
+     * asked for, rather than made into one first.
+     */
+    private function bodyText(): string
+    {
+        if ($this->body === '' && $this->source !== null) {
+            return $this->source->body->contents();
+        }
+        return (string) parent::getBody();
+    }
+
     public function getRequestTarget(): string
     {
         if ($this->target !== null) {
@@ -288,11 +300,11 @@ final class Request extends Message implements RequestContract
         if (!$this->parsedKnown) {
             $type = strtolower($this->getHeaderLine('content-type'));
             if (str_starts_with($type, 'application/x-www-form-urlencoded')) {
-                @parse_str((string) $this->getBody(), $this->parsed);
+                @parse_str($this->bodyText(), $this->parsed);
             } elseif (str_starts_with($type, 'multipart/form-data')) {
                 $this->readMultipart();
             } elseif (preg_match('~^application/(?:[a-z0-9.-]+\+)?json\b~', $type) === 1) {
-                $this->parsed = self::json((string) $this->getBody());
+                $this->parsed = self::json($this->bodyText());
             }
             $this->parsedKnown = true;
         }

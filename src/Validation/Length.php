@@ -29,8 +29,9 @@ final readonly class Length implements Rule
             $unit = 'item(s)';
             $verb = 'have';
         } elseif (is_string($value)) {
-            // Characters, not bytes, without needing the mbstring extension.
-            $length = preg_match_all('/./su', $value);
+            // Characters, not bytes, without needing the mbstring extension. In ASCII text, the most
+            // common, each byte is one; anything else is counted, and checked as UTF-8, by the pattern.
+            $length = preg_match('/[\x80-\xff]/', $value) === 0 ? strlen($value) : preg_match_all('/./su', $value);
             if ($length === false) {
                 // Not text at all: it has no length in characters to compare.
                 return 'must be valid UTF-8 text';

@@ -65,6 +65,12 @@ final class Request
      */
     private array $fields = [];
     /**
+     * Fields already looked up in the head, by lowercase name.
+     *
+     * @var array<string, string|null>
+     */
+    private array $found = [];
+    /**
      * @var array<string, list<string>>
      */
     private array $trailerFields = [];
@@ -133,9 +139,12 @@ final class Request
         if ($name === 'connection') {
             return $this->connection;
         }
-        // One field does not need the complete map.
+        // One field does not need the complete map, and one asked for again is not looked for again.
+        if (array_key_exists($name, $this->found)) {
+            return $this->found[$name];
+        }
         $values = Parser::find($this->head, $name);
-        return $values === null ? null : implode(', ', $values);
+        return $this->found[$name] = $values === null ? null : implode(', ', $values);
     }
 
     public function hasToken(string $name, #[\SensitiveParameter] string $token): bool
