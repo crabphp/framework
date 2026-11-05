@@ -109,6 +109,39 @@ final class PoolTest extends TestCase
         self::assertSame($held, $pool->acquire(), 'A released resource must not go to a caller that gave up.');
     }
 
+    public function testEachCallerGivesUpAfterItsOwnFullWait(): void
+    {
+        $loop = $this->newLoop();
+        $pool = new Pool($loop, static fn(): stdClass => new stdClass(), max: 1, timeout: 0.2);
+        $held = $pool->acquire();
+        $waited = [];
+        $tasks = [];
+        // The second comes while the first waits, the third after the first has given up.
+        foreach (['first' => 0.0, 'second' => 0.01, 'third' => 0.25] as $name => $after) {
+            $tasks[] = $this->spawn($loop, static function () use ($loop, $pool, $name, $after, &$waited): void {
+                Async::sleep($loop, $after);
+                $began = hrtime(true);
+                try {
+                    $pool->acquire();
+                    self::fail("The {$name} caller was lent a resource nobody released.");
+                } catch (PoolExhaustedException) {
+                    $waited[$name] = (hrtime(true) - $began) / 1e9;
+                }
+            });
+        }
+        foreach ($tasks as $task) {
+            $this->awaitTask($loop, $task);
+        }
+        self::assertSame(['first', 'second', 'third'], array_keys($waited));
+        foreach ($waited as $name => $seconds) {
+            self::assertGreaterThanOrEqual(0.2, $seconds, "The {$name} caller gave up before its time.");
+            self::assertLessThan(0.35, $seconds, "The {$name} caller was kept waiting past its time.");
+        }
+        self::assertSame(['max' => 1, 'idle' => 0, 'borrowed' => 1, 'waiting' => 0], $pool->stats());
+        self::assertSame([], $loop->getIdentifiers(), 'No timer may outlive the callers it was for.');
+        $pool->release($held);
+    }
+
     public function testDiscardReplacesABrokenResource(): void
     {
         $loop = $this->newLoop();

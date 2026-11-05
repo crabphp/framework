@@ -39,7 +39,7 @@ final class FiberSuspension implements Suspension
      * @param \Closure():(\Closure():mixed)|null $run Runs the loop until it is interrupted or ends.
      * @param \Closure(\Fiber, mixed, bool):void $queue Queues a fiber's resumption, with a value or with a throwable.
      * @param \Closure(\Closure():mixed):void $interrupt Interrupts the loop to return to the main program.
-     * @param \WeakMap<object, \WeakReference<self>> $suspensions Every suspension of the loop, by fiber.
+     * @param \WeakMap<object, self> $suspensions Every suspension of the loop, by fiber.
      * @param object $main The key of the main program's suspension.
      */
     public function __construct(
@@ -143,8 +143,9 @@ final class FiberSuspension implements Suspension
     private function waitingTraces(): string
     {
         $info = '';
-        foreach ($this->suspensions as $reference) {
-            $fiber = $reference->get()?->fiber?->get();
+        foreach ($this->suspensions as $suspension) {
+            // The map keeps every live fiber's suspension, idle ones included.
+            $fiber = $suspension->pending ? $suspension->fiber?->get() : null;
             if ($fiber === null) {
                 continue;
             }

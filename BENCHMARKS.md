@@ -4,6 +4,24 @@ These pages were written while the engine was its own repository. Its source is 
 
 See [HTTP request path](benchmarks/HTTP-REQUEST-PATH.md) for the latest measurement of requests with browser-sized fields and a breakdown of where a request's time goes, [HTTP lazy request fields](benchmarks/HTTP-LAZY-FIELDS.md) for the step before it, [HTTP fast path](benchmarks/HTTP-FAST-PATH.md) for the preceding matched before/after HTTP measurements, request-shape workloads and the WebSocket regression check, [HTTP codec optimization](benchmarks/HTTP-CODEC-OPTIMIZATION.md) for the preceding codec measurements, [PHP HTTP headroom](benchmarks/HTTP-HEADROOM.md) for the earlier layer diagnostics, and [Crab versus Elysia](benchmarks/ELYSIA.md) for the earlier combined comparison. The historical snapshots below predate later docblock, request-body storage and codec changes; their hashes identify the source measured at the time.
 
+## Waiting for a pooled connection, 2026-11-05
+
+The same single-process setup as the sections below, JIT off, 64 connections, `GET /mysql-async/users/{id}` on MySQL 8.4 in a local container; four rounds, two with each version first, medians in requests per second. No errors.
+
+| | Before | After | Change |
+| --- | ---: | ---: | ---: |
+| Pool of 10, the default | 10,110 | 11,194 | +10.7% |
+| Pool of 64 | 11,372 | 11,529 | +1.4% |
+| `GET /hello` | 45,799 | 45,889 | 0% |
+| User CPU per request, pool of 10 | 66.5 µs | 56.9 µs | −9.6 µs |
+| Kernel CPU per request, pool of 10 | 21.4 µs | 21.0 µs | −0.4 µs |
+
+With a pool of 10, 54 of the 64 requests wait in line for a connection at any time. Each waiting request had a timer of its own for its `timeout`, made, put in the loop's timer heap and taken out again on every wait, in a heap the server's own connection timers already fill. A pool now keeps one timer for all its waiting callers. As they all wait as long, the oldest is always the first to give up: the timer is due when it does, and set again then for the next, and it is cancelled when nobody waits. In process, 64 fibers taking turns on a pool of 10 went from 7.4 to 4.6 µs a turn; in the server, a request's user CPU fell by 9.6 µs. The cycle collector ran once in either server, at its end, so it is not where the rest of the difference went.
+
+Each wait also made a `FiberSuspension`, 510 ns against 72 for reusing one, as the loop held its suspensions weakly and nothing else held one between waits. The loop now holds each fiber's suspension for as long as the fiber lives, in the `WeakMap` it already kept by fiber. A fiber that waits with nothing left to resume it is still collected: the suspension holds the fiber only through the map's entry, and PHP's cycle collector frees an entry whose value refers to its own key, running the fiber's `finally` blocks, as before. This is the pool-of-64 row, where nothing waits on the pool.
+
+With these, the default pool of 10 serves about 3% fewer requests than a pool of 64, against 12% before.
+
 ## Async MySQL, 2026-11-05
 
 One process with JIT off, 64 connections, `GET /mysql-async/users/{id}` through the query builder on MySQL 8.4 in a local container, the default pool of 10; four rounds alternating the two versions, medians. No errors.

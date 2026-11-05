@@ -23,9 +23,11 @@ use Crab\Engine\Suspension;
  *
  * What differs is cost. A callback fiber whose callback suspended returns
  * to a pool of spare fibers when that callback ends, where Revolt makes a
- * new fiber for every callback that suspends; the loop counts its enabled,
- * referenced watchers instead of scanning them every turn; and it blocks as
- * soon as nothing is ready, without a non-blocking turn after each busy one.
+ * new fiber for every callback that suspends; a fiber keeps its suspension
+ * for as long as it lives, where Revolt makes another once nothing holds
+ * the last; the loop counts its enabled, referenced watchers instead of
+ * scanning them every turn; and it blocks as soon as nothing is ready,
+ * without a non-blocking turn after each busy one.
  */
 abstract class FiberEventLoop extends EventLoop
 {
@@ -106,7 +108,12 @@ abstract class FiberEventLoop extends EventLoop
     private bool $stopped = false;
 
     /**
-     * @var \WeakMap<object, \WeakReference<FiberSuspension>>
+     * Each fiber's suspension, kept while the fiber lives and reused for
+     * every wait. A waiting fiber nothing else holds is still collected:
+     * its suspension holds it only through this map, whose entries the
+     * cycle collector frees with their key.
+     *
+     * @var \WeakMap<object, FiberSuspension>
      */
     private \WeakMap $suspensions;
 
@@ -292,20 +299,13 @@ abstract class FiberEventLoop extends EventLoop
 
     final public function getSuspension(): Suspension
     {
-        $key = \Fiber::getCurrent() ?? $this->main;
-        $suspension = ($this->suspensions[$key] ?? null)?->get();
-        if ($suspension !== null) {
-            return $suspension;
-        }
-        $suspension = new FiberSuspension(
+        return $this->suspensions[\Fiber::getCurrent() ?? $this->main] ??= new FiberSuspension(
             $this->runner,
             $this->resumer,
             $this->interrupter,
             $this->suspensions,
             $this->main,
         );
-        $this->suspensions[$key] = \WeakReference::create($suspension);
-        return $suspension;
     }
 
     final public function setErrorHandler(?\Closure $handler): void

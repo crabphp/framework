@@ -2,6 +2,10 @@
 
 Crab follows [semantic versioning](https://semver.org). Before 1.0, a minor version may break what an application writes; the entry says what to change.
 
+## Unreleased
+
+- **Faster waiting for a pooled connection:** on one process serving 64 requests at a time, an async MySQL lookup by primary key serves about 11% more requests a second with the default `pool` of 10, where most requests wait in line for a connection, and about 1% more with a pool of 64, where none waits. A pool now keeps one timer for all the callers waiting on it, set again for whoever is to give up next, where each waiting caller had a timer of its own; each still gives up after its full `timeout`. The event loop keeps each fiber's suspension for as long as the fiber lives, where it made one for every wait. Waiting in `Concurrency` and on the HTTP client's connection pools takes the same path. See [the measurements](BENCHMARKS.md).
+
 ## 0.6.0 — 2026-11-05
 
 - **Runs and actors are packages of their own (breaking for an application that uses them):** they move to [crabphp/runs](https://github.com/crabphp/runs) and [crabphp/actors](https://github.com/crabphp/actors), for the applications that need them, and the framework keeps to what every API uses. Their classes, plugins, commands, settings and tables keep their names. To upgrade, require the package beside the framework, `composer require crabphp/runs` or `crabphp/actors`. `App::OPTIONAL_PLUGINS` no longer lists `RunsPlugin` and `ActorsPlugin`, and `config:publish` no longer writes `runs` or `actors`: their packages' READMEs describe their settings.

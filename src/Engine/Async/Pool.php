@@ -39,6 +39,17 @@ final class Pool
      * @var array<int, Closure>
      */
     private array $waiting = [];
+    /**
+     * When each waiting caller gives up, by the same keys. Every caller
+     * waits as long, so the oldest gives up first.
+     *
+     * @var array<int, float>
+     */
+    private array $deadlines = [];
+    /**
+     * One timer for every waiting caller, due no later than the oldest gives up.
+     */
+    private ?string $timer = null;
     private int $nextWaiter = 0;
     private bool $closed = false;
 
@@ -79,14 +90,14 @@ final class Pool
                 $this->waiting[$id] = static fn(?object $resource, ?Throwable $error = null) => $error === null
                     ? $resume($resource)
                     : $fail($error);
-                $timer = $this->loop->delay($this->timeout, fn() => $fail(
-                    new PoolExhaustedException(
-                        "No resource became free within {$this->timeout} seconds; the pool holds {$this->max}.",
-                    ),
-                ));
-                return function () use ($id, $timer): void {
-                    unset($this->waiting[$id]);
-                    $this->loop->cancel($timer);
+                $this->deadlines[$id] = (hrtime(true) / 1e9) + $this->timeout;
+                $this->timer ??= $this->loop->delay($this->timeout, $this->expire(...));
+                return function () use ($id): void {
+                    unset($this->waiting[$id], $this->deadlines[$id]);
+                    if ($this->waiting === [] && $this->timer !== null) {
+                        $this->loop->cancel($this->timer);
+                        $this->timer = null;
+                    }
                 };
             },
             $cancellation,
@@ -199,6 +210,34 @@ final class Pool
             'borrowed' => count($this->borrowed),
             'waiting' => count($this->waiting),
         ];
+    }
+
+    /**
+     * Fails each caller that has waited its full time, oldest first, and
+     * sets the timer again for the next to give up.
+     */
+    private function expire(): void
+    {
+        $this->timer = null;
+        $now = hrtime(true) / 1e9;
+        while ($this->waiting !== []) {
+            $id = array_key_first($this->waiting);
+            if ($this->deadlines[$id] > $now) {
+                if ($this->timer !== null) {
+                    $this->loop->cancel($this->timer);
+                }
+                $this->timer = $this->loop->delay($this->deadlines[$id] - $now, $this->expire(...));
+                return;
+            }
+            $settle = $this->waiting[$id];
+            unset($this->waiting[$id], $this->deadlines[$id]);
+            $settle(
+                null,
+                new PoolExhaustedException(
+                    "No resource became free within {$this->timeout} seconds; the pool holds {$this->max}.",
+                ),
+            );
+        }
     }
 
     private function create(): object

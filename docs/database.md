@@ -198,7 +198,7 @@ Turn on `async` when MySQL queries keep your HTTP workers waiting while other re
 
 With this enabled, `pool` is the number of queries one worker can have in flight. A pool of one queues queries even though the driver waits on the event loop. Borrow a separate connection for each concurrent operation; two fibers using one borrowed connection at once are refused. `timeout` bounds connection setup and waiting for a free connection. Queries have no deadline of their own.
 
-Size `pool` for the requests a worker serves at once that use the database. A request that finds every connection lent waits in line for one, and the waiting costs the worker time as well: one worker serving 64 requests at a time, each a lookup by primary key, handled about 8% more requests a second with a pool of 64 than with the default 10. Keep `pool` times the workers of every process that connects, queue workers included, below the server's `max_connections`, 151 by default, with room left for migrations and your own tools.
+Size `pool` for the requests a worker serves at once that use the database. A request that finds every connection lent waits in line for one, and the waiting costs the worker time as well: one worker serving 64 requests at a time, each a lookup by primary key, handled about 3% more requests a second with a pool of 64 than with the default 10. Keep `pool` times the workers of every process that connects, queue workers included, below the server's `max_connections`, 151 by default, with room left for migrations and your own tools.
 
 `async` is each connection's own setting. SQLite and code outside a running plugin worker, including ordinary console commands and `migrate`, keep using PDO.
 
