@@ -151,9 +151,17 @@ final class SubprocessTest extends TestCase
         $out = preg_split('/\s+/', trim((string) stream_get_contents($pipes[1])));
         fclose($pipes[1]);
         self::assertSame(3, proc_close($process), 'The exit code is the command\'s.');
-        self::assertSame([(string) $pid, (string) $pid], $out, 'The command keeps the process id and leads its own group.');
+        self::assertSame(
+            [(string) $pid, (string) $pid],
+            $out,
+            'The command keeps the process id and leads its own group.',
+        );
 
-        $missing = proc_open(['/usr/bin/perl', '-e', ProcessGroup::PERL, '--', '/no/such/program'], [2 => ['pipe', 'w']], $pipes);
+        $missing = proc_open(
+            ['/usr/bin/perl', '-e', ProcessGroup::PERL, '--', '/no/such/program'],
+            [2 => ['pipe', 'w']],
+            $pipes,
+        );
         self::assertIsResource($missing);
         self::assertStringContainsString('/no/such/program', (string) stream_get_contents($pipes[2]));
         fclose($pipes[2]);
