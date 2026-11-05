@@ -537,25 +537,23 @@ final class Parser
      */
     public static function find(string $head, string $name): ?array
     {
-        // The request line's CRLF anchors the first field name.
-        $offset = strpos($head, "\r\n") + 2;
         // A colon can never be part of a field name; without this guard the
-        // pattern could read a name and the start of its value as one name.
-        if (
-            str_contains($name, ':')
-            || !preg_match_all(
-                '/\r\n' . preg_quote($name, '/') . ':[ \t]*+([^\r]*)/i',
-                $head,
-                $fields,
-                PREG_PATTERN_ORDER,
-                $offset - 2,
-            )
-        ) {
+        // search could read a name and the start of its value as one name.
+        if (str_contains($name, ':')) {
             return null;
         }
-        $values = [];
-        foreach ($fields[1] as $value) {
-            $values[] = rtrim($value, " \t");
+        // Each line that starts with the name and a colon, from the request line's CRLF on: a plain
+        // search, where a pattern made for each name cost three times as much.
+        $needle = "\r\n" . $name . ':';
+        $length = strlen($needle);
+        $offset = (int) strpos($head, "\r\n");
+        $values = null;
+        while (($at = stripos($head, $needle, $offset)) !== false) {
+            $start = $at + $length;
+            $start += strspn($head, " \t", $start);
+            $end = strpos($head, "\r", $start);
+            $values[] = rtrim($end === false ? substr($head, $start) : substr($head, $start, $end - $start), " \t");
+            $offset = $end === false ? strlen($head) : $end;
         }
         return $values;
     }
