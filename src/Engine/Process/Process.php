@@ -19,8 +19,8 @@ use Crab\Engine\EventLoop;
  *     $server->stop();
  *
  * For a command that is run to its end, Subprocess is simpler. As there, the
- * command never passes through a shell, and where the `setsid` program and
- * PHP's posix extension are present it runs in a process group of its own,
+ * command never passes through a shell, and with PHP's posix extension it
+ * runs in a process group of its own (through `setsid`, or perl on macOS),
  * so stopping it stops what it started too.
  */
 final class Process
@@ -68,8 +68,8 @@ final class Process
             throw new \InvalidArgumentException('A process needs a command given as a list of arguments.');
         }
         $loop ??= EventLoop::current();
-        $setsid = self::setsid();
-        $argv = $setsid === false ? $command : [$setsid, '--', ...$command];
+        $grouped = ProcessGroup::wrap($command);
+        $argv = $grouped ?? $command;
         $pipes = [];
         $process = @proc_open(
             $argv,
@@ -85,7 +85,7 @@ final class Process
         foreach ($pipes as $pipe) {
             stream_set_blocking($pipe, false);
         }
-        $self = new self($process, $pipes, (int) proc_get_status($process)['pid'], $setsid !== false, $loop);
+        $self = new self($process, $pipes, (int) proc_get_status($process)['pid'], $grouped !== null, $loop);
         $self->watch();
         self::$live[$self->pid] = $self;
         if (!self::$hooked) {
@@ -311,21 +311,5 @@ final class Process
         foreach ($listeners as $listener) {
             $listener($this->exitCode);
         }
-    }
-
-    /**
-     * The `setsid` program, when it and the posix extension to signal a group are both here.
-     */
-    private static function setsid(): string|false
-    {
-        if (!function_exists('posix_kill')) {
-            return false;
-        }
-        foreach (['/usr/bin/setsid', '/bin/setsid'] as $path) {
-            if (is_executable($path)) {
-                return $path;
-            }
-        }
-        return false;
     }
 }

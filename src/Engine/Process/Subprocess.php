@@ -18,16 +18,14 @@ use Crab\Engine\EventLoop;
  *     }
  *
  * The command is a list of arguments and never passes through a shell; a
- * caller that wants one names it (`['/bin/sh', '-c', $script]`). Where the
- * `setsid` program and PHP's posix extension are present the command runs
- * in a process group of its own, so nothing it starts outlives it: when it
+ * caller that wants one names it (`['/bin/sh', '-c', $script]`). With PHP's
+ * posix extension the command runs in a process group of its own (through
+ * `setsid`, or perl on macOS), so nothing it starts outlives it: when it
  * ends, times out, writes too much or is cancelled, the whole group is
  * killed. Without them only the command itself is.
  */
 final class Subprocess
 {
-    private static string|false|null $setsid = null;
-
     /**
      * @param list<string> $command The program and its arguments.
      * @param string|null $directory Where it runs; null for this process's working directory.
@@ -61,8 +59,8 @@ final class Subprocess
         $cancellation?->throwIfCancelled();
         $loop ??= EventLoop::current();
 
-        $setsid = self::setsid();
-        $argv = $setsid === false ? $command : [$setsid, '--', ...$command];
+        $grouped = ProcessGroup::wrap($command);
+        $argv = $grouped ?? $command;
         $pipes = [];
         $process = @proc_open(
             $argv,
@@ -80,7 +78,7 @@ final class Subprocess
             throw new \RuntimeException("Could not start {$command[0]}: {$error}");
         }
         $pid = (int) proc_get_status($process)['pid'];
-        $group = $setsid !== false;
+        $group = $grouped !== null;
 
         $onOutput = $output;
         $stdout = '';
@@ -297,24 +295,5 @@ final class Subprocess
             $timedOut,
             $truncated,
         );
-    }
-
-    /**
-     * The `setsid` program, when it and the posix extension to signal a group are both here.
-     */
-    private static function setsid(): string|false
-    {
-        if (self::$setsid !== null) {
-            return self::$setsid;
-        }
-        if (!function_exists('posix_kill')) {
-            return self::$setsid = false;
-        }
-        foreach (['/usr/bin/setsid', '/bin/setsid'] as $path) {
-            if (is_executable($path)) {
-                return self::$setsid = $path;
-            }
-        }
-        return self::$setsid = false;
     }
 }

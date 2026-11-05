@@ -9,6 +9,7 @@ use Crab\Engine\Async\Cancellation;
 use Crab\Engine\Async\CancelledException;
 use Crab\Engine\Async\Task;
 use Crab\Engine\EventLoop\StreamSelectEventLoop;
+use Crab\Engine\Process\ProcessGroup;
 use Crab\Engine\Process\Subprocess;
 use Crab\Engine\Tests\Support\TestCase;
 
@@ -108,8 +109,8 @@ final class SubprocessTest extends TestCase
 
     public function testNothingTheCommandStartedOutlivesIt(): void
     {
-        if (!function_exists('posix_kill') || !is_executable('/usr/bin/setsid') && !is_executable('/bin/setsid')) {
-            self::markTestSkipped('Process groups need setsid and the posix extension.');
+        if (ProcessGroup::wrap(['true']) === null) {
+            self::markTestSkipped('Process groups need setsid or perl, and the posix extension.');
         }
         $marker = 'sleep 30.' . random_int(100_000, 999_999);
         $started = microtime(true);
@@ -132,6 +133,31 @@ final class SubprocessTest extends TestCase
             }
         }
         self::assertSame([], $alive, 'The background child survived.');
+    }
+
+    public function testPerlLeadsAGroupWhereThereIsNoSetsid(): void
+    {
+        if (!is_executable('/usr/bin/perl')) {
+            self::markTestSkipped('No perl.');
+        }
+        // Started as proc_open starts it, not under setsid, as on macOS.
+        $process = proc_open(
+            ['/usr/bin/perl', '-e', ProcessGroup::PERL, '--', '/bin/sh', '-c', 'echo $$ $(ps -o pgid= -p $$); exit 3'],
+            [1 => ['pipe', 'w']],
+            $pipes,
+        );
+        self::assertIsResource($process);
+        $pid = proc_get_status($process)['pid'];
+        $out = preg_split('/\s+/', trim((string) stream_get_contents($pipes[1])));
+        fclose($pipes[1]);
+        self::assertSame(3, proc_close($process), 'The exit code is the command\'s.');
+        self::assertSame([(string) $pid, (string) $pid], $out, 'The command keeps the process id and leads its own group.');
+
+        $missing = proc_open(['/usr/bin/perl', '-e', ProcessGroup::PERL, '--', '/no/such/program'], [2 => ['pipe', 'w']], $pipes);
+        self::assertIsResource($missing);
+        self::assertStringContainsString('/no/such/program', (string) stream_get_contents($pipes[2]));
+        fclose($pipes[2]);
+        self::assertNotSame(0, proc_close($missing));
     }
 
     public function testItRefusesWhatItCannotRun(): void
