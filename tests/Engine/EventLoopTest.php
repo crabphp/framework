@@ -276,6 +276,11 @@ final class EventLoopTest extends TestCase
         self::assertTrue($abandoned, 'A waiter nothing can resume is collected, and its finally blocks run.');
     }
 
+    /**
+     * The trace must hold arguments for the test to see them kept, whatever php.ini says; the setting is restored.
+     *
+     * @mago-expect lint:no-ini-set
+     */
     public function testAKeptSuspensionKeepsNothingOfAWaitThatEndedInAnError(): void
     {
         $ignoreArgs = ini_set('zend.exception_ignore_args', '0');

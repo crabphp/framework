@@ -6,4 +6,17 @@ declare(strict_types=1);
 return [
     // Positive whole seconds a single-use browser socket ticket lives.
     'ticket_ttl' => 30,
+    // CookieAuth: the user's token in a browser cookie.
+    'cookie' => [
+        // The cookie's name: letters, digits, _, . and -.
+        'name' => 'auth',
+        // Seconds the browser keeps it; null keeps it until the browser closes.
+        'max_age' => null,
+        // Where a page that needs a user sends the browser instead of answering 401, such as '/login'.
+        'login' => null,
+        // Other origins whose pages may send requests that change something; app.url and the request's own always may.
+        'origins' => [],
+        // Whether it is sent only over HTTPS; null means yes unless app.url starts with http://.
+        'secure' => null,
+    ],
 ];

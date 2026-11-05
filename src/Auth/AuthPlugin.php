@@ -26,9 +26,23 @@ final class AuthPlugin implements Plugin
     {
         $container->get(Config::class)->defaults(
             'auth',
-            ['ticket_ttl' => 30],
+            [
+                'ticket_ttl' => 30,
+                'cookie' => ['name' => 'auth', 'max_age' => null, 'login' => null, 'origins' => [], 'secure' => null],
+            ],
             [
                 'ticket_ttl' => ['type' => 'integer', 'minimum' => 1],
+                'cookie' => [
+                    'type' => 'object',
+                    'properties' => [
+                        'name' => ['type' => 'string', 'pattern' => '^[A-Za-z0-9_.-]+$'],
+                        'max_age' => ['type' => ['integer', 'null'], 'minimum' => 1],
+                        'login' => ['type' => ['string', 'null'], 'minLength' => 1],
+                        'origins' => ['type' => 'array', 'items' => ['type' => 'string', 'pattern' => '^https?://']],
+                        'secure' => ['type' => ['boolean', 'null']],
+                    ],
+                    'additionalProperties' => false,
+                ],
             ],
         );
         $container->singleton(PasswordHasherContract::class, static fn(): PasswordHasher => new PasswordHasher());

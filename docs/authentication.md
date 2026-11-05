@@ -10,6 +10,11 @@
     - [Protecting routes](#protecting-routes)
     - [Managing tokens](#managing-tokens)
     - [Another header](#another-header)
+- [Cookie authentication](#cookie-authentication)
+    - [Logging in and out](#logging-in-and-out)
+    - [Protecting pages](#protecting-pages)
+    - [Requests from other sites](#requests-from-other-sites)
+    - [Cookie settings](#cookie-settings)
 - [Browser socket tickets](#browser-socket-tickets)
 - [Passwords](#passwords)
 - [A way of your own](#a-way-of-your-own)
@@ -20,7 +25,7 @@
 
 Authentication answers "who is making this request?". In Crab that is decided by middleware, and whatever the way, it ends the same: the middleware puts your user on the request, and an action takes that user as a parameter.
 
-A token sent in a header and kept in your database authenticates ordinary API requests. For a browser's WebSocket handshake, exchange that authentication for a short-lived, single-use ticket. Anything else, a JWT, a signed URL, a header set by a proxy, is a few lines of middleware of your own.
+A token sent in a header and kept in your database authenticates ordinary API requests. Pages a browser loads use the same token in a cookie. For a browser's WebSocket handshake, exchange that authentication for a short-lived, single-use ticket. Anything else, a JWT, a signed URL, a header set by a proxy, is a few lines of middleware of your own.
 
 There is no `Auth::user()`. A worker serves requests that overlap, so the user travels with the request and nowhere else.
 
@@ -202,6 +207,85 @@ new TokenAuth($tokens, $users, required: false);         // lets a request witho
 ```
 
 Use `required: false` for a route that serves both anonymous and logged-in callers. A valid token still supplies the user. An unknown or expired token, or one whose user no longer exists, is answered `401` with `WWW-Authenticate`, so the client knows to log in again. A header with another scheme, such as `Basic` when the scheme is `Bearer`, or an empty token (`Bearer `), counts as no token and goes through anonymously.
+
+## Cookie authentication
+
+For pages a browser loads, such as server-rendered HTML, the user's token travels in a cookie. It is the same database token that `TokenAuth` reads from a header, with the same `TokenStore` and `IdentityResolver`, so there is no session: the cookie holds the token, and the token store says whose it is. `TokenAuthPlugin` binds `CookieAuth`.
+
+### Logging in and out
+
+Check the password as for a token, then set the cookie on the response:
+
+```php
+use Crab\Auth\CookieAuth;
+use Crab\Contracts\Auth\TokenStore;
+use Crab\Http\Response;
+
+final readonly class LogIn
+{
+    public function __construct(private Users $users, private TokenStore $tokens, private CookieAuth $auth)
+    {
+    }
+
+    public function handle(#[Email] string $email, #[\SensitiveParameter] string $password): Response
+    {
+        $user = $this->users->withPassword($email, $password) ?? throw new HttpException(401, 'These credentials do not match.');
+
+        return Response::redirect('/account', 303)->withCookie($this->auth->cookie($this->tokens->issue($user, 'browser')));
+    }
+}
+```
+
+The cookie is `HttpOnly`, so the page's JavaScript cannot read the token, and `SameSite=Lax`. It is `Secure` unless `app.url` starts with `http://`, as while developing.
+
+To log out, revoke the token and clear the cookie in one step:
+
+```php
+public function handle(ServerRequestInterface $request): Response
+{
+    return Response::redirect('/', 303)->withCookie($this->auth->logout($request));
+}
+```
+
+### Protecting pages
+
+```php
+use Crab\Auth\CookieAuth;
+
+Route::post('/login', LogIn::class)->middleware(new CookieAuth(required: false));
+
+Route::middleware(CookieAuth::class)->group(function () {
+    Route::get('/account', ShowAccount::class);
+    Route::post('/logout', LogOut::class);
+});
+
+Route::get('/', ShowHome::class)->middleware(new CookieAuth(required: false));    // a user when there is one
+```
+
+Actions take `User $user` as with tokens. A request without a known user is answered `401`, or, with `login: '/login'` on the middleware or `auth.cookie.login` set, a `GET` or `HEAD` request is sent to that page. A cookie whose token no longer works, because it expired or was revoked elsewhere, is cleared in the same response; with `required: false` the page is served without a user.
+
+### Requests from other sites
+
+A browser sends cookies with requests that other sites start, so any request that can change something, with a method other than `GET`, `HEAD`, `OPTIONS` or `TRACE`, must come from your own pages. `CookieAuth` checks this whether or not there is a cookie, which covers the login form too:
+
+- the browser's `Sec-Fetch-Site` header says `same-origin`, or
+- its `Origin` header is the request's own origin, `app.url`'s, or one in `auth.cookie.origins`.
+
+Anything else is answered `403`, a request with neither header included. Every current browser sends them, so forms need no hidden token. Behind a proxy that ends TLS, set `app.url` to the public address. Requests that only read are not checked, so keep `GET` routes free of side effects.
+
+Keep APIs called by other programs on `TokenAuth`: a program has no cookie and sends no `Origin`.
+
+### Cookie settings
+
+The bound `CookieAuth` reads `auth.cookie` from `config/auth.php`. An object on a route, `new CookieAuth(required: false)` or `new CookieAuth(login: '/login')`, takes everything it does not set from it.
+
+| Setting | Default | |
+| --- | --- | --- |
+| `auth.cookie.name` | `auth` | The cookie's name |
+| `auth.cookie.max_age` | `null` | Seconds the browser keeps it; `null` until the browser closes. The token's own expiry still applies |
+| `auth.cookie.login` | `null` | Where a page that needs a user sends the browser, such as `/login` |
+| `auth.cookie.origins` | `[]` | Other origins whose pages may send changing requests, such as `https://admin.example.com` |
+| `auth.cookie.secure` | `null` | Whether the cookie needs HTTPS; `null` means yes unless `app.url` starts with `http://` |
 
 ## Browser socket tickets
 
