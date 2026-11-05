@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Crab\Engine\Tests;
 
+use Crab\Engine\Async\Async;
+use Crab\Engine\Async\Task;
 use Crab\Engine\EventLoop;
 use Crab\Engine\EventLoop\RevoltEventLoop;
 use Crab\Engine\EventLoop\StreamSelectEventLoop;
@@ -219,6 +221,126 @@ final class EventLoopTest extends TestCase
         $loop->defer(static function (): void {});
         $this->expectExceptionMessage('Event loop ended without resuming the current suspension');
         $suspension->suspend();
+    }
+
+    public function testAFiberKeepsItsSuspensionBetweenWaits(): void
+    {
+        $loop = new StreamSelectEventLoop();
+        $kept = null;
+        $loop->defer(static function () use ($loop, &$kept): void {
+            $first = \WeakReference::create($loop->getSuspension());
+            $suspension = $loop->getSuspension();
+            $loop->defer(static fn() => $suspension->resume());
+            $suspension->suspend();
+            unset($suspension);
+            // Nothing else holds it now, and the next wait finds it all the same.
+            $kept = $first->get() === $loop->getSuspension();
+        });
+        $loop->run();
+        self::assertTrue($kept);
+    }
+
+    public function testADeadlockReportListsOnlyTheFibersStillWaiting(): void
+    {
+        $loop = new StreamSelectEventLoop();
+        // Callbacks that suspend and end leave spare fibers, each keeping its suspension.
+        for ($i = 0; $i < 3; $i++) {
+            $loop->defer(static function () use ($loop): void {
+                $suspension = $loop->getSuspension();
+                $loop->defer(static fn() => $suspension->resume());
+                $suspension->suspend();
+            });
+        }
+        $loop->run();
+        $abandoned = false;
+        $loop->defer(static function () use ($loop, &$abandoned): void {
+            try {
+                $loop->getSuspension()->suspend();
+            } finally {
+                $abandoned = true;
+            }
+        });
+        $held = [];
+        $loop->defer(static function () use ($loop, &$held): void {
+            $held[] = $loop->getSuspension();
+            $held[0]->suspend();
+        });
+        try {
+            $loop->getSuspension()->suspend();
+            self::fail('Nothing could resume the main program.');
+        } catch (\Error $error) {
+            self::assertStringContainsString('Event loop ended without resuming', $error->getMessage());
+            // Each fiber listed is a trace of its own, after a blank line.
+            self::assertSame(1, substr_count($error->getMessage(), "\n\n"), 'Only the waiter still held is listed.');
+        }
+        self::assertTrue($abandoned, 'A waiter nothing can resume is collected, and its finally blocks run.');
+    }
+
+    public function testAKeptSuspensionKeepsNothingOfAWaitThatEndedInAnError(): void
+    {
+        $ignoreArgs = ini_set('zend.exception_ignore_args', '0');
+        try {
+            $loop = new StreamSelectEventLoop();
+            $request = new \stdClass();
+            $kept = \WeakReference::create($request);
+            $caught = null;
+            // A FiberError that Task::await() hands on is thrown into the waiting fiber; its trace holds the request.
+            $fail = static function (object $request): void {
+                new \Fiber(static function (): void {})->resume();
+            };
+            $target = Task::spawn($loop, static function () use ($loop, $request, $fail): void {
+                Async::sleep($loop, 0.0);
+                $fail($request);
+            });
+            $caller = Task::spawn($loop, static function () use ($target, &$caught): void {
+                try {
+                    $target->await();
+                } catch (\FiberError $error) {
+                    $caught = \WeakReference::create($error);
+                }
+            });
+            $loop->run();
+            unset($target, $caller, $request);
+            gc_collect_cycles();
+            self::assertNotNull($caught, 'The waiting task was not handed the FiberError.');
+            self::assertNull($caught->get(), 'The fiber kept for reuse keeps the error it was handed.');
+            self::assertNull($kept->get(), 'The fiber kept for reuse keeps what the error\'s trace holds.');
+        } finally {
+            ini_set('zend.exception_ignore_args', (string) $ignoreArgs);
+        }
+    }
+
+    public function testAFiberWhoseWaitEndedInAnErrorIsFreedWhenItEnds(): void
+    {
+        $collecting = gc_enabled();
+        gc_disable();
+        try {
+            $loop = new StreamSelectEventLoop();
+            $fibers = [];
+            // More callbacks waiting at once than the loop keeps spare fibers for, so some fibers end.
+            for ($i = 0; $i < 200; $i++) {
+                $loop->defer(static function () use ($loop, &$fibers): void {
+                    $fibers[] = \WeakReference::create(\Fiber::getCurrent());
+                    $suspension = $loop->getSuspension();
+                    $loop->defer(static fn() => $suspension->throw(new RuntimeException('ended')));
+                    try {
+                        $suspension->suspend();
+                    } catch (RuntimeException) {
+                    }
+                });
+            }
+            // Counted while the loop still runs: run() collects cycles before it returns.
+            $freed = null;
+            $loop->delay(0.01, static function () use (&$fibers, &$freed): void {
+                $freed = count(array_filter($fibers, static fn(\WeakReference $fiber): bool => $fiber->get() === null));
+            });
+            $loop->run();
+            self::assertGreaterThan(0, $freed, 'A fiber that ended is held by the suspension it last waited on.');
+        } finally {
+            if ($collecting) {
+                gc_enable();
+            }
+        }
     }
 
     #[RequiresPhpExtension('pcntl')]

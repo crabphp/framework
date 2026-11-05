@@ -73,10 +73,22 @@ final class FiberSuspension implements Suspension
             $this->waiting = $fiber;
             try {
                 $value = \Fiber::suspend();
-            } catch (\FiberError $error) {
-                $this->pending = false;
-                $this->waiting = null;
-                $this->error = $error;
+            } catch (\Throwable $error) {
+                // The loop keeps this suspension while the fiber lives, so it must not go on holding
+                // the fiber, or an error and what its trace holds, once the wait is over.
+                if (!$this->pending) {
+                    // Thrown in by throw(), which ended the wait first.
+                    $this->waiting = null;
+                } elseif ($error instanceof \FiberError) {
+                    // Fiber::suspend() itself failed: a later resume() or throw() is told why, and the
+                    // loop makes the fiber a new suspension rather than keep this one and its error.
+                    $this->pending = false;
+                    $this->waiting = null;
+                    $this->error = $error;
+                    if (($this->suspensions[$fiber] ?? null) === $this) {
+                        unset($this->suspensions[$fiber]);
+                    }
+                }
                 throw $error;
             }
             // Not in a finally block: a fiber destroyed by the cycle collector would clear it too.
