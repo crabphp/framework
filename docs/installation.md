@@ -11,15 +11,10 @@
 
 Crab is a PHP framework for JSON APIs. It runs your application as a long-lived server: the code is loaded once, and worker processes then answer requests for as long as they live, without PHP-FPM, Nginx or Apache in front.
 
-Reach for it when you are building an API and want it to start fast, answer fast and stay small enough to read. It is not a full-stack framework: there are no views, no sessions and no ORM. What you get is routing, typed actions with validation, middleware, a database layer with a query builder and migrations, authentication by token, a cache, events, a queue, a scheduler, an HTTP client, streaming responses, durable runs and actors.
+Reach for it when you are building an API and want it to start fast, answer fast and stay small enough to read. It is not a full-stack framework: there are no views, no sessions and no ORM. What you get is routing, typed actions with validation, middleware, a database layer with a query builder and migrations, authentication by token, a cache, events, a queue, a scheduler, an HTTP client and streaming responses, with durable runs and actors as packages of their own.
 
 > [!NOTE]
-> Crab's latest release, v0.6.0, is tagged on GitHub but not yet on Packagist. The skeleton reads the framework from a folder beside it, as shown below. An application of your own can instead require the release from GitHub:
->
-> ```json
-> "repositories": [{"type": "vcs", "url": "https://github.com/crabphp/framework"}],
-> "require": {"crabphp/framework": "^0.6"}
-> ```
+> Crab's latest release is v0.6.0, on [Packagist](https://packagist.org/packages/crabphp/framework). Its packages, such as `crabphp/runs` or `crabphp/redis`, are installed the same way, with `composer require`.
 
 ## Requirements
 
@@ -30,16 +25,15 @@ Reach for it when you are building an API and want it to start fast, answer fast
 
 ## Creating an application
 
-The starting point is the skeleton, `crabphp/crab`. Put it beside the framework and install it:
+The starting point is the skeleton, `crabphp/crab`. Create an application from it with Composer:
 
 ```sh
-git clone https://github.com/crabphp/crab.git crab
-git clone https://github.com/crabphp/framework.git framework
-cd crab
-composer install
-cp .env.example .env
+composer create-project crabphp/crab shop
+cd shop
 php cua dev
 ```
+
+`create-project` installs the framework and writes `.env` from `.env.example`. To add Crab to a project of your own instead, require it with `composer require crabphp/framework`.
 
 Open `http://127.0.0.1:8080`. `cua` is the application's command line; `php cua` on its own lists every command.
 

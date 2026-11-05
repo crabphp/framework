@@ -4,13 +4,15 @@ Thank you for helping. This page says how to set up, what to run, and what a cha
 
 ## Set up
 
-Crab is five repositories that read each other from sibling folders until the first release, so clone them side by side:
+Crab is a framework and packages in repositories of their own. The packages and the sample read the framework from a sibling folder, `../framework`, so clone them side by side:
 
 ```sh
 mkdir crabphp && cd crabphp
-for repo in framework crab sample clockwerk redis; do git clone git@github.com:crabphp/$repo.git; done
+for repo in framework crab sample runs actors redis s3 openapi clockwerk; do git clone git@github.com:crabphp/$repo.git; done
 cd framework && composer install
 ```
+
+The skeleton, `crab`, installs the framework from Packagist, as a new application does; to try it against the framework beside it, add a path repository to `../framework` without committing it.
 
 You need PHP 8.4 with `mbstring`, `pcntl`, `posix`, `sockets` and `pdo_sqlite`, and Composer. MySQL 8.4+, Redis and Docker are needed only for the checks that use them.
 

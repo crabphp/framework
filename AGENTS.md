@@ -317,7 +317,7 @@
 
 ## Application skeleton
 
-- The skeleton is the separate repository `crabphp/crab`, beside this one, and reads the framework from `../framework` until there is a release.
+- The skeleton is the separate repository `crabphp/crab`, installed with `composer create-project crabphp/crab`. It requires `crabphp/framework` by version from Packagist, so a new minor version raises its constraint; to run its tests against the framework beside it, add a path repository to `../framework` locally and do not commit it.
 - It stays minimal and readable at a glance: `app.php` describes the application, `cua` is the command line (`php cua dev`), and the folders are `routes/`, `app/Actions/`, `app/Plugins/`, `config/`, `database/migrations/`, `storage/` and `tests/`.
 - An application's `app/` has few folders, by where a class is used and not one for each kind: `Actions/` for every class with `handle()` (what a route points at, a job, a listener, a scheduled class), `Console/` for commands, `Http/` for what only a request meets (middleware, input classes), `Plugins/`, and `Events/` for event objects. A folder is made when there are files for it, not before. Do not add `Jobs/`, `Listeners/`, `Middleware/` or `Commands/` to the skeleton, the sample or the guide.
 - `storage/` holds what the application writes while it runs (logs in `storage/logs/`, the SQLite file, the file cache when its directory is set there, later uploads) and is never committed. Nothing the application needs in order to start lives there. A relative `log.path` is inside the application's base path. Add a folder to it only when a component that needs one is built.
