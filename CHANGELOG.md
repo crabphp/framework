@@ -2,7 +2,7 @@
 
 Crab follows [semantic versioning](https://semver.org). Before 1.0, a minor version may break what an application writes; the entry says what to change.
 
-## Unreleased
+## 0.6.1 — 2026-11-06
 
 - **Faster waiting for a pooled connection:** on one process serving 64 requests at a time, an async MySQL lookup by primary key serves about 11% more requests a second with the default `pool` of 10, where most requests wait in line for a connection, and about 1% more with a pool of 64, where none waits. A pool now keeps one timer for all the callers waiting on it, set again for whoever is to give up next, where each waiting caller had a timer of its own; each still gives up after its full `timeout`. The event loop keeps each fiber's suspension for as long as the fiber lives, where it made one for every wait. Waiting in `Concurrency` and on the HTTP client's connection pools takes the same path. See [the measurements](BENCHMARKS.md).
 
