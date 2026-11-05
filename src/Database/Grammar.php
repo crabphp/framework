@@ -19,9 +19,25 @@ abstract class Grammar
     /**
      * The grammar for a connection's driver.
      */
+    /**
+     * Names already quoted, by name: the same few on every query. Held to a
+     * size, as a name may come from a request, a column to sort by.
+     *
+     * @var array<string, string>
+     */
+    private array $wrapped = [];
+
+    /**
+     * @var array<string, self>
+     */
+    private static array $grammars = [];
+
+    /**
+     * The grammar of a driver: one for all its queries, as it keeps nothing of any of them.
+     */
     public static function for(string $driver): self
     {
-        return match ($driver) {
+        return self::$grammars[$driver] ??= match ($driver) {
             'mysql' => new MySqlGrammar(),
             'sqlite' => new SqliteGrammar(),
             default => throw new DatabaseException(
@@ -202,6 +218,19 @@ abstract class Grammar
      * "users.name as n" becomes "users"."name" as "n", and * stays *.
      */
     protected function wrap(string $name): string
+    {
+        $wrapped = $this->wrapped[$name] ?? null;
+        if ($wrapped !== null) {
+            return $wrapped;
+        }
+        $wrapped = $this->wrapName($name);
+        if (count($this->wrapped) < 1000) {
+            $this->wrapped[$name] = $wrapped;
+        }
+        return $wrapped;
+    }
+
+    private function wrapName(string $name): string
     {
         $alias = stripos($name, ' as ');
         if ($alias !== false) {
