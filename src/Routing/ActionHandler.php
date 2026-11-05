@@ -583,6 +583,10 @@ final class ActionHandler implements RequestHandlerInterface
         if ($type === 'string') {
             return $value;
         }
+        // The usual id: digits, no leading zero, and too few to pass what an integer holds.
+        if ($type === 'int' && ctype_digit($value) && strlen($value) < 19 && ($value[0] !== '0' || $value === '0')) {
+            return (int) $value;
+        }
         // Only when the number read is the number written: one past what an integer holds would be another.
         if (
             $type === 'int'
