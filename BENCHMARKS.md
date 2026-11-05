@@ -4,6 +4,23 @@ These pages were written while the engine was its own repository. Its source is 
 
 See [HTTP request path](benchmarks/HTTP-REQUEST-PATH.md) for the latest measurement of requests with browser-sized fields and a breakdown of where a request's time goes, [HTTP lazy request fields](benchmarks/HTTP-LAZY-FIELDS.md) for the step before it, [HTTP fast path](benchmarks/HTTP-FAST-PATH.md) for the preceding matched before/after HTTP measurements, request-shape workloads and the WebSocket regression check, [HTTP codec optimization](benchmarks/HTTP-CODEC-OPTIMIZATION.md) for the preceding codec measurements, [PHP HTTP headroom](benchmarks/HTTP-HEADROOM.md) for the earlier layer diagnostics, and [Crab versus Elysia](benchmarks/ELYSIA.md) for the earlier combined comparison. The historical snapshots below predate later docblock, request-body storage and codec changes; their hashes identify the source measured at the time.
 
+## Async MySQL, 2026-11-05
+
+One process with JIT off, 64 connections, `GET /mysql-async/users/{id}` through the query builder on MySQL 8.4 in a local container, the default pool of 10; four rounds alternating the two versions, medians. No errors.
+
+| | Before | After | Change |
+| --- | ---: | ---: | ---: |
+| Requests a second | 9,491 | 10,086 | +6.3% |
+| User CPU per request | 71.8 µs | 66.8 µs | −5.0 µs |
+| Kernel CPU per request | 22.4 µs | 21.5 µs | −0.9 µs |
+
+`GET /hello` on the same process costs about 9 µs of user CPU and 8 µs of kernel CPU, so an async lookup costs about 60 µs more of its own, spread across the driver rather than in one place. A request that suspends once on its own, `Async::sleep(0)`, costs no more than `GET /hello`, so suspending is not where it goes; the `ev` loop was slower here, 7,483 requests a second against 9,391 on Crab's `select` loop. What was found and changed:
+
+- Each command probed its connection with a one-byte read and `feof()`, which polls: two system calls. A plain connection now asks with one peek, `false` meaning a live idle socket, `''` a closed one and a byte something unasked; a TLS connection keeps the read, as OpenSSL may hold bytes the socket no longer shows. An empty read waited only after `feof()` had polled; a close also wakes the wait, so only an empty read after waking is asked.
+- A result of one row and four columns is eight packets, and each was read with two `read()` calls through a closure, a header and a payload, each checking its deadline and cancellation and copying. A packet is now read from the buffer in one call, its header unpacked in place. A command of one packet, nearly all of them, is sent without a generator.
+
+With 64 requests at a time and a pool of 10, most requests wait in line for a connection; a pool of 64 served 10,191 requests a second against 9,391. [Database](docs/database.md#not-blocking-the-worker) says how to size `pool`. Not changed: what each wait costs, a `FiberSuspension` made for every wait and a timer for every request waiting on the pool, as the pool and the loop's suspensions are where the care for abandoned fibers lives.
+
 ## JSON and text responses, 2026-11-05
 
 The same single-process setup, JIT off, six rounds with the order of the two versions alternating, medians in requests per second, no errors:
