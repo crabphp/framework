@@ -157,6 +157,18 @@ foreach ($pages as $name => $markdown) {
     }
 }
 
+// ---- Release -------------------------------------------------------------
+
+// The branch alias follows the latest release, as the packages beside the framework require it by version.
+$composer = json_decode((string) file_get_contents($root . '/composer.json'), true);
+$alias = $composer['extra']['branch-alias']['dev-main'] ?? null;
+if (preg_match('/^## (\d+)\.(\d+)\.\d+ — /m', (string) file_get_contents($root . '/CHANGELOG.md'), $release) === 1) {
+    $expected = "{$release[1]}.{$release[2]}.x-dev";
+    if ($alias !== $expected) {
+        $problems[] = "composer.json's branch alias for dev-main is " . var_export($alias, true) . ", and the latest release in CHANGELOG.md is {$release[1]}.{$release[2]}: set extra.branch-alias.dev-main to {$expected}.";
+    }
+}
+
 // ---- Report --------------------------------------------------------------
 
 if ($problems === []) {

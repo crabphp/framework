@@ -308,6 +308,13 @@
 - When the README repeats a guide's example or promise, both change together, and an executable example is tested from its text. A generator's next-step hint uses current syntax and names the class or import it needs.
 - A shell example in the guide stops at the first failed step (`set -e`); one that prepares a release migrates before it reloads, and one reload restarts HTTP, queue and schedule together.
 
+## Releasing
+
+- A release is a commit "Release X.Y.Z" on `main` and an annotated tag `vX.Y.Z` pushed with it. Before 1.0 a breaking change raises the minor version, and its CHANGELOG entry says what to change.
+- The release commit turns the CHANGELOG's `## Unreleased` into `## X.Y.Z — date` and updates the latest release `docs/installation.md` names.
+- `composer.json`'s branch alias names `dev-main` as `X.Y.x-dev` for the latest release's minor version, so that the packages beside the framework, which require `^X.Y` and read it from `../framework`, keep resolving. `composer docs:check` fails when the alias is behind the CHANGELOG. A new minor version raises each package's `crabphp/framework` constraint in the same piece of work.
+- The packages (runs, actors, redis, s3, openapi, clockwerk and the skeleton) are released the same way from their own repositories. Packagist picks up a tag when it is pushed.
+
 ## Application skeleton
 
 - The skeleton is the separate repository `crabphp/crab`, beside this one, and reads the framework from `../framework` until there is a release.
