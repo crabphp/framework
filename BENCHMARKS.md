@@ -4,6 +4,18 @@ These pages were written while the engine was its own repository. Its source is 
 
 See [HTTP request path](benchmarks/HTTP-REQUEST-PATH.md) for the latest measurement of requests with browser-sized fields and a breakdown of where a request's time goes, [HTTP lazy request fields](benchmarks/HTTP-LAZY-FIELDS.md) for the step before it, [HTTP fast path](benchmarks/HTTP-FAST-PATH.md) for the preceding matched before/after HTTP measurements, request-shape workloads and the WebSocket regression check, [HTTP codec optimization](benchmarks/HTTP-CODEC-OPTIMIZATION.md) for the preceding codec measurements, [PHP HTTP headroom](benchmarks/HTTP-HEADROOM.md) for the earlier layer diagnostics, and [Crab versus Elysia](benchmarks/ELYSIA.md) for the earlier combined comparison. The historical snapshots below predate later docblock, request-body storage and codec changes; their hashes identify the source measured at the time.
 
+## JSON and text responses, 2026-11-05
+
+The same single-process setup, JIT off, six rounds with the order of the two versions alternating, medians in requests per second, no errors:
+
+| Request | Before | After | Change |
+| --- | ---: | ---: | ---: |
+| `GET /hello` | 43,891 | 46,624 | +6.2% |
+| `POST /users`, validated body | 23,970 | 24,680 | +3.0% |
+| `GET /users/{id}`, SQLite | 19,305 | 19,348 | 0% |
+
+In process, the framework's layer over the engine was taken apart one step at a time on `GET /hello` (user CPU per request, JIT off): the engine alone answers in about 5.6 µs and the framework adds about 3.4 µs, of which the request wrapper is about 0.4 µs, handing a ready response to the engine 0.6, making a JSON response 0.8, routing and the action 1.0 and the middleware stack 0.6. Making a response was the step with work to spare: the constructor ran for every response and three small arrays were made for its one field, `['content-type' => ['application/json']]` and the engine's `['Content-Type' => 'application/json']`. A typed response is now copied from a blank one, its fields are a constant array, which PHP shares rather than copies, and `toEngine()` recognises that array by identity and gives the engine its own constant, whose encoded block the engine already holds. A response a middleware changes takes the general path as before.
+
 ## Database reads and validation, 2026-11-05
 
 The same single-process setup as the section below (`benchmarks/single-process/`), comparing `main` before these changes with the changes, six alternating rounds, JIT off, medians in requests per second. No trial had an error.
