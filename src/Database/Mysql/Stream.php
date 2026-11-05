@@ -27,6 +27,10 @@ final class Stream
     private int $readSinceYield = 0;
     private ?\Closure $waiting = null;
     private ?string $watcher = null;
+    /**
+     * Whether TLS is on, under which OpenSSL may hold bytes the socket no longer shows.
+     */
+    private bool $encrypted = false;
 
     public function __construct(
         private readonly EventLoop $loop,
@@ -117,6 +121,7 @@ final class Stream
             $done = @stream_socket_enable_crypto($this->resource(), true, STREAM_CRYPTO_METHOD_TLS_CLIENT);
             $this->checkDeadline($deadline);
             if ($done === true) {
+                $this->encrypted = true;
                 return;
             }
             if ($done === false) {
@@ -132,17 +137,22 @@ final class Stream
     {
         $this->checkDeadline($deadline);
         $cancellation?->throwIfCancelled();
+        $woken = false;
         while ((strlen($this->buffer) - $this->offset) < $length) {
             $this->checkDeadline($deadline);
             $stream = $this->resource();
             $bytes = @fread($stream, self::READ_SIZE);
-            if ($bytes === false || $bytes === '' && feof($stream)) {
+            // An empty read is an answer not yet come, or a closed connection; a close also wakes the
+            // wait, so whether it was one is asked only of an empty read after waking. feof() polls.
+            if ($bytes === false || $bytes === '' && $woken && feof($stream)) {
                 throw new StreamFailure('MySQL closed the connection while reading its answer.');
             }
             if ($bytes === '') {
                 $this->wait(false, $deadline, $cancellation);
+                $woken = true;
                 continue;
             }
+            $woken = false;
             if ($this->offset > 0) {
                 $this->buffer = substr($this->buffer, $this->offset);
                 $this->offset = 0;
@@ -213,6 +223,12 @@ final class Stream
         if ($this->stream === null || strlen($this->buffer) !== $this->offset) {
             return false;
         }
+        if (!$this->encrypted) {
+            // One peek tells the three apart: false when nothing waits, as on a live idle connection;
+            // '' when the server closed it; a byte when it sent something unasked.
+            return @stream_socket_recvfrom($this->stream, 1, STREAM_PEEK) === false;
+        }
+        // OpenSSL may hold decrypted bytes the socket no longer shows: a read asks it too.
         $bytes = @fread($this->stream, 1);
         return $bytes === '' && !feof($this->stream);
     }
@@ -228,6 +244,7 @@ final class Stream
         $this->waiting?->__invoke(new StreamFailure('MySQL connection was closed.'));
         @fclose($this->stream);
         $this->stream = null;
+        $this->encrypted = false;
         $this->buffer = '';
         $this->offset = 0;
         $this->readSinceYield = 0;
