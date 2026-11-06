@@ -301,6 +301,14 @@ final class CookieAuthTest extends TestCase
         new CookieAuth()->withContainer(new \Crab\Container\Container());
     }
 
+    public function testANamedCookieAuthWithoutThePluginStopsAssembly(): void
+    {
+        $app = new \Crab\App();
+        $app->router->get('/account', static fn(): string => 'account')->middleware(CookieAuth::class);
+        $this->expectExceptionMessage('list TokenAuthPlugin in app.php');
+        $app->router->assemble();
+    }
+
     public function testSettingsWrittenAsEnvironmentTextWork(): void
     {
         $app = new App(new Config([

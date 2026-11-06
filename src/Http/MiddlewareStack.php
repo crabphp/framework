@@ -99,7 +99,9 @@ final class MiddlewareStack implements MiddlewareStackContract, RequestHandlerIn
                 if (!$layer instanceof MiddlewareInterface) {
                     throw new \LogicException("{$name} must implement MiddlewareInterface.");
                 }
-            } elseif ($layer instanceof UsesContainer && $this->container !== null) {
+            }
+            if ($layer instanceof UsesContainer && $this->container !== null) {
+                // A named one made by autowiring has none of its services yet, like an object on a route.
                 $layer = $layer->withContainer($this->container);
             }
             $middleware[] = $layer;

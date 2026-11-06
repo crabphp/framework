@@ -221,15 +221,26 @@ use Crab\Auth\CookieAuth;
 use Crab\Contracts\Auth\TokenStore;
 use Crab\Http\Response;
 
+final readonly class LoginInput
+{
+    public function __construct(
+        #[Email]
+        public string $email,
+        #[\SensitiveParameter]
+        public string $password,
+    ) {}
+}
+
 final readonly class LogIn
 {
     public function __construct(private Users $users, private TokenStore $tokens, private CookieAuth $auth)
     {
     }
 
-    public function handle(#[Email] string $email, #[\SensitiveParameter] string $password): Response
+    public function handle(LoginInput $input): Response
     {
-        $user = $this->users->withPassword($email, $password) ?? throw new HttpException(401, 'These credentials do not match.');
+        $user = $this->users->withPassword($input->email, $input->password)
+            ?? throw new HttpException(401, 'These credentials do not match.');
 
         return Response::redirect('/account', 303)->withCookie($this->auth->cookie($this->tokens->issue($user, 'browser')));
     }

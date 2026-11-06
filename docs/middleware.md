@@ -187,6 +187,8 @@ final readonly class RequirePlan implements Middleware, UsesContainer
 Route::get('/exports', ListExports::class)->middleware(new RequirePlan('team'));
 ```
 
+Named by class, such middleware is made by the container and then asked the same way, so a service that is missing stops the server from starting whichever way it is listed.
+
 ## Passing data to the action
 
 Put it on the request as an attribute, and pass the changed request on:
