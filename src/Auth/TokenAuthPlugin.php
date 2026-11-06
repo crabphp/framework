@@ -69,7 +69,7 @@ final class TokenAuthPlugin implements Plugin
                 login: $config->get('auth.cookie.login'),
                 tokens: $container->get(TokenStore::class),
                 users: $container->get(IdentityResolver::class),
-                name: (string) $config->get('auth.cookie.name'),
+                name: $config->get('auth.cookie.name'),
                 site: $site,
                 origins: array_values((array) $config->get('auth.cookie.origins')),
                 // Secure unless the application says it is served over plain HTTP, as while developing.

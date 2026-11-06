@@ -247,7 +247,7 @@ final readonly class LogIn
 }
 ```
 
-The cookie is `HttpOnly`, so the page's JavaScript cannot read the token, and `SameSite=Lax`. It is `Secure` unless `app.url` starts with `http://`, as while developing.
+The cookie is `HttpOnly`, so the page's JavaScript cannot read the token, and `SameSite=Lax`. It is `Secure` unless `app.url` starts with `http://`, as while developing. A secure cookie is named `__Host-auth`: a browser keeps a cookie with that prefix only for your host, on path `/`, over HTTPS, so a page on another subdomain of your domain cannot set one of the same name to log your users in as someone else. Over plain HTTP the prefix cannot be used and the cookie is named `auth`.
 
 To log out, revoke the token and clear the cookie in one step:
 
@@ -292,7 +292,7 @@ The bound `CookieAuth` reads `auth.cookie` from `config/auth.php`, and `app.url`
 
 | Setting | Default | |
 | --- | --- | --- |
-| `auth.cookie.name` | `auth` | The cookie's name |
+| `auth.cookie.name` | `null` | The cookie's name; `null` is `__Host-auth` when the cookie is secure and `auth` otherwise. Keep the `__Host-` prefix in production: without it, a sibling subdomain can shadow the cookie |
 | `auth.cookie.max_age` | `null` | Seconds the browser keeps it; `null` until the browser closes. The token's own expiry still applies |
 | `auth.cookie.login` | `null` | Where a page that needs a user sends the browser, such as `/login` |
 | `auth.cookie.origins` | `[]` | Other origins whose pages may send changing requests, such as `https://admin.example.com` |

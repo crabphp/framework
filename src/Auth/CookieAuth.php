@@ -53,7 +53,9 @@ final readonly class CookieAuth implements Middleware, UsesContainer
      * @param bool $required Whether a request without a known user is refused. When not, it goes through with no user.
      * @param string|null $login Where a refused GET or HEAD request is sent instead of being answered 401, such as '/login'.
      * @param TokenStore|null $tokens Taken from the bound CookieAuth, with every option left null, when given on a route.
-     * @param string|null $name The cookie's name; "auth" when none is given or bound.
+     * @param string|null $name The cookie's name. Without one, "__Host-auth" when the cookie is secure, which a
+     *     browser keeps only for this host, path / and HTTPS, so a sibling subdomain cannot set one to shadow it;
+     *     "auth" over plain HTTP, as while developing.
      * @param string|null $site The application's public address, app.url: its origin is the one its own pages send.
      *     Without one, the request's own origin is, as its Host and scheme say.
      * @param list<string>|null $origins Other origins whose pages may send requests that change something,
@@ -75,6 +77,11 @@ final readonly class CookieAuth implements Middleware, UsesContainer
         if ($name !== null && !preg_match('/^[A-Za-z0-9_.-]+$/', $name)) {
             throw new \InvalidArgumentException(
                 "\"{$name}\" cannot be a cookie's name: use letters, digits, _, . and -.",
+            );
+        }
+        if ($name !== null && $secure === false && preg_match('/^__(Host|Secure)-/i', $name) === 1) {
+            throw new \InvalidArgumentException(
+                "A cookie named {$name} must be secure: browsers refuse the __Host- and __Secure- prefixes over plain HTTP.",
             );
         }
         if ($maxAge !== null && $maxAge < 1) {
@@ -150,7 +157,7 @@ final readonly class CookieAuth implements Middleware, UsesContainer
     public function cookie(#[\SensitiveParameter] string $token): Cookie
     {
         return new Cookie(
-            $this->name ?? 'auth',
+            $this->cookieName(),
             $token,
             maxAge: $this->maxAge,
             secure: $this->secure ?? true,
@@ -177,13 +184,18 @@ final readonly class CookieAuth implements Middleware, UsesContainer
      */
     public function token(ServerRequestInterface $request): ?string
     {
-        $token = $request->getCookieParams()[$this->name ?? 'auth'] ?? null;
+        $token = $request->getCookieParams()[$this->cookieName()] ?? null;
         return is_string($token) && $token !== '' ? $token : null;
+    }
+
+    private function cookieName(): string
+    {
+        return $this->name ?? ($this->secure ?? true ? '__Host-auth' : 'auth');
     }
 
     private function forget(): Cookie
     {
-        return new Cookie($this->name ?? 'auth', '', 0, secure: $this->secure ?? true, httpOnly: true, sameSite: 'Lax');
+        return new Cookie($this->cookieName(), '', 0, secure: $this->secure ?? true, httpOnly: true, sameSite: 'Lax');
     }
 
     private function clearStale(ResponseInterface $response, #[\SensitiveParameter] ?string $token): ResponseInterface
@@ -191,7 +203,7 @@ final readonly class CookieAuth implements Middleware, UsesContainer
         if ($token === null) {
             return $response;
         }
-        $prefix = ($this->name ?? 'auth') . '=';
+        $prefix = $this->cookieName() . '=';
         foreach ($response->getHeader('Set-Cookie') as $cookie) {
             if (str_starts_with($cookie, $prefix)) {
                 return $response;

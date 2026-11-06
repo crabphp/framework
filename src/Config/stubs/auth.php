@@ -8,8 +8,9 @@ return [
     'ticket_ttl' => 30,
     // CookieAuth: the user's token in a browser cookie.
     'cookie' => [
-        // The cookie's name: letters, digits, _, . and -.
-        'name' => 'auth',
+        // The cookie's name: letters, digits, _, . and -. Null is __Host-auth when secure, which a sibling
+        // subdomain cannot shadow, and auth over plain HTTP.
+        'name' => null,
         // Seconds the browser keeps it; null keeps it until the browser closes.
         'max_age' => null,
         // Where a page that needs a user sends the browser instead of answering 401, such as '/login'.

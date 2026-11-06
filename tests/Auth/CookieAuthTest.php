@@ -85,7 +85,7 @@ final class CookieAuthTest extends TestCase
         self::assertSame(401, $this->through($auth, 'GET', [])[0]);
         self::assertSame(401, $this->through($auth, 'GET', ['Cookie' => 'auth='])[0], 'An empty cookie is no token.');
 
-        $login = new CookieAuth(login: '/login', tokens: $tokens, users: new Shoppers());
+        $login = new CookieAuth(login: '/login', tokens: $tokens, users: new Shoppers(), name: 'auth');
         $response = $login->process(new Request('GET', 'http://shop.test/account'), new Answer());
         self::assertSame([303, '/login'], [$response->getStatusCode(), $response->getHeaderLine('Location')]);
         self::assertSame(401, $login->process(new Request('POST', 'http://shop.test/orders', [
@@ -105,7 +105,7 @@ final class CookieAuthTest extends TestCase
             self::assertStringStartsWith('auth=; Max-Age=0', $cookie);
         }
 
-        $optional = new CookieAuth(required: false, tokens: $tokens, users: new Shoppers());
+        $optional = new CookieAuth(required: false, tokens: $tokens, users: new Shoppers(), name: 'auth');
         self::assertSame([200, 'nobody', ''], $this->through($optional, 'GET', []));
         [$status, $body, $cookie] = $this->through($optional, 'GET', ['Cookie' => 'auth=made-up']);
         self::assertSame([200, 'nobody'], [$status, $body], 'A page that works either way is still served.');
@@ -116,7 +116,12 @@ final class CookieAuthTest extends TestCase
     {
         [$tokens] = $this->auth();
         $token = $tokens->issue(7);
-        $auth = new CookieAuth(origins: ['https://admin.shop.test'], tokens: $tokens, users: new Shoppers());
+        $auth = new CookieAuth(
+            origins: ['https://admin.shop.test'],
+            tokens: $tokens,
+            users: new Shoppers(),
+            name: 'auth',
+        );
         $cases = [
             [['Sec-Fetch-Site' => 'same-origin'], 200],
             [['Sec-Fetch-Site' => 'cross-site', 'Origin' => 'https://evil.test'], 403],
@@ -166,7 +171,7 @@ final class CookieAuthTest extends TestCase
     {
         [$tokens] = $this->auth();
         // Behind a proxy that ends TLS the request says http://shop.test, and anyone can send any Host.
-        $auth = new CookieAuth(tokens: $tokens, users: new Shoppers(), site: 'https://shop.test');
+        $auth = new CookieAuth(tokens: $tokens, users: new Shoppers(), name: 'auth', site: 'https://shop.test');
         self::assertSame(403, $this->through($auth, 'POST', ['Origin' => 'http://shop.test'])[0]);
         $evil = $auth->process(new Request('POST', 'http://evil.test/login', [
             'Origin' => 'http://evil.test',
@@ -180,7 +185,7 @@ final class CookieAuthTest extends TestCase
     public function testALoginOverAStaleCookieKeepsItsNewCookie(): void
     {
         [$tokens] = $this->auth();
-        $auth = new CookieAuth(required: false, tokens: $tokens, users: new Shoppers());
+        $auth = new CookieAuth(required: false, tokens: $tokens, users: new Shoppers(), name: 'auth');
         $login = new class implements RequestHandlerInterface {
             public function handle(ServerRequestInterface $request): ResponseInterface
             {
@@ -193,6 +198,31 @@ final class CookieAuthTest extends TestCase
         ]), $login);
         self::assertCount(1, $response->getHeader('Set-Cookie'));
         self::assertStringStartsWith('auth=new-token;', $response->getHeaderLine('Set-Cookie'));
+    }
+
+    public function testTheDefaultCookieIsHostOnlyWhenSecure(): void
+    {
+        [$tokens] = $this->auth();
+        $token = $tokens->issue(7);
+        // __Host-: a browser keeps it only for this host, on path / and over HTTPS, so a sibling subdomain cannot set one to shadow it.
+        $secure = new CookieAuth(tokens: $tokens, users: new Shoppers());
+        self::assertSame(
+            "__Host-auth={$token}; Path=/; Secure; HttpOnly; SameSite=Lax",
+            (string) $secure->cookie($token),
+        );
+        self::assertSame([200, 'user 7', ''], $this->through($secure, 'GET', ['Cookie' => "__Host-auth={$token}"]));
+        self::assertSame(401, $this->through($secure, 'GET', [
+            'Cookie' => "auth={$token}",
+        ])[0], 'The unprefixed name is another cookie.');
+        $plain = new CookieAuth(tokens: $tokens, users: new Shoppers(), secure: false);
+        self::assertStringStartsWith(
+            "auth={$token}; Path=/; HttpOnly",
+            (string) $plain->cookie($token),
+            'Over plain HTTP, as while developing.',
+        );
+
+        $this->expectExceptionMessage('must be secure');
+        new CookieAuth(name: '__Host-auth', secure: false);
     }
 
     public function testTheCookieLogsInAndLogoutRevokesTheToken(): void
@@ -332,7 +362,7 @@ final class CookieAuthTest extends TestCase
         $database = new \Crab\Database\Database(fn(): \PDO => new \PDO('sqlite:' . $this->file), 1);
         $this->createTokensTable($database);
         $tokens = new DatabaseTokenStore($database);
-        return [$tokens, new CookieAuth(tokens: $tokens, users: new Shoppers())];
+        return [$tokens, new CookieAuth(tokens: $tokens, users: new Shoppers(), name: 'auth')];
     }
 
     private function createTokensTable(Database $database): void
