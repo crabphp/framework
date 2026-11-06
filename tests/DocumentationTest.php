@@ -90,7 +90,7 @@ final class DocumentationTest extends TestCase
             $this->directory . '/readme-login.php',
             "<?php\nuse Crab\\Contracts\\Database\\Database;\nuse Crab\\Contracts\\Auth\\PasswordHasher;\n"
                 . "use Crab\\Contracts\\Auth\\TokenStore;\nuse Crab\\Http\\HttpException;\nuse Crab\\Validation\\Email;\n"
-                . str_replace('class AuthController', 'class ' . $name, $example),
+                . str_replace(['class AuthController', 'LoginInput'], ['class ' . $name, $name . 'Input'], $example),
         );
         require $this->directory . '/readme-login.php';
         $db = new Database(static fn(): \PDO => new \PDO('sqlite::memory:'), 1);
@@ -113,7 +113,7 @@ final class DocumentationTest extends TestCase
             foreach (['known@example.com', 'missing@example.com'] as $email) {
                 $error = null;
                 try {
-                    $controller->login($email, 'incorrect');
+                    $controller->login(new ($name . 'Input')($email, 'incorrect'));
                 } catch (\Crab\Http\HttpException $failure) {
                     $error = $failure;
                 }

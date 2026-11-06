@@ -354,7 +354,11 @@ final class AppTest extends TestCase
         self::assertArrayHasKey(1, $match);
         $name = 'LoginExample' . bin2hex(random_bytes(6));
         $file = sys_get_temp_dir() . '/' . $name . '.php';
-        file_put_contents($file, "<?php\n" . str_replace('class AuthController', 'class ' . $name, $match[1]));
+        file_put_contents(
+            $file,
+            "<?php\n"
+                . str_replace(['class AuthController', 'LoginInput'], ['class ' . $name, $name . 'Input'], $match[1]),
+        );
         $database = new \Crab\Database\Database(static fn(): \PDO => new \PDO('sqlite::memory:'), 1);
         try {
             require $file;
@@ -375,7 +379,7 @@ final class AppTest extends TestCase
             $controller = new $name($database, $passwords, $tokens);
             foreach (['known@example.com', 'missing@example.com'] as $email) {
                 try {
-                    $controller->login($email, 'incorrect');
+                    $controller->login(new ($name . 'Input')($email, 'incorrect'));
                 } catch (\Crab\Http\HttpException $error) {
                     self::assertSame(401, $error->status);
                     self::assertSame('These credentials do not match.', $error->getMessage());

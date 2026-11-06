@@ -134,6 +134,16 @@ use Crab\Contracts\Auth\TokenStore;
 use Crab\Http\HttpException;
 use Crab\Validation\Email;
 
+final readonly class LoginInput
+{
+    public function __construct(
+        #[Email]
+        public string $email,
+        #[\SensitiveParameter]
+        public string $password,
+    ) {}
+}
+
 final readonly class AuthController
 {
     public function __construct(private Database $db, private PasswordHasher $passwords, private TokenStore $tokens)
@@ -143,11 +153,11 @@ final readonly class AuthController
     /**
      * @return array{token: string}
      */
-    public function login(#[Email] string $email, #[\SensitiveParameter] string $password): array
+    public function login(LoginInput $input): array
     {
-        $row = $this->db->table('users')->where('email', $email)->first();
+        $row = $this->db->table('users')->where('email', $input->email)->first();
         $hash = $row['password'] ?? '$2y$12$.....................................................';
-        if (!$this->passwords->verify($password, $hash) || $row === null) {
+        if (!$this->passwords->verify($input->password, $hash) || $row === null) {
             throw new HttpException(401, 'These credentials do not match.');
         }
 
@@ -221,16 +231,7 @@ use Crab\Auth\CookieAuth;
 use Crab\Contracts\Auth\TokenStore;
 use Crab\Http\Response;
 
-final readonly class LoginInput
-{
-    public function __construct(
-        #[Email]
-        public string $email,
-        #[\SensitiveParameter]
-        public string $password,
-    ) {}
-}
-
+// LoginInput is the one from Logging in, above.
 final readonly class LogIn
 {
     public function __construct(private Users $users, private TokenStore $tokens, private CookieAuth $auth)
