@@ -2,6 +2,10 @@
 
 Crab follows [semantic versioning](https://semver.org). Before 1.0, a minor version may break what an application writes; the entry says what to change.
 
+## Unreleased
+
+- **Quiet cancellation when an HTTP connection ends:** a retired request's own cancellation now ends its handler or streamed response without an unhandled failure report, including a client leaving an event stream. Other cancellations and cleanup failures are still reported, even after the connection closes.
+
 ## 0.6.2 — 2026-11-06
 
 - **Cookie authentication for browsers:** `CookieAuth`, bound by `TokenAuthPlugin`, reads the user's database token from an `HttpOnly`, `SameSite=Lax` cookie, named `__Host-auth` over HTTPS so that no sibling subdomain can shadow it, the same token `TokenAuth` reads from a header, so there is still no session. `$auth->cookie($token)` logs a browser in, and `$auth->logout($request)` revokes the token and clears the cookie. Any request that can change something, and any WebSocket handshake, must come from the application's own pages, by the browser's `Sec-Fetch-Site` or `Origin` against `app.url`, so forms need no hidden token. A page can send the browser to a login page instead of answering `401`, and a cookie whose token stopped working is cleared. Its settings are `auth.cookie.*`. See [Cookie authentication](docs/authentication.md#cookie-authentication).

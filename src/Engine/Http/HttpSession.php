@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Crab\Engine\Http;
 
+use Crab\Engine\Async\CancelledException;
 use Crab\Engine\Network\Connection;
 use Crab\Engine\Network\WriteResult;
 
@@ -157,6 +158,7 @@ final class HttpSession
         if (!$this->connection->enterActivity()) {
             return;
         }
+        $request = null;
         try {
             $request = $this->parser->receive($bytes);
             if ($request === null) {
@@ -284,6 +286,9 @@ final class HttpSession
         } catch (HttpException $error) {
             $this->fail($error->status);
         } catch (\Throwable $error) {
+            if ($this->isRequestCancellation($request, $error)) {
+                return;
+            }
             $this->connection->reportFailure('HTTP handler failed', $error);
             $this->fail(500);
         } finally {
@@ -356,6 +361,8 @@ final class HttpSession
             return;
         }
         $this->pumping = true;
+        // Retirement releases activeRequest while a producer is suspended.
+        $request = $this->activeRequest;
         try {
             for ($budget = 0; $budget < 64; ++$budget) {
                 if ($this->retired || $this->connection->isClosed()) {
@@ -401,6 +408,9 @@ final class HttpSession
                     });
             }
         } catch (\Throwable $error) {
+            if ($this->isRequestCancellation($request, $error)) {
+                return;
+            }
             // Headers are already sent, so the only signal left for the client is the close.
             $this->connection->reportFailure('HTTP response failed part-way', $error);
             $this->retire();
@@ -409,6 +419,23 @@ final class HttpSession
             $this->pumping = false;
             $this->connection->leaveActivity();
         }
+    }
+
+    /**
+     * Only the retired request's own exception ends its work quietly. A
+     * different cancellation, even after retirement, is still a failure.
+     */
+    private function isRequestCancellation(?Request $request, \Throwable $error): bool
+    {
+        if (!$this->retired || $request === null || !$error instanceof CancelledException) {
+            return false;
+        }
+        try {
+            $request->cancellation->throwIfCancelled();
+        } catch (CancelledException $reason) {
+            return $error === $reason;
+        }
+        return false;
     }
 
     private function fail(int $status): void

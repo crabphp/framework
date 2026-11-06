@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace Crab\Engine\Tests;
 
 use Crab\Engine\Async\Async;
+use Crab\Engine\Async\Cancellation;
+use Crab\Engine\Async\CancelledException;
 use Crab\Engine\Crab;
 use Crab\Engine\EventLoop;
 use Crab\Engine\EventLoop\StreamSelectEventLoop;
@@ -589,7 +591,7 @@ final class HttpTest extends TestCase
                         yield 'first';
                         try {
                             Async::sleep(EventLoop::current(), 10, $request->cancellation);
-                        } catch (\Crab\Engine\Async\CancelledException) {
+                        } finally {
                             $cancelled = true;
                         }
                         yield 'too late';
@@ -601,6 +603,7 @@ final class HttpTest extends TestCase
         self::assertStringContainsString("5\r\nfirst\r\n", $output);
         self::assertStringNotContainsString('too late', $output);
         self::assertTrue($cancelled, 'A stalled stream must cancel what its producer waits on.');
+        self::assertSame([], $this->reports);
     }
 
     public function testResponseTimeoutCancelsHandlerAndRunsFinally(): void
@@ -622,6 +625,111 @@ final class HttpTest extends TestCase
             $cleanedUp && $output === '',
             'Request timeout did not cancel the handler and execute cleanup.',
         );
+        self::assertSame([], $this->reports);
+    }
+
+    public function testDisconnectDuringAnEventStreamEndsItsProducerQuietly(): void
+    {
+        $loop = $this->newLoop();
+        [$serverSocket, $client] = $this->pair();
+        stream_set_blocking($client, false);
+        $connection = $this->connection($loop, $serverSocket);
+        $cleanedUp = false;
+        new HttpServer(static function (Request $request) use ($loop, &$cleanedUp): Response {
+            return new Response(
+                headers: ['content-type' => ['text/event-stream']],
+                body: (static function () use ($request, $loop, &$cleanedUp): Generator {
+                    try {
+                        yield "data: ready\n\n";
+                        Async::sleep($loop, 10, $request->cancellation);
+                        yield "data: too late\n\n";
+                    } finally {
+                        $cleanedUp = true;
+                    }
+                })(),
+            );
+        }, responseTimeout: 0.05)->attach($connection);
+        fwrite($client, "GET /events HTTP/1.1\r\nHost: x\r\n\r\n");
+        $watchdog = $loop->delay(2, static function () use ($connection): void {
+            $connection->close();
+            throw new RuntimeException('The disconnected event stream did not settle.');
+        });
+        $connection->onClose(static fn() => $loop->cancel($watchdog));
+        $output = '';
+        $disconnected = false;
+        $loop->onReadable($client, static function (string $id) use ($loop, $client, &$output, &$disconnected): void {
+            $output .= fread($client, 65_536);
+            if (str_contains($output, "data: ready\n\n")) {
+                $loop->cancel($id);
+                fclose($client);
+                $disconnected = true;
+            }
+        });
+        $loop->run();
+        self::assertTrue($disconnected, 'The client must leave after receiving the first event.');
+        self::assertTrue($cleanedUp, 'Disconnect cancellation must run the producer\'s cleanup.');
+        self::assertTrue($connection->isClosed());
+        self::assertSame([], $loop->getIdentifiers());
+        self::assertSame([], $this->reports);
+    }
+
+    #[DataProvider('unrelatedRequestFailures')]
+    public function testUnrelatedFailuresAreReportedEvenAfterRequestCancellation(
+        bool $streaming,
+        bool $retired,
+        bool $cancelled,
+    ): void {
+        $work = static function (Request $request) use ($retired, $cancelled): string {
+            try {
+                if ($retired) {
+                    Async::sleep(EventLoop::current(), 10, $request->cancellation);
+                }
+            } finally {
+                if ($cancelled) {
+                    $other = new Cancellation();
+                    $other->cancel(new CancelledException('Unrelated cancellation.'));
+                    $other->throwIfCancelled();
+                }
+                throw new RuntimeException('Cleanup failed.');
+            }
+        };
+        $output = $this->exchange(
+            "GET / HTTP/1.1\r\nHost: x\r\n\r\n",
+            static fn(Request $request): Response|string => $streaming
+                ? new Response(
+                    body: (static function () use ($request, $work): Generator {
+                        yield 'first';
+                        yield $work($request);
+                    })(),
+                )
+                : $work($request),
+            ['responseTimeout' => 0.01],
+        );
+        $what = $streaming ? 'HTTP response failed part-way' : 'HTTP handler failed';
+        $message = $cancelled ? 'Unrelated cancellation.' : 'Cleanup failed.';
+        self::assertSame(["{$what}: {$message}"], $this->reports);
+        if ($streaming) {
+            self::assertStringContainsString("5\r\nfirst\r\n", $output);
+            self::assertStringNotContainsString("0\r\n\r\n", $output);
+        } elseif ($retired) {
+            self::assertSame('', $output);
+        } else {
+            self::assertStringStartsWith('HTTP/1.1 500', $output);
+        }
+    }
+
+    public static function unrelatedRequestFailures(): iterable
+    {
+        foreach ([false, true] as $streaming) {
+            foreach ([false, true] as $retired) {
+                foreach ([false, true] as $cancelled) {
+                    $where = $streaming ? 'producer' : 'handler';
+                    $when = $retired ? 'after retirement' : 'while active';
+                    $what = $cancelled ? 'other token' : 'cleanup error';
+                    yield "{$where}, {$when}, {$what}" => [$streaming, $retired, $cancelled];
+                }
+            }
+        }
     }
 
     public function testCloseRunsCancellationCleanupEvenWhenAnEarlierObserverStopsTheLoop(): void
@@ -654,6 +762,7 @@ final class HttpTest extends TestCase
             $cleanedUp && $loop->getIdentifiers() === [],
             'Connection close skipped cooperative handler cleanup.',
         );
+        self::assertSame([], $this->reports);
     }
 
     #[DataProvider('deadlineProvider')]
