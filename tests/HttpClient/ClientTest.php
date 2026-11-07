@@ -286,13 +286,14 @@ final class ClientTest extends TestCase
     {
         $server = $this->server(static function (): \Generator {
             yield "HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n";
+            // Each gap well within the idle time, as a loaded CI runner needs; together well past it.
             for ($i = 0; $i < 6; ++$i) {
-                Async::sleep(EventLoop::current(), 0.05);
+                Async::sleep(EventLoop::current(), 0.25);
                 yield "2\r\n{$i}\n\r\n";
             }
             yield "0\r\n\r\n";
         });
-        $response = $this->client()->stream('GET', $server->url('/'), idle: 0.15);
+        $response = $this->client()->stream('GET', $server->url('/'), idle: 1.0);
 
         self::assertSame(['0', '1', '2', '3', '4', '5'], iterator_to_array($response->lines(), false));
     }
