@@ -2,7 +2,7 @@
 
 Crab follows [semantic versioning](https://semver.org). Before 1.0, a minor version may break what an application writes; the entry says what to change.
 
-## Unreleased
+## 0.6.3 — 2026-11-07
 
 - **Quiet cancellation when an HTTP connection ends:** a retired request's own cancellation now ends its handler or streamed response without an unhandled failure report, including a client leaving an event stream. Other cancellations and cleanup failures are still reported, even after the connection closes.
 

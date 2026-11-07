@@ -14,7 +14,7 @@ Crab is a PHP framework for JSON APIs. It runs your application as a long-lived 
 Reach for it when you are building an API and want it to start fast, answer fast and stay small enough to read. It is not a full-stack framework: there are no views, no sessions and no ORM. What you get is routing, typed actions with validation, middleware, a database layer with a query builder and migrations, authentication by token, a cache, events, a queue, a scheduler, an HTTP client and streaming responses, with durable runs and actors as packages of their own.
 
 > [!NOTE]
-> Crab's latest release is v0.6.2, on [Packagist](https://packagist.org/packages/crabphp/framework). Its packages, such as `crabphp/runs` or `crabphp/redis`, are installed the same way, with `composer require`.
+> Crab's latest release is v0.6.3, on [Packagist](https://packagist.org/packages/crabphp/framework). Its packages, such as `crabphp/runs` or `crabphp/redis`, are installed the same way, with `composer require`.
 
 ## Requirements
 
