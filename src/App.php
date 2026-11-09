@@ -61,6 +61,7 @@ use Crab\Http\ErrorHandler;
 use Crab\Http\Factory;
 use Crab\Http\MiddlewareStack;
 use Crab\Http\RenderedErrors;
+use Crab\Http\StaticFiles;
 use Crab\HttpClient\HttpClientPlugin;
 use Crab\Log\Logger;
 use Crab\Queue\QueuePlugin;
@@ -268,6 +269,11 @@ final class App implements RequestHandlerInterface, Runner
         $validator = new Validator();
         $container->instance(ValidatorContract::class, $validator);
         $container->singleton(Validator::class, ValidatorContract::class);
+        $public = $config->get('server.public');
+        $static =
+            $basePath !== null && is_string($public) && $public !== ''
+                ? new StaticFiles($this->path($public), $container->get(FactoryContract::class))
+                : null;
         $router = new Router(
             $container,
             $validator,
@@ -286,6 +292,7 @@ final class App implements RequestHandlerInterface, Runner
                 }
                 return $container->get(SocketChannels::class);
             }),
+            $static,
         );
         $this->router = $router;
         $this->routes = $router;

@@ -11,6 +11,7 @@ use Crab\Contracts\Validation\Validator as ValidatorContract;
 use Crab\Http\ErrorResponse;
 use Crab\Http\MiddlewareStack;
 use Crab\Http\Request;
+use Crab\Http\StaticFiles;
 use Crab\Validation\Validator;
 use Crab\WebSocket\Connections;
 use Psr\Container\ContainerInterface;
@@ -72,6 +73,7 @@ final class Router implements RouterContract
     private array $names = [];
     private readonly ValidatorContract $validator;
     private ?Connections $websockets = null;
+    private readonly ?StaticFiles $staticFiles;
     /**
      * The prefix and middleware of each group being declared, outermost first.
      *
@@ -101,8 +103,10 @@ final class Router implements RouterContract
         private readonly ?ContainerInterface $container = null,
         ?ValidatorContract $validator = null,
         private readonly ?\Closure $socketFactory = null,
+        ?StaticFiles $staticFiles = null,
     ) {
         $this->validator = $validator ?? new Validator();
+        $this->staticFiles = $staticFiles;
     }
 
     /**
@@ -591,7 +595,7 @@ final class Router implements RouterContract
             $httpGet = $httpGet || $method === 'GET';
         }
         if ($allowed === []) {
-            return ErrorResponse::make($request, 404);
+            return $this->staticFiles?->response($request) ?? ErrorResponse::make($request, 404);
         }
         $allowed = array_values(array_unique($allowed));
         if ($httpGet && !in_array('HEAD', $allowed, true)) {

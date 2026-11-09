@@ -215,6 +215,7 @@ It says that this worker answers, and asks nothing of the database. That is deli
 | `server.address` | `tcp://127.0.0.1:8080` | Where the server listens |
 | `server.workers` | `1` | Worker processes |
 | `server.watch` | `app`, `app.php`, `config`, `routes`, `.env` | What `dev` watches |
+| `server.public` | `public` | The directory for static files used after no application route matches; `null` disables it |
 | `server.max_connections` | `512` | Total HTTP and upgraded connections per worker; at most `900` on the select backend |
 | `server.loop` | `select` | `select`, `ev`, `uv` or `event`; a native backend needs its PHP extension |
 | `server.max_body` | `1048576` | The largest request body taken, in bytes |

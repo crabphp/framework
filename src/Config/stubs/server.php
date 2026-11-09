@@ -13,6 +13,9 @@ return [
     // What `php cua dev` watches, to restart the server when you save.
     'watch' => ['app', 'app.php', 'config', 'routes', '.env'],
 
+    // Static files served from this folder after no application route matches. Set null to disable.
+    'public' => 'public',
+
     // HTTP and upgraded connections per worker; at most 900 on the select loop.
     'max_connections' => 512,
 

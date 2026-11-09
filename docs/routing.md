@@ -160,7 +160,7 @@ The action declares `handle(Socket $socket, int $id, ...)`. The action starts in
 
 ## When no route matches
 
-A path no route has is answered `404`. A path that exists for another method is answered `405` with an `Allow` header listing the methods it has. `HEAD` falls back to a matching `GET` route unless a `HEAD` route exists, and `GET` adds `HEAD` to `Allow`. Both errors have the same body as any other error, JSON when the client accepts it; see [Error handling](errors.md).
+A path no route has is answered `404`. When `server.public` is enabled, Crab first looks for a matching file in that directory after no application route matches, so `GET /favicon.svg` can serve `public/favicon.svg`. A path that exists for another method is answered `405` with an `Allow` header listing the methods it has. Static files allow `GET` and `HEAD`; `HEAD` falls back to a matching `GET` route unless a `HEAD` route exists, and `GET` adds `HEAD` to `Allow`. Both errors have the same body as any other error, JSON when the client accepts it; see [Error handling](errors.md).
 
 Both pass back through the middleware around every request, which is how a `404` still carries its CORS headers.
 

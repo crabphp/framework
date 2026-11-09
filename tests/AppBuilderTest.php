@@ -350,6 +350,19 @@ final class AppBuilderTest extends TestCase
         self::assertTrue($app->console->has('hello'));
     }
 
+    public function testUnmatchedRequestsFallBackToThePublicDirectory(): void
+    {
+        mkdir($this->directory . '/public', recursive: true);
+        file_put_contents($this->directory . '/public/favicon.svg', '<svg></svg>');
+        $app = App::configure($this->directory)->create();
+
+        $asset = $app->handle(new Request('GET', '/favicon.svg'));
+        self::assertSame(200, $asset->getStatusCode());
+        self::assertSame('image/svg+xml', $asset->getHeaderLine('Content-Type'));
+        self::assertSame('<svg></svg>', (string) $asset->getBody());
+        self::assertSame(404, $app->handle(new Request('GET', '/missing'))->getStatusCode());
+    }
+
     public function testABasePathLoadsEnvAndConfigAndResolvesRelativePaths(): void
     {
         $app = App::configure($this->directory . '/')
