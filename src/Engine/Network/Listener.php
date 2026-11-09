@@ -20,12 +20,19 @@ final class Listener
 
     /**
      * @param resource $stream Ownership transfers to this listener.
+     * @param int $maxWriteBufferSize The write capacity of each accepted connection.
+     * @param float $closeTimeout The close timeout of each accepted connection.
      */
     public function __construct(
         private readonly EventLoop $loop,
         private mixed $stream,
         callable $onConnection,
+        private readonly int $maxWriteBufferSize = 1_048_576,
+        private readonly float $closeTimeout = 5.0,
     ) {
+        if ($maxWriteBufferSize < 1 || !is_finite($closeTimeout) || $closeTimeout <= 0) {
+            throw new InvalidArgumentException('Write capacity and close timeout must be positive.');
+        }
         if (!is_resource($stream) || get_resource_type($stream) !== 'stream') {
             throw new InvalidArgumentException('Listener requires an open server stream.');
         }
@@ -140,7 +147,13 @@ final class Listener
                 return;
             }
             try {
-                $connection = new Connection($this->loop, $stream, $peer);
+                $connection = new Connection(
+                    $this->loop,
+                    $stream,
+                    $peer,
+                    $this->maxWriteBufferSize,
+                    $this->closeTimeout,
+                );
             } catch (Throwable $error) {
                 fclose($stream);
                 throw $error;

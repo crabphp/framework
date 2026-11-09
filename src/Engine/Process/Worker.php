@@ -102,6 +102,8 @@ final class Worker
                         $this->track($connection);
                         $definition['handler']($connection);
                     },
+                    $definition['maxWriteBufferSize'],
+                    $definition['closeTimeout'],
                 );
                 $this->listeners[] = $listener;
                 $listener->attach();

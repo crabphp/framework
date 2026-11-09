@@ -181,6 +181,16 @@ An individually oversized write throws `LengthException`. `onDrain()` signals a 
 
 `onClose()` runs after socket cleanup. `onSettled()` additionally waits for service activity to finish, including asynchronous `finally` cleanup. HTTP and WebSocket message dispatch own these activity scopes automatically. Custom protocol owners can use `beginActivity()` and call its returned release closure in `finally`; a closed connection remains in worker admission accounting until all activities release it.
 
+A raw TCP protocol is a `Server\TcpServer`: one handler for every connection's bytes, and an optional second callback given each accepted connection first, where a protocol keeps its state and asks for `onClose()` or `onDrainRequest()`. A listener sizes the connections it accepts: `$group->listen($address, $server, maxWriteBufferSize: 262_144, closeTimeout: 30.0)`.
+
+`Network\Connector::connect($loop, $host, $port, $deadline)` opens an outbound `Connection` from a task, with `tlsHost:` for TLS; the lookup, connect and handshake suspend the task and not the worker. `Network\Relay` carries bytes to a connection for a producer that cannot stop by itself, as a proxy between two connections is: what the destination's queue refuses is held in order, the source connection is not read while anything is held, and `end()` closes the destination once the held bytes are sent.
+
+~~~php
+$toClient = new Relay($client, $upstream);
+$upstream->onData(static fn (Connection $upstream, string $bytes) => $toClient->write($bytes));
+$upstream->onClose(static fn () => $toClient->end());
+~~~
+
 `Network\DnsResolver::resolve($loop, $host)` finds a name's addresses first, without holding the worker: it reads the hosts file, keeps answers for as long as they hold, asks the system's name servers over UDP, and only when they give nothing falls back on the system's blocking resolver.
 
 ## Bounds and scope

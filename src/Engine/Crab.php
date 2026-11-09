@@ -13,7 +13,7 @@ namespace Crab\Engine;
 final class Crab
 {
     /**
-     * @var list<array{address:string, handler:\Closure, options:array}>
+     * @var list<array{address:string, handler:\Closure, options:array, socket:mixed, maxWriteBufferSize:int, closeTimeout:float}>
      */
     private array $listeners = [];
     /**
@@ -56,18 +56,33 @@ final class Crab
 
     /**
      * @param resource|null $socket A socket that already listens on the address, inherited from the server this one takes over from; it is used instead of binding the address.
+     * @param int $maxWriteBufferSize Bytes of output each accepted connection queues before a write is refused as backpressured.
+     * @param float $closeTimeout Seconds each accepted connection has to flush its output once it is ending, and to finish after its peer's EOF.
      */
-    public function listen(string $address, callable $handler, array $options = [], mixed $socket = null): self
-    {
+    public function listen(
+        string $address,
+        callable $handler,
+        array $options = [],
+        mixed $socket = null,
+        int $maxWriteBufferSize = 1_048_576,
+        float $closeTimeout = 5.0,
+    ): self {
         $this->assertMutable();
         if ($socket !== null && !is_resource($socket)) {
             throw new \InvalidArgumentException('An inherited socket must be an open stream.');
+        }
+        if ($maxWriteBufferSize < 1 || !is_finite($closeTimeout) || $closeTimeout <= 0) {
+            throw new \InvalidArgumentException(
+                'Set the listener\'s write buffer to at least one byte and its close timeout to a finite number of seconds greater than zero.',
+            );
         }
         $this->listeners[] = [
             'address' => $address,
             'handler' => $handler(...),
             'options' => $options,
             'socket' => $socket,
+            'maxWriteBufferSize' => $maxWriteBufferSize,
+            'closeTimeout' => $closeTimeout,
         ];
         return $this;
     }

@@ -59,6 +59,50 @@ final class RuntimeTest extends TestCase
         self::assertTrue(feof($peer), 'Force must close the connection without its drain wait.');
     }
 
+    public function testAListenersConnectionLimitsReachTheConnectionsItAccepts(): void
+    {
+        $runtime = new Runtime(shutdownTimeout: 1.0);
+        $socket = $this->ownStream(Listener::bind('tcp://127.0.0.1:0'));
+        $address = 'tcp://' . stream_socket_get_name($socket, false);
+        $peer = $this->ownStream(stream_socket_client($address, $code, $message, 1));
+        $capacity = null;
+        $runtime
+            ->group()
+            ->listen(
+                $address,
+                static function (Connection $connection) use ($runtime, &$capacity): void {
+                    $capacity = $connection->maxWriteSize();
+                    $connection->close();
+                    $runtime->stop();
+                },
+                socket: $socket,
+                maxWriteBufferSize: 4096,
+                closeTimeout: 0.5,
+            )
+            ->onStart(static function (Worker $worker): void {
+                $worker->loop->delay(2.0, static fn() => throw new RuntimeException('No connection was accepted.'));
+            });
+
+        $runtime->run(singleProcess: true);
+
+        self::assertSame(4096, $capacity);
+    }
+
+    public function testAListenerRefusesConnectionLimitsThatCannotHold(): void
+    {
+        $group = new Crab('tcp');
+        $handler = static function (): void {};
+
+        try {
+            $group->listen('tcp://127.0.0.1:0', $handler, maxWriteBufferSize: 0);
+            self::fail('A write buffer of no bytes was accepted.');
+        } catch (\InvalidArgumentException $error) {
+            self::assertStringContainsString('write buffer', $error->getMessage());
+        }
+        $this->expectException(\InvalidArgumentException::class);
+        $group->listen('tcp://127.0.0.1:0', $handler, closeTimeout: 0.0);
+    }
+
     public function testBoundedBootstrapTasksRunAndUnwindDuringDrain(): void
     {
         $cleaned = $ran = $bounded = false;
