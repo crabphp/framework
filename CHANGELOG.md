@@ -2,7 +2,7 @@
 
 Crab follows [semantic versioning](https://semver.org). Before 1.0, a minor version may break what an application writes; the entry says what to change.
 
-## Unreleased
+## 0.6.4 — 2026-11-10
 
 - **Primitives for a TCP relay on the engine:** `Engine\Network\Connector` opens an outbound connection, with TLS when asked, from a task. `Engine\Network\Relay` carries bytes from one connection to another and stops reading the source while the destination is behind, so a slow reader costs one read's worth of memory. `Engine\Server\TcpServer` takes a second callback that is given each accepted connection before its bytes, for a protocol's own state, close and drain handling. `Crab::listen()` takes `maxWriteBufferSize:` and `closeTimeout:` for the connections a listener accepts.
 
