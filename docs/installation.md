@@ -24,7 +24,7 @@ Reach for it when you are building an API and want it to start fast, answer fast
 
 - PHP 8.4 or newer.
 - The `mbstring` extension, which comes with most installations of PHP.
-- The `dom` and `xmlwriter` extensions, for PHPUnit, which runs the skeleton's tests and is installed with it.
+- For development, the `dom` and `xmlwriter` extensions. The skeleton's tests run on PHPUnit, a development dependency that needs them, and `composer create-project` checks for them even with `--no-dev`. A production install, `composer install --no-dev` from the lock file, does not need them.
 - The `pcntl` and `posix` extensions to run more than one worker or a server in the background. Without them, `start --single` runs HTTP alone; run `queue:work --single` and `schedule:work --single` separately when needed.
 - `pdo_sqlite` or `pdo_mysql` for the database, `openssl` for calling `https` APIs.
 - Linux or macOS. On Windows, work inside WSL 2; see [Developing on Windows](#developing-on-windows).
@@ -77,7 +77,7 @@ sudo apt install -y php8.4-cli php8.4-mbstring php8.4-xml php8.4-sqlite3 unzip
 | --- | --- |
 | `php8.4-cli` | PHP itself, with `pcntl` and `posix` |
 | `php8.4-mbstring` | `mbstring`, which Crab requires |
-| `php8.4-xml` | `dom` and `xmlwriter`, which PHPUnit requires; without them `create-project` stops |
+| `php8.4-xml` | `dom` and `xmlwriter`, which PHPUnit, the skeleton's test runner, requires; without them `create-project` stops |
 | `php8.4-sqlite3` | `pdo_sqlite`, for the skeleton's default SQLite database |
 | `unzip` | Lets Composer unpack downloads |
 
