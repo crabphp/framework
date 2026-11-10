@@ -3,6 +3,7 @@
 - [Introduction](#introduction)
 - [Requirements](#requirements)
 - [Creating an application](#creating-an-application)
+- [Developing on Windows](#developing-on-windows)
 - [Your first route](#your-first-route)
 - [One file is enough](#one-file-is-enough)
 - [Next steps](#next-steps)
@@ -22,6 +23,7 @@ Reach for it when you are building an API and want it to start fast, answer fast
 - The `mbstring` extension, which comes with most installations of PHP.
 - The `pcntl` and `posix` extensions to run more than one worker or a server in the background. Without them, `start --single` runs HTTP alone; run `queue:work --single` and `schedule:work --single` separately when needed.
 - `pdo_sqlite` or `pdo_mysql` for the database, `openssl` for calling `https` APIs.
+- Linux or macOS. On Windows, work inside WSL 2; see [Developing on Windows](#developing-on-windows).
 
 ## Creating an application
 
@@ -38,6 +40,38 @@ php cua dev
 Open `http://127.0.0.1:8080`. `cua` is the application's command line; `php cua` on its own lists every command.
 
 `dev` restarts the server whenever you save a file under `app/`, `config/` or `routes/`, or `.env`, so there is nothing to restart by hand while you work. In production the server is run with `start`; see [Deployment](deployment.md).
+
+## Developing on Windows
+
+Crab's server is built on Unix processes and signals, which PHP for Windows does not have, so `php cua dev` and `php cua start` are not supported in PowerShell or the Command Prompt. Develop inside WSL 2 instead, the Linux environment that ships with Windows 10 and 11. There Crab runs as it does on Linux, with every command and every worker.
+
+Install WSL from a PowerShell window opened as administrator, then restart when it asks:
+
+```sh
+wsl --install
+```
+
+That installs Ubuntu. Open it from the Start menu, and install PHP 8.4 with the extensions Crab uses; `pcntl` and `posix` come with `php8.4-cli`:
+
+```sh
+sudo add-apt-repository ppa:ondrej/php
+sudo apt update
+sudo apt install php8.4-cli php8.4-mbstring php8.4-sqlite3 php8.4-mysql unzip
+```
+
+Install Composer as [getcomposer.org](https://getcomposer.org/download/) describes, then create the application as on any other system:
+
+```sh
+cd ~
+composer create-project crabphp/crab shop
+cd shop
+php cua dev
+```
+
+Open `http://127.0.0.1:8080` in your browser on Windows; WSL forwards the port. To edit the code, open the folder with an editor that works inside WSL, such as VS Code with its WSL extension (`code .` from the application's folder).
+
+> [!WARNING]
+> Keep the application in the Linux home folder (`~/shop`), not on the Windows drive under `/mnt/c`. Files there are many times slower to read, and `dev` may not see your changes.
 
 ## Your first route
 
