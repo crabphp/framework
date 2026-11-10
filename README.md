@@ -403,6 +403,10 @@ $this->broadcast->within($transaction)->to("orders.{$id}")->send(['status' => 's
 
 `BroadcastPlugin` is optional: list it in `withPlugins()`. `broadcast.carrier = 'local'` reaches one HTTP process. Choose `'redis'` and list `Crab\Redis\RedisPlugin` after it for multiple workers or console senders. Defaults are `broadcast.prefix = 'crab:broadcast:'`, `broadcast.max_channels = 64`, `broadcast.batch = 128`, and `broadcast.max_pending_bytes = 1048576`. Slow readers close with 1008; Redis gaps close joined sockets with 1012 so clients reconnect and refetch state. Delivery is at most once, with no replay. `Testing\FakeBroadcaster` records sends without sockets. See [Broadcasting](docs/broadcasting.md).
 
+## Views
+
+Crab serves regular HTML applications as well as JSON APIs. [Arc](https://github.com/crabphp/arc), an optional package installed with `composer require crabphp/arc`, adds HTML templates, typed components and layouts compiled to PHP closures. Register its `ArcPlugin`, put templates in `resources/views`, and return `view('hello', ['name' => $name])` from an action. Forms, cookie authentication and redirects use the same framework as an API; no client-side framework is required. See [Views](docs/views.md) for installation, escaping, components and deployment.
+
 ## Requests and responses
 
 An action that asks for the request receives `Contracts\Http\Request`, an extended PSR-7 server request. A PSR-15 `RequestHandlerInterface` can be a route's action too; it receives the request, with the route parameters as attributes.

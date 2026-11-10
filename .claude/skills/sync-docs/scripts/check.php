@@ -25,6 +25,17 @@ $docs = $root . '/docs';
 $index = 'documentation.md';
 $problems = [];
 
+// Optional package APIs are not installed with the framework. Keep their exact
+// public names here; their implementations and examples are tested by the package.
+$packageApis = [
+    'crabphp/arc' => [
+        'classes' => ['Crab\\Arc\\Arc', 'Crab\\Arc\\ArcPlugin'],
+        'commands' => ['view:cache', 'view:clear'],
+    ],
+];
+$packageClasses = array_merge(...array_column($packageApis, 'classes'));
+$packageCommands = array_merge(...array_column($packageApis, 'commands'));
+
 /**
  * A heading's anchor, as the preview page and GitHub both make it.
  */
@@ -98,7 +109,7 @@ foreach ($pages as $name => $markdown) {
     // A name starts with a capital after the backslash, which "Crab\n" in a string does not.
     preg_match_all('/\bCrab\\\\[A-Z][A-Za-z_\\\\]*[A-Za-z_]/', $markdown, $names);
     foreach (array_unique($names[0]) as $class) {
-        if (!class_exists($class) && !interface_exists($class) && !enum_exists($class) && !is_dir($root . '/src/' . str_replace('\\', '/', substr($class, 5)))) {
+        if (!in_array($class, $packageClasses, true) && !class_exists($class) && !interface_exists($class) && !enum_exists($class) && !is_dir($root . '/src/' . str_replace('\\', '/', substr($class, 5)))) {
             $problems[] = "docs/{$name} names {$class}, and there is no such class, interface or namespace.";
         }
     }
@@ -147,7 +158,7 @@ foreach ($commands as $command) {
 }
 preg_match_all('/Command::add\(\s*\'([a-z0-9:_-]+)\'/', $everything, $declared);
 preg_match_all('/->command\(\s*\'([a-z0-9:_-]+)\'/', $everything, $scheduled);
-$known = [...$commands, ...$declared[1], ...$scheduled[1], 'list', 'help'];
+$known = [...$commands, ...$packageCommands, ...$declared[1], ...$scheduled[1], 'list', 'help'];
 foreach ($pages as $name => $markdown) {
     preg_match_all('/php cua ([a-z][a-z0-9:_-]*)/', $markdown, $run);
     foreach (array_unique($run[1]) as $command) {

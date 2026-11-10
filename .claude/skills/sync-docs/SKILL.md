@@ -54,6 +54,7 @@ Run everything from the framework's root, the folder with `composer.json`.
 | `src/Validation/` | `validation.md` |
 | `src/Http/Request.php`, `Multipart`, `UploadedFile` | `requests.md` |
 | `src/Http/Response.php`, `Cookie.php` | `responses.md` |
+| `../arc/src/`, `../arc/README.md` | `views.md` |
 | `src/Http/` middleware, `Cors`, `RequestId`, `MiddlewareStack` | `middleware.md` |
 | `src/Http/ErrorHandler.php`, `ErrorResponse.php`, `HttpException.php` | `errors.md` |
 | `src/Log/` | `logging.md` |
@@ -78,7 +79,7 @@ A component with no row gets a page of its own and a row here.
 
 - Every page is listed in `documentation.md`, and every listed page exists.
 - Every link between pages, and every `#anchor`, points at something.
-- Every `Crab\...` name on a page is a class, interface or enum that exists.
+- Every `Crab\...` name on a page is a class, interface or enum that exists in the framework, or an exact public API listed in the check's optional-package map. Package implementations and examples are checked in their own repositories; the framework does not install optional packages to check its guide.
 - Every console command a plugin or `App` registers is documented, and every `php cua <command>` on a page is a real command or one the page itself declares.
 - Every setting a plugin declares with `defaults()`, and every key `App`, `Server` and `Serve` read, appears somewhere as `section.key`.
 
