@@ -140,7 +140,7 @@ Run `composer test`. `tests/LayerBoundaryTest.php` fails if the component refere
 
 ## 9. Measure if it is on the request path
 
-A component that runs on every request (middleware, anything the router or the request touches) is measured against the engine alone, with JIT on, in the manner of `benchmarks/request-path.php`. Report the cost per request with the change. A component used only by some actions needs no measurement.
+A component that runs on every request (middleware, anything the router or the request touches) is measured against the engine alone, with JIT on, in the manner of [the request-path harness in crabphp/benchmarks](https://github.com/crabphp/benchmarks/blob/main/engine/request-path.php). Report the cost per request with the change and keep the measurements in that repository. A component used only by some actions needs no measurement.
 
 ## 10. Document it
 

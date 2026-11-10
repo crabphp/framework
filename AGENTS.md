@@ -2,7 +2,7 @@
 
 - This repository is `crabphp/framework`. The networking engine lives in `src/Engine/` with its own `composer.json`, kept able to be published alone as `crabphp/engine`, and for now released only inside the framework, which `replace`s it; framework components are sibling namespaces under `src/`.
 - Nothing under `src/Engine/` may reference a `Crab\` namespace other than `Crab\Engine\`; `tests/EngineBoundaryTest.php` enforces this. The framework may depend on the engine, never the reverse.
-- Engine tests live in `tests/Engine/`, engine benchmarks in `benchmarks/`.
+- Engine tests live in `tests/Engine/`. Benchmarks, soak harnesses and their results belong in the separate [crabphp/benchmarks](https://github.com/crabphp/benchmarks) repository (`../benchmarks` locally), not in the framework.
 - [ARCHITECTURE.md](ARCHITECTURE.md) is the agreed design: layers, lifecycle, scopes, concurrency model and build order. Read it before designing a component and keep it true when the design changes.
 - [COMPONENTS.md](COMPONENTS.md) is the flow for building a component. Follow its steps in order and meet its definition of done; when the flow itself changes, change that file in the same change.
 - [docs/](docs/documentation.md) is the guide for application developers. A change to what an application developer writes, runs or configures changes its page in the same piece of work; the `sync-docs` skill (`.claude/skills/sync-docs/`) says how the pages are written and checks them against the code.
@@ -293,7 +293,7 @@
 
 ## Performance
 
-- Code on the request path builds values on first use and avoids objects created per request. When changing `Http` or `Routing` request-path code, measure the per-request cost against the engine alone with JIT on, in the manner of `benchmarks/request-path.php`, and report it.
+- Code on the request path builds values on first use and avoids objects created per request. When changing `Http` or `Routing` request-path code, measure the per-request cost against the engine alone with JIT on, in the manner of [the request-path harness](https://github.com/crabphp/benchmarks/blob/main/engine/request-path.php), and report it.
 - Do not add an optimization that reuses parsed data across identical requests; that is a benchmark hack. Lazy work is fine.
 - A worker-local cache reclaims expired entries even when their keys are never asked for again, and what a connection or task leaves in a map is removed on every way it can end.
 - A caller waiting for exclusive use of a shared connection waits under its own cancellation and deadline; one that gives up leaves the queue, and one that abandons a turn it got returns it and any flow-control window it reserved.

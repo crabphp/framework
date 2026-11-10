@@ -283,7 +283,8 @@ No auto-discovery, no `boot()` phase, no global container accessor. `Route::get(
 | Application | `$app->handle($request)` end to end, no sockets | `tests/AppTest.php` |
 | Engine | Real sockets, workers, shutdown | `tests/Engine/` |
 | Boundary | Layer rules | `tests/EngineBoundaryTest.php`, `tests/LayerBoundaryTest.php` |
-| Manual | Linux container run, long soak | `composer test:linux`, `composer soak` |
+| Manual | Linux container run | `composer test:linux` |
+| Performance and stability | Matched benchmarks, long soak | [crabphp/benchmarks](https://github.com/crabphp/benchmarks), separate from the framework |
 
 A PSR implementation should also pass that PSR's public conformance suite where one exists. The PSR-7 suite did not install alongside PHPUnit 13 when tried; that is unresolved.
 

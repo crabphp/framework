@@ -225,7 +225,7 @@ This replaces the experimental `Crab::run()/Server::listen()` API. The sibling a
 
 ## Manual checks
 
-Two checks are run by hand, never as part of `composer test`.
+These checks are run by hand, never as part of `composer test`.
 
 **Linux.** Builds a Linux image from the working tree with Docker and runs the suite inside it, once as shipped and once with tracing JIT in random order:
 
@@ -233,26 +233,18 @@ Two checks are run by hand, never as part of `composer test`.
 composer test:linux
 ~~~
 
-**Soak.** Cycles mixed traffic against one HTTP and one WebSocket server for as long as asked: persistent requests, one connection per request, request bodies, streamed megabyte responses, WebSocket echoes and misbehaving clients. After each cycle it samples resting memory and open descriptors, and it fails if a server exits, answers with a wrong status, keeps descriptors open or keeps growing. It needs `wrk` and Node.js. Minutes prove little; run it for hours:
-
-~~~sh
-composer soak -- --label=overnight --minutes=480
-~~~
-
-The report is written to `benchmarks/results/soak-<label>.json`.
+**Soak.** The [engine maintainer tools in crabphp/benchmarks](https://github.com/crabphp/benchmarks/tree/main/engine) cycle mixed HTTP and WebSocket traffic and sample resting memory and open descriptors. Run that harness against the framework checkout being changed. It needs `wrk` and Node.js; its README gives setup, commands and report paths. Minutes prove little; run it for hours.
 
 ## Verify and measure
 
 ~~~sh
 composer test
 composer test -- --filter HttpTest
-python3 benchmarks/http.py --label local-http
-python3 benchmarks/ws-run.py --label local-ws
 ~~~
 
-PHPUnit 13 is a development dependency, omitted by `composer install --no-dev`. Tests exercise real sockets, malformed frames, partial writes, cancellation, all four servers together, worker failure, rolling restart, and shutdown. Individual cases are discoverable and filterable through PHPUnit. Process-specific tests skip when their required extensions are unavailable; the single-process tests still run. Benchmarks preserve raw results and environment metadata and serialize load generation on this host.
+PHPUnit 13 is a development dependency, omitted by `composer install --no-dev`. Tests exercise real sockets, malformed frames, partial writes, cancellation, all four servers together, worker failure, rolling restart, and shutdown. Individual cases are discoverable and filterable through PHPUnit. Process-specific tests skip when their required extensions are unavailable; the single-process tests still run.
 
-See [architecture](ARCHITECTURE.md) and [measurements and methodology](BENCHMARKS.md). Performance claims refer to measured workloads; this is a tested foundation, not an assertion of universal maximum throughput or completed production qualification.
+See [architecture](ARCHITECTURE.md) and [crabphp/benchmarks](https://github.com/crabphp/benchmarks) for measurements and methodology. Performance claims refer to measured workloads; this is a tested foundation, not an assertion of universal maximum throughput or completed production qualification.
 
 **TLS.** `php84 tests/Engine/Fixtures/tls-server.php /path/to/combined-cert-and-key.pem` runs a local SMTP-shaped transport fixture on 4650 (implicit TLS) and 5870 (STARTTLS). With a localhost development certificate, both checks must verify the certificate and return `250`/`221`:
 

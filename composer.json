@@ -32,7 +32,6 @@
     "scripts": {
         "test": "@php vendor/bin/phpunit",
         "test:linux": "tests/linux/run.sh",
-        "soak": "python3 benchmarks/soak.py",
         "docs": [
             "Composer\\Config::disableProcessTimeout",
             "@php .claude/skills/sync-docs/scripts/serve.php"

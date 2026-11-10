@@ -2,7 +2,5 @@
 vendor
 .phpunit.cache
 .phpunit.result.cache
-benchmarks/results
-benchmarks/elysia/node_modules
 **/__pycache__
 .DS_Store

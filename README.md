@@ -156,7 +156,7 @@ A request that does not fit is answered with `422` and every problem, by field:
 
 A rule of your own is an attribute class that implements `Crab\Contracts\Validation\Rule`: `check()` returns what is wrong or null. To validate outside a route, ask for `Crab\Contracts\Validation\Validator` and call `validate(CreateUser::class, $data)`, which returns the object or throws `Crab\Validation\ValidationException` with `$errors`.
 
-Reading a signature costs nothing per request, because it is read once when the route is added. Calling a closure by its signature adds about 0.05 µs to a request over a PSR-15 handler, and validated input with a typed response about 1 µs over the same checks written by hand (`benchmarks/typed-action.php`, PHP 8.4 with JIT, Apple M1 Pro).
+A signature is read once when the route is added, not on each request. Performance measurements live in [crabphp/benchmarks](https://github.com/crabphp/benchmarks).
 
 ## Middleware
 
@@ -1093,7 +1093,6 @@ A plugin that needs something open in every worker, such as a connection or a ti
 | `src/Validation/` | Builds typed objects from request data, with rules as attributes. |
 | `src/Contracts/` | Every interface another package implements or type-hints; they extend the PSR ones where Crab adds methods. |
 | `tests/` | Framework tests beside their components; engine tests in `tests/Engine/`. `tests/EngineBoundaryTest.php` keeps the engine free of framework dependencies. |
-| `benchmarks/` | Engine benchmarks and their recorded results; start at [BENCHMARKS.md](BENCHMARKS.md). |
 | `examples/` | Runnable engine examples. |
 | `docs/` | The guide for application developers, one page per topic; `composer docs` serves it for reading. |
 
@@ -1108,4 +1107,4 @@ php bin/crab examples/servers.php --single   # the engine alone
 
 The design is described in [ARCHITECTURE.md](ARCHITECTURE.md), the flow for building a component in [COMPONENTS.md](COMPONENTS.md) and the conventions in [AGENTS.md](AGENTS.md).
 
-`composer test:linux` and `composer soak` are manual checks, described in the engine README. [CONTRIBUTING.md](CONTRIBUTING.md) says how to set up, test, format and lint, and [RELEASING.md](RELEASING.md) is the release checklist.
+`composer test:linux` is a manual check, described in the engine README. Benchmarks, soak harnesses and recorded results live in the separate [crabphp/benchmarks](https://github.com/crabphp/benchmarks) repository. [CONTRIBUTING.md](CONTRIBUTING.md) says how to set up, test, format and lint, and [RELEASING.md](RELEASING.md) is the release checklist.

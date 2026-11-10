@@ -35,7 +35,7 @@ CRAB_TEST_REDIS_URL=redis://127.0.0.1:6399 vendor/bin/phpunit
 redis-cli -p 6399 shutdown nosave
 ```
 
-A change to an HTTP or routing path that runs on every request is measured too; see [BENCHMARKS.md](BENCHMARKS.md).
+A change to an HTTP or routing path that runs on every request is measured too. Benchmarks and recorded results live in [crabphp/benchmarks](https://github.com/crabphp/benchmarks); its [engine maintainer tools](https://github.com/crabphp/benchmarks/tree/main/engine) include the request-path and soak harnesses.
 
 ## Format and lint
 

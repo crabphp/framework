@@ -144,9 +144,9 @@ Cancellation is cooperative. Worker tasks remain tracked until they finish, incl
 
 The fast path is readiness → bounded read → one protocol owner → handler → capacity check → direct write or bounded queue, without a deferred callback, closure or generator per request. It has no service-container lookup, per-packet logging or parent-process coordination. Header-cache eligibility uses PHP's array-reference inspection when a Response is reused; ordinary fresh responses and established caches skip that inspection.
 
-Keep optimizations only after real socket checks and matched measurements. HTTP/WebSocket harnesses preserve raw trials, latency, errors, environment and source hashes, and serialize host load. Exact change patches make initial before/after experiments inspectable.
+Keep optimizations only after real socket checks and matched measurements. Benchmarks, soak harnesses, results and their limitations live in the separate [crabphp/benchmarks](https://github.com/crabphp/benchmarks) repository. Preserve raw trials, latency, errors, environment and source revisions with each measurement, and serialize host load.
 
-[BENCHMARKS.md](../../BENCHMARKS.md) records results and limits. Short closed-loop trials with client/server on the same machine do not establish production saturation, internet tail latency, or superiority over other engines.
+Historical research and optimization patches remain in the framework's Git history. Short closed-loop trials with client/server on the same machine do not establish production saturation, internet tail latency, or superiority over other engines.
 
 `Worker::stats()` exposes active connections, tasks, queued transport bytes, PHP memory and drain state. Queries stay outside the packet path; no metrics exporter is required.
 

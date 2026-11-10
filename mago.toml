@@ -4,9 +4,9 @@ php-version = "8.4.0"
 
 [source]
 workspace = "."
-paths = ["src/", "tests/", "benchmarks/*.php", "bin/crab"]
+paths = ["src/", "tests/", "bin/crab"]
 includes = ["vendor"]
-excludes = ["vendor/**", "storage/**", "benchmarks/results/**"]
+excludes = ["vendor/**", "storage/**"]
 
 [source.glob]
 literal-separator = true
@@ -46,7 +46,7 @@ no-error-control-operator = { enabled = false }
 no-else-clause = { enabled = false }
 # Existing null-aware array and property checks must keep their semantics without a broad rewrite.
 no-isset = { enabled = false }
-# Local test fixtures and benchmark helpers belong with their scenarios; splitting them is broad churn.
+# Local test fixtures belong with their scenarios; splitting them is broad churn.
 single-class-per-file = { enabled = false }
 # Replacing forwarding closures can change binding time and captured mutable state.
 prefer-first-class-callable = { enabled = false }
@@ -66,8 +66,6 @@ no-unsafe-finally = { enabled = false }
 no-redundant-math = { enabled = false }
 # Process fixtures deliberately share process state; changing that setup would alter lifecycle tests.
 no-global = { enabled = false }
-# The standalone broadcast benchmark owns its local probe; renaming its entry point breaks usage.
-file-name = { enabled = false }
 # The subscription test deliberately breaks after one message to exercise iterator cancellation.
 loop-does-not-iterate = { enabled = false }
 

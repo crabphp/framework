@@ -1,9 +1,0 @@
-{
-  "name": "crab-elysia-benchmark",
-  "private": true,
-  "type": "module",
-  "packageManager": "bun@1.4.2",
-  "dependencies": {
-    "elysia": "1.4.30"
-  }
-}

@@ -4,4 +4,3 @@ __pycache__/
 *.pyc
 .phpunit.cache/
 .phpunit.result.cache
-/benchmarks/elysia/node_modules/

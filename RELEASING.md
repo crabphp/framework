@@ -22,8 +22,8 @@
   - [ ] `composer test`
   - [ ] `CRAB_TEST_MYSQL_DSN='mysql:host=127.0.0.1;dbname=crab_test' composer test`
   - [ ] `composer test:linux --mysql`
-  - [ ] `composer soak`, when the engine, server or process control changed.
-  - [ ] the request-path benchmark against the last release, when HTTP or routing changed; record it in BENCHMARKS.md.
+- [ ] The [soak harness in crabphp/benchmarks](https://github.com/crabphp/benchmarks/tree/main/engine), when the engine, server or process control changed.
+- [ ] The request-path benchmark against the last release, when HTTP or routing changed; keep the results in [crabphp/benchmarks](https://github.com/crabphp/benchmarks).
 - [ ] `redis/` tests against a throwaway Redis.
 - [ ] Nothing in `composer audit` for any repository.
 
