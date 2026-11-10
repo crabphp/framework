@@ -203,3 +203,9 @@ The commands measure the current source. Raw JSON preserves commands, versions, 
 Both workloads are closed-loop: a client waits for a response before offering more work. Their latency distributions do not describe a server under a fixed external arrival rate, and they can hide overload delay. CPU measurements also differ: HTTP uses sampled OS percentages; WebSocket server CPU deltas include handshake and warmup, while its Node CPU counters cover the measured interval. Short local trials and RSS snapshots do not establish long-running memory stability.
 
 Use a separate, unsaturated load host, controlled offered load, longer runs, and representative application work before setting deployment limits. The historical tables on this page do not imply a cross-runtime comparison, Internet latency claim, or universal website capacity.
+
+## TLS transport read path (2026-11-10)
+
+`python3 benchmarks/tls-transport.py` compares the HEAD engine (2d353a1bef55f098f31e93f0b344e2d93f97282b) with the working tree, using the existing HTTP fixture, PHP 8.4.22 with JIT disabled (`opcache.jit=off`, `opcache.jit_buffer_size=0`), CLI OPcache enabled, one select worker and 16 persistent loopback clients. Six alternating two-second trials follow a half-second warmup each. Raw trials, commands, p50/p99 latency, errors, environment and source hashes are in `benchmarks/results/tls-transport.json`; the command output also states that JIT is off.
+
+Median throughput: baseline 47,004 requests/s; TLS-capable tree 46,804 requests/s (-0.4%). All six trials have zero client errors and empty server logs. Baseline p99 ranges 0.406–0.571 ms; changed p99 ranges 0.408–0.416 ms. The Python client and server share this development host with other work; these short trials can vary. This check establishes working HTTP transport after the TLS change, and does not establish a performance difference or saturation capacity.

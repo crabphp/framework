@@ -126,6 +126,231 @@ final class DnsResolverTest extends TestCase
         self::assertCount(5, $asked, 'Forgotten, it is asked for again.');
     }
 
+    public function testMxPreferencesCompressedNamesAndJoinedTxtAreCachedSeparately(): void
+    {
+        $loop = $this->loop = $this->newLoop();
+        $asked = [];
+        $server = $this->nameServer($loop, $asked, [
+            'mail.test' => [
+                [15, 60, pack('n', 20) . "\x04slow\xC0\x0C"],
+                [15, 30, pack('n', 5) . "\x04fast\xC0\x0C"],
+                [16, 60, "\x06v=spf1\x05 -all"],
+                [16, 30, "\x03one\x03two"],
+                [1, 60, "\x7F\x00\x00\x01"],
+            ],
+            'null.test' => [[15, 60, "\x00\x00\x00"]],
+            'cycle.test' => [[15, 60, "\x00\x00\xC0\x27"]],
+            'broken.test' => [[16, 60, "\x10short"]],
+        ]);
+        $dns = new DnsResolver([$server], 1, 1, false, $this->hosts);
+        $found = $this->within($loop, static function () use ($loop, $dns): array {
+            $mx = $dns->resolveMx($loop, 'MAIL.TEST.');
+            return [
+                array_map(static fn($record): array => [$record->preference, $record->exchange], $mx),
+                $dns->resolveTxt($loop, 'mail.test'),
+                $dns->resolve($loop, 'mail.test'),
+                $dns->resolveMx($loop, 'mail.test') === $mx,
+                $dns->resolveTxt($loop, 'mail.test'),
+                $dns->resolveMx($loop, 'absent.test'),
+                $dns->resolveMx($loop, 'absent.test'),
+                $dns->resolveMx($loop, 'null.test')[0]->exchange,
+            ];
+        });
+        self::assertSame(
+            [
+                [
+                    [5,  'fast.mail.test'],
+                    [20, 'slow.mail.test'],
+                ],
+                ['v=spf1 -all', 'onetwo'],
+                ['127.0.0.1'],
+                true,
+                ['v=spf1 -all', 'onetwo'],
+                [],
+                [],
+                '.',
+            ],
+            $found,
+        );
+        self::assertSame(['mail.test MX', 'mail.test TXT', 'mail.test A', 'absent.test MX', 'null.test MX'], $asked);
+        foreach (['cycle.test', 'broken.test'] as $name) {
+            $error = null;
+            try {
+                $this->within($loop, static fn(): array => $name === 'cycle.test'
+                    ? $dns->resolveMx($loop, $name)
+                    : $dns->resolveTxt($loop, $name));
+            } catch (RuntimeException $failure) {
+                $error = $failure;
+            }
+            self::assertInstanceOf(RuntimeException::class, $error);
+        }
+        self::assertSame([], $this->reports);
+    }
+
+    public function testEveryDnsSectionAndQuestionSuffixMustBeComplete(): void
+    {
+        $read = new \ReflectionMethod(DnsResolver::class, 'read');
+        $question = "\x04mail\x04test\x00" . pack('nn', 15, 1);
+        $header = static fn(int $answers, int $authority, int $additional, int $flags = 0x8180): string => pack(
+            'nnnnnn',
+            1,
+            $flags,
+            1,
+            $answers,
+            $authority,
+            $additional,
+        );
+        $record = "\xC0\x0C" . pack('nnNn', 1, 1, 30, 4) . "\x7F\x00\x00\x01";
+        $packets = [
+            $header(0, 0, 0) . "\x00",
+            $header(0, 0, 0) . substr($question, 0, -1),
+            $header(1, 0, 0) . $question,
+            $header(0, 1, 0) . $question,
+            $header(0, 0, 1) . $question,
+            $header(0, 1, 0, 0x8183) . $question,
+            $header(0, 0, 1) . $question . substr($record, 0, -1),
+            $header(1, 0, 1) . $question . $record,
+        ];
+        foreach ($packets as $packet) {
+            self::assertNull($read->invoke(null, $packet, 15), bin2hex($packet));
+        }
+        $txtQuestion = "\x04mail\x04test\x00" . pack('nn', 16, 1);
+        self::assertNull($read->invoke(
+            null,
+            $header(1, 0, 0) . $txtQuestion . "\xC0\x0C" . pack('nnNn', 16, 1, 30, 0),
+            16,
+        ));
+        self::assertSame([[], 0], $read->invoke(null, $header(0, 1, 1) . $question . $record . $record, 15));
+    }
+
+    public function testMalformedEmptyDnsAnswersAreNeverReturnedOrCached(): void
+    {
+        $loop = $this->loop = $this->newLoop();
+        $asked = [];
+        $server = $this->nameServer($loop, $asked, [
+            'authority.test' => 'authority-missing',
+            'additional.test' => 'additional-missing',
+            'question.test' => 'question-missing',
+            'txt.test' => [[16, 60, '']],
+        ]);
+        $dns = new DnsResolver([$server], 1, 1, false, $this->hosts);
+        foreach (['authority.test', 'additional.test', 'question.test', 'txt.test'] as $name) {
+            for ($attempt = 0; $attempt < 2; ++$attempt) {
+                $error = null;
+                try {
+                    $this->within($loop, static fn(): array => $name === 'txt.test'
+                        ? $dns->resolveTxt($loop, $name)
+                        : $dns->resolveMx($loop, $name));
+                } catch (RuntimeException $failure) {
+                    $error = $failure;
+                }
+                self::assertInstanceOf(RuntimeException::class, $error);
+            }
+        }
+        self::assertCount(8, $asked, 'Every malformed lookup is asked again; none is cached as empty.');
+        self::assertSame([], new \ReflectionProperty($dns, 'kept')->getValue($dns));
+        self::assertSame([], $this->reports);
+    }
+
+    public function testExplicitAddressFamiliesAndReverseNamesHaveSeparateCaches(): void
+    {
+        $loop = $this->loop = $this->newLoop();
+        $asked = [];
+        $reverse6 = implode('.', array_reverse(str_split(bin2hex(inet_pton('2001:db8::1'))))) . '.ip6.arpa';
+        $server = $this->nameServer($loop, $asked, [
+            'both.test' => [
+                [1,  60, inet_pton('192.0.2.7')],
+                [28, 60, inet_pton('2001:db8::7')],
+            ],
+            'six.test' => [[28, 60, inet_pton('2001:db8::8')]],
+            '7.2.0.192.in-addr.arpa' => [[12, 60, "\x04Mail\x04test\x00"]],
+            $reverse6 => [[12, 60, "\x04six6\x04test\x00"]],
+        ]);
+        $dns = new DnsResolver([$server], 1, 1, false, $this->hosts);
+        $found = $this->within($loop, static function () use ($loop, $dns): array {
+            return [
+                $dns->resolve($loop, 'both.test'),
+                $dns->resolveAaaa($loop, 'both.test'),
+                $dns->resolveA($loop, 'both.test'),
+                $dns->resolve($loop, 'six.test'),
+                $dns->resolveA($loop, 'six.test'),
+                $dns->resolveA($loop, 'six.test'),
+                $dns->resolveAaaa($loop, 'six.test'),
+                $dns->resolvePtr($loop, '192.0.2.7'),
+                $dns->resolvePtr($loop, '192.0.2.7'),
+                $dns->resolvePtr($loop, '2001:db8::1'),
+                $dns->resolveA($loop, 'localhost'),
+                $dns->resolveAaaa($loop, 'localhost'),
+                $dns->resolveA($loop, '::1'),
+                $dns->resolveAaaa($loop, '127.0.0.1'),
+            ];
+        });
+        self::assertSame(
+            [
+                ['192.0.2.7'],
+                ['2001:db8::7'],
+                ['192.0.2.7'],
+                ['2001:db8::8'],
+                [],
+                [],
+                ['2001:db8::8'],
+                ['mail.test'],
+                ['mail.test'],
+                ['six6.test'],
+                ['127.0.0.1'],
+                ['::1'],
+                [],
+                [],
+            ],
+            $found,
+        );
+        self::assertSame(
+            [
+                'both.test A',
+                'both.test AAAA',
+                'both.test A',
+                'six.test A',
+                'six.test AAAA',
+                'six.test A',
+                'six.test AAAA',
+                '7.2.0.192.in-addr.arpa PTR',
+                $reverse6 . ' PTR',
+            ],
+            $asked,
+        );
+        $error = null;
+        try {
+            $dns->resolvePtr($loop, 'not an address');
+        } catch (RuntimeException $failure) {
+            $error = $failure;
+        }
+        self::assertInstanceOf(RuntimeException::class, $error);
+        self::assertSame([], $this->reports);
+    }
+
+    public function testHostilePtrRdataIsRejectedAndNotCached(): void
+    {
+        $loop = $this->loop = $this->newLoop();
+        $asked = [];
+        $server = $this->nameServer($loop, $asked, [
+            '1.2.0.192.in-addr.arpa' => [[12, 60, "\x04a\r\nb\x04test\x00"]],
+            '2.2.0.192.in-addr.arpa' => [[12, 60, "\xC0\x26"]],
+            '3.2.0.192.in-addr.arpa' => [[12, 60, "\x00"]],
+            '4.2.0.192.in-addr.arpa' => [[12, 60, "\x04mail\x04test\x00extra"]],
+        ]);
+        $dns = new DnsResolver([$server], 1, 1, false, $this->hosts);
+        foreach (['192.0.2.1', '192.0.2.2', '192.0.2.3', '192.0.2.4'] as $address) {
+            $error = null;
+            try {
+                $this->within($loop, static fn(): array => $dns->resolvePtr($loop, $address));
+            } catch (RuntimeException $failure) {
+                $error = $failure;
+            }
+            self::assertInstanceOf(RuntimeException::class, $error);
+        }
+        self::assertSame([], new \ReflectionProperty($dns, 'kept')->getValue($dns));
+    }
+
     public function testANameThatIsNotThereAndAServerThatIsSilent(): void
     {
         $loop = $this->loop = $this->newLoop();
@@ -509,7 +734,13 @@ final class DnsResolverTest extends TestCase
             }
             $name = implode('.', $labels);
             $type = unpack('n', $query, $offset + 1)[1];
-            $asked[] = $name . ($type === 1 ? ' A' : ' AAAA');
+            $asked[] = $name . match ($type) {
+                1 => ' A',
+                28 => ' AAAA',
+                15 => ' MX',
+                16 => ' TXT',
+                12 => ' PTR',
+            };
             $question = substr($query, 12, $offset + 5 - 12);
             $known = $records[$name] ?? null;
             $flags = match (true) {
@@ -530,6 +761,14 @@ final class DnsResolverTest extends TestCase
                 ++$count;
             }
             $reply = substr($query, 0, 2) . pack('nnnnn', $flags, 1, $count, 0, 0) . $question . $answers;
+            if ($known === 'authority-missing') {
+                $reply = substr_replace($reply, "\x00\x01", 8, 2);
+            } elseif ($known === 'additional-missing') {
+                $reply = substr_replace($reply, "\x00\x01", 10, 2);
+            } elseif ($known === 'question-missing') {
+                $reply = substr($reply, 0, 12) . "\x00";
+            }
+
             $send = static function () use ($socket, $reply, $from): void {
                 @stream_socket_sendto($socket, $reply, 0, $from);
             };

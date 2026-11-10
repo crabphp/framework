@@ -2,6 +2,12 @@
 
 Crab follows [semantic versioning](https://semver.org). Before 1.0, a minor version may break what an application writes; the entry says what to change.
 
+## Unreleased
+
+- **TLS for engine protocols:** `Crab::listen(tls: ...)` negotiates implicit TLS before protocol dispatch. `Connection::startTls()` upgrades an existing connection as a server or client, with a bounded handshake and verified clients by default. The protocol owner flushes its positive reply, passes all unread parser bytes to `unread:`, and discards pre-upgrade protocol and authentication state. Engine-created streams have private SSL contexts; an outside stream must supply its own context. See [the engine guide](src/Engine/README.md#tls-and-mail-dns).
+- **Local TLS failures are visible:** certificate and private-key files are checked in the worker at listener startup and again for upgrades. Local handshake setup failures report their PHP and OpenSSL reasons through `FailureReporter`; a peer's bad handshake closes quietly. `shutdownWrite()` on an encrypted connection flushes and closes fully: TLS has no half-close here.
+- **Explicit DNS lookups:** `DnsResolver::resolveMx()`, `resolveTxt()`, `resolveA()`, `resolveAaaa()` and `resolvePtr()` use bounded asynchronous UDP queries, validate the entire packet, and isolate caches by record type. PTR builds the reverse question from an IP address and validates returned names; A and AAAA methods return only the requested address family.
+
 ## 0.6.4 — 2026-11-10
 
 - **Primitives for a TCP relay on the engine:** `Engine\Network\Connector` opens an outbound connection, with TLS when asked, from a task. `Engine\Network\Relay` carries bytes from one connection to another and stops reading the source while the destination is behind, so a slow reader costs one read's worth of memory. `Engine\Server\TcpServer` takes a second callback that is given each accepted connection before its bytes, for a protocol's own state, close and drain handling. `Crab::listen()` takes `maxWriteBufferSize:` and `closeTimeout:` for the connections a listener accepts.

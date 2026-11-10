@@ -17,6 +17,7 @@ final class Listener
     private bool $closed = false;
     private bool $paused = false;
     private readonly Closure $handler;
+    private readonly ?Closure $admission;
 
     /**
      * @param resource $stream Ownership transfers to this listener.
@@ -29,6 +30,9 @@ final class Listener
         callable $onConnection,
         private readonly int $maxWriteBufferSize = 1_048_576,
         private readonly float $closeTimeout = 5.0,
+        private readonly ?array $tls = null,
+        private readonly float $handshakeTimeout = 10.0,
+        ?callable $onAccept = null,
     ) {
         if ($maxWriteBufferSize < 1 || !is_finite($closeTimeout) || $closeTimeout <= 0) {
             throw new InvalidArgumentException('Write capacity and close timeout must be positive.');
@@ -39,7 +43,14 @@ final class Listener
         if (!stream_set_blocking($stream, false)) {
             throw new InvalidArgumentException('Listener requires a nonblocking server stream.');
         }
+        if ($tls !== null) {
+            new TlsCertificate($tls)->check();
+        }
         $this->handler = Closure::fromCallable($onConnection);
+        $this->admission = $onAccept === null ? null : Closure::fromCallable($onAccept);
+        if (!is_finite($handshakeTimeout) || $handshakeTimeout <= 0) {
+            throw new InvalidArgumentException('Set a positive finite TLS handshake timeout.');
+        }
     }
 
     /**
@@ -49,7 +60,7 @@ final class Listener
     {
         if (!str_starts_with($address, 'tcp://')) {
             throw new InvalidArgumentException(
-                'TCP listeners require tcp:// addresses; TLS is not supported by this transport.',
+                'Listeners require tcp:// addresses; configure TLS separately for a nonblocking handshake.',
             );
         }
         $contextOptions['socket'] ??= [];
@@ -159,7 +170,17 @@ final class Listener
                 throw $error;
             }
             try {
-                ($this->handler)($connection);
+                if ($this->admission !== null) {
+                    ($this->admission)($connection);
+                }
+                if ($connection->isClosed()) {
+                    continue;
+                }
+                if ($this->tls !== null) {
+                    $connection->startTls($this->handler, $this->tls, timeout: $this->handshakeTimeout);
+                } else {
+                    ($this->handler)($connection);
+                }
             } catch (Throwable $error) {
                 $connection->close();
                 FailureReporter::report('Accept callback failed', $error);

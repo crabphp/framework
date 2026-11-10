@@ -94,16 +94,18 @@ final class Worker
                 $listener = new Listener(
                     $this->loop,
                     $this->bindings['tcp'][$i],
-                    function (Connection $connection) use ($definition): void {
+                    $definition['handler'],
+                    $definition['maxWriteBufferSize'],
+                    $definition['closeTimeout'],
+                    $definition['tls'],
+                    $definition['handshakeTimeout'],
+                    function (Connection $connection): void {
                         if ($this->draining || count($this->connections) >= $this->group->maxConnections) {
                             $connection->close();
                             return;
                         }
                         $this->track($connection);
-                        $definition['handler']($connection);
                     },
-                    $definition['maxWriteBufferSize'],
-                    $definition['closeTimeout'],
                 );
                 $this->listeners[] = $listener;
                 $listener->attach();

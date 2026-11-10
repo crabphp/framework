@@ -22,6 +22,14 @@ final class Connection
     private const MAX_QUEUE_ENTRIES = 4096;
 
     private mixed $stream;
+    private bool $encrypted = false;
+    private bool $handshaking = false;
+    private ?string $tlsReadWatcher = null;
+    private ?string $tlsTimer = null;
+    private ?string $tlsRetry = null;
+    private ?string $readContinuation = null;
+    private ?Closure $tlsReady = null;
+    private int $tlsMethod = 0;
     private ?string $readWatcher = null;
     private ?string $writeWatcher = null;
     private ?string $closeTimer = null;
@@ -69,7 +77,7 @@ final class Connection
     private bool $writeRejected = false;
 
     /**
-     * @param resource $stream Ownership transfers to this connection.
+     * @param resource $stream Ownership transfers to this connection. Outside streams must be opened with a private context.
      */
     public function __construct(
         private readonly EventLoop $driver,
@@ -77,9 +85,13 @@ final class Connection
         public readonly string $remoteAddress = '',
         private readonly int $maxWriteBufferSize = 1_048_576,
         private readonly float $closeTimeout = 5.0,
+        private readonly int $readSize = self::READ_CHUNK_SIZE,
     ) {
         if (!is_resource($stream) || get_resource_type($stream) !== 'stream') {
             throw new InvalidArgumentException('Connection requires an open stream.');
+        }
+        if ($readSize < 1 || $readSize > self::READ_CHUNK_SIZE) {
+            throw new InvalidArgumentException('Set the read size between 1 and 65,536 bytes.');
         }
         if ($maxWriteBufferSize < 1 || !is_finite($closeTimeout) || $closeTimeout <= 0) {
             throw new InvalidArgumentException('Write capacity and close timeout must be positive.');
@@ -91,6 +103,140 @@ final class Connection
         stream_set_write_buffer($stream, 0);
         stream_set_chunk_size($stream, self::READ_CHUNK_SIZE);
         $this->stream = $stream;
+        $this->encrypted = isset(stream_get_meta_data($stream)['crypto']);
+    }
+
+    public function isEncrypted(): bool
+    {
+        return $this->encrypted;
+    }
+
+    /**
+     * Upgrade an idle plaintext transport. The owner must pass any bytes it
+     * already read after STARTTLS in $unread; those bytes fail the connection.
+     * No application I/O runs until onReady. Failure closes the connection.
+     * Client verification defaults to enabled; SMTP callers may disable both
+     * verify_peer and verify_peer_name explicitly for opportunistic encryption.
+     *
+     * @param callable(self): void $onReady Must not suspend.
+     * @param array<string, mixed> $options PHP SSL context options, including certificate paths on servers.
+     */
+    public function startTls(
+        callable $onReady,
+        array $options = [],
+        bool $server = true,
+        float $timeout = 10.0,
+        string $unread = '',
+    ): void {
+        if (!is_finite($timeout) || $timeout <= 0) {
+            throw new InvalidArgumentException('Set the TLS timeout to a finite number of seconds greater than zero.');
+        }
+        if ($this->closed || $this->encrypted || $this->handshaking || $this->writeEnding || $this->readEnded) {
+            throw new LogicException('TLS requires an open plaintext connection.');
+        }
+        if ($this->buffered !== 0) {
+            throw new LogicException('Flush all queued plaintext output before starting TLS.');
+        }
+        if ($unread !== '') {
+            $this->close();
+            return;
+        }
+        if ($server) {
+            try {
+                new TlsCertificate($options)->check();
+            } catch (Throwable $error) {
+                $this->reportFailure('TLS local configuration failed', $error);
+                $this->close();
+                return;
+            }
+        }
+        $options += [
+            'verify_peer' => !$server,
+            'verify_peer_name' => !$server,
+            'allow_self_signed' => false,
+            'disable_compression' => true,
+            'SNI_enabled' => true,
+            'ciphers' => 'DEFAULT',
+        ];
+        // PHP cannot detach or unset an existing stream context. Engine-created
+        // streams have private contexts; outside streams must provide one too.
+        foreach (stream_context_get_options($this->stream)['ssl'] ?? [] as $name => $value) {
+            if (!array_key_exists($name, $options) || $options[$name] !== $value) {
+                throw new LogicException(
+                    'TLS found SSL options already on the stream; create the stream with its own empty context and pass TLS options to startTls().',
+                );
+            }
+        }
+        foreach ($options as $name => $value) {
+            stream_context_set_option($this->stream, 'ssl', $name, $value);
+        }
+        $this->handshaking = true;
+        $this->tlsReady = Closure::fromCallable($onReady);
+        $this->tlsMethod = $server ? STREAM_CRYPTO_METHOD_TLS_SERVER : STREAM_CRYPTO_METHOD_TLS_CLIENT;
+        if ($this->readWatcher !== null) {
+            $this->driver->disable($this->readWatcher);
+            $this->readWatching = false;
+        }
+        $this->tlsReadWatcher = $this->driver->onReadable($this->stream, $this->handshake(...));
+        $this->tlsTimer = $this->driver->delay($timeout, $this->close(...));
+        $this->handshake();
+    }
+
+    private function handshake(): void
+    {
+        if ($this->closed || !$this->handshaking) {
+            return;
+        }
+        while (openssl_error_string() !== false) {
+            // This step must not attribute another operation's errors to TLS.
+        }
+        error_clear_last();
+        $result = @stream_socket_enable_crypto($this->stream, true, $this->tlsMethod);
+        $diagnostics = [];
+        if ($result === false && ($warning = error_get_last()['message'] ?? '') !== '') {
+            $diagnostics[] = $warning;
+        }
+        while (($reason = openssl_error_string()) !== false) {
+            $diagnostics[] = $reason;
+        }
+        if ($result === false) {
+            $message = implode('; ', $diagnostics);
+            if (
+                preg_match(
+                    '/(?:local cert|private key|no cipher match|no ciphers available|no protocols available|SSL_CTX)/i',
+                    $message,
+                ) === 1
+            ) {
+                $this->reportFailure('TLS local handshake setup failed', new \RuntimeException($message));
+            }
+            $this->close();
+            return;
+        }
+        if ($result === 0) {
+            // PHP does not expose OpenSSL's WANT_READ / WANT_WRITE direction.
+            // Readiness handles input; a bounded retry handles WANT_WRITE without
+            // a permanently writable watcher spinning for a silent peer.
+            if ($this->tlsRetry === null) {
+                $this->tlsRetry = $this->driver->delay(0.01, function (): void {
+                    $this->tlsRetry = null;
+                    $this->handshake();
+                });
+            }
+            return;
+        }
+        foreach (['tlsReadWatcher', 'tlsTimer', 'tlsRetry'] as $property) {
+            if ($this->{$property} === null) {
+                continue;
+            }
+            $this->driver->cancel($this->{$property});
+            $this->{$property} = null;
+        }
+        $this->encrypted = true;
+        $this->handshaking = false;
+        $ready = $this->tlsReady;
+        $this->tlsReady = null;
+        $this->invoke($ready);
+        $this->updateReadWatcher();
     }
 
     public function loop(): EventLoop
@@ -304,7 +450,7 @@ final class Connection
      */
     public function tryWrite(string $bytes): WriteResult
     {
-        if ($this->closed || $this->writeEnding) {
+        if ($this->closed || $this->writeEnding || $this->handshaking) {
             return WriteResult::Closed;
         }
         $length = strlen($bytes);
@@ -355,6 +501,12 @@ final class Connection
     {
         $this->readPaused = false;
         $this->updateReadWatcher();
+        if ($this->encrypted && !$this->closed && $this->readContinuation === null) {
+            $this->readContinuation = $this->driver->defer(function (): void {
+                $this->readContinuation = null;
+                $this->read();
+            });
+        }
     }
 
     /**
@@ -376,11 +528,18 @@ final class Connection
     }
 
     /**
-     * Flush accepted output, then send FIN while continuing to receive.
+     * On plaintext, flush then send FIN while continuing to receive.
+     * On TLS, flush and close fully with close_notify; TLS has no half-close.
      */
     public function shutdownWrite(): void
     {
-        if ($this->closed || $this->writeEnding) {
+        if ($this->encrypted || $this->handshaking) {
+            // PHP streams cannot send a bounded TLS close_notify while keeping
+            // the read direction open. Full close flushes and sends it safely.
+            $this->end();
+            return;
+        }
+        if ($this->closed || $this->writeEnding || $this->handshaking) {
             return;
         }
         $this->writeEnding = true;
@@ -396,7 +555,16 @@ final class Connection
             return;
         }
         $this->closed = true;
-        foreach (['readWatcher', 'writeWatcher', 'closeTimer', 'drainNotification'] as $property) {
+        foreach ([
+            'readWatcher',
+            'writeWatcher',
+            'closeTimer',
+            'drainNotification',
+            'tlsReadWatcher',
+            'tlsTimer',
+            'tlsRetry',
+            'readContinuation',
+        ] as $property) {
             if ($this->{$property} === null) {
                 continue;
             }
@@ -407,6 +575,7 @@ final class Connection
         fclose($this->stream);
         $this->stream = null;
         $this->closeDeadline = null;
+        $this->tlsReady = null;
         $this->observedWriteWatcher = null;
         $this->writeProgressHandler = null;
         $this->output = [];
@@ -452,7 +621,7 @@ final class Connection
         if ($this->closed || $this->readEnded || $this->reading) {
             return;
         }
-        if ($this->readPaused || $this->dataHandler === null) {
+        if ($this->readPaused || $this->handshaking || $this->dataHandler === null) {
             if ($this->readWatching) {
                 $this->readWatching = false;
                 $this->driver->disable($this->readWatcher);
@@ -470,7 +639,7 @@ final class Connection
 
     private function read(): void
     {
-        if ($this->closed || $this->readPaused || $this->reading || $this->readEnded) {
+        if ($this->closed || $this->readPaused || $this->handshaking || $this->reading || $this->readEnded) {
             // Readiness during a suspended read turn must not spin the loop.
             if ($this->readWatching && $this->readWatcher !== null) {
                 $this->readWatching = false;
@@ -481,7 +650,7 @@ final class Connection
         $this->reading = true;
         try {
             $remaining = self::IO_BUDGET;
-            $readSize = self::READ_CHUNK_SIZE;
+            $readSize = $this->readSize;
             do {
                 $bytes = @fread($this->stream, $readSize);
                 if ($bytes === false) {
@@ -500,7 +669,7 @@ final class Connection
                 } catch (Throwable $error) {
                     $this->report($error);
                 }
-                if ($received < $readSize) {
+                if ($received < $readSize && !$this->encrypted) {
                     // Readiness will report further bytes or EOF on a later turn.
                     return;
                 }
@@ -508,13 +677,28 @@ final class Connection
                 if ($remaining < $readSize) {
                     $readSize = $remaining;
                 }
-            } while (!$this->closed && !$this->readPaused && $remaining > 0);
+            } while (!$this->closed && !$this->readPaused && !$this->handshaking && $remaining > 0);
+            if (
+                $this->encrypted
+                && !$this->closed
+                && !$this->readPaused
+                && !$this->handshaking
+                && $this->readContinuation === null
+            ) {
+                // OpenSSL can have plaintext ready while select sees no socket
+                // bytes. Probe once more next turn after exhausting the budget.
+                $this->readContinuation = $this->driver->defer(function (): void {
+                    $this->readContinuation = null;
+                    $this->read();
+                });
+            }
         } finally {
             $this->reading = false;
             // An untouched, still-watched connection has nothing to reconcile.
             if (
                 !$this->readWatching
                 || $this->readPaused
+                || $this->handshaking
                 || $this->closed
                 || $this->readEnded
                 || $this->dataHandler === null

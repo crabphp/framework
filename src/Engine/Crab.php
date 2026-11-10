@@ -13,7 +13,7 @@ namespace Crab\Engine;
 final class Crab
 {
     /**
-     * @var list<array{address:string, handler:\Closure, options:array, socket:mixed, maxWriteBufferSize:int, closeTimeout:float}>
+     * @var list<array{address:string, handler:\Closure, options:array, socket:mixed, maxWriteBufferSize:int, closeTimeout:float, tls:?array, handshakeTimeout:float}>
      */
     private array $listeners = [];
     /**
@@ -55,6 +55,7 @@ final class Crab
     }
 
     /**
+     * @param array|null $tls SSL context options for implicit TLS; certificate paths are read in each worker.
      * @param resource|null $socket A socket that already listens on the address, inherited from the server this one takes over from; it is used instead of binding the address.
      * @param int $maxWriteBufferSize Bytes of output each accepted connection queues before a write is refused as backpressured.
      * @param float $closeTimeout Seconds each accepted connection has to flush its output once it is ending, and to finish after its peer's EOF.
@@ -66,6 +67,8 @@ final class Crab
         mixed $socket = null,
         int $maxWriteBufferSize = 1_048_576,
         float $closeTimeout = 5.0,
+        ?array $tls = null,
+        float $handshakeTimeout = 10.0,
     ): self {
         $this->assertMutable();
         if ($socket !== null && !is_resource($socket)) {
@@ -76,6 +79,9 @@ final class Crab
                 'Set the listener\'s write buffer to at least one byte and its close timeout to a finite number of seconds greater than zero.',
             );
         }
+        if (!is_finite($handshakeTimeout) || $handshakeTimeout <= 0) {
+            throw new \InvalidArgumentException('Set a positive finite TLS handshake timeout.');
+        }
         $this->listeners[] = [
             'address' => $address,
             'handler' => $handler(...),
@@ -83,6 +89,8 @@ final class Crab
             'socket' => $socket,
             'maxWriteBufferSize' => $maxWriteBufferSize,
             'closeTimeout' => $closeTimeout,
+            'tls' => $tls,
+            'handshakeTimeout' => $handshakeTimeout,
         ];
         return $this;
     }

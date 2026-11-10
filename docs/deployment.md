@@ -290,7 +290,7 @@ Each connection also costs memory for its buffers; see the [WebSockets](websocke
 
 ## Behind a proxy
 
-The server speaks HTTP, not HTTPS. In production, put a proxy that terminates TLS in front of it: Nginx, Caddy, or your platform's load balancer.
+The application HTTP server uses plaintext HTTP by default. Custom engine listeners can use [implicit TLS and STARTTLS](../src/Engine/README.md#tls-and-mail-dns). For production HTTP, put a proxy that terminates TLS in front of it: Nginx, Caddy, or your platform's load balancer.
 
 ```text
 server {

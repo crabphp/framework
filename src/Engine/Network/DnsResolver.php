@@ -26,6 +26,9 @@ final class DnsResolver
 {
     private const TYPE_A = 1;
     private const TYPE_AAAA = 28;
+    private const TYPE_MX = 15;
+    private const TYPE_TXT = 16;
+    private const TYPE_PTR = 12;
     /**
      * The shortest and the longest an answer is kept, in seconds, whatever it says.
      */
@@ -47,7 +50,7 @@ final class DnsResolver
     /**
      * Addresses found, and until when each answer is kept, on the clock hrtime() reads, in seconds.
      *
-     * @var array<string, array{list<string>, float}>
+     * @var array<string, array{list<string>|list<MxRecord>, float}>
      */
     private array $kept = [];
     /**
@@ -55,7 +58,7 @@ final class DnsResolver
      */
     private float $pruneAt = 0.0;
     /**
-     * Callers waiting for a name another caller is already asking for; each takes (?list<string>, ?Throwable).
+     * Callers waiting for a name another caller is already asking for; each takes (?array, ?Throwable).
      *
      * @var array<string, array<int, \Closure>>
      */
@@ -88,10 +91,76 @@ final class DnsResolver
      */
     public function resolve(EventLoop $loop, string $host, ?Cancellation $cancellation = null): array
     {
+        return $this->lookup($loop, $host, self::TYPE_A, $cancellation, addressFallback: true);
+    }
+
+    /**
+     * @return list<string> IPv4 addresses only; empty for a valid answer without A records.
+     */
+    public function resolveA(EventLoop $loop, string $host, ?Cancellation $cancellation = null): array
+    {
+        return $this->lookup($loop, $host, self::TYPE_A, $cancellation);
+    }
+
+    /**
+     * @return list<string> IPv6 addresses only; empty for a valid answer without AAAA records.
+     */
+    public function resolveAaaa(EventLoop $loop, string $host, ?Cancellation $cancellation = null): array
+    {
+        return $this->lookup($loop, $host, self::TYPE_AAAA, $cancellation);
+    }
+
+    /**
+     * Reverse an IPv4 or IPv6 address and return validated PTR host names.
+     *
+     * @return list<string>
+     */
+    public function resolvePtr(EventLoop $loop, string $address, ?Cancellation $cancellation = null): array
+    {
+        $packed = @inet_pton(trim($address, '[]'));
+        if ($packed === false) {
+            throw new RuntimeException('PTR lookup requires a numeric IPv4 or IPv6 address.');
+        }
+        $name = strlen($packed) === 4
+            ? implode('.', array_reverse(explode('.', inet_ntop($packed)))) . '.in-addr.arpa'
+            : implode('.', array_reverse(str_split(bin2hex($packed)))) . '.ip6.arpa';
+        return $this->lookup($loop, $name, self::TYPE_PTR, $cancellation);
+    }
+
+    /**
+     * @return list<MxRecord> Lowest preference first; an exchange of "." is a null MX.
+     */
+    public function resolveMx(EventLoop $loop, string $host, ?Cancellation $cancellation = null): array
+    {
+        return $this->lookup($loop, $host, self::TYPE_MX, $cancellation);
+    }
+
+    /**
+     * @return list<string> Each record's character strings joined in wire order.
+     */
+    public function resolveTxt(EventLoop $loop, string $host, ?Cancellation $cancellation = null): array
+    {
+        return $this->lookup($loop, $host, self::TYPE_TXT, $cancellation);
+    }
+
+    /**
+     * @return list<string>|list<MxRecord>
+     */
+    private function lookup(
+        EventLoop $loop,
+        string $host,
+        int $type,
+        ?Cancellation $cancellation,
+        bool $addressFallback = false,
+    ): array {
         $cancellation?->throwIfCancelled();
         $literal = trim($host, '[]');
-        if (filter_var($literal, FILTER_VALIDATE_IP) !== false) {
-            return [$literal];
+        if (
+            in_array($type, [self::TYPE_A, self::TYPE_AAAA], true)
+            && filter_var($literal, FILTER_VALIDATE_IP) !== false
+        ) {
+            $ipv6 = str_contains($literal, ':');
+            return $addressFallback || $ipv6 === ($type === self::TYPE_AAAA) ? [$literal] : [];
         }
         $name = strtolower(rtrim($host, '.'));
         if (function_exists('idn_to_ascii') && preg_match('/[^\x00-\x7F]/', $name) === 1) {
@@ -108,8 +177,17 @@ final class DnsResolver
             throw new RuntimeException("\"{$host}\" is not a host name");
         }
         $this->hosts ??= self::readHosts($this->hostsFile);
-        if (isset($this->hosts[$name])) {
-            return $this->hosts[$name];
+        if (in_array($type, [self::TYPE_A, self::TYPE_AAAA], true) && isset($this->hosts[$name])) {
+            return $addressFallback
+                ? $this->hosts[$name]
+                : array_values(array_filter(
+                    $this->hosts[$name],
+                    static fn(string $address): bool => str_contains($address, ':') === ($type === self::TYPE_AAAA),
+                ));
+        }
+        $question = $name;
+        if (!$addressFallback) {
+            $name .= ':' . $type;
         }
         $now = hrtime(true) / 1_000_000_000;
         if ($now >= $this->pruneAt) {
@@ -131,7 +209,7 @@ final class DnsResolver
         $found = null;
         $failure = null;
         try {
-            $found = $this->find($loop, $name, $cancellation);
+            $found = $this->find($loop, $question, $cancellation, $type, $name, $addressFallback);
         } catch (Throwable $error) {
             $failure = $error;
         }
@@ -157,25 +235,31 @@ final class DnsResolver
     }
 
     /**
-     * @return non-empty-list<string>
+     * @return list<string>|list<MxRecord>
      */
-    private function find(EventLoop $loop, string $name, ?Cancellation $cancellation): array
-    {
+    private function find(
+        EventLoop $loop,
+        string $name,
+        ?Cancellation $cancellation,
+        int $type,
+        string $key,
+        bool $addressFallback,
+    ): array {
         $this->servers ??= self::readServers($this->configuration);
         $answer = null;
         if ($this->servers !== []) {
-            $answer = $this->ask($loop, $name, self::TYPE_A, $cancellation);
-            if ($answer !== null && $answer[0] === []) {
+            $answer = $this->ask($loop, $name, $type, $cancellation);
+            if ($addressFallback && $answer !== null && $answer[0] === []) {
                 // A name with no IPv4 address may have an IPv6 one.
                 $answer = $this->ask($loop, $name, self::TYPE_AAAA, $cancellation) ?? $answer;
             }
         }
-        if ($answer !== null && $answer[0] !== []) {
+        if ($answer !== null && ($answer[0] !== [] || !$addressFallback)) {
             $keep = max(self::KEEP_AT_LEAST, min(self::KEEP_AT_MOST, $answer[1]));
-            $this->kept[$name] = [$answer[0], (hrtime(true) / 1_000_000_000) + $keep];
+            $this->kept[$key] = [$answer[0], (hrtime(true) / 1_000_000_000) + $keep];
             return $answer[0];
         }
-        if ($this->fallback) {
+        if ($addressFallback && $this->fallback) {
             $cancellation?->throwIfCancelled();
             $found = @gethostbynamel($name);
             if ($found !== false && $found !== []) {
@@ -189,7 +273,7 @@ final class DnsResolver
     /**
      * Asks the name servers one question, each in turn until one answers.
      *
-     * @return array{list<string>, int}|null The addresses, none when the name has none of this kind, and for how many seconds they hold; null when no name server gave an answer.
+     * @return array{list<string>|list<MxRecord>, int}|null The addresses, none when the name has none of this kind, and for how many seconds they hold; null when no name server gave an answer.
      */
     private function ask(EventLoop $loop, string $name, int $type, ?Cancellation $cancellation): ?array
     {
@@ -270,7 +354,7 @@ final class DnsResolver
     /**
      * Waits for the answer another caller is already asking for.
      *
-     * @return non-empty-list<string>
+     * @return list<string>|list<MxRecord>
      */
     private function join(EventLoop $loop, string $name, ?Cancellation $cancellation): array
     {
@@ -293,50 +377,126 @@ final class DnsResolver
     /**
      * Reads a reply's addresses of one kind.
      *
-     * @return array{list<string>, int}|null Null when the reply is no answer to go by: cut short, refused, or not to be made sense of.
+     * @return array{list<string>|list<MxRecord>, int}|null Null when the reply is no answer to go by: cut short, refused, or not to be made sense of.
      */
     private static function read(string $reply, int $type): ?array
     {
-        $head = unpack('nid/nflags/nquestions/nanswers', $reply);
-        $code = $head['flags'] & 0x000F;
-        if (($head['flags'] & 0x0200) !== 0 || $code !== 0 && $code !== 3) {
-            // Cut short to fit, or a server that failed or refused: another may do better.
+        $length = strlen($reply);
+        if ($length < 12) {
             return null;
         }
-        if ($code === 3) {
-            // The name does not exist.
-            return [[], 0];
+        $head = unpack('nid/nflags/nquestions/nanswers/nauthority/nadditional', $reply);
+        $code = $head['flags'] & 0x000F;
+        if (($head['flags'] & 0x0200) !== 0 || $code !== 0 && $code !== 3 || $head['questions'] !== 1) {
+            return null;
         }
-        $offset = 12;
-        $length = strlen($reply);
-        for ($i = 0; $i < $head['questions']; ++$i) {
-            $offset = self::skipName($reply, $offset);
-            if ($offset === null) {
-                return null;
-            }
-            $offset += 4;
+        $offset = self::skipName($reply, 12);
+        if ($offset === null || ($offset + 4) > $length) {
+            return null;
         }
+        $question = unpack('ntype/nclass', $reply, $offset);
+        if ($question['type'] !== $type || $question['class'] !== 1) {
+            return null;
+        }
+        $offset += 4;
         $addresses = [];
         $holds = PHP_INT_MAX;
-        for ($i = 0; $i < $head['answers']; ++$i) {
+        $count = $head['answers'] + $head['authority'] + $head['additional'];
+        for ($i = 0; $i < $count; ++$i) {
             $offset = self::skipName($reply, $offset);
             if ($offset === null || ($offset + 10) > $length) {
                 return null;
             }
             $record = unpack('ntype/nclass/Nttl/nlength', $reply, $offset);
             $offset += 10;
-            if (($offset + $record['length']) > $length) {
+            $end = $offset + $record['length'];
+            if ($end > $length) {
                 return null;
             }
-            $size = $type === self::TYPE_A ? 4 : 16;
-            if ($record['type'] === $type && $record['class'] === 1 && $record['length'] === $size) {
-                $addresses[] = (string) inet_ntop(substr($reply, $offset, $size));
+            $value = self::recordData($reply, $record['type'], $offset, $end);
+            if ($value === false) {
+                return null;
+            }
+            if ($code === 0 && $i < $head['answers'] && $record['type'] === $type && $record['class'] === 1) {
+                $addresses[] = $value;
                 $holds = min($holds, $record['ttl']);
             }
-            // Other records, such as the other names a name stands for, are passed over.
-            $offset += $record['length'];
+            $offset = $end;
+        }
+        if ($offset !== $length) {
+            return null;
+        }
+        if ($type === self::TYPE_MX) {
+            usort($addresses, static fn(MxRecord $a, MxRecord $b): int => $a->preference <=> $b->preference);
         }
         return [$addresses, $addresses === [] ? 0 : $holds];
+    }
+
+    /**
+     * Validate known RDATA shapes even outside the answer section. Unknown
+     * record types remain opaque, bounded by their declared RDLENGTH.
+     */
+    private static function recordData(string $reply, int $type, int $offset, int $end): string|MxRecord|false|null
+    {
+        if ($type === self::TYPE_A || $type === self::TYPE_AAAA) {
+            $size = $type === self::TYPE_A ? 4 : 16;
+            return ($end - $offset) === $size ? inet_ntop(substr($reply, $offset, $size)) : false;
+        }
+        if ($type === self::TYPE_TXT) {
+            if ($offset === $end) {
+                return false;
+            }
+            $text = '';
+            while ($offset < $end) {
+                $size = ord($reply[$offset++]);
+                if (($offset + $size) > $end) {
+                    return false;
+                }
+                $text .= substr($reply, $offset, $size);
+                $offset += $size;
+            }
+            return $text;
+        }
+        if ($type === self::TYPE_MX) {
+            if (($end - $offset) < 3) {
+                return false;
+            }
+            $preference = unpack('n', $reply, $offset)[1];
+            $offset += 2;
+            $name = self::readName($reply, $offset);
+            return $name !== null && $offset === $end ? new MxRecord($preference, $name === '' ? '.' : $name) : false;
+        }
+        if ($type === self::TYPE_PTR) {
+            $name = self::readName($reply, $offset);
+            if (
+                $name === null
+                || $offset !== $end
+                || $name === ''
+                || preg_match(
+                    '/^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)*[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/iD',
+                    $name,
+                ) !== 1
+            ) {
+                return false;
+            }
+            return strtolower($name);
+        }
+        if (in_array($type, [2, 5], true)) {
+            $name = self::readName($reply, $offset);
+            return $name !== null && $offset === $end ? null : false;
+        }
+        if ($type === 6) {
+            // SOA: primary server, mailbox, and five 32-bit values.
+            if (
+                self::readName($reply, $offset) === null
+                || $offset > $end
+                || self::readName($reply, $offset) === null
+            ) {
+                return false;
+            }
+            return ($offset + 20) === $end ? null : false;
+        }
+        return null;
     }
 
     /**
@@ -344,17 +504,39 @@ final class DnsResolver
      */
     private static function skipName(string $reply, int $offset): ?int
     {
-        $length = strlen($reply);
-        while ($offset < $length) {
-            $size = ord($reply[$offset]);
+        return self::readName($reply, $offset) === null ? null : $offset;
+    }
+
+    /**
+     * Decode a bounded DNS name, including compression; reject cycles and truncation.
+     */
+    private static function readName(string $reply, int &$offset): ?string
+    {
+        $cursor = $offset;
+        $end = null;
+        $labels = [];
+        $seen = [];
+        $total = 0;
+        while ($cursor < strlen($reply) && !isset($seen[$cursor])) {
+            $seen[$cursor] = true;
+            $size = ord($reply[$cursor++]);
             if ($size === 0) {
-                return $offset + 1;
+                $offset = $end ?? $cursor;
+                return implode('.', $labels);
             }
             if (($size & 0xC0) === 0xC0) {
-                // The rest of the name is elsewhere in the reply; here it takes two bytes.
-                return $offset + 2;
+                if ($cursor >= strlen($reply)) {
+                    return null;
+                }
+                $end ??= $cursor + 1;
+                $cursor = (($size & 0x3F) << 8) | ord($reply[$cursor]);
+                continue;
             }
-            $offset += 1 + $size;
+            if ($size > 63 || ($cursor + $size) > strlen($reply) || ($total += $size + 1) > 254) {
+                return null;
+            }
+            $labels[] = substr($reply, $cursor, $size);
+            $cursor += $size;
         }
         return null;
     }

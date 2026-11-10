@@ -177,7 +177,7 @@ An HTTP handler that throws is answered with 500; one that fails after its respo
 | `WriteResult::Backpressured` | No bytes accepted; pause production and retry after `onDrain()` |
 | `WriteResult::Closed` | No more writes are accepted |
 
-An individually oversized write throws `LengthException`. `onDrain()` signals a chance to retry; it does not reserve capacity. `shutdownWrite()` flushes then sends FIN while retaining the read direction; `end()` flushes and closes; `close()` releases resources immediately. Low-level application connection and cancellation callbacks must not suspend; WebSocket message handlers may suspend. Other WebSocket callbacks must not suspend. Use tracked tasks for asynchronous application work.
+An individually oversized write throws `LengthException`. `onDrain()` signals a chance to retry; it does not reserve capacity. `shutdownWrite()` on plaintext flushes then sends FIN while retaining the read direction; on TLS it flushes and closes fully with close_notify, because PHP streams expose no safe TLS half-close; `end()` flushes and closes; `close()` releases resources immediately. Low-level application connection and cancellation callbacks must not suspend; WebSocket message handlers may suspend. Other WebSocket callbacks must not suspend. Use tracked tasks for asynchronous application work.
 
 `onClose()` runs after socket cleanup. `onSettled()` additionally waits for service activity to finish, including asynchronous `finally` cleanup. HTTP and WebSocket message dispatch own these activity scopes automatically. Custom protocol owners can use `beginActivity()` and call its returned release closure in `finally`; a closed connection remains in worker admission accounting until all activities release it.
 
@@ -193,13 +193,33 @@ $upstream->onClose(static fn () => $toClient->end());
 
 `Network\DnsResolver::resolve($loop, $host)` finds a name's addresses first, without holding the worker: it reads the hosts file, keeps answers for as long as they hold, asks the system's name servers over UDP, and only when they give nothing falls back on the system's blocking resolver.
 
+### TLS and mail DNS
+
+Implicit TLS uses a TCP listener with SSL context options, read in each worker:
+
+~~~php
+$group->listen('tcp://127.0.0.1:4650', $protocol,
+    tls: ['local_cert' => '/srv/certs/fullchain.pem', 'local_pk' => '/srv/certs/key.pem'],
+    handshakeTimeout: 10.0);
+~~~
+
+Streams created by `Listener` and `Connector` have their own contexts, so PHP's mutable default SSL context cannot alter their handshakes. An outside stream handed to `Connection` must also be opened with `context: stream_context_create()`. `startTls()` rejects pre-existing SSL options that differ from its explicit options; PHP cannot remove such options from a stream.
+
+The protocol receives the connection after the handshake. Pending handshakes count against worker admission. `remoteAddress` is the peer address and `isEncrypted()` reports encryption. A worker reload reads renewed certificate files. Implicit listener startup validates certificate/key readability, parsing and correspondence in the worker; an unusable configuration fails startup with its OpenSSL reason. Each server upgrade also validates its local certificate, so a later broken renewal is reported through the connection failure handler and closed. Local handshake setup failures include both the PHP diagnostic and the OpenSSL error queue, even when PHP emits no warning; earlier unrelated OpenSSL errors are cleared before every handshake step. Empty or non-string cipher lists fail bootstrap validation; PHP has no API to validate nonempty cipher expressions before negotiation. Bad peer handshakes and client verification failures stay quiet. A STARTTLS protocol owner validates `new Network\TlsCertificate($options)->check()` during worker bootstrap too, before accepting connections.
+
+For STARTTLS, flush the positive reply first, then call `startTls($onReady, $options, server: true, timeout: 10.0, unread: $remainingInput)`. Queued output throws `LogicException`; parser-owned trailing plaintext supplied in `unread` closes the connection. Untouched socket bytes go to OpenSSL: a legitimate ClientHello may already be waiting after the positive reply. Discard pre-upgrade protocol state. Ordinary I/O is held during the nonblocking handshake; failure or timeout closes the connection and calls its close observers. Low-level callbacks must not suspend. A client uses `server: false`, `peer_name` and verified certificates by default. Server-to-server SMTP can explicitly pass `verify_peer: false` and `verify_peer_name: false` in the options for opportunistic TLS.
+
+TLS reads drain decrypted records beyond short reads, with a deferred continuation at the 256 KiB turn budget. `Connection` accepts `readSize:` (1–65,536 bytes) for bounded readers. Megabyte bursts in both directions are tested with 64 KiB and 1 KiB reads.
+
+`DnsResolver::resolveMx($loop, $host, $cancellation)` returns `MxRecord` values (`preference`, `exchange`), lowest preference first; `exchange === '.'` is a null MX. `resolveTxt()` returns one string per TXT record, joining its character strings. `resolveA()` returns IPv4 only, `resolveAaaa()` IPv6 only, and `resolvePtr($loop, $address, $cancellation)` constructs the IPv4/IPv6 reverse query and returns validated lowercase host names. These explicit lookups return an empty list for a valid answer without that record kind and never use the blocking system fallback. Their caches are separate from each other and from `resolve()`'s address-family fallback. These use UDP on the loop with cancellation, coalesced lookups and the same 5–300 second TTL bounds as address lookups. Questions and every declared answer, authority and additional record are structurally validated before accepting an answer; TXT RDATA must contain a character-string. Valid empty answers are cached; unavailable or malformed answers throw. MX/TXT never use the blocking system fallback or hosts file.
+
 ## Bounds and scope
 
 Defaults include 512 owned TCP connections/pending connects (including closed connections still running service cleanup) and 1,024 tracked tasks per worker; 1 MiB and 4,096 entries per TCP output queue; and bounded protocol input/output buffers. Configure lower limits for the application's memory budget. These bounds do not cap memory allocated independently by application code.
 
 The select backend has platform descriptor limits and scanning costs. Linux/macOS CLI are the intended targets; this change was exercised on macOS. Single-process operation does not require process extensions, but cannot forcibly interrupt blocked PHP code. Optional backends are selected through `new Runtime(loopFactory: ...)`, and a loop of your own is any class that extends `Crab\Engine\EventLoop`.
 
-TLS, HTTP/2, HTTP/3, generic framed-protocol helpers, a cross-process job pool, and the later web framework are outside this implementation. HTTP and WebSocket are protocol servers without routing, middleware containers, ORM, templates or agent-specific features.
+HTTP/2, HTTP/3, generic framed-protocol helpers, a cross-process job pool, and the later web framework are outside this implementation. HTTP and WebSocket are protocol servers without routing, middleware containers, ORM, templates or agent-specific features.
 
 This replaces the experimental `Crab::run()/Server::listen()` API. The sibling application scaffold is a separate future layer.
 
@@ -233,3 +253,13 @@ python3 benchmarks/ws-run.py --label local-ws
 PHPUnit 13 is a development dependency, omitted by `composer install --no-dev`. Tests exercise real sockets, malformed frames, partial writes, cancellation, all four servers together, worker failure, rolling restart, and shutdown. Individual cases are discoverable and filterable through PHPUnit. Process-specific tests skip when their required extensions are unavailable; the single-process tests still run. Benchmarks preserve raw results and environment metadata and serialize load generation on this host.
 
 See [architecture](ARCHITECTURE.md) and [measurements and methodology](BENCHMARKS.md). Performance claims refer to measured workloads; this is a tested foundation, not an assertion of universal maximum throughput or completed production qualification.
+
+**TLS.** `php84 tests/Engine/Fixtures/tls-server.php /path/to/combined-cert-and-key.pem` runs a local SMTP-shaped transport fixture on 4650 (implicit TLS) and 5870 (STARTTLS). With a localhost development certificate, both checks must verify the certificate and return `250`/`221`:
+
+~~~sh
+set -e
+printf 'EHLO localhost\r\nQUIT\r\n' | openssl s_client -connect 127.0.0.1:4650 -servername localhost -CAfile /path/to/cert.pem -verify_return_error -quiet
+printf 'EHLO localhost\r\nQUIT\r\n' | openssl s_client -starttls smtp -connect 127.0.0.1:5870 -servername localhost -CAfile /path/to/cert.pem -verify_return_error -quiet
+~~~
+
+`TlsTest` exercises 3 MiB bursts in both directions (64 KiB and 1 KiB reads), read pause/resume, verified and opportunistic client upgrades, injection refusal, pending-handshake admission, deadlines, and changed PHP default contexts. `DnsResolverTest` uses a local fake DNS server for MX/TXT; it contacts no public mail server.
