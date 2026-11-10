@@ -430,7 +430,7 @@ An application can ship as one file that holds PHP and the application together:
 
 - **The code is fixed in the file.** Configuration files and routes are part of it; a change is a new build. Settings that differ between machines belong in `.env`.
 - **Commands that write into the application's folder,** such as `make:command` and `config:publish`, are for development, not for the executable; and `dev` has no files to watch.
-- **One platform per build:** `micro.sfx` is built for one operating system and processor. Linux and macOS are supported; Windows has no `pcntl`, so a server there runs with `--single`.
+- **One platform per build:** `micro.sfx` is built for one operating system and processor. Linux and macOS are supported.
 
 ## Before going live
 
