@@ -322,7 +322,7 @@ final class TlsTest extends TestCase
         [$loop, $server, $client] = $this->pair();
         $helloPending = null;
         $received = '';
-        $server->onData(static function (Connection $connection, string $bytes) use ($loop): void {
+        $server->onData(static function (Connection $connection, string $bytes): void {
             $connection->pauseRead();
             $connection->tryWrite("220 Begin TLS\r\n");
         });
@@ -340,16 +340,25 @@ final class TlsTest extends TestCase
                     ['verify_peer' => false, 'verify_peer_name' => false],
                     server: false,
                 );
-                // startTls has synchronously emitted ClientHello. The server is
-                // paused and has not entered its handshake: this is the barrier.
+                // Emitting ClientHello does not mean it has arrived yet. Wait
+                // until it is readable while the server is still paused and has
+                // not entered its handshake: this is the barrier.
                 $stream = new \ReflectionProperty($server, 'stream')->getValue($server);
-                $helloPending = stream_socket_recvfrom($stream, 1, STREAM_PEEK);
-                $server->startTls(static function (Connection $connection): void {
-                    $connection->onData(static function (Connection $connection, string $bytes): void {
-                        $connection->tryWrite($bytes);
-                    });
-                    $connection->resumeRead();
-                }, ['local_cert' => $this->certificate]);
+                $loop->onReadable($stream, function (string $watcher) use (
+                    $loop,
+                    $stream,
+                    $server,
+                    &$helloPending,
+                ): void {
+                    $loop->cancel($watcher);
+                    $helloPending = stream_socket_recvfrom($stream, 1, STREAM_PEEK);
+                    $server->startTls(static function (Connection $connection): void {
+                        $connection->onData(static function (Connection $connection, string $bytes): void {
+                            $connection->tryWrite($bytes);
+                        });
+                        $connection->resumeRead();
+                    }, ['local_cert' => $this->certificate]);
+                });
                 return;
             }
             $received .= $bytes;
@@ -362,6 +371,9 @@ final class TlsTest extends TestCase
         self::assertSame("\x16", $helloPending);
         self::assertSame('encrypted', $received);
         self::assertSame([], $this->reports);
+        $server->close();
+        $client->close();
+        self::assertSame([], $loop->getIdentifiers());
     }
 
     public function testTlsWriteShutdownGivesIndependentPeerACleanEof(): void
