@@ -164,6 +164,41 @@ final class TransactionCallbacksTest extends TestCase
         $db->close();
     }
 
+    public function testACommitTheDatabaseRefusesRunsTheRollbackCallbacks(): void
+    {
+        // SQLite checks a deferred foreign key at COMMIT, and refuses it: the work is rolled back.
+        // A file, since the connection is opened again after a commit fails.
+        $file = tempnam(sys_get_temp_dir(), 'crab-commit-');
+        $db = new Database(static function () use ($file): \PDO {
+            $pdo = new \PDO('sqlite:' . $file);
+            $pdo->exec('pragma foreign_keys = on');
+            return $pdo;
+        }, max: 1);
+        $db->execute('create table parents (id integer primary key)');
+        $db->execute(
+            'create table children (id integer primary key, parent_id integer not null references parents (id) deferrable initially deferred)',
+        );
+        $ran = [];
+        try {
+            $db->transaction(static function (Connection $tx) use (&$ran): void {
+                $tx->execute('insert into children (id, parent_id) values (1, 99)');
+                $tx->afterRollback(static function () use (&$ran): void {
+                    $ran[] = 'undone';
+                });
+                $tx->afterCommit(static function () use (&$ran): void {
+                    $ran[] = 'committed';
+                });
+            });
+        } catch (\Throwable $error) {
+            $failure = $error;
+        }
+        self::assertStringContainsString('FOREIGN KEY', ($failure ?? null)?->getMessage() ?? '');
+        self::assertSame(['undone'], $ran);
+        self::assertSame(0, (int) $db->first('select count(*) as n from children')['n']);
+        $db->close();
+        @unlink($file);
+    }
+
     public function testACommitWhoseOutcomeIsUnknownRunsNeitherCallback(): void
     {
         $db = new Database(static fn(): \PDO => new CommitLostPdo('sqlite::memory:'));

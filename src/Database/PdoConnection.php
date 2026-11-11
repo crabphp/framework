@@ -227,9 +227,10 @@ final class PdoConnection implements ManagedConnection
     private function commit(): void
     {
         $depth = $this->depth - 1;
+        // Set aside while the commit runs, so that a connection closed on the way does not run them:
+        // whether they run depends on how the commit failed, if it does.
+        $undo = $this->afterRollback;
         if ($depth === 0) {
-            // From here a failure may come after the commit happened, as when its answer is lost,
-            // so what was to run after a rollback is dropped before the connection can be closed.
             $this->afterRollback = [];
         }
         try {
@@ -237,6 +238,11 @@ final class PdoConnection implements ManagedConnection
                 ? $this->attempt(fn() => $this->pdo()->commit(), 'COMMIT')
                 : $this->attempt(fn() => $this->pdo()->exec('RELEASE SAVEPOINT crab_' . $depth), 'RELEASE SAVEPOINT');
         } catch (\Throwable $error) {
+            // A database that answered with an error has rolled the transaction back: what was to run
+            // after a rollback runs. One whose answer was lost may have committed: then nothing runs.
+            if ($depth === 0 && !self::mentions($error->getMessage(), self::LOST)) {
+                $this->afterRollback = $undo;
+            }
             // Its state is unknown now; a fresh connection is the only safe one.
             $this->close();
             throw $error;

@@ -49,7 +49,10 @@ final class SchedulePlugin implements Plugin
         $container->singleton(Schedule::class, ScheduleContract::class);
         $container->singleton(Scheduler::class, static function (Container $container): Scheduler {
             $container->get(Config::class)->check('schedule');
-            $timezone = $container->get(Config::class)->get('schedule.timezone');
+            // Unset, the tasks' times are in the application's zone, whatever zone the clock gives.
+            $timezone = $container->get(Config::class)->get('schedule.timezone') ?? $container->get(Config::class)->get(
+                'app.timezone',
+            );
             return new Scheduler(
                 $container->get(ScheduleContract::class),
                 $container,

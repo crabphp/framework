@@ -793,6 +793,23 @@ final class ScheduleTest extends TestCase
         self::assertCount(1, $this->log->records);
     }
 
+    public function testWithoutAZoneOfItsOwnTheSchedulerIsInTheApplicationsWhateverTheClock(): void
+    {
+        $zone = date_default_timezone_get();
+        try {
+            $app = new App(new Config(['queue' => ['store' => 'memory'], 'app' => ['timezone' => 'Asia/Ho_Chi_Minh']]));
+            $app->container->instance(
+                \Crab\Contracts\Clock\Clock::class,
+                new \Crab\Testing\FrozenClock(new \DateTimeImmutable('2026-02-01 12:00:00', new \DateTimeZone('UTC'))),
+            );
+            $app->register(QueuePlugin::class, SchedulePlugin::class);
+            $now = $app->container->get(Scheduler::class)->now();
+            self::assertSame('2026-02-01 19:00:00 +07:00', $now->format('Y-m-d H:i:s P'));
+        } finally {
+            date_default_timezone_set($zone);
+        }
+    }
+
     public function testThePluginBindsTheScheduleAndItsCommandsAndJobs(): void
     {
         $app = new App(new Config(['queue' => ['store' => 'memory'], 'schedule' => ['timezone' => 'UTC']]));

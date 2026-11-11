@@ -187,9 +187,10 @@ final class Connection implements ManagedConnection
     private function commit(): void
     {
         $depth = $this->depth - 1;
+        // Set aside while the commit runs, so that a connection closed on the way does not run them:
+        // whether they run depends on how the commit failed, if it does.
+        $undo = $this->afterRollback;
         if ($depth === 0) {
-            // From here a failure may come after the commit happened, as when its answer is lost,
-            // so what was to run after a rollback is dropped before the connection can be closed.
             $this->afterRollback = [];
         }
         try {
@@ -201,6 +202,11 @@ final class Connection implements ManagedConnection
             }
             $this->execute($depth === 0 ? 'COMMIT' : 'RELEASE SAVEPOINT crab_' . $depth);
         } catch (\Throwable $error) {
+            // A server that answered with an error has rolled the transaction back: what was to run
+            // after a rollback runs. One whose answer was lost may have committed: then nothing runs.
+            if ($depth === 0 && self::refused($error)) {
+                $this->afterRollback = $undo;
+            }
             $this->close();
             throw $error;
         }
@@ -371,6 +377,23 @@ final class Connection implements ManagedConnection
             return $this->protocol === null || in_array($error->getCode(), [2006, 2013, 2055], true);
         }
         return !$error instanceof DatabaseException && !$error instanceof \InvalidArgumentException;
+    }
+
+    /**
+     * Whether the server answered a statement with an error of its own, rather than the
+     * connection failing on the way, which leaves unknown what the server did.
+     */
+    private static function refused(\Throwable $error): bool
+    {
+        for ($cause = $error; $cause !== null; $cause = $cause->getPrevious()) {
+            if ($cause instanceof StreamFailure) {
+                return false;
+            }
+            if ($cause instanceof ServerError) {
+                return !in_array($cause->getCode(), [2006, 2013, 2055], true);
+            }
+        }
+        return false;
     }
 
     private function failure(\Throwable $error, string $sql): \Throwable
