@@ -15,7 +15,7 @@
 - [Validation](validation.md)
 - [Requests](requests.md)
 - [Responses](responses.md)
-- [Views](views.md)
+- [Views (experimental)](views.md)
 - [Middleware](middleware.md)
 - [Error handling](errors.md)
 - [Logging](logging.md)
@@ -50,7 +50,7 @@
 
 ## Packages
 
-- [Arc](https://github.com/crabphp/arc): HTML templates and components compiled to PHP
+- [Arc (experimental)](https://github.com/crabphp/arc): HTML templates and components; subject to breaking changes, not for production
 - [Runs](https://github.com/crabphp/runs): work of many steps that goes on from where it was
 - [Actors](https://github.com/crabphp/actors): one for each key, taking its messages one at a time
 - [Redis](https://github.com/crabphp/redis): a cache store, a queue store and a broadcast carrier

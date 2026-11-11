@@ -13,9 +13,10 @@
 
 ## Introduction
 
-Crab serves HTML applications as well as JSON APIs. Use views for a website, a shop or an admin dashboard: routes return HTML, forms submit to actions, and no client-side framework is required.
+> [!WARNING]
+> **Experimental — not for production.** Arc and Crab's views integration are an experiment. Their APIs, template syntax and behaviour may change without backward compatibility. Do not use them in production.
 
-[Arc](https://github.com/crabphp/arc) is Crab's optional template engine. You write HTML with escaped values, PHP expressions and reusable components. Templates compile to PHP closures, which a worker loads once and keeps. An API that does not render pages does not need the package.
+Crab focuses on JSON APIs and services. [Arc](https://github.com/crabphp/arc) is an optional template engine for experimenting with server-rendered HTML, layouts and reusable components. Templates compile to PHP closures, which a worker loads once and keeps. An API does not need this package.
 
 ## Installation
 

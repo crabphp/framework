@@ -13,9 +13,12 @@
 
 ## Introduction
 
-Crab is a PHP framework for web applications and JSON APIs. It runs your application as a long-lived server: the code is loaded once, and worker processes then answer requests for as long as they live, without PHP-FPM, Nginx or Apache in front.
+Crab is a PHP framework focused on JSON APIs and services. It runs your application as a long-lived server: the code is loaded once, and worker processes then answer requests for as long as they live, without PHP-FPM, Nginx or Apache in front.
 
-Use it for an API, a server-rendered website or both in one application. [Views with Arc](views.md) add HTML templates, layouts and components as an optional package. The framework provides routing, typed actions with validation, middleware, a database layer with a query builder and migrations, token and cookie authentication, a cache, events, a queue, a scheduler, an HTTP client and streaming responses, with durable runs and actors as packages of their own. There is no ORM or session component.
+The framework provides routing, typed actions with validation, middleware, a database layer with a query builder and migrations, token and cookie authentication, a cache, events, a queue, a scheduler, an HTTP client and streaming responses, with durable runs and actors as packages of their own. There is no ORM or session component.
+
+> [!WARNING]
+> [Views with Arc](views.md) are experimental, may change without backward compatibility, and must not be used in production. Arc is an optional package, not part of the API-focused core.
 
 > [!NOTE]
 > Crab's latest release is v0.6.4, on [Packagist](https://packagist.org/packages/crabphp/framework). Its packages, such as `crabphp/runs` or `crabphp/redis`, are installed the same way, with `composer require`.
@@ -121,7 +124,7 @@ Route::get('/', static fn (): string => "Hello from Crab\n");
 Route::get('/hello/{name}', SayHello::class);
 ```
 
-An action is a closure or a class. The class takes the route's parameter by name and returns data, which is sent as JSON. To render an HTML page instead, return `view()` as shown in [Views](views.md). The JSON version is:
+An action is a closure or a class. The class takes the route's parameter by name and returns data, which is sent as JSON:
 
 ```php
 // app/Actions/SayHello.php

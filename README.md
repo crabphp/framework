@@ -405,7 +405,9 @@ $this->broadcast->within($transaction)->to("orders.{$id}")->send(['status' => 's
 
 ## Views
 
-Crab serves regular HTML applications as well as JSON APIs. [Arc](https://github.com/crabphp/arc), an optional package installed with `composer require crabphp/arc`, adds HTML templates, typed components and layouts compiled to PHP closures. Register its `ArcPlugin`, put templates in `resources/views`, and return `view('hello', ['name' => $name])` from an action. Forms, cookie authentication and redirects use the same framework as an API; no client-side framework is required. See [Views](docs/views.md) for installation, escaping, components and deployment.
+> **Experimental — not for production.** Arc and Crab's views integration may change without backward compatibility. Do not use them in production.
+
+Crab focuses on JSON APIs and services. [Arc](https://github.com/crabphp/arc) is an optional package for experimenting with HTML templates, typed components and layouts compiled to PHP closures. See [Views](docs/views.md) for the experimental integration.
 
 ## Requests and responses
 

@@ -56,7 +56,7 @@ new Response(418, ['X-Reason' => 'teapot'], 'no coffee');
 
 `Response` is a PSR-7 response, so every `with...()` method of the standard works on it.
 
-For server-rendered HTML applications, [Views](views.md) explains Arc's templates, components and `view()` helper. It returns an HTML response; a string returned directly by an action is still plain text.
+[Views with Arc](views.md) are experimental and must not be used in production; their APIs and behaviour may change without backward compatibility. The optional `view()` helper returns an HTML response, while a string returned directly by an action is still plain text.
 
 ## Headers
 
