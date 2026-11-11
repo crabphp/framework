@@ -87,6 +87,11 @@ final class Database implements DatabaseContract
         $callback();
     }
 
+    public function afterRollback(\Closure $callback): void
+    {
+        // A statement of the pool's own is committed as it runs, so it is never undone.
+    }
+
     public function acquire(): Connection
     {
         $pool = $this->pool();

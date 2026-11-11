@@ -167,6 +167,21 @@ $db->transaction(function (Connection $tx) use ($id): void {
 
 To push a job with a write, use the queue's [`within()`](queues.md#with-a-database-write), which does this and better.
 
+`afterRollback()` is its opposite: it runs if the transaction that asked, or one around it, is rolled back or loses its connection, and never once the outermost transaction has committed. Use it to put back what the code changed in memory for a write that did not happen:
+
+```php
+$db->transaction(function (Connection $tx) use ($cart): void {
+    $tx->table('carts')->where('id', $cart->id)->update(['checked_out' => true]);
+    $cart->checkedOut = true;
+
+    $tx->afterRollback(function () use ($cart): void {
+        $cart->checkedOut = false;
+    });
+});
+```
+
+Several run last asked first. One that throws does not hide the failure that caused the rollback, and the others still run. Outside a transaction there is nothing to undo, so the callback is dropped.
+
 Do not call another server from inside a transaction. The transaction holds a connection, and on MySQL locks, for as long as the call takes.
 
 ## Connections

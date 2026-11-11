@@ -58,6 +58,13 @@ final class PdoConnection implements ManagedConnection
      * @var list<array{int, \Closure}>
      */
     private array $afterCommit = [];
+    /**
+     * What to run if the work is undone, each with the depth of the
+     * transaction that asked for it.
+     *
+     * @var list<array{int, \Closure}>
+     */
+    private array $afterRollback = [];
     private ?string $driver = null;
     private readonly SessionScope $scope;
 
@@ -158,6 +165,14 @@ final class PdoConnection implements ManagedConnection
         $this->afterCommit[] = [$this->depth, $callback];
     }
 
+    public function afterRollback(\Closure $callback): void
+    {
+        $this->scope->check();
+        if ($this->depth > 0) {
+            $this->afterRollback[] = [$this->depth, $callback];
+        }
+    }
+
     public function inTransaction(): bool
     {
         return $this->depth > 0 || ($this->pdo?->inTransaction() ?? false);
@@ -176,6 +191,8 @@ final class PdoConnection implements ManagedConnection
         $this->pdo = null;
         $this->depth = 0;
         $this->afterCommit = [];
+        // A lost connection took its transaction with it.
+        $this->undone(0);
     }
 
     /**
@@ -221,10 +238,12 @@ final class PdoConnection implements ManagedConnection
         }
         $this->depth = $depth;
         if ($depth > 0) {
+            $this->released($depth);
             return;
         }
         $waiting = $this->afterCommit;
         $this->afterCommit = [];
+        $this->afterRollback = [];
         $failure = null;
         foreach ($waiting as [, $callback]) {
             try {
@@ -258,7 +277,43 @@ final class PdoConnection implements ManagedConnection
         } catch (\Throwable) {
             // The failure being rolled back is the one to report; dropping the connection rolls back too.
             $this->close();
+            return;
         }
+        $this->undone($depth);
+    }
+
+    /**
+     * Runs what was to run if the work down to $depth was undone, last asked first.
+     * The failure being rolled back is the one to report, so a callback's own is not.
+     */
+    private function undone(int $depth): void
+    {
+        $undone = [];
+        $remaining = [];
+        foreach ($this->afterRollback as $waiting) {
+            if ($waiting[0] > $depth) {
+                $undone[] = $waiting[1];
+            } else {
+                $remaining[] = $waiting;
+            }
+        }
+        $this->afterRollback = $remaining;
+        foreach (array_reverse($undone) as $callback) {
+            try {
+                $callback();
+            } catch (\Throwable) {
+            }
+        }
+    }
+
+    /**
+     * A released savepoint's callbacks now wait on the transaction around it.
+     */
+    private function released(int $depth): void
+    {
+        $lowered = static fn(array $waiting): array => [min($waiting[0], $depth), $waiting[1]];
+        $this->afterCommit = array_map($lowered, $this->afterCommit);
+        $this->afterRollback = array_map($lowered, $this->afterRollback);
     }
 
     /**

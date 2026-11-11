@@ -4,6 +4,8 @@ Crab follows [semantic versioning](https://semver.org). Before 1.0, a minor vers
 
 ## Unreleased
 
+- **After a rollback:** `Connection::afterRollback()` runs a callback if the transaction that asked, or one around it, is rolled back or loses its connection, and never once the outermost transaction has committed. It is for putting back what code changed in memory for a write that did not happen. A class of your own that implements `Contracts\Database\Connection` or `Database`, such as a test double, must add `afterRollback()`.
+- **A committed inner transaction keeps its `afterCommit()` callback:** one asked for inside an inner transaction that committed was dropped when a later inner transaction of the same outer one rolled back. It now runs when the outer transaction commits.
 - **Date bindings use the default zone (behaviour change):** PDO and async MySQL now write a bound `DateTimeInterface` as the same instant in PHP's default time zone, just as record fields do. A date in another zone no longer writes its own wall-clock time; use the intended instant when binding dates.
 - **Ordered chunks are refused:** `chunkById()` reads in ascending order of its cursor column and now refuses an existing order. Remove `orderBy()` before calling it.
 

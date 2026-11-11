@@ -441,6 +441,11 @@ final class LockLossConnection implements ManagedConnection
         $this->delegate->afterCommit($callback);
     }
 
+    public function afterRollback(\Closure $callback): void
+    {
+        $this->delegate->afterRollback($callback);
+    }
+
     public function inTransaction(): bool
     {
         return $this->delegate->inTransaction();
