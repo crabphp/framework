@@ -164,6 +164,27 @@ final class TransactionCallbacksTest extends TestCase
         $db->close();
     }
 
+    public function testACommitWhoseOutcomeIsUnknownRunsNeitherCallback(): void
+    {
+        $db = new Database(static fn(): \PDO => new CommitLostPdo('sqlite::memory:'));
+        $ran = [];
+        try {
+            $db->transaction(static function (Connection $tx) use (&$ran): void {
+                $tx->afterRollback(static function () use (&$ran): void {
+                    $ran[] = 'undone';
+                });
+                $tx->afterCommit(static function () use (&$ran): void {
+                    $ran[] = 'committed';
+                });
+            });
+        } catch (\Throwable $error) {
+            $failure = $error;
+        }
+        self::assertStringContainsString('server has gone away', ($failure ?? null)?->getMessage() ?? '');
+        // The server may or may not have committed: nothing says either.
+        self::assertSame([], $ran);
+    }
+
     private function database(string $driver): Database
     {
         return new Database(static fn(): \PDO => $driver === 'sqlite'
@@ -173,5 +194,24 @@ final class TransactionCallbacksTest extends TestCase
                 getenv('CRAB_TEST_MYSQL_USER') ?: 'root',
                 getenv('CRAB_TEST_MYSQL_PASSWORD') ?: '',
             ), factory: $this->mysqlFactory($driver));
+    }
+}
+
+/**
+ * A connection whose COMMIT reaches the database but whose answer is lost.
+ */
+final class CommitLostPdo extends \PDO
+{
+    public function commit(): bool
+    {
+        throw new \PDOException('SQLSTATE[HY000]: General error: 2006 MySQL server has gone away');
+    }
+
+    public function exec(string $statement): int|false
+    {
+        if ($statement === 'COMMIT') {
+            $this->commit();
+        }
+        return parent::exec($statement);
     }
 }

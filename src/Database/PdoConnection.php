@@ -227,6 +227,11 @@ final class PdoConnection implements ManagedConnection
     private function commit(): void
     {
         $depth = $this->depth - 1;
+        if ($depth === 0) {
+            // From here a failure may come after the commit happened, as when its answer is lost,
+            // so what was to run after a rollback is dropped before the connection can be closed.
+            $this->afterRollback = [];
+        }
         try {
             $depth === 0
                 ? $this->attempt(fn() => $this->pdo()->commit(), 'COMMIT')

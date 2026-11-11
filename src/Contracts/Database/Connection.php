@@ -81,7 +81,9 @@ interface Connection
      * the transaction that asked, or one around it, is rolled back or
      * loses its connection. It never runs once the outermost transaction
      * has committed, and outside a transaction there is nothing to undo,
-     * so it is dropped. It is for putting back what the code changed in
+     * so it is dropped. Nor does it run when the commit fails in a way that
+     * leaves it unknown whether the work was committed, such as a connection
+     * lost while the database answered: then neither callback runs. It is for putting back what the code changed in
      * memory for a write that did not happen. Callbacks run last asked
      * first, and one that throws does not hide the failure being rolled back.
      *
