@@ -28,7 +28,7 @@ use Psr\Log\LoggerInterface;
  *     $container->get(Schedule::class)->command('report:send')->daily('07:00');
  *
  * "schedule.timezone" is the zone the tasks' times are in, such as
- * "Europe/Paris"; PHP's own when null.
+ * "Europe/Paris"; the application's, app.timezone, when null.
  */
 final class SchedulePlugin implements Plugin
 {

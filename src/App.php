@@ -190,10 +190,18 @@ final class App implements RequestHandlerInterface, Runner
         $this->storage = $storagePath ?? self::storageDirectory($basePath);
         $config->defaults(
             'app',
-            ['name' => 'Crab', 'debug' => false, 'url' => null, 'path' => $basePath, 'storage' => $this->storage],
+            [
+                'name' => 'Crab',
+                'debug' => false,
+                'url' => null,
+                'timezone' => 'UTC',
+                'path' => $basePath,
+                'storage' => $this->storage,
+            ],
             [
                 'name' => ['type' => 'string'],
                 'debug' => ['type' => 'boolean'],
+                'timezone' => ['type' => 'string', 'format' => 'timezone', 'examples' => ['UTC', 'Europe/Paris']],
                 'url' => ['type' => ['string', 'null'], 'examples' => ['https://api.example.com']],
                 'path' => ['type' => ['string', 'null']],
                 'storage' => ['type' => ['string', 'null']],
@@ -221,6 +229,13 @@ final class App implements RequestHandlerInterface, Runner
         $config->defaults('server', Server::DEFAULTS, Server::RULES);
         $config->defaults('websocket', SocketSettings::DEFAULTS, SocketSettings::RULES);
         self::$current = $this;
+        // Every date the process makes, writes and reads is in this zone: the clock, the
+        // database and the logs alike. A zone that does not exist is said with the other
+        // settings when the application starts, and PHP's own is kept until then.
+        $timezone = $config->get('app.timezone');
+        if (is_string($timezone) && in_array($timezone, \DateTimeZone::listIdentifiers(), true)) {
+            date_default_timezone_set($timezone);
+        }
         $container->instance(self::class, $this);
         // What runs workers that serve no requests, for a plugin's commands.
         $container->instance(Runner::class, $this);

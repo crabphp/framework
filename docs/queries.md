@@ -107,7 +107,7 @@ $id = $db->table('orders')->insert(new NewOrder(OrderStatus::Pending, 1250, [], 
 $db->table('orders')->into(Order::class)->where('id', $id)->update(['status' => OrderStatus::Paid]);
 ```
 
-An enum is written as its value, a date as `Y-m-d H:i:s` in PHP's default time zone, which is the zone a date is read in, and a `#[Json]` field as JSON.
+An enum is written as its value, a date as `Y-m-d H:i:s` in the application's time zone, [`app.timezone`](configuration.md#time-zone), which is the zone a date is read in, and a `#[Json]` field as JSON.
 
 For a type of your own, write a cast: an attribute that implements `Crab\Contracts\Database\Cast`, with `read()` from the column and `write()` back. Null never reaches it.
 
@@ -130,7 +130,7 @@ There are no models: a record does not load or save itself, has no relationships
 
 A backed enum in a condition or an update is bound as its value, including an integer for an int-backed enum: `where('status', OrderStatus::Shipped)` and `whereIn('status', [OrderStatus::Paid, OrderStatus::Shipped])`.
 
-A bound `DateTimeInterface` is written as `Y-m-d H:i:s` in PHP's default time zone, preserving its instant, just as a record field is. The date object itself is unchanged.
+A bound `DateTimeInterface` is written as `Y-m-d H:i:s` in the application's time zone, preserving its instant, just as a record field is. The date object itself is unchanged.
 
 ```php
 $db->table('users')

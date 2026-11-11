@@ -12,4 +12,8 @@ return [
 
     // Where the application is reached, such as https://api.example.com; the start of every URL Urls writes for a named route.
     'url' => env('APP_URL'),
+
+    // The time zone every date is made, stored and read in. UTC has no daylight saving, so no hour
+    // is ever written twice; show a person their own time when the date is shown.
+    'timezone' => env('APP_TIMEZONE', 'UTC'),
 ];

@@ -38,7 +38,7 @@ use Crab\Schedule\SchedulePlugin;
 
 | Setting | Default | |
 | --- | --- | --- |
-| `schedule.timezone` | `null` | The zone the tasks' times are in, such as `Europe/Paris`; PHP's own when null |
+| `schedule.timezone` | `null` | The zone the tasks' times are in, such as `Europe/Paris`; the application's, `app.timezone`, when null |
 
 ## Defining the schedule
 
@@ -156,14 +156,14 @@ The task runs inside the scheduler's process, so keep it short. A slow one does 
 
 ### Time zones
 
-Times are in PHP's time zone unless `schedule.timezone` says otherwise:
+Times are in the application's time zone, [`app.timezone`](configuration.md#time-zone), unless `schedule.timezone` says otherwise. Keep the application's in UTC and give the scheduler the zone people mean:
 
 ```php
 // config/schedule.php
 return ['timezone' => 'Europe/Paris'];
 ```
 
-Where clocks change in spring and autumn, a task set for an hour that is skipped does not run that day, and one set for an hour that repeats may run twice. Schedule outside 01:00 to 03:00, or set the zone to `UTC`.
+Where clocks change in spring and autumn, a task set for an hour that is skipped does not run that day, and one set for an hour that repeats may run twice. Schedule outside 01:00 to 03:00, or leave the zone at `UTC`.
 
 ## Running the scheduler
 

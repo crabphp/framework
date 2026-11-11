@@ -4,6 +4,7 @@
 - [Environment variables](#environment-variables)
 - [Configuration files](#configuration-files)
 - [Reading configuration](#reading-configuration)
+- [Time zone](#time-zone)
 - [Checked at startup](#checked-at-startup)
 - [Describing the application](#describing-the-application)
     - [Plugins](#plugins)
@@ -100,6 +101,19 @@ $container->singleton(Mailer::class, static fn (): Mailer => new SmtpMailer(
 The core and plugins declare their defaults before your application runs, so `config()` exposes the same values their consumers use. Values you supply, including explicit `null` and `false`, take precedence.
 
 Configuration is fixed once the application is defined. Do not change it at run time: every worker has its own copy, and a change in one is seen by no other.
+
+## Time zone
+
+`app.timezone` is the zone every date of the application is in: the time the clock gives, the dates the database writes and reads, the times in the logs and the scheduler's, in the HTTP workers, the queue, the scheduler and the console alike. It is `UTC` unless set:
+
+```php
+// config/app.php
+'timezone' => env('APP_TIMEZONE', 'UTC'),
+```
+
+Keep it in UTC. A column of type `DATETIME` holds no zone, so a date written in a zone with daylight saving cannot tell the two 01:30s of an autumn night apart, and the second is read back an hour early. In UTC no hour repeats. Show a person their own time where the date is shown, `$date->setTimezone(new DateTimeZone('Europe/Paris'))`, and give the scheduler the zone its times mean with `schedule.timezone`.
+
+A zone that does not exist, `Asia/Hanoi`, stops the application at start with the other settings. An application whose dates were stored in another zone before keeps that zone by setting it here.
 
 ## Checked at startup
 
