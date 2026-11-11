@@ -169,6 +169,14 @@ final class RelayTest extends TestCase
             },
             message: 'The source was not read again once the destination caught up.',
         );
+        // Handed to the socket is not yet read from it: the reader may still have some to take.
+        $this->until(
+            $loop,
+            static function () use (&$received): bool {
+                return $received >= 500_000;
+            },
+            message: 'Not everything held was delivered to the destination.',
+        );
         self::assertSame(500_000, $received);
     }
 
