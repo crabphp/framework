@@ -12,7 +12,7 @@ Breaking, each with what an application changes:
 
 Also in this release:
 
-- **`Request::user()`:** the user that authentication middleware put on the request, or null: `$request->user(User::class)?->isAdmin()`. With a class it gives that class or null, typed for static analysis. An action still takes the user as a parameter; this is for middleware and error renderers. `RateLimit`, `AccessLog`, `TokenAuth` and `CookieAuth` read the user and the address through it.
+- **The user in middleware:** `use Crab\Auth\FromRequest;` in your user class gives it `User::fromRequest($request)`, the user that authentication middleware put on the request, typed as your class, or null when there is none or it is of another class: `User::fromRequest($request)?->isAdmin()`. `Request::user()` gives the same user as an `Identity`, for code that needs only its id. An action still takes the user as a parameter. `RateLimit`, `AccessLog`, `TokenAuth` and `CookieAuth` read the user and the address through the request.
 - **`make:middleware`** writes the new `handle(Request $request, Handler $next)` stub, and refuses the names `Handler`, `Middleware`, `Request` and `ResponseInterface`, which the stub imports.
 
 ## 0.7.0 — 2026-11-12

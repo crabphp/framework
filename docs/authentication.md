@@ -3,6 +3,7 @@
 - [Introduction](#introduction)
 - [How it works](#how-it-works)
 - [Your user](#your-user)
+    - [The user in middleware](#the-user-in-middleware)
 - [Token authentication](#token-authentication)
     - [Installation](#installation)
     - [Finding the user](#finding-the-user)
@@ -55,10 +56,13 @@ Your user is a class of your own with a public `$id`:
 // app/User.php
 namespace App;
 
+use Crab\Auth\FromRequest;
 use Crab\Contracts\Auth\Identity;
 
 final readonly class User implements Identity
 {
+    use FromRequest;
+
     public function __construct(public int $id, public string $email, public string $role = 'member')
     {
     }
@@ -66,6 +70,18 @@ final readonly class User implements Identity
 ```
 
 Crab keeps no user table and no user model. The table is yours.
+
+### The user in middleware
+
+An action takes the user as a parameter. Middleware, and an error renderer, read it from the request. `FromRequest` gives your class `fromRequest()`, which returns the user typed as your class, or `null` when there is none or it is of another class:
+
+```php
+if (User::fromRequest($request)?->isAdmin() !== true) {
+    return ErrorResponse::make($request, 403);
+}
+```
+
+Where only the id matters, `$request->user()` gives the user as an `Identity`: `$request->user()?->id`.
 
 ## Token authentication
 
@@ -372,10 +388,10 @@ final readonly class ProxyAuth implements Middleware
 }
 ```
 
-Actions do not change: they still take `User $user`. Middleware that runs after it reads the user from the request, typed to your class, or `null` when there is none or it is of another class:
+Actions do not change: they still take `User $user`. Middleware that runs after it reads the user from the request with `User::fromRequest($request)`, typed as your class, or `null` when there is none or it is of another class; see [The user in middleware](#the-user-in-middleware).
 
 ```php
-if ($request->user(User::class)?->isAdmin() !== true) {
+if (User::fromRequest($request)?->isAdmin() !== true) {
     return ErrorResponse::make($request, 403);
 }
 ```

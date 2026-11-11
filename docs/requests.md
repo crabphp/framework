@@ -66,7 +66,7 @@ Route parameters reach an action by name. Middleware reads them, and anything ot
 
 ```php
 $id = $request->getAttribute('id');                     // the route parameter
-$user = $request->user(User::class);                    // set by authentication middleware, null without one
+$user = $request->user();                               // set by authentication middleware, null without one
 $requestId = $request->getAttribute('request_id');      // set by RequestId
 ```
 

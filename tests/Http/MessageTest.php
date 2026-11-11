@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Crab\Tests\Http;
 
+use Crab\Auth\FromRequest;
 use Crab\Contracts\Auth\Identity;
 use Crab\Engine\Http\Body;
 use Crab\Engine\Http\Request as EngineRequest;
@@ -18,6 +19,8 @@ use PHPUnit\Framework\TestCase;
 
 final readonly class MessageMember implements Identity
 {
+    use FromRequest;
+
     public function __construct(
         public int $id,
     ) {}
@@ -25,6 +28,8 @@ final readonly class MessageMember implements Identity
 
 final readonly class MessageAdmin implements Identity
 {
+    use FromRequest;
+
     public function __construct(
         public int $id,
     ) {}
@@ -275,8 +280,9 @@ final class MessageTest extends TestCase
         $member = new MessageMember(7);
         $signed = $request->withAttribute(Identity::ATTRIBUTE, $member);
         self::assertSame($member, $signed->user());
-        self::assertSame($member, $signed->user(MessageMember::class));
-        self::assertNull($signed->user(MessageAdmin::class), 'A user of another class is no user of that class.');
+        self::assertSame($member, MessageMember::fromRequest($signed));
+        self::assertNull(MessageAdmin::fromRequest($signed), 'A user of another class is no user of that class.');
+        self::assertNull(MessageMember::fromRequest($request));
         self::assertNull($request->withAttribute(Identity::ATTRIBUTE, 'user 7')->user(), 'Only an Identity is a user.');
         self::assertNull($signed->withoutAttribute(Identity::ATTRIBUTE)->user());
     }

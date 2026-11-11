@@ -133,7 +133,7 @@ final readonly class RequireRole implements Middleware
 
     public function handle(Request $request, Handler $next): ResponseInterface
     {
-        if ($request->user(User::class)?->role !== $this->role) {
+        if (User::fromRequest($request)?->role !== $this->role) {
             return ErrorResponse::make($request, 403);
         }
 

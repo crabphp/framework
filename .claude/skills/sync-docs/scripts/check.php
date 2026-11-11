@@ -109,8 +109,8 @@ foreach ($pages as $name => $markdown) {
     // A name starts with a capital after the backslash, which "Crab\n" in a string does not.
     preg_match_all('/\bCrab\\\\[A-Z][A-Za-z_\\\\]*[A-Za-z_]/', $markdown, $names);
     foreach (array_unique($names[0]) as $class) {
-        if (!in_array($class, $packageClasses, true) && !class_exists($class) && !interface_exists($class) && !enum_exists($class) && !is_dir($root . '/src/' . str_replace('\\', '/', substr($class, 5)))) {
-            $problems[] = "docs/{$name} names {$class}, and there is no such class, interface or namespace.";
+        if (!in_array($class, $packageClasses, true) && !class_exists($class) && !interface_exists($class) && !trait_exists($class) && !enum_exists($class) && !is_dir($root . '/src/' . str_replace('\\', '/', substr($class, 5)))) {
+            $problems[] = "docs/{$name} names {$class}, and there is no such class, interface, trait or namespace.";
         }
     }
 }

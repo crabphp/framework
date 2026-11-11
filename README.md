@@ -286,7 +286,7 @@ Route::middleware(TokenAuth::class)->group(function () {
 
 - **The user reaches an action by type.** A parameter whose class implements `Identity` receives the user that middleware put on the request's `user` attribute; a request with none is answered with `401`. Make the parameter nullable for a route that works either way.
 - **There is no `Auth::user()`.** A worker serves requests that overlap, so the user travels with the request and nowhere else.
-- **Any middleware can be a way of authenticating.** It finds the user, and either calls `$next->handle($request->withAttribute('user', $user))` or answers `401`. Middleware after it reads the user with `$request->user(User::class)`. A session cookie, a signed address, a JWT, a header a proxy sets: each is a few lines of middleware of your own, and needs nothing more from Crab.
+- **Any middleware can be a way of authenticating.** It finds the user, and either calls `$next->handle($request->withAttribute('user', $user))` or answers `401`. Middleware after it reads the user with `User::fromRequest($request)`, from the `FromRequest` trait on your user class. A session cookie, a signed address, a JWT, a header a proxy sets: each is a few lines of middleware of your own, and needs nothing more from Crab.
 - **`AuthPlugin`, registered by default,** binds what every way shares, the `PasswordHasher`: `hash()`, `verify()` and `needsRehash()`, over PHP's own password hashing.
 
 ### Tokens

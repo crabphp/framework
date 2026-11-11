@@ -15,7 +15,7 @@ use Psr\Http\Message\ResponseInterface;
  *
  *     public function handle(Request $request, Handler $next): ResponseInterface
  *     {
- *         if ($request->user(User::class)?->isAdmin() !== true) {
+ *         if (User::fromRequest($request)?->isAdmin() !== true) {
  *             throw new HttpException(403, 'This is for administrators.');
  *         }
  *         return $next->handle($request);

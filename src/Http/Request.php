@@ -373,10 +373,10 @@ final class Request extends Message implements RequestContract
         return $file instanceof UploadedFileInterface ? $file : null;
     }
 
-    public function user(string $class = Identity::class): ?Identity
+    public function user(): ?Identity
     {
         $user = $this->attributes[Identity::ATTRIBUTE] ?? null;
-        return $user instanceof $class ? $user : null;
+        return $user instanceof Identity ? $user : null;
     }
 
     public function cancellation(): Cancellation

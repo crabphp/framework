@@ -47,17 +47,13 @@ interface Request extends ServerRequestInterface
 
     /**
      * The user that authentication middleware, such as TokenAuth or
-     * CookieAuth, put on the request, or null when there is none or it is
-     * not of the class asked for. An action takes the user as a parameter
-     * instead; this is for middleware and for code given the request.
-     *
-     *     $request->user(User::class)?->isAdmin()
-     *
-     * @template T of Identity
-     * @param class-string<T> $class
-     * @return T|null
+     * CookieAuth, put on the request, or null when there is none. It is an
+     * Identity, so its id is all it is known to have: for the
+     * application's own class, typed, use Auth\FromRequest on that class
+     * and call User::fromRequest($request). An action takes the user as a
+     * parameter instead.
      */
-    public function user(string $class = Identity::class): ?Identity;
+    public function user(): ?Identity;
 
     /**
      * Cancelled when the request completes, times out or loses its
