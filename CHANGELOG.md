@@ -4,7 +4,7 @@ Crab follows [semantic versioning](https://semver.org). Before 1.0, a minor vers
 
 ## Unreleased
 
-- **The current loan:** `Database::current()` returns the connection lent to the calling fiber by `run()` or `transaction()`, with nested loans restored on return; outside a loan it returns the database.
+- **The current loan:** `Database::current()` returns the connection lent to the calling fiber by `run()` or `transaction()`, with nested loans restored on return; outside a loan it returns the database. A class of your own that implements `Contracts\Database\Database`, such as a test double, must add `current()`.
 - **Mapping attributes on properties:** `#[Json]` and `#[ColumnName]` may be written on a property as well as a constructor parameter.
 - **Shared field conversion:** `Contracts\Database\Field` reads and writes one declared property's value; records keep their existing mapping and messages. The internal `Database\RecordField` is removed.
 - **Enums in statements:** PDO and async MySQL bind backed enums by their integer or string value, including conditions and updates without `into()`.
