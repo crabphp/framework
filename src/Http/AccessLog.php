@@ -4,15 +4,13 @@ declare(strict_types=1);
 
 namespace Crab\Http;
 
-use Crab\Contracts\Auth\Identity;
+use Crab\Contracts\Http\Handler;
 use Crab\Contracts\Http\Middleware;
 use Crab\Contracts\Http\Request;
 use Crab\Contracts\Http\UsesContainer;
 use Crab\Engine\FailureReporter;
 use Psr\Container\ContainerInterface;
 use Psr\Http\Message\ResponseInterface;
-use Psr\Http\Message\ServerRequestInterface;
-use Psr\Http\Server\RequestHandlerInterface;
 use Psr\Log\LoggerInterface;
 use Psr\Log\LogLevel;
 
@@ -83,7 +81,7 @@ final readonly class AccessLog implements Middleware, UsesContainer
      * Times the inner handler and records its response, or 500 when an
      * exception escapes. The exception continues to the caller unchanged.
      */
-    public function process(ServerRequestInterface $request, RequestHandlerInterface $handler): ResponseInterface
+    public function handle(Request $request, Handler $next): ResponseInterface
     {
         if ($this->logger === null) {
             throw new \LogicException(
@@ -94,15 +92,15 @@ final readonly class AccessLog implements Middleware, UsesContainer
             $path = $request->getUri()->getPath();
         } catch (\Throwable $error) {
             FailureReporter::report('HTTP access log failed', $error);
-            return $handler->handle($request);
+            return $next->handle($request);
         }
         if (in_array($path, $this->skip, true)) {
-            return $handler->handle($request);
+            return $next->handle($request);
         }
         $started = hrtime(true);
         $response = null;
         try {
-            $response = $handler->handle($request);
+            $response = $next->handle($request);
             return $response;
         } finally {
             try {
@@ -114,17 +112,15 @@ final readonly class AccessLog implements Middleware, UsesContainer
                     'path' => $path,
                     'status' => $status,
                     'ms' => $ms,
-                    'ip' => $request instanceof Request
-                        ? $request->ip()
-                        : $request->getServerParams()['REMOTE_ADDR'] ?? '',
+                    'ip' => $request->ip(),
                     'bytes' => $response?->getBody()->getSize(),
                 ];
                 $id = $request->getAttribute(RequestId::ATTRIBUTE);
                 if ($id !== null) {
                     $context['request_id'] = $id;
                 }
-                $user = $request->getAttribute(Identity::ATTRIBUTE);
-                if ($user instanceof Identity) {
+                $user = $request->user();
+                if ($user !== null) {
                     $context['user'] = $user->id;
                 }
                 $message = "{$method} {$path} {$status} " . number_format($ms, 1, '.', '') . 'ms';

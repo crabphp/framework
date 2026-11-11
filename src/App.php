@@ -34,7 +34,10 @@ use Crab\Contracts\Container\Container as ContainerContract;
 use Crab\Contracts\Events\Dispatcher as DispatcherContract;
 use Crab\Contracts\Http\ErrorRenderer;
 use Crab\Contracts\Http\Factory as FactoryContract;
+use Crab\Contracts\Http\Handler;
+use Crab\Contracts\Http\Middleware;
 use Crab\Contracts\Http\MiddlewareStack as MiddlewareStackContract;
+use Crab\Contracts\Http\Request;
 use Crab\Contracts\Log\Logger as LoggerContract;
 use Crab\Contracts\Plugin;
 use Crab\Contracts\Routing\Router as RouterContract;
@@ -77,12 +80,9 @@ use Psr\Clock\ClockInterface;
 use Psr\Http\Message\ResponseFactoryInterface;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestFactoryInterface;
-use Psr\Http\Message\ServerRequestInterface;
 use Psr\Http\Message\StreamFactoryInterface;
 use Psr\Http\Message\UploadedFileFactoryInterface;
 use Psr\Http\Message\UriFactoryInterface;
-use Psr\Http\Server\MiddlewareInterface;
-use Psr\Http\Server\RequestHandlerInterface;
 use Psr\Log\LoggerInterface;
 
 /**
@@ -98,7 +98,7 @@ use Psr\Log\LoggerInterface;
  * (1 MiB unless set), and "server.body_timeout" how many seconds a client
  * has to send one (30).
  */
-final class App implements RequestHandlerInterface, Runner
+final class App implements Handler, Runner
 {
     private static ?self $current = null;
 
@@ -121,7 +121,7 @@ final class App implements RequestHandlerInterface, Runner
      */
     public readonly Servers $servers;
     private readonly MiddlewareStack $stack;
-    private ?RequestHandlerInterface $entry = null;
+    private ?Handler $entry = null;
     /**
      * Places a deprecation has already been logged from, in this worker.
      *
@@ -177,7 +177,7 @@ final class App implements RequestHandlerInterface, Runner
 
     /**
      * @param string|null $basePath The application's own directory, which path() resolves against.
-     * @param list<MiddlewareInterface|class-string<MiddlewareInterface>> $middleware The middleware around every request, the first outermost. A plugin adds inside it through the MiddlewareStack contract.
+     * @param list<Middleware|class-string<Middleware>> $middleware The middleware around every request, the first outermost. A plugin adds inside it through the MiddlewareStack contract.
      * @param string|null $storagePath Where it writes; see storageDirectory() when null.
      */
     public function __construct(
@@ -316,7 +316,7 @@ final class App implements RequestHandlerInterface, Runner
         $container->singleton(UrlsContract::class, fn(): Urls => new Urls($this->router, $config->get('app.url')));
         $container->singleton(Urls::class, UrlsContract::class);
         // The error handler is the entry bound as ErrorHandler; rebinding it to
-        // another PSR-15 middleware replaces how failures are answered.
+        // another middleware replaces how failures are answered.
         $this->stack = new MiddlewareStack($this->router, $container);
         $this->stack->add(...$middleware);
         $container->instance(MiddlewareStackContract::class, $this->stack);
@@ -486,7 +486,7 @@ final class App implements RequestHandlerInterface, Runner
         return $this;
     }
 
-    public function handle(ServerRequestInterface $request): ResponseInterface
+    public function handle(Request $request): ResponseInterface
     {
         return $this->entry()->handle($request);
     }
@@ -495,7 +495,7 @@ final class App implements RequestHandlerInterface, Runner
      * What a request enters: the middleware stack, behind the
      * application's ErrorRenderer when it binds one.
      */
-    private function entry(): RequestHandlerInterface
+    private function entry(): Handler
     {
         return $this->entry ??= $this->container->has(ErrorRenderer::class)
             ? new RenderedErrors($this->stack, $this->container)

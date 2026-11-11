@@ -4,10 +4,10 @@ declare(strict_types=1);
 
 namespace Crab\Http;
 
+use Crab\Contracts\Http\Handler;
 use Crab\Contracts\Http\Middleware;
+use Crab\Contracts\Http\Request;
 use Psr\Http\Message\ResponseInterface;
-use Psr\Http\Message\ServerRequestInterface;
-use Psr\Http\Server\RequestHandlerInterface;
 
 /**
  * Gives every request an id: the X-Request-Id it arrived with when that is
@@ -30,13 +30,13 @@ final class RequestId implements Middleware
     private ?string $prefix = null;
     private int $count = 0;
 
-    public function process(ServerRequestInterface $request, RequestHandlerInterface $handler): ResponseInterface
+    public function handle(Request $request, Handler $next): ResponseInterface
     {
         $id = $request->getHeaderLine('X-Request-Id');
         if ($id === '' || strlen($id) > 128 || preg_match('/^[A-Za-z0-9._-]+$/D', $id) !== 1) {
             $this->prefix ??= bin2hex(random_bytes(6));
             $id = $this->prefix . '-' . dechex(++$this->count);
         }
-        return $handler->handle($request->withAttribute(self::ATTRIBUTE, $id))->withHeader('X-Request-Id', $id);
+        return $next->handle($request->withAttribute(self::ATTRIBUTE, $id))->withHeader('X-Request-Id', $id);
     }
 }

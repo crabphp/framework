@@ -10,6 +10,7 @@ use Crab\Console\Console;
 use Crab\Console\Output;
 use Crab\Contracts\Console\Command;
 use Crab\Contracts\Database\Database as DatabaseContract;
+use Crab\Contracts\Http\Handler;
 use Crab\Database\Database;
 use Crab\Database\Migrator;
 use Crab\Http\Request;
@@ -235,10 +236,11 @@ final class DocumentationTest extends TestCase
         $example = $this->example($page, 'php', 'class RequireJson', $fence);
         $imports = '';
         foreach ([
+            'Crab\\Contracts\\Http\\Handler',
+            'Crab\\Contracts\\Http\\Middleware',
+            'Crab\\Contracts\\Http\\Request',
             'Crab\\Http\\ErrorResponse',
             'Psr\\Http\\Message\\ResponseInterface',
-            'Psr\\Http\\Message\\ServerRequestInterface',
-            'Psr\\Http\\Server\\RequestHandlerInterface',
         ] as $type) {
             if (str_contains($example, 'use ' . $type . ';')) {
                 continue;
@@ -348,7 +350,7 @@ final class DocumentationTest extends TestCase
             ->expects(self::exactly($logged))
             ->method('error')
             ->with('Request failed: {message}', ['message' => $error->getMessage(), 'exception' => $error]);
-        $handler = $this->createStub(\Psr\Http\Server\RequestHandlerInterface::class);
+        $handler = $this->createStub(Handler::class);
         $handler->method('handle')->willThrowException($error);
         $reporter = $this->createMock(\Reporter::class);
         $reporter->expects(self::exactly($logged))->method('report')->with($error);
@@ -356,7 +358,7 @@ final class DocumentationTest extends TestCase
         $response = null;
         $cancelled = null;
         try {
-            $response = $middleware->process(new Request('GET', '/items'), $handler);
+            $response = $middleware->handle(new Request('GET', '/items'), $handler);
         } catch (\Crab\Engine\Async\CancelledException $failure) {
             $cancelled = $failure;
         }

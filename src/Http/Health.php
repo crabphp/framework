@@ -4,9 +4,9 @@ declare(strict_types=1);
 
 namespace Crab\Http;
 
+use Crab\Contracts\Http\Handler;
+use Crab\Contracts\Http\Request;
 use Psr\Http\Message\ResponseInterface;
-use Psr\Http\Message\ServerRequestInterface;
-use Psr\Http\Server\RequestHandlerInterface;
 
 /**
  * Answers that the application is up: 200 and {"status":"up"}. It is what
@@ -17,9 +17,9 @@ use Psr\Http\Server\RequestHandlerInterface;
  * does not take every server out of rotation at once. An application
  * that wants more routes the path to an action of its own.
  */
-final readonly class Health implements RequestHandlerInterface
+final readonly class Health implements Handler
 {
-    public function handle(ServerRequestInterface $request): ResponseInterface
+    public function handle(Request $request): ResponseInterface
     {
         return Response::json(['status' => 'up']);
     }

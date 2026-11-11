@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Crab\Contracts\Http;
 
+use Crab\Contracts\Auth\Identity;
 use Crab\Engine\Async\Cancellation;
 use Psr\Http\Message\ServerRequestInterface;
 use Psr\Http\Message\UploadedFileInterface;
@@ -43,6 +44,20 @@ interface Request extends ServerRequestInterface
      * Empty when it is not known, as for a request made in a test.
      */
     public function ip(): string;
+
+    /**
+     * The user that authentication middleware, such as TokenAuth or
+     * CookieAuth, put on the request, or null when there is none or it is
+     * not of the class asked for. An action takes the user as a parameter
+     * instead; this is for middleware and for code given the request.
+     *
+     *     $request->user(User::class)?->isAdmin()
+     *
+     * @template T of Identity
+     * @param class-string<T> $class
+     * @return T|null
+     */
+    public function user(string $class = Identity::class): ?Identity;
 
     /**
      * Cancelled when the request completes, times out or loses its

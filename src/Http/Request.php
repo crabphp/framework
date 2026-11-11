@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Crab\Http;
 
+use Crab\Contracts\Auth\Identity;
 use Crab\Contracts\Http\Request as RequestContract;
 use Crab\Engine\Async\Cancellation;
 use Crab\Engine\Http\Request as EngineRequest;
@@ -370,6 +371,12 @@ final class Request extends Message implements RequestContract
     {
         $file = $this->getUploadedFiles()[$name] ?? null;
         return $file instanceof UploadedFileInterface ? $file : null;
+    }
+
+    public function user(string $class = Identity::class): ?Identity
+    {
+        $user = $this->attributes[Identity::ATTRIBUTE] ?? null;
+        return $user instanceof $class ? $user : null;
     }
 
     public function cancellation(): Cancellation

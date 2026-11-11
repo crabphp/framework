@@ -7,6 +7,8 @@ namespace Crab\Tests\WebSocket;
 use Crab\App;
 use Crab\Config\Config;
 use Crab\Contracts\Auth\Identity;
+use Crab\Contracts\Http\Handler;
+use Crab\Contracts\Http\Middleware;
 use Crab\Contracts\Http\Request;
 use Crab\Contracts\WebSocket\Binary;
 use Crab\Contracts\WebSocket\Socket;
@@ -32,9 +34,6 @@ use Crab\WebSocket\SocketClosed;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 use Psr\Http\Message\ResponseInterface;
-use Psr\Http\Message\ServerRequestInterface;
-use Psr\Http\Server\MiddlewareInterface;
-use Psr\Http\Server\RequestHandlerInterface;
 use Psr\Log\AbstractLogger;
 
 /**
@@ -1374,18 +1373,16 @@ final class RouteTest extends TestCase
         self::assertSame(2, $action->calls);
     }
 
-    private static function middleware(\Closure $process): MiddlewareInterface
+    private static function middleware(\Closure $process): Middleware
     {
-        return new class($process) implements MiddlewareInterface {
+        return new class($process) implements Middleware {
             public function __construct(
                 private readonly \Closure $process,
             ) {}
 
-            public function process(
-                ServerRequestInterface $request,
-                RequestHandlerInterface $handler,
-            ): ResponseInterface {
-                return ($this->process)($request, $handler);
+            public function handle(Request $request, Handler $next): ResponseInterface
+            {
+                return ($this->process)($request, $next);
             }
         };
     }

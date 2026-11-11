@@ -15,6 +15,9 @@ use Crab\Contracts\Cache\Cache;
 use Crab\Contracts\Container\Container;
 use Crab\Contracts\Database\Database;
 use Crab\Contracts\Events\Dispatcher;
+use Crab\Contracts\Http\Handler;
+use Crab\Contracts\Http\Middleware;
+use Crab\Contracts\Http\Request as RequestContract;
 use Crab\Contracts\HttpClient\Client;
 use Crab\Contracts\Plugin;
 use Crab\Contracts\Queue\Queue;
@@ -30,9 +33,6 @@ use Crab\Schedule\SchedulePlugin;
 use Crab\Storage\StoragePlugin;
 use PHPUnit\Framework\TestCase;
 use Psr\Http\Message\ResponseInterface;
-use Psr\Http\Message\ServerRequestInterface;
-use Psr\Http\Server\MiddlewareInterface;
-use Psr\Http\Server\RequestHandlerInterface;
 
 final class Greeting
 {
@@ -50,15 +50,15 @@ final class GreetingPlugin implements Plugin
     }
 }
 
-final class Mark implements MiddlewareInterface
+final class Mark implements Middleware
 {
     public function __construct(
         private string $mark = 'class',
     ) {}
 
-    public function process(ServerRequestInterface $request, RequestHandlerInterface $handler): ResponseInterface
+    public function handle(RequestContract $request, Handler $next): ResponseInterface
     {
-        $response = $handler->handle($request);
+        $response = $next->handle($request);
         return $response->withAddedHeader('X-Mark', $this->mark);
     }
 }
@@ -428,7 +428,7 @@ final class AppBuilderTest extends TestCase
                 static fn() => App::configure()->withPlugins([1]),
             'withSetup() takes classes implementing Crab\Contracts\Plugin, or their names, not stdClass' =>
                 static fn() => App::configure()->withSetup([new \stdClass()]),
-            'withMiddleware() takes PSR-15 middleware or their class names, not stdClass' =>
+            'withMiddleware() takes middleware or their class names, not stdClass' =>
                 static fn() => App::configure()->withMiddleware([new \stdClass()]),
             'withRouting() takes file paths, not int' => static fn() => App::configure()->withRouting(routes: [1]),
             'withRouting() takes file paths, not null' => static fn() => App::configure()->withRouting(commands: [
@@ -506,7 +506,7 @@ final class AppBuilderTest extends TestCase
         self::assertSame('last, mine, first', $marks($own));
 
         $mistakes = [
-            'takes PSR-15 middleware or their class names, not int' => static fn() => App::configure()->withMiddleware([
+            'takes middleware or their class names, not int' => static fn() => App::configure()->withMiddleware([
                 1,
             ]),
             'middleware or their class names, not stdClass' =>
@@ -553,7 +553,7 @@ final class AppBuilderTest extends TestCase
         require $file;
         $made = new \App\Http\RequireAdmin();
         self::assertInstanceOf(\Crab\Contracts\Http\Middleware::class, $made);
-        self::assertInstanceOf(MiddlewareInterface::class, $made);
+        self::assertInstanceOf(Middleware::class, $made);
         $router = new \Crab\Routing\Router();
         $router->get('/', static fn(): string => 'through')->middleware($made);
         self::assertSame('through', (string) $router->handle(new Request('GET', '/'))->getBody());

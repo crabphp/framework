@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace Crab\Contracts\Routing;
 
-use Psr\Http\Server\MiddlewareInterface;
+use Crab\Contracts\Http\Middleware;
 
 /**
  * The route a declaration made, to say more about it on the same line:
@@ -26,7 +26,7 @@ interface DeclaredRoute
      * again, it adds inside what is there. One given by class
      * name is made by the container in each worker as the worker starts.
      *
-     * @param MiddlewareInterface|class-string<MiddlewareInterface> ...$middleware
+     * @param Middleware|class-string<Middleware> ...$middleware
      */
-    public function middleware(MiddlewareInterface|string ...$middleware): static;
+    public function middleware(Middleware|string ...$middleware): static;
 }

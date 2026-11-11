@@ -7,7 +7,9 @@ namespace Crab\Auth;
 use Crab\Contracts\Auth\Identity;
 use Crab\Contracts\Auth\IdentityResolver;
 use Crab\Contracts\Auth\TokenStore;
+use Crab\Contracts\Http\Handler;
 use Crab\Contracts\Http\Middleware;
+use Crab\Contracts\Http\Request;
 use Crab\Contracts\Http\UsesContainer;
 use Crab\Http\Cookie;
 use Crab\Http\ErrorResponse;
@@ -15,7 +17,6 @@ use Crab\Http\Response;
 use Psr\Container\ContainerInterface;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface;
-use Psr\Http\Server\RequestHandlerInterface;
 
 /**
  * Middleware for browsers: the user's token, the same one TokenAuth reads
@@ -120,7 +121,7 @@ final readonly class CookieAuth implements Middleware, UsesContainer
         );
     }
 
-    public function process(ServerRequestInterface $request, RequestHandlerInterface $handler): ResponseInterface
+    public function handle(Request $request, Handler $next): ResponseInterface
     {
         if ($this->tokens === null || $this->users === null) {
             throw new \LogicException(
@@ -130,20 +131,20 @@ final readonly class CookieAuth implements Middleware, UsesContainer
         if (self::changes($request) && !$this->fromOwnPages($request)) {
             return ErrorResponse::make($request, 403, 'This request did not come from this application\'s pages.');
         }
-        if ($request->getAttribute(Identity::ATTRIBUTE) instanceof Identity) {
+        if ($request->user() !== null) {
             // Whoever put the user there, middleware before this one or a test, has said who it is.
-            return $handler->handle($request);
+            return $next->handle($request);
         }
         $token = $this->token($request);
         $owner = $token === null ? null : $this->tokens->owner($token);
         $user = $owner === null ? null : $this->users->resolve($owner);
         if ($user !== null) {
-            return $handler->handle($request->withAttribute(Identity::ATTRIBUTE, $user));
+            return $next->handle($request->withAttribute(Identity::ATTRIBUTE, $user));
         }
         if (!$this->required) {
             // A cookie whose token no longer works, after logging out elsewhere or expiring, is cleared,
             // unless the response sets it anew, as a login does.
-            return $this->clearStale($handler->handle($request), $token);
+            return $this->clearStale($next->handle($request), $token);
         }
         $refused = $this->login !== null && in_array(strtoupper($request->getMethod()), ['GET', 'HEAD'], true)
             ? Response::redirect($this->login, 303)

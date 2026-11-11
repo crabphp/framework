@@ -161,14 +161,14 @@ A response changed by middleware after it was made, with a new status or body, i
 The error handler is the middleware `Crab\Http\ErrorHandler`: it logs failures and turns exceptions into error responses. To change only the format, bind an `ErrorRenderer` instead. Replace the handler when what happens on a failure must change, for example to report it to a service as well as the log. Keep cancellation passing through, log server failures, leave answers below `500` unlogged, and answer with `ErrorResponse::make()` so the format stays the renderer's:
 
 ```php
-use Crab\Contracts\Http\Middleware;
-use Crab\Engine\Async\CancelledException;
+use Crab\Contracts\Http\Handler;
 use Crab\Contracts\Http\HttpError;
+use Crab\Contracts\Http\Middleware;
+use Crab\Contracts\Http\Request;
+use Crab\Engine\Async\CancelledException;
 use Crab\Http\ErrorResponse;
 use Crab\Http\HttpException;
 use Psr\Http\Message\ResponseInterface;
-use Psr\Http\Message\ServerRequestInterface;
-use Psr\Http\Server\RequestHandlerInterface;
 use Psr\Log\LoggerInterface;
 
 final readonly class ReportedErrors implements Middleware
@@ -177,10 +177,10 @@ final readonly class ReportedErrors implements Middleware
     {
     }
 
-    public function process(ServerRequestInterface $request, RequestHandlerInterface $handler): ResponseInterface
+    public function handle(Request $request, Handler $next): ResponseInterface
     {
         try {
-            return $handler->handle($request);
+            return $next->handle($request);
         } catch (CancelledException $cancelled) {
             throw $cancelled;
         } catch (\Throwable $error) {

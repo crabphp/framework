@@ -7,7 +7,9 @@ namespace Crab\Tests\Http;
 use Crab\App;
 use Crab\Container\Container;
 use Crab\Contracts\Auth\Identity;
+use Crab\Contracts\Http\Handler;
 use Crab\Contracts\Http\Middleware;
+use Crab\Contracts\Http\Request as RequestContract;
 use Crab\Engine\FailureReporter;
 use Crab\Http\AccessLog;
 use Crab\Http\ClosureHandler;
@@ -17,12 +19,10 @@ use Crab\Http\Request;
 use Crab\Http\RequestId;
 use Crab\Http\Response;
 use Crab\Http\TrustedProxies;
-use Crab\Http\Uri;
 use PHPUnit\Framework\TestCase;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface;
 use Psr\Http\Message\StreamInterface;
-use Psr\Http\Server\RequestHandlerInterface;
 use Psr\Log\AbstractLogger;
 use Psr\Log\LoggerInterface;
 
@@ -87,7 +87,7 @@ final class AccessLogTest extends TestCase
         });
         $log = new AccessLog(logger: $logger);
 
-        self::assertSame($response, $log->process(new Request('POST', '/users/7', serverParams: [
+        self::assertSame($response, $log->handle(new Request('POST', '/users/7', serverParams: [
             'REMOTE_ADDR' => '203.0.113.7',
         ]), $handler));
         self::assertCount(1, $logger->records);
@@ -109,7 +109,7 @@ final class AccessLogTest extends TestCase
         self::assertArrayNotHasKey('request_id', $context);
         self::assertArrayNotHasKey('user', $context);
 
-        $log->process(new Request('GET', '/next'), new ClosureHandler(static fn(): string => 'next'));
+        $log->handle(new Request('GET', '/next'), new ClosureHandler(static fn(): string => 'next'));
         self::assertCount(2, $logger->records);
         self::assertSame(
             ['GET', '/next', 200],
@@ -123,7 +123,7 @@ final class AccessLogTest extends TestCase
         $log = new AccessLog(logger: $logger);
         $request = new Request('GET', '/users/7?token=secret');
         $request = $request->withRequestTarget('/users/7?token=another-secret');
-        $log->process($request, new ClosureHandler(static fn(): string => 'ok'));
+        $log->handle($request, new ClosureHandler(static fn(): string => 'ok'));
 
         self::assertSame('/users/7', $logger->records[0]['context']['path']);
         $record = json_encode($logger->records[0], JSON_THROW_ON_ERROR);
@@ -153,7 +153,7 @@ final class AccessLogTest extends TestCase
         $handler = new ClosureHandler(static fn(): never => throw $failure);
 
         try {
-            new AccessLog(logger: $logger)->process(new Request('GET', '/fail'), $handler);
+            new AccessLog(logger: $logger)->handle(new Request('GET', '/fail'), $handler);
             self::fail('The exception did not reach the caller.');
         } catch (\RuntimeException $error) {
             self::assertSame($failure, $error);
@@ -182,7 +182,7 @@ final class AccessLogTest extends TestCase
         });
         $response = Response::text('created', 201);
         try {
-            $result = new AccessLog(logger: $logger)->process(
+            $result = new AccessLog(logger: $logger)->handle(
                 new Request('POST', '/users'),
                 new ClosureHandler(static fn(): ResponseInterface => $response),
             );
@@ -208,7 +208,7 @@ final class AccessLogTest extends TestCase
         });
         try {
             try {
-                new AccessLog(logger: $logger)->process(
+                new AccessLog(logger: $logger)->handle(
                     new Request('GET', '/fail'),
                     new ClosureHandler(static fn(): never => throw $original),
                 );
@@ -237,7 +237,7 @@ final class AccessLogTest extends TestCase
             $reports[] = [$what, $error];
         });
         try {
-            self::assertSame($response, new AccessLog(logger: $logger)->process(
+            self::assertSame($response, new AccessLog(logger: $logger)->handle(
                 new Request('POST', '/stream'),
                 new ClosureHandler(static fn(): ResponseInterface => $response),
             ));
@@ -251,7 +251,7 @@ final class AccessLogTest extends TestCase
     public function testAFailedPathLookupStillRunsTheHandlerAndReportsItsFailure(): void
     {
         $failure = new \RuntimeException('request URI is unavailable');
-        $request = $this->createStub(ServerRequestInterface::class);
+        $request = $this->createStub(RequestContract::class);
         $request->method('getUri')->willThrowException($failure);
         $original = new \DomainException('original handler failure');
         $logger = new AccessLogLogger();
@@ -263,7 +263,7 @@ final class AccessLogTest extends TestCase
         });
         try {
             try {
-                new AccessLog(logger: $logger)->process(
+                new AccessLog(logger: $logger)->handle(
                     $request,
                     new ClosureHandler(static fn(): never => throw $original),
                 );
@@ -299,9 +299,9 @@ final class AccessLogTest extends TestCase
         $log = new AccessLog(skip: ['/up'], logger: $logger);
         $handler = new ClosureHandler(static fn(): string => 'ok');
 
-        self::assertSame(200, $log->process(new Request('GET', '/up?check=secret'), $handler)->getStatusCode());
+        self::assertSame(200, $log->handle(new Request('GET', '/up?check=secret'), $handler)->getStatusCode());
         self::assertSame([], $logger->records);
-        $log->process(new Request('GET', '/up/more'), $handler);
+        $log->handle(new Request('GET', '/up/more'), $handler);
         self::assertCount(1, $logger->records);
         self::assertSame('/up/more', $logger->records[0]['context']['path']);
     }
@@ -311,7 +311,7 @@ final class AccessLogTest extends TestCase
         $logger = new AccessLogLogger();
         $levels = ['debug', 'info', 'notice', 'warning', 'error', 'critical', 'alert', 'emergency'];
         foreach ($levels as $level) {
-            new AccessLog(level: $level, logger: $logger)->process(
+            new AccessLog(level: $level, logger: $logger)->handle(
                 new Request('GET', '/'),
                 new ClosureHandler(static fn(): string => 'ok'),
             );
@@ -343,18 +343,6 @@ final class AccessLogTest extends TestCase
         self::assertSame('203.0.113.7', $logger->records[0]['context']['ip']);
     }
 
-    public function testAPsr7RequestUsesTheConnectionAddress(): void
-    {
-        $logger = new AccessLogLogger();
-        $request = $this->createStub(ServerRequestInterface::class);
-        $request->method('getMethod')->willReturn('GET');
-        $request->method('getUri')->willReturn(new Uri('/foreign'));
-        $request->method('getServerParams')->willReturn(['REMOTE_ADDR' => '203.0.113.8']);
-        new AccessLog(logger: $logger)->process($request, new ClosureHandler(static fn(): string => 'ok'));
-
-        self::assertSame('203.0.113.8', $logger->records[0]['context']['ip']);
-    }
-
     public function testAnUnknownBodySizeIsLoggedWithoutReadingTheBody(): void
     {
         $logger = new AccessLogLogger();
@@ -364,7 +352,7 @@ final class AccessLogTest extends TestCase
         $body->expects(self::never())->method('read');
         $body->expects(self::never())->method('__toString');
         $response = new Response(body: $body);
-        new AccessLog(logger: $logger)->process(
+        new AccessLog(logger: $logger)->handle(
             new Request('GET', '/stream'),
             new ClosureHandler(static fn(): ResponseInterface => $response),
         );
@@ -395,11 +383,9 @@ final class AccessLogTest extends TestCase
     {
         $logger = new AccessLogLogger();
         $authenticate = new class implements Middleware {
-            public function process(
-                ServerRequestInterface $request,
-                RequestHandlerInterface $handler,
-            ): ResponseInterface {
-                return $handler->handle($request->withAttribute(Identity::ATTRIBUTE, new AccessLogUser(7)));
+            public function handle(RequestContract $request, Handler $next): ResponseInterface
+            {
+                return $next->handle($request->withAttribute(Identity::ATTRIBUTE, new AccessLogUser(7)));
             }
         };
         $handler = new ClosureHandler(static function (ServerRequestInterface $request): string {
@@ -418,7 +404,7 @@ final class AccessLogTest extends TestCase
     {
         $this->expectException(\LogicException::class);
         $this->expectExceptionMessage('Register a log plugin that binds Psr\Log\LoggerInterface');
-        new AccessLog()->process(new Request('GET', '/'), new ClosureHandler(static fn(): string => 'ok'));
+        new AccessLog()->handle(new Request('GET', '/'), new ClosureHandler(static fn(): string => 'ok'));
     }
 
     public function testAContainerWithoutALoggerSaysWhatToRegister(): void

@@ -348,11 +348,11 @@ Any middleware can authenticate. It finds the user and passes the request on wit
 
 ```php
 use App\Users;
+use Crab\Contracts\Http\Handler;
 use Crab\Contracts\Http\Middleware;
+use Crab\Contracts\Http\Request;
 use Crab\Http\ErrorResponse;
 use Psr\Http\Message\ResponseInterface;
-use Psr\Http\Message\ServerRequestInterface;
-use Psr\Http\Server\RequestHandlerInterface;
 
 final readonly class ProxyAuth implements Middleware
 {
@@ -360,19 +360,25 @@ final readonly class ProxyAuth implements Middleware
     {
     }
 
-    public function process(ServerRequestInterface $request, RequestHandlerInterface $handler): ResponseInterface
+    public function handle(Request $request, Handler $next): ResponseInterface
     {
         $user = $this->users->resolve($request->getHeaderLine('X-Authenticated-User'));
         if ($user === null) {
             return ErrorResponse::make($request, 401);
         }
 
-        return $handler->handle($request->withAttribute('user', $user));
+        return $next->handle($request->withAttribute('user', $user));
     }
 }
 ```
 
-Actions do not change: they still take `User $user`.
+Actions do not change: they still take `User $user`. Middleware that runs after it reads the user from the request, typed to your class, or `null` when there is none or it is of another class:
+
+```php
+if ($request->user(User::class)?->isAdmin() !== true) {
+    return ErrorResponse::make($request, 403);
+}
+```
 
 ## Authorization
 

@@ -4,13 +4,13 @@ declare(strict_types=1);
 
 namespace Crab\Http;
 
+use Crab\Contracts\Http\Handler;
 use Crab\Contracts\Http\Middleware;
+use Crab\Contracts\Http\Request;
 use Crab\Engine\Async\Pool;
 use Crab\Engine\Async\PoolExhaustedException;
 use Crab\Engine\EventLoop;
 use Psr\Http\Message\ResponseInterface;
-use Psr\Http\Message\ServerRequestInterface;
-use Psr\Http\Server\RequestHandlerInterface;
 
 /**
  * Middleware that lets a worker work on so many requests at once. The
@@ -51,7 +51,7 @@ final class Concurrency implements Middleware
         }
     }
 
-    public function process(ServerRequestInterface $request, RequestHandlerInterface $handler): ResponseInterface
+    public function handle(Request $request, Handler $next): ResponseInterface
     {
         $places = $this->places();
         try {
@@ -63,7 +63,7 @@ final class Concurrency implements Middleware
             ]);
         }
         try {
-            return $handler->handle($request);
+            return $next->handle($request);
         } finally {
             $places->release($place);
         }

@@ -4,10 +4,11 @@ declare(strict_types=1);
 
 namespace Crab\Http;
 
+use Crab\Contracts\Http\Handler;
 use Crab\Contracts\Http\Middleware;
+use Crab\Contracts\Http\Request;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface;
-use Psr\Http\Server\RequestHandlerInterface;
 
 /**
  * Lets pages served from other origins call this API from a browser
@@ -105,7 +106,7 @@ final readonly class Cors implements Middleware
         $this->maxAge = (string) $maxAge;
     }
 
-    public function process(ServerRequestInterface $request, RequestHandlerInterface $handler): ResponseInterface
+    public function handle(Request $request, Handler $next): ResponseInterface
     {
         $origin = $request->getHeaderLine('Origin');
         // Wildcard permission and exposed headers are the same with no
@@ -124,7 +125,7 @@ final readonly class Cors implements Middleware
                     ])
             );
         }
-        $response = $handler->handle($request);
+        $response = $next->handle($request);
         if (!$allowed) {
             return $response->withAddedHeader('Vary', 'Origin');
         }

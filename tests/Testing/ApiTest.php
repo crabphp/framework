@@ -10,6 +10,8 @@ use Crab\Contracts\Auth\Identity;
 use Crab\Contracts\Auth\IdentityResolver;
 use Crab\Contracts\Auth\TokenStore;
 use Crab\Contracts\Clock\Clock;
+use Crab\Contracts\Http\Handler;
+use Crab\Contracts\Http\Request;
 use Crab\Contracts\HttpClient\File;
 use Crab\Http\ClosureHandler;
 use Crab\Http\HttpException;
@@ -349,8 +351,8 @@ final class ApiTest extends TestCase
             $forwarded === '' ? [] : ['X-Forwarded-For' => $forwarded],
             serverParams: ['REMOTE_ADDR' => $peer],
         );
-        $seen = new class implements \Psr\Http\Server\RequestHandlerInterface {
-            public function handle(\Psr\Http\Message\ServerRequestInterface $request): \Psr\Http\Message\ResponseInterface
+        $seen = new class implements Handler {
+            public function handle(Request $request): \Psr\Http\Message\ResponseInterface
             {
                 return \Crab\Http\Response::text($request->ip());
             }
@@ -358,7 +360,7 @@ final class ApiTest extends TestCase
         $ip = static fn(\Crab\Http\Request $request, array $proxies): string => (string) new \Crab\Http\TrustedProxies(
             $proxies,
         )
-            ->process($request, $seen)
+            ->handle($request, $seen)
             ->getBody();
 
         // With no proxy to trust, the address is the connection's, whatever the header claims.

@@ -1,6 +1,6 @@
 # Crab Framework
 
-A minimal PHP 8.4 framework for JSON APIs, built on the Crab networking engine. It is written to be read and understood, by people and by AI agents alike: explicit types, no hidden state, one way to do each thing. It is at an early stage, with releases tagged on GitHub and not yet on Packagist: the engine is implemented and measured, and the components an API needs are built on it, from routing and validation to the database, a cache, a queue and a scheduler. Components follow the PHP-FIG standards: PSR-7 messages, PSR-17 factories, PSR-15 handlers and middleware, a PSR-11 container, a PSR-3 logger, a PSR-14 dispatcher, a PSR-16 cache, a PSR-18 client and a PSR-20 clock.
+A minimal PHP 8.4 framework for JSON APIs, built on the Crab networking engine. It is written to be read and understood, by people and by AI agents alike: explicit types, no hidden state, one way to do each thing. It is at an early stage, with releases tagged on GitHub and not yet on Packagist: the engine is implemented and measured, and the components an API needs are built on it, from routing and validation to the database, a cache, a queue and a scheduler. Components follow the PHP-FIG standards: PSR-7 messages, PSR-17 factories, a PSR-11 container, a PSR-3 logger, a PSR-14 dispatcher, a PSR-16 cache, a PSR-18 client and a PSR-20 clock.
 
 The guide for writing an application is in [docs/](docs/documentation.md); run `composer docs` to read it in a browser.
 
@@ -163,28 +163,28 @@ A signature is read once when the route is added, not on each request. Performan
 Middleware is code that runs around a request: before it reaches the route, after the route has answered, or instead of the route.
 
 ~~~php
+use Crab\Contracts\Http\Handler;
 use Crab\Contracts\Http\Middleware;
+use Crab\Contracts\Http\Request;
 use Crab\Http\ErrorResponse;
 use Psr\Http\Message\ResponseInterface;
-use Psr\Http\Message\ServerRequestInterface;
-use Psr\Http\Server\RequestHandlerInterface;
 
 final readonly class RequireJson implements Middleware
 {
-    public function process(ServerRequestInterface $request, RequestHandlerInterface $handler): ResponseInterface
+    public function handle(Request $request, Handler $next): ResponseInterface
     {
         if (!str_contains($request->getHeaderLine('Content-Type'), 'json')) {
             return ErrorResponse::make($request, 415, 'Send Content-Type: application/json.');
         }
 
-        $response = $handler->handle($request);                 // let it through
+        $response = $next->handle($request);                    // let it through
 
         return $response->withHeader('X-Api-Version', '2');     // and add to what comes back
     }
 }
 ~~~
 
-`php cua make:middleware RequireJson` writes a pass-through stub in `app/Http/`. Edit it into the implementation above to check JSON and add the response header. `Middleware` is PSR-15's `MiddlewareInterface` under Crab's name, so middleware from any PSR-15 library works too. A middleware class is made by the container, once per worker, so its constructor can ask for services; like them, it must not keep anything about one request.
+`php cua make:middleware RequireJson` writes a pass-through stub in `app/Http/`. Edit it into the implementation above to check JSON and add the response header. `Middleware` is Crab's own, not PSR-15's: it is given Crab's `Request`, so `$request->user()` and `$request->ip()` are at hand, and `$next` is the rest of the chain. A middleware class is made by the container, once per worker, so its constructor can ask for services; like them, it must not keep anything about one request.
 
 There are two places to use one, and the same class works in both.
 
@@ -225,7 +225,7 @@ request  →  every request's  →  the group's  →  the route's  →  action
 - **In each list the first is outermost.** So `prepend:` is what a request meets first and what sees the response last.
 - **Middleware around every request also runs when no route matches**, which is how a 404 still gets its CORS headers. A route's middleware runs only once its route has matched.
 - **A refusal passes back through everything outside it.** A 401 from a route's middleware is still seen by the middleware around every request.
-- **To hand something to the action, put it on the request:** `$handler->handle($request->withAttribute('tenant', $tenant))`, read with `$request->getAttribute('tenant')`.
+- **To hand something to the action, put it on the request:** `$next->handle($request->withAttribute('tenant', $tenant))`, read with `$request->getAttribute('tenant')`.
 - **Middleware given by class name is made when a worker starts**, not on the first request, so one that cannot be made stops the server from starting. A route that names a class that does not exist, or one that is not middleware, is refused as soon as it is declared, with the route's name.
 - **The same middleware given twice runs once.** `TokenAuth::class` on a group and again on a route inside it is one check, not two. Two objects of one class, `new RequireRole('admin')` and `new RequireRole('billing')`, are two middleware and both run.
 - **`php cua route:list` shows the middleware around each route**, its groups' included.
@@ -286,7 +286,7 @@ Route::middleware(TokenAuth::class)->group(function () {
 
 - **The user reaches an action by type.** A parameter whose class implements `Identity` receives the user that middleware put on the request's `user` attribute; a request with none is answered with `401`. Make the parameter nullable for a route that works either way.
 - **There is no `Auth::user()`.** A worker serves requests that overlap, so the user travels with the request and nowhere else.
-- **Any middleware can be a way of authenticating.** It finds the user, and either calls `$handler->handle($request->withAttribute('user', $user))` or answers `401`. A session cookie, a signed address, a JWT, a header a proxy sets: each is a few lines of middleware of your own, and needs nothing more from Crab.
+- **Any middleware can be a way of authenticating.** It finds the user, and either calls `$next->handle($request->withAttribute('user', $user))` or answers `401`. Middleware after it reads the user with `$request->user(User::class)`. A session cookie, a signed address, a JWT, a header a proxy sets: each is a few lines of middleware of your own, and needs nothing more from Crab.
 - **`AuthPlugin`, registered by default,** binds what every way shares, the `PasswordHasher`: `hash()`, `verify()` and `needsRehash()`, over PHP's own password hashing.
 
 ### Tokens
@@ -411,7 +411,7 @@ Crab focuses on JSON APIs and services. [Arc](https://github.com/crabphp/arc) is
 
 ## Requests and responses
 
-An action that asks for the request receives `Contracts\Http\Request`, an extended PSR-7 server request. A PSR-15 `RequestHandlerInterface` can be a route's action too; it receives the request, with the route parameters as attributes.
+An action that asks for the request receives `Contracts\Http\Request`, an extended PSR-7 server request. A `Contracts\Http\Handler` can be a route's action too; it receives the request, with the route parameters as attributes.
 
 ~~~php
 use Crab\Contracts\Clock\Clock;
@@ -1058,7 +1058,7 @@ Add your own with `Command::add('mail:send', SendMail::class)`, which is `$app->
 
 ~~~php
 $app->register(Acme\Mailer\MailerPlugin::class);   // a class with register(Container $container)
-->withMiddleware([Acme\Tracing::class])              // in app.php: any PSR-15 middleware, around every request
+->withMiddleware([Acme\Tracing::class])              // in app.php: middleware around every request
 Route::get('/users/{id}', ShowUser::class);            // an action class made by the container
 ~~~
 
@@ -1074,7 +1074,7 @@ A plugin that needs something open in every worker, such as a connection or a ti
 | --- | --- |
 | `src/Engine/` | The networking engine: TCP, HTTP/1.1, WebSocket, coroutines, timers and supervised workers. It has its own `composer.json`, so it can later be published alone as `crabphp/engine`; for now it ships inside the framework. See its [README](src/Engine/README.md) and [architecture](src/Engine/ARCHITECTURE.md). |
 | `src/App.php` | The application: configuration, container, router, middleware and the engine runtime that serves them. |
-| `src/Http/` | PSR-7 request, response, stream and URI, the PSR-17 factory, the middleware pipeline, the error handler, and `EngineHandler`, which runs a PSR-15 handler on the engine's HTTP server. |
+| `src/Http/` | PSR-7 request, response, stream and URI, the PSR-17 factory, the middleware pipeline, the error handler, and `EngineHandler`, which runs a `Handler` on the engine's HTTP server. |
 | `src/Console/` | The command runner, with its input and output. |
 | `src/Commands/` | The application's built-in commands. |
 | `src/Container/` | The PSR-11 container. |
@@ -1089,7 +1089,7 @@ A plugin that needs something open in every worker, such as a connection or a ti
 | `src/Log/` | The PSR-3 logger. |
 | `src/Testing/` | Helpers for testing components. |
 | `src/Server.php` | Runs the server in the foreground, in the background and under a watcher, and controls a running one. |
-| `src/Routing/` | The router, itself a PSR-15 handler, and `ActionHandler`, which calls a route's action by its signature. |
+| `src/Routing/` | The router, itself a `Handler`, and `ActionHandler`, which calls a route's action by its signature. |
 | `src/Broadcast/` | Channel memberships, bounded fan-out and local or package carriers behind contracts. |
 | `src/HttpClient/` | The HTTP client: PSR-18, on the event loop, HTTP/2 and HTTP/1.1. |
 | `src/Validation/` | Builds typed objects from request data, with rules as attributes. |

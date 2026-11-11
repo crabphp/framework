@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Crab\Tests\Http;
 
+use Crab\Contracts\Http\Handler;
+use Crab\Contracts\Http\Request as RequestContract;
 use Crab\Engine\Async\Task;
 use Crab\Engine\EventLoop;
 use Crab\Http\Concurrency;
@@ -13,7 +15,6 @@ use Crab\Tests\Support\Wait;
 use PHPUnit\Framework\TestCase;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface;
-use Psr\Http\Server\RequestHandlerInterface;
 
 final class ConcurrencyTest extends TestCase
 {
@@ -48,7 +49,7 @@ final class ConcurrencyTest extends TestCase
 
         $tasks = [];
         foreach (['/1', '/2', '/3', '/4', '/5'] as $path) {
-            $tasks[] = Task::spawn($loop, static fn(): ResponseInterface => $limit->process(
+            $tasks[] = Task::spawn($loop, static fn(): ResponseInterface => $limit->handle(
                 self::request($path),
                 $handler,
             ));
@@ -102,8 +103,8 @@ final class ConcurrencyTest extends TestCase
             return Response::json(['ok' => true]);
         });
 
-        $slow = Task::spawn($loop, static fn(): ResponseInterface => $limit->process(self::request('/slow'), $handler));
-        $late = Task::spawn($loop, static fn(): ResponseInterface => $limit->process(self::request('/late'), $handler));
+        $slow = Task::spawn($loop, static fn(): ResponseInterface => $limit->handle(self::request('/slow'), $handler));
+        $late = Task::spawn($loop, static fn(): ResponseInterface => $limit->handle(self::request('/late'), $handler));
 
         try {
             Wait::until($loop, $late->isComplete(...), 'the queued request to time out');
@@ -127,7 +128,7 @@ final class ConcurrencyTest extends TestCase
         $limit = new Concurrency(1);
         $handler = self::handler(static fn(): ResponseInterface => throw new \RuntimeException('broken'));
         try {
-            $limit->process(self::request('/'), $handler);
+            $limit->handle(self::request('/'), $handler);
             self::fail('What the application throws must pass through.');
         } catch (\RuntimeException $error) {
             self::assertSame('broken', $error->getMessage());
@@ -136,7 +137,7 @@ final class ConcurrencyTest extends TestCase
         self::assertSame(
             204,
             $limit
-                ->process(self::request('/'), self::handler(static fn(): ResponseInterface => Response::noContent()))
+                ->handle(self::request('/'), self::handler(static fn(): ResponseInterface => Response::noContent()))
                 ->getStatusCode(),
         );
     }
@@ -158,14 +159,14 @@ final class ConcurrencyTest extends TestCase
         return new Request('GET', $path)->withHeader('Accept', 'application/json');
     }
 
-    private static function handler(\Closure $handle): RequestHandlerInterface
+    private static function handler(\Closure $handle): Handler
     {
-        return new class($handle) implements RequestHandlerInterface {
+        return new class($handle) implements Handler {
             public function __construct(
                 private readonly \Closure $handle,
             ) {}
 
-            public function handle(ServerRequestInterface $request): ResponseInterface
+            public function handle(RequestContract $request): ResponseInterface
             {
                 return ($this->handle)($request);
             }

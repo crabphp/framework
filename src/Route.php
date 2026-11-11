@@ -4,9 +4,9 @@ declare(strict_types=1);
 
 namespace Crab;
 
+use Crab\Contracts\Http\Handler;
 use Crab\Contracts\Routing\DeclaredRoute;
 use Crab\Contracts\Routing\RouteGroup;
-use Psr\Http\Server\RequestHandlerInterface;
 
 /**
  * Declares routes on the current application's router, for route files:
@@ -34,41 +34,41 @@ final class Route
     }
 
     /**
-     * @param RequestHandlerInterface|\Closure|string|array{class-string, string} $action
+     * @param Handler|\Closure|string|array{class-string, string} $action
      */
-    public static function get(string $pattern, RequestHandlerInterface|\Closure|string|array $action): DeclaredRoute
+    public static function get(string $pattern, Handler|\Closure|string|array $action): DeclaredRoute
     {
         return App::current()->router->get($pattern, $action);
     }
 
     /**
-     * @param RequestHandlerInterface|\Closure|string|array{class-string, string} $action
+     * @param Handler|\Closure|string|array{class-string, string} $action
      */
-    public static function post(string $pattern, RequestHandlerInterface|\Closure|string|array $action): DeclaredRoute
+    public static function post(string $pattern, Handler|\Closure|string|array $action): DeclaredRoute
     {
         return App::current()->router->post($pattern, $action);
     }
 
     /**
-     * @param RequestHandlerInterface|\Closure|string|array{class-string, string} $action
+     * @param Handler|\Closure|string|array{class-string, string} $action
      */
-    public static function put(string $pattern, RequestHandlerInterface|\Closure|string|array $action): DeclaredRoute
+    public static function put(string $pattern, Handler|\Closure|string|array $action): DeclaredRoute
     {
         return App::current()->router->put($pattern, $action);
     }
 
     /**
-     * @param RequestHandlerInterface|\Closure|string|array{class-string, string} $action
+     * @param Handler|\Closure|string|array{class-string, string} $action
      */
-    public static function patch(string $pattern, RequestHandlerInterface|\Closure|string|array $action): DeclaredRoute
+    public static function patch(string $pattern, Handler|\Closure|string|array $action): DeclaredRoute
     {
         return App::current()->router->patch($pattern, $action);
     }
 
     /**
-     * @param RequestHandlerInterface|\Closure|string|array{class-string, string} $action
+     * @param Handler|\Closure|string|array{class-string, string} $action
      */
-    public static function delete(string $pattern, RequestHandlerInterface|\Closure|string|array $action): DeclaredRoute
+    public static function delete(string $pattern, Handler|\Closure|string|array $action): DeclaredRoute
     {
         return App::current()->router->delete($pattern, $action);
     }
@@ -88,9 +88,9 @@ final class Route
     /**
      * Starts a group of routes behind middleware.
      *
-     * @param \Psr\Http\Server\MiddlewareInterface|class-string<\Psr\Http\Server\MiddlewareInterface> ...$middleware
+     * @param \Crab\Contracts\Http\Middleware|class-string<\Crab\Contracts\Http\Middleware> ...$middleware
      */
-    public static function middleware(\Psr\Http\Server\MiddlewareInterface|string ...$middleware): RouteGroup
+    public static function middleware(\Crab\Contracts\Http\Middleware|string ...$middleware): RouteGroup
     {
         return App::current()->router->middleware(...$middleware);
     }
@@ -98,13 +98,10 @@ final class Route
     /**
      * A route for any other method, such as OPTIONS.
      *
-     * @param RequestHandlerInterface|\Closure|string|array{class-string, string} $action
+     * @param Handler|\Closure|string|array{class-string, string} $action
      */
-    public static function add(
-        string $method,
-        string $pattern,
-        RequestHandlerInterface|\Closure|string|array $action,
-    ): DeclaredRoute {
+    public static function add(string $method, string $pattern, Handler|\Closure|string|array $action): DeclaredRoute
+    {
         return App::current()->router->add($method, $pattern, $action);
     }
 }

@@ -4,6 +4,17 @@ Crab follows [semantic versioning](https://semver.org). Before 1.0, a minor vers
 
 ## Unreleased
 
+Breaking, each with what an application changes:
+
+- **Middleware is Crab's own, not PSR-15's:** `Contracts\Http\Middleware` no longer extends `Psr\Http\Server\MiddlewareInterface`. Its one method is `handle(Request $request, Handler $next): ResponseInterface`, given Crab's `Contracts\Http\Request`. Rename each middleware's `process(ServerRequestInterface $request, RequestHandlerInterface $handler)` to `handle(Request $request, Handler $next)`, import `Crab\Contracts\Http\Request` and `Crab\Contracts\Http\Handler`, and call `$next->handle($request)`. A PSR-15 middleware from a library is no longer accepted; wrap it in a middleware of your own.
+- **Handlers are Crab's own:** `Contracts\Http\Handler`, `handle(Request $request): ResponseInterface`, takes the place of `Psr\Http\Server\RequestHandlerInterface` for the application, the router (`Contracts\Routing\Router` extends it), a route given a handler object and `Testing\Api`. A class of your own that implements `RequestHandlerInterface` implements `Handler` instead. The `psr/http-server-handler` and `psr/http-server-middleware` packages are no longer required.
+- **`ErrorRenderer::render()` is given Crab's `Request`.** A renderer that declares `ServerRequestInterface $request` still fits; one that wants `user()` or `ip()` declares `Request`.
+
+Also in this release:
+
+- **`Request::user()`:** the user that authentication middleware put on the request, or null: `$request->user(User::class)?->isAdmin()`. With a class it gives that class or null, typed for static analysis. An action still takes the user as a parameter; this is for middleware and error renderers. `RateLimit`, `AccessLog`, `TokenAuth` and `CookieAuth` read the user and the address through it.
+- **`make:middleware`** writes the new `handle(Request $request, Handler $next)` stub, and refuses the names `Handler`, `Middleware`, `Request` and `ResponseInterface`, which the stub imports.
+
 ## 0.7.0 — 2026-11-12
 
 Breaking, each with what an application changes:

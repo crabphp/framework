@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Crab\Routing;
 
 use Crab\Contracts\Auth\Identity;
+use Crab\Contracts\Http\Handler;
 use Crab\Contracts\Http\Request;
 use Crab\Contracts\Validation\ObjectRule;
 use Crab\Contracts\Validation\Rule;
@@ -22,10 +23,9 @@ use Psr\Container\ContainerInterface;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface;
 use Psr\Http\Message\UploadedFileInterface;
-use Psr\Http\Server\RequestHandlerInterface;
 
 /**
- * The PSR-15 handler of a route whose action is a closure, a class with
+ * The Handler of a route whose action is a closure, a class with
  * handle() or a method of a class. It calls the action with what its
  * signature asks for. Each parameter is one of these, and says which by
  * its name, its type or its mark:
@@ -52,7 +52,7 @@ use Psr\Http\Server\RequestHandlerInterface;
  * asks for something else, or for a body on a request that has none,
  * stops the application from starting.
  */
-final class ActionHandler implements RequestHandlerInterface
+final class ActionHandler implements Handler
 {
     /**
      * A name for the action, for the route list: "Closure", its class, or "Class::method".
@@ -178,7 +178,7 @@ final class ActionHandler implements RequestHandlerInterface
         }
     }
 
-    public function handle(ServerRequestInterface $request): ResponseInterface
+    public function handle(Request $request): ResponseInterface
     {
         $arguments = [];
         $pathErrors = [];

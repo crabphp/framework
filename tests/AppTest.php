@@ -8,6 +8,8 @@ use Crab\App;
 use Crab\Config\Config;
 use Crab\Contracts\Config\Config as ConfigContract;
 use Crab\Contracts\Container\Container;
+use Crab\Contracts\Http\Handler;
+use Crab\Contracts\Http\Middleware;
 use Crab\Contracts\Http\MiddlewareStack;
 use Crab\Contracts\Http\Request as RequestContract;
 use Crab\Contracts\Plugin;
@@ -28,8 +30,6 @@ use PHPUnit\Framework\TestCase;
 use Psr\Http\Message\ResponseFactoryInterface;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface;
-use Psr\Http\Server\MiddlewareInterface;
-use Psr\Http\Server\RequestHandlerInterface;
 use Psr\Log\LoggerInterface;
 
 final class Greeter
@@ -82,14 +82,14 @@ final readonly class IndexRoms
     public function handle(object $event): void {}
 }
 
-final class GreetHandler implements RequestHandlerInterface
+final class GreetHandler implements Handler
 {
     public function __construct(
         private Greeter $greeter,
         private ResponseFactoryInterface $responses,
     ) {}
 
-    public function handle(ServerRequestInterface $request): ResponseInterface
+    public function handle(RequestContract $request): ResponseInterface
     {
         $response = $this->responses->createResponse();
         $response->getBody()->write($this->greeter->greeting . ', ' . $request->getAttribute('name'));
@@ -97,16 +97,16 @@ final class GreetHandler implements RequestHandlerInterface
     }
 }
 
-final class TagMiddleware implements MiddlewareInterface
+final class TagMiddleware implements Middleware
 {
     public function __construct(
         private string $tag = 'named',
     ) {}
 
-    public function process(ServerRequestInterface $request, RequestHandlerInterface $handler): ResponseInterface
+    public function handle(RequestContract $request, Handler $next): ResponseInterface
     {
         $trail = $request->getAttribute('trail', '') . $this->tag . '>';
-        $response = $handler->handle($request->withAttribute('trail', $trail));
+        $response = $next->handle($request->withAttribute('trail', $trail));
         return $response->withAddedHeader('X-Trail', $this->tag);
     }
 }
@@ -492,8 +492,8 @@ final class AppTest extends TestCase
             // An object made before the workers are forked is the same object in each of them.
             $made = new RequestId();
             $pass = new Pipeline($app->router);
-            $one = $made->process(new Request('GET', '/'), $pass)->getHeaderLine('X-Request-Id');
-            $other = (clone $made)->process(new Request('GET', '/'), $pass)->getHeaderLine('X-Request-Id');
+            $one = $made->handle(new Request('GET', '/'), $pass)->getHeaderLine('X-Request-Id');
+            $other = (clone $made)->handle(new Request('GET', '/'), $pass)->getHeaderLine('X-Request-Id');
             self::assertNotSame($one, $other, 'Two workers do not give out the same ids.');
 
             $off = new App();

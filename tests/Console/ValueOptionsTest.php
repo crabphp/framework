@@ -414,8 +414,8 @@ final class ValueOptionsTest extends TestCase
             'Mixed',
             'Middleware',
             'ResponseInterface',
-            'ServerRequestInterface',
-            'RequestHandlerInterface',
+            'Request',
+            'Handler',
         ] as $name) {
             yield $name => [$name, 'App\\Http'];
         }

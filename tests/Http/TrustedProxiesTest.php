@@ -87,7 +87,7 @@ final class TrustedProxiesTest extends TestCase
                     $fromEngine->getServerParams()['REMOTE_ADDR'],
                     $direct->ip(),
                     (string) new TrustedProxies(['127.0.0.1'])
-                        ->process($forwarded, $handler)
+                        ->handle($forwarded, $handler)
                         ->getBody(),
                 ],
                 $spelling,
@@ -118,6 +118,6 @@ final class TrustedProxiesTest extends TestCase
             serverParams: ['REMOTE_ADDR' => $peer],
         );
         $handler = new ClosureHandler(static fn(Request $request): Response => Response::text($request->ip()));
-        return (string) $proxies->process($request, $handler)->getBody();
+        return (string) $proxies->handle($request, $handler)->getBody();
     }
 }

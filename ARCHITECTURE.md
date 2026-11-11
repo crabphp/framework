@@ -58,14 +58,14 @@ A contract exists for everything a package touches, including where no PSR exist
 | `Config\Config` | none | today |
 | `Database\Database`, `Database\Connection`, `Database\Query` | none | today |
 | `Database\Schema`, `Database\Table`, `Database\Column`, `Database\Migration`, `Database\Migrator` | none | today |
-| `Routing\Router` | PSR-15 `RequestHandlerInterface` | today |
+| `Routing\Router` | none; extends Crab's `Http\Handler` | today |
 | `Routing\RouteInfo` | none; a value object | today |
 | `Routing\Urls` | none | today |
 | `Routing\DeclaredRoute`, `Routing\RouteGroup` | none | today |
 | `Validation\Validator`, `Validation\Rule` | none | today |
 | `Console\Console` | none | today |
 | `Clock\Clock` | PSR-20 `ClockInterface` | today |
-| `Http\Middleware` | PSR-15 `MiddlewareInterface` | today |
+| `Http\Middleware`, `Http\Handler` | none; Crab's own, given Crab's `Http\Request` | today |
 | `Auth\Identity`, `Auth\PasswordHasher` | none | today |
 | `Auth\TokenStore`, `Auth\IdentityResolver` | none | today, for authentication by token |
 | `Log\Logger` | PSR-3 `LoggerInterface` | today |
@@ -189,7 +189,7 @@ Components take every async tool from the engine's own types (`EventLoop`, `Susp
 
 ## Middleware *(today)*
 
-There is one kind of middleware, PSR-15's, and two places to put it.
+There is one kind of middleware, Crab's own `Middleware::handle(Request $request, Handler $next)`, and two places to put it. It is not PSR-15's: PHP does not let an implementation narrow PSR-15's `ServerRequestInterface` parameter, and middleware needs Crab's `Request`.
 
 | | Around every request | Around some routes |
 | --- | --- | --- |

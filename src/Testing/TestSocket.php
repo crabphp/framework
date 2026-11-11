@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Crab\Testing;
 
 use Crab\Contracts\Auth\Identity;
+use Crab\Contracts\Http\Handler;
 use Crab\Contracts\WebSocket\Binary;
 use Crab\Engine\EventLoop;
 use Crab\Engine\Network\Connection;
@@ -15,8 +16,6 @@ use Crab\Http\EngineHandler;
 use Crab\Http\Request;
 use Crab\Http\Response;
 use Psr\Http\Message\ResponseInterface;
-use Psr\Http\Message\ServerRequestInterface;
-use Psr\Http\Server\RequestHandlerInterface;
 
 /**
  * A WebSocket client over a socket pair. The other end runs the real HTTP
@@ -72,7 +71,7 @@ final class TestSocket
     /**
      * @internal Called by Api with the headers and identity it normally uses.
      */
-    public static function connect(RequestHandlerInterface $app, Request $request): self
+    public static function connect(Handler $app, Request $request): self
     {
         $loop = EventLoop::current();
         $pair = stream_socket_pair(STREAM_PF_UNIX, STREAM_SOCK_STREAM, 0);
@@ -98,15 +97,11 @@ final class TestSocket
         }
     }
 
-    private function startHttp(RequestHandlerInterface $app, Request $request): void
+    private function startHttp(Handler $app, Request $request): void
     {
         $user = $request->getAttribute(Identity::ATTRIBUTE);
         $owner = $this->owner;
-        $handler = new EngineHandler(static function (ServerRequestInterface $received) use (
-            $app,
-            $user,
-            $owner,
-        ): ResponseInterface {
+        $handler = new EngineHandler(static function (Request $received) use ($app, $user, $owner): ResponseInterface {
             if ($user !== null) {
                 $received = $received->withAttribute(Identity::ATTRIBUTE, $user);
             }

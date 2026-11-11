@@ -5,12 +5,12 @@ declare(strict_types=1);
 namespace Crab\Testing;
 
 use Crab\Contracts\Auth\Identity;
+use Crab\Contracts\Http\Handler;
 use Crab\Contracts\HttpClient\File;
 use Crab\Http\Multipart;
 use Crab\Http\Request;
 use Psr\Http\Message\StreamInterface;
 use Psr\Http\Message\UploadedFileInterface;
-use Psr\Http\Server\RequestHandlerInterface;
 
 /**
  * Sends requests to an application in a test, as a client would, and
@@ -33,13 +33,13 @@ use Psr\Http\Server\RequestHandlerInterface;
 final readonly class Api
 {
     /**
-     * @param RequestHandlerInterface $app The application, or any PSR-15 handler.
+     * @param Handler $app The application, or any Handler.
      * @param array<string, string> $headers Sent with every request.
      */
     private SocketFixture $sockets;
 
     public function __construct(
-        private RequestHandlerInterface $app,
+        private Handler $app,
         private array $headers = [],
         private ?Identity $user = null,
         ?SocketFixture $sockets = null,

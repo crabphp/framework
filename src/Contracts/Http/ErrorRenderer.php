@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace Crab\Contracts\Http;
 
 use Psr\Http\Message\ResponseInterface;
-use Psr\Http\Message\ServerRequestInterface;
 
 /**
  * Writes every error response in the application's own format. Bind one
@@ -20,5 +19,5 @@ use Psr\Http\Message\ServerRequestInterface;
  */
 interface ErrorRenderer
 {
-    public function render(Problem $problem, ServerRequestInterface $request): ResponseInterface;
+    public function render(Problem $problem, Request $request): ResponseInterface;
 }

@@ -6,7 +6,10 @@ namespace Crab\Tests\Http;
 
 use Crab\App;
 use Crab\Contracts\Http\ErrorRenderer;
+use Crab\Contracts\Http\Handler;
+use Crab\Contracts\Http\Middleware;
 use Crab\Contracts\Http\Problem;
+use Crab\Contracts\Http\Request as RequestContract;
 use Crab\Http\Cors;
 use Crab\Http\ErrorResponse;
 use Crab\Http\HttpException;
@@ -19,8 +22,6 @@ use Crab\Validation\Email;
 use PHPUnit\Framework\TestCase;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface;
-use Psr\Http\Server\MiddlewareInterface;
-use Psr\Http\Server\RequestHandlerInterface;
 use Psr\Log\LoggerInterface;
 
 /**
@@ -184,9 +185,9 @@ final class LegacyErrors implements ErrorRenderer
 
 final class ReplayGone extends HttpException {}
 
-final class SignInFirst implements MiddlewareInterface
+final class SignInFirst implements Middleware
 {
-    public function process(ServerRequestInterface $request, RequestHandlerInterface $handler): ResponseInterface
+    public function handle(RequestContract $request, Handler $next): ResponseInterface
     {
         return ErrorResponse::make($request, 401, 'Sign in first.', ['WWW-Authenticate' => 'Bearer']);
     }

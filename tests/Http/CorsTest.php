@@ -4,14 +4,14 @@ declare(strict_types=1);
 
 namespace Crab\Tests\Http;
 
+use Crab\Contracts\Http\Handler;
+use Crab\Contracts\Http\Request as RequestContract;
 use Crab\Http\Cors;
 use Crab\Http\Pipeline;
 use Crab\Http\Request;
 use Crab\Http\Response;
 use PHPUnit\Framework\TestCase;
 use Psr\Http\Message\ResponseInterface;
-use Psr\Http\Message\ServerRequestInterface;
-use Psr\Http\Server\RequestHandlerInterface;
 
 final class CorsTest extends TestCase
 {
@@ -61,8 +61,8 @@ final class CorsTest extends TestCase
 
     public function testEveryOriginVariantOfACacheableResponseDeclaresItsVariation(): void
     {
-        $handler = new class implements RequestHandlerInterface {
-            public function handle(ServerRequestInterface $request): ResponseInterface
+        $handler = new class implements Handler {
+            public function handle(RequestContract $request): ResponseInterface
             {
                 return Response::text('public data', headers: [
                     'Cache-Control' => 'public, max-age=600',
@@ -72,7 +72,7 @@ final class CorsTest extends TestCase
         };
         $cors = new Cors(['https://app.example.com']);
         foreach ([[], ['Origin' => 'https://other.example'], ['Origin' => 'https://app.example.com']] as $headers) {
-            $response = $cors->process(new Request('GET', '/', $headers), $handler);
+            $response = $cors->handle(new Request('GET', '/', $headers), $handler);
             self::assertSame('Accept-Encoding, Origin', $response->getHeaderLine('Vary'));
             self::assertSame('public, max-age=600', $response->getHeaderLine('Cache-Control'));
             self::assertSame(
@@ -82,8 +82,8 @@ final class CorsTest extends TestCase
         }
 
         $wildcard = new Cors(['*'], exposed: ['X-Total']);
-        $plain = $wildcard->process(new Request('GET', '/'), $handler);
-        $browser = $wildcard->process(new Request('GET', '/', ['Origin' => 'https://app.example.com']), $handler);
+        $plain = $wildcard->handle(new Request('GET', '/'), $handler);
+        $browser = $wildcard->handle(new Request('GET', '/', ['Origin' => 'https://app.example.com']), $handler);
         self::assertSame('*', $plain->getHeaderLine('Access-Control-Allow-Origin'));
         self::assertSame($browser->getHeaders(), $plain->getHeaders());
     }
@@ -177,8 +177,8 @@ final class CorsTest extends TestCase
 
     private static function api(Cors $cors): Pipeline
     {
-        $route = new class implements RequestHandlerInterface {
-            public function handle(ServerRequestInterface $request): ResponseInterface
+        $route = new class implements Handler {
+            public function handle(RequestContract $request): ResponseInterface
             {
                 return Response::text('reached');
             }

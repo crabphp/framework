@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace Crab\Contracts\Routing;
 
-use Psr\Http\Server\MiddlewareInterface;
+use Crab\Contracts\Http\Middleware;
 
 /**
  * Routes that share a path prefix, middleware, or both, said a step at a
@@ -29,9 +29,9 @@ interface RouteGroup
      * Middleware around every route of the group, outside the routes' own;
      * the first given is outermost.
      *
-     * @param MiddlewareInterface|class-string<MiddlewareInterface> ...$middleware
+     * @param Middleware|class-string<Middleware> ...$middleware
      */
-    public function middleware(MiddlewareInterface|string ...$middleware): static;
+    public function middleware(Middleware|string ...$middleware): static;
 
     /**
      * Runs the closure, and what it declares takes the group's prefix and

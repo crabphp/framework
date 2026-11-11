@@ -20,6 +20,8 @@ use Crab\Contracts\Auth\IdentityResolver;
 use Crab\Contracts\Auth\Tickets as TicketsContract;
 use Crab\Contracts\Auth\TokenStore;
 use Crab\Contracts\Cache\Store;
+use Crab\Contracts\Http\Handler;
+use Crab\Contracts\Http\Request;
 use Crab\Contracts\WebSocket\Socket;
 use Crab\Engine\Async\Task;
 use Crab\Engine\EventLoop;
@@ -137,10 +139,10 @@ final class TicketTest extends TestCase
             scheme: 'Token',
         );
         $ticket = new Ticket(tickets: $this->app->container->get(Tickets::class), tokens: $tokens);
-        $response = $ticket->process(
+        $response = $ticket->handle(
             new \Crab\Http\Request('GET', '/live?ticket=bad')->withQueryParams(['ticket' => 'bad']),
-            new class implements \Psr\Http\Server\RequestHandlerInterface {
-                public function handle(\Psr\Http\Message\ServerRequestInterface $request): \Psr\Http\Message\ResponseInterface
+            new class implements Handler {
+                public function handle(Request $request): \Psr\Http\Message\ResponseInterface
                 {
                     throw new \LogicException('An invalid ticket reached the route.');
                 }

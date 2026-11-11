@@ -4,12 +4,12 @@ declare(strict_types=1);
 
 namespace Crab\Http;
 
+use Crab\Contracts\Http\Handler;
 use Crab\Contracts\Http\HttpError;
 use Crab\Contracts\Http\Middleware;
+use Crab\Contracts\Http\Request;
 use Crab\Engine\Async\CancelledException;
 use Psr\Http\Message\ResponseInterface;
-use Psr\Http\Message\ServerRequestInterface;
-use Psr\Http\Server\RequestHandlerInterface;
 use Psr\Log\LoggerInterface;
 
 /**
@@ -25,10 +25,10 @@ final readonly class ErrorHandler implements Middleware
         private bool $debug = false,
     ) {}
 
-    public function process(ServerRequestInterface $request, RequestHandlerInterface $handler): ResponseInterface
+    public function handle(Request $request, Handler $next): ResponseInterface
     {
         try {
-            return $handler->handle($request);
+            return $next->handle($request);
         } catch (CancelledException $cancelled) {
             // The request is already over; the engine ends it.
             throw $cancelled;

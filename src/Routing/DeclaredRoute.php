@@ -4,8 +4,8 @@ declare(strict_types=1);
 
 namespace Crab\Routing;
 
+use Crab\Contracts\Http\Middleware;
 use Crab\Contracts\Routing\DeclaredRoute as DeclaredRouteContract;
-use Psr\Http\Server\MiddlewareInterface;
 
 /**
  * A route the router has just added. It hands what is said about the
@@ -15,7 +15,7 @@ final readonly class DeclaredRoute implements DeclaredRouteContract
 {
     /**
      * @param \Closure(string): void $name
-     * @param \Closure(list<MiddlewareInterface|string>): void $middleware
+     * @param \Closure(list<Middleware|string>): void $middleware
      */
     public function __construct(
         private \Closure $name,
@@ -28,7 +28,7 @@ final readonly class DeclaredRoute implements DeclaredRouteContract
         return $this;
     }
 
-    public function middleware(MiddlewareInterface|string ...$middleware): static
+    public function middleware(Middleware|string ...$middleware): static
     {
         ($this->middleware)(array_values($middleware));
         return $this;

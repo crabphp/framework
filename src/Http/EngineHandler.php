@@ -4,16 +4,16 @@ declare(strict_types=1);
 
 namespace Crab\Http;
 
+use Crab\Contracts\Http\Handler;
 use Crab\Engine\Http\Request as EngineRequest;
 use Crab\Engine\Http\Response as EngineResponse;
 use Crab\Engine\Http\Upgrade;
 use Crab\Engine\Process\Worker;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\StreamInterface;
-use Psr\Http\Server\RequestHandlerInterface;
 
 /**
- * Runs a PSR-15 handler as the handler of the engine's HttpServer.
+ * Runs a Handler as the handler of the engine's HttpServer.
  */
 final class EngineHandler
 {
@@ -25,7 +25,7 @@ final class EngineHandler
      * ClosureHandler. A route's closure is an action instead, read by
      * ActionHandler.
      */
-    public function __construct(RequestHandlerInterface|\Closure $handler)
+    public function __construct(Handler|\Closure $handler)
     {
         $this->handler = ($handler instanceof \Closure ? new ClosureHandler($handler) : $handler)->handle(...);
     }

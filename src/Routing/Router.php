@@ -4,7 +4,9 @@ declare(strict_types=1);
 
 namespace Crab\Routing;
 
+use Crab\Contracts\Http\Handler;
 use Crab\Contracts\Http\Middleware;
+use Crab\Contracts\Http\Request as RequestContract;
 use Crab\Contracts\Routing\RouteInfo;
 use Crab\Contracts\Routing\Router as RouterContract;
 use Crab\Contracts\Validation\Validator as ValidatorContract;
@@ -17,11 +19,9 @@ use Crab\WebSocket\Connections;
 use Psr\Container\ContainerInterface;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface;
-use Psr\Http\Server\MiddlewareInterface;
-use Psr\Http\Server\RequestHandlerInterface;
 
 /**
- * A PSR-15 handler that dispatches by method and path. Paths without
+ * A Handler that dispatches by method and path. Paths without
  * parameters are one hash lookup; the others share one combined expression
  * per method, built when that method is first matched. Parameters reach the
  * route's handler as request attributes. A path no route matches is answered
@@ -29,7 +29,7 @@ use Psr\Http\Server\RequestHandlerInterface;
  *
  * A closure, the name of a class with handle(), or a class and the name
  * of its method is called with what its signature asks for, and its
- * return value becomes the response; see ActionHandler. A PSR-15 handler,
+ * return value becomes the response; see ActionHandler. A Handler,
  * or the name of a container entry that is one, receives the request and
  * returns the response itself.
  */
@@ -46,13 +46,13 @@ final class Router implements RouterContract
     private const PARAMETER = '/\{([A-Za-z_][A-Za-z0-9_]*)(?::((?:[^{}]++|\{[^{}]*\})+))?\}/';
 
     /**
-     * @var array<string, array<string, RequestHandlerInterface>>
+     * @var array<string, array<string, Handler>>
      */
     private array $static = [];
     /**
      * Per method: expression, parameter names and handler of each route.
      *
-     * @var array<string, list<array{string, list<string>, RequestHandlerInterface}>>
+     * @var array<string, list<array{string, list<string>, Handler}>>
      */
     private array $dynamic = [];
     /**
@@ -77,7 +77,7 @@ final class Router implements RouterContract
     /**
      * The prefix and middleware of each group being declared, outermost first.
      *
-     * @var list<array{string, list<MiddlewareInterface|string>}>
+     * @var list<array{string, list<Middleware|string>}>
      */
     private array $groups = [];
     /**
@@ -91,7 +91,7 @@ final class Router implements RouterContract
      * it: its handler, the middleware around it, its expression and
      * parameter names, and its place among the method's dynamic routes.
      *
-     * @var array<string, array{RequestHandlerInterface, list<MiddlewareInterface|string>, string, list<string>, int|null}>
+     * @var array<string, array{Handler, list<Middleware|string>, string, list<string>, int|null}>
      */
     private array $declared = [];
 
@@ -113,11 +113,8 @@ final class Router implements RouterContract
      * A parameter matches one path segment unless its expression says
      * otherwise.
      */
-    public function add(
-        string $method,
-        string $pattern,
-        RequestHandlerInterface|\Closure|string|array $action,
-    ): DeclaredRoute {
+    public function add(string $method, string $pattern, Handler|\Closure|string|array $action): DeclaredRoute
+    {
         $middleware = [];
         $prefix = '';
         foreach ($this->groups as [$groupPrefix, $groupMiddleware]) {
@@ -135,7 +132,7 @@ final class Router implements RouterContract
         }
         if ($method === 'WS' && !$action instanceof \Closure && !is_array($action) && !self::isActionClass($action)) {
             throw new \LogicException(
-                "The action of WS {$pattern} must be a closure or a class with handle(Socket \$socket, ...). Use Route::websocket() with an action, rather than a PSR-15 handler.",
+                "The action of WS {$pattern} must be a closure or a class with handle(Socket \$socket, ...). Use Route::websocket() with an action, rather than a Handler.",
             );
         }
         if ($action instanceof \Closure || is_array($action) || self::isActionClass($action)) {
@@ -191,7 +188,7 @@ final class Router implements RouterContract
      * Adds middleware inside what is already around a declared route, and
      * puts the route, wrapped in all of it, where requests find it.
      *
-     * @param list<MiddlewareInterface|string> $middleware
+     * @param list<Middleware|string> $middleware
      */
     private function wrap(string $key, array $middleware): void
     {
@@ -244,7 +241,7 @@ final class Router implements RouterContract
         return $this->newGroup()->prefix($prefix);
     }
 
-    public function middleware(MiddlewareInterface|string ...$middleware): RouteGroup
+    public function middleware(Middleware|string ...$middleware): RouteGroup
     {
         return $this->newGroup()->middleware(...$middleware);
     }
@@ -271,8 +268,8 @@ final class Router implements RouterContract
      * middleware and both run, since each was given its own options:
      * leaving one out could drop a check the application asked for.
      *
-     * @param list<MiddlewareInterface|string> $middleware
-     * @return list<MiddlewareInterface|string>
+     * @param list<Middleware|string> $middleware
+     * @return list<Middleware|string>
      */
     private static function once(array $middleware): array
     {
@@ -293,23 +290,23 @@ final class Router implements RouterContract
      *
      * @param array<mixed> $middleware
      * @param string $of What it was given to, to say so: "Route GET /me".
-     * @return list<MiddlewareInterface|string>
+     * @return list<Middleware|string>
      */
     private function checked(array $middleware, string $of): array
     {
         foreach ($middleware as $layer) {
-            if ($layer instanceof MiddlewareInterface) {
+            if ($layer instanceof Middleware) {
                 continue;
             }
             if (!is_string($layer)) {
                 throw new \InvalidArgumentException(
-                    "{$of} takes PSR-15 middleware or their class names as its middleware, not "
+                    "{$of} takes middleware or their class names as its middleware, not "
                     . get_debug_type($layer)
                     . '.',
                 );
             }
             if (class_exists($layer) || interface_exists($layer)) {
-                if (!is_a($layer, MiddlewareInterface::class, true)) {
+                if (!is_a($layer, Middleware::class, true)) {
                     throw new \InvalidArgumentException(
                         "{$of} names {$layer} as middleware, and it is not one. Make it implement "
                         . Middleware::class
@@ -356,27 +353,27 @@ final class Router implements RouterContract
         return $this->add('WS', $pattern, $action);
     }
 
-    public function get(string $pattern, RequestHandlerInterface|\Closure|string|array $action): DeclaredRoute
+    public function get(string $pattern, Handler|\Closure|string|array $action): DeclaredRoute
     {
         return $this->add('GET', $pattern, $action);
     }
 
-    public function post(string $pattern, RequestHandlerInterface|\Closure|string|array $action): DeclaredRoute
+    public function post(string $pattern, Handler|\Closure|string|array $action): DeclaredRoute
     {
         return $this->add('POST', $pattern, $action);
     }
 
-    public function put(string $pattern, RequestHandlerInterface|\Closure|string|array $action): DeclaredRoute
+    public function put(string $pattern, Handler|\Closure|string|array $action): DeclaredRoute
     {
         return $this->add('PUT', $pattern, $action);
     }
 
-    public function patch(string $pattern, RequestHandlerInterface|\Closure|string|array $action): DeclaredRoute
+    public function patch(string $pattern, Handler|\Closure|string|array $action): DeclaredRoute
     {
         return $this->add('PATCH', $pattern, $action);
     }
 
-    public function delete(string $pattern, RequestHandlerInterface|\Closure|string|array $action): DeclaredRoute
+    public function delete(string $pattern, Handler|\Closure|string|array $action): DeclaredRoute
     {
         return $this->add('DELETE', $pattern, $action);
     }
@@ -502,7 +499,7 @@ final class Router implements RouterContract
         return $keepSlashes ? str_replace('%2F', '/', $encoded) : $encoded;
     }
 
-    public function handle(ServerRequestInterface $request): ResponseInterface
+    public function handle(RequestContract $request): ResponseInterface
     {
         $method = $request->getMethod();
         $path = $request instanceof Request ? $request->path() : $request->getUri()->getPath();
@@ -539,22 +536,18 @@ final class Router implements RouterContract
 
     /**
      * Whether a route was given the name of an action class: one with a
-     * handle() method that is not a PSR-15 handler. Its parameters are
+     * handle() method that is not a Handler. Its parameters are
      * read by ActionHandler.
      */
     private static function isActionClass(mixed $action): bool
     {
-        return (
-            is_string($action)
-            && method_exists($action, 'handle')
-            && !is_a($action, RequestHandlerInterface::class, true)
-        );
+        return is_string($action) && method_exists($action, 'handle') && !is_a($action, Handler::class, true);
     }
 
     /**
      * @param array<string, string> $parameters Filled with the decoded parameters of a match.
      */
-    private function find(string $method, string $path, array &$parameters): ?RequestHandlerInterface
+    private function find(string $method, string $path, array &$parameters): ?Handler
     {
         $handler = $this->static[$method][$path] ?? null;
         if ($handler === null && str_contains($path, '%')) {

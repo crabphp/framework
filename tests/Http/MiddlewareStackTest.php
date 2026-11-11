@@ -5,6 +5,9 @@ declare(strict_types=1);
 namespace Crab\Tests\Http;
 
 use Crab\Container\Container;
+use Crab\Contracts\Http\Handler;
+use Crab\Contracts\Http\Middleware;
+use Crab\Contracts\Http\Request as RequestContract;
 use Crab\Http\ClosureHandler;
 use Crab\Http\Factory;
 use Crab\Http\MiddlewareStack;
@@ -12,10 +15,8 @@ use Crab\Http\Request;
 use PHPUnit\Framework\TestCase;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface;
-use Psr\Http\Server\MiddlewareInterface;
-use Psr\Http\Server\RequestHandlerInterface;
 
-final class Mark implements MiddlewareInterface
+final class Mark implements Middleware
 {
     public static int $made = 0;
 
@@ -25,12 +26,9 @@ final class Mark implements MiddlewareInterface
         ++self::$made;
     }
 
-    public function process(ServerRequestInterface $request, RequestHandlerInterface $handler): ResponseInterface
+    public function handle(RequestContract $request, Handler $next): ResponseInterface
     {
-        return $handler->handle($request->withAttribute(
-            'marks',
-            $request->getAttribute('marks', '') . $this->mark . ' ',
-        ));
+        return $next->handle($request->withAttribute('marks', $request->getAttribute('marks', '') . $this->mark . ' '));
     }
 }
 

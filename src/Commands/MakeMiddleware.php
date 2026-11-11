@@ -33,10 +33,10 @@ final readonly class MakeMiddleware implements Command
     {
         $writer = new ClassWriter($this->app, 'make:middleware', 'RequireAdmin', 'app/Http', 'App\\Http', [
             // The generated class shares a namespace with these imported names.
+            'handler',
             'middleware',
+            'request',
             'responseinterface',
-            'serverrequestinterface',
-            'requesthandlerinterface',
         ]);
         $written = $writer->write($input, $output, 'middleware', self::source(...));
         if ($written === null) {
@@ -58,18 +58,18 @@ final readonly class MakeMiddleware implements Command
 
             namespace {$namespace};
 
+            use Crab\Contracts\Http\Handler;
             use Crab\Contracts\Http\Middleware;
+            use Crab\Contracts\Http\Request;
             use Psr\Http\Message\ResponseInterface;
-            use Psr\Http\Message\ServerRequestInterface;
-            use Psr\Http\Server\RequestHandlerInterface;
 
             final readonly class {$name} implements Middleware
             {
-                public function process(ServerRequestInterface \$request, RequestHandlerInterface \$handler): ResponseInterface
+                public function handle(Request \$request, Handler \$next): ResponseInterface
                 {
                     // Before the request reaches the route. Return a response here to stop it.
 
-                    \$response = \$handler->handle(\$request);
+                    \$response = \$next->handle(\$request);
 
                     // After the route has answered.
 

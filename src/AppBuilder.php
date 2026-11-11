@@ -6,9 +6,9 @@ namespace Crab;
 
 use Crab\Config\Config;
 use Crab\Config\Env;
+use Crab\Contracts\Http\Middleware;
 use Crab\Contracts\Plugin;
 use Crab\Http\Health;
-use Psr\Http\Server\MiddlewareInterface;
 
 /**
  * Describes an application step by step and then makes it, for app.php:
@@ -61,11 +61,11 @@ final class AppBuilder
     /**
      * Middleware to put after the framework's, and before it.
      *
-     * @var list<MiddlewareInterface|string>
+     * @var list<Middleware|string>
      */
     private array $append = [];
     /**
-     * @var list<MiddlewareInterface|string>
+     * @var list<Middleware|string>
      */
     private array $prepend = [];
     /**
@@ -77,7 +77,7 @@ final class AppBuilder
     /**
      * The whole list in place of the framework's, when given.
      *
-     * @var list<MiddlewareInterface|string>|null
+     * @var list<Middleware|string>|null
      */
     private ?array $only = null;
     /**
@@ -219,14 +219,14 @@ final class AppBuilder
      * what was said before, except that only: replaces an earlier only:.
      * Middleware for some routes only belongs on the route or its group.
      *
-     * @param MiddlewareInterface|class-string<MiddlewareInterface>|list<MiddlewareInterface|class-string<MiddlewareInterface>> $append
-     * @param MiddlewareInterface|class-string<MiddlewareInterface>|list<MiddlewareInterface|class-string<MiddlewareInterface>> $prepend
-     * @param class-string<MiddlewareInterface>|list<class-string<MiddlewareInterface>> $remove Classes of the framework's middleware to leave out.
-     * @param list<MiddlewareInterface|class-string<MiddlewareInterface>>|null $only The whole list in place of the framework's.
+     * @param Middleware|class-string<Middleware>|list<Middleware|class-string<Middleware>> $append
+     * @param Middleware|class-string<Middleware>|list<Middleware|class-string<Middleware>> $prepend
+     * @param class-string<Middleware>|list<class-string<Middleware>> $remove Classes of the framework's middleware to leave out.
+     * @param list<Middleware|class-string<Middleware>>|null $only The whole list in place of the framework's.
      */
     public function withMiddleware(
-        MiddlewareInterface|string|array $append = [],
-        MiddlewareInterface|string|array $prepend = [],
+        Middleware|string|array $append = [],
+        Middleware|string|array $prepend = [],
         string|array $remove = [],
         ?array $only = null,
     ): static {
@@ -328,7 +328,7 @@ final class AppBuilder
      * prepended, then the framework's or what replaces it, then what was
      * appended.
      *
-     * @return list<MiddlewareInterface|string>
+     * @return list<Middleware|string>
      */
     private function globalMiddleware(): array
     {
@@ -393,16 +393,14 @@ final class AppBuilder
 
     /**
      * @param array<mixed> $list
-     * @return list<MiddlewareInterface|string>
+     * @return list<Middleware|string>
      */
     private static function middleware(array $list): array
     {
         foreach ($list as $layer) {
-            if (!is_string($layer) && !$layer instanceof MiddlewareInterface) {
+            if (!is_string($layer) && !$layer instanceof Middleware) {
                 throw new \LogicException(
-                    'withMiddleware() takes PSR-15 middleware or their class names, not '
-                    . get_debug_type($layer)
-                    . '.',
+                    'withMiddleware() takes middleware or their class names, not ' . get_debug_type($layer) . '.',
                 );
             }
         }

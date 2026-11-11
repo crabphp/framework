@@ -11,9 +11,9 @@
 ## Lean and standard
 
 - Keep the framework lean. Prefer a small implementation of our own to a third-party dependency; runtime dependencies are Revolt (for the native loop backends) and the PSR interface packages. Ask before adding any other.
-- Everything is used through a `Crab\` type, so that nothing we depend on is outside our control and Crab always has a place to add a method. A third-party library is wrapped behind our own interface in one place, and only that place names it. A PSR interface is extended by a Crab contract, never asked for bare by Crab's own services.
+- Everything is used through a `Crab\` type, so that nothing we depend on is outside our control and Crab always has a place to add a method. A third-party library is wrapped behind our own interface in one place, and only that place names it. A PSR interface is extended by a Crab contract, never asked for bare by Crab's own services. Where a PSR would shape Crab's API in a way an extending contract cannot undo, Crab drops it and has its own interface: PSR-15 is dropped because PHP does not let an implementation narrow its `ServerRequestInterface` parameter to Crab's `Request`, so `Contracts\Http\Middleware` and `Contracts\Http\Handler` are Crab's own.
 - Async tools come from `Crab\Engine`: `EventLoop`, `Suspension`, and `Async\Pool`, `Task`, `Async` and `Cancellation`. Only `src/Engine/EventLoop/` may name Revolt; `tests/EngineBoundaryTest.php` enforces it for all of `src/`.
-- Follow PHP-FIG wherever a PSR exists: PSR-7 messages, PSR-17 factories, PSR-15 handlers and middleware, PSR-11 container, PSR-3 logger, PSR-14 events, PSR-16 cache, PSR-18 client and PSR-20 clock.
+- Follow PHP-FIG wherever a PSR exists and does not get in Crab's way: PSR-7 messages, PSR-17 factories, PSR-11 container, PSR-3 logger, PSR-14 events, PSR-16 cache, PSR-18 client and PSR-20 clock.
 - Use the multiline docblock rule from the engine conventions in framework code too.
 
 ## Components
@@ -31,9 +31,9 @@
 - Exceptions and immutable value objects are the exception to that: `HttpException`, `DatabaseException`, `ValidationException`, `Cookie`, the `Response` factories and the validation attributes (`Email`, `Length`, `ListOf`, ...) are named by class, because there is no behaviour behind them to swap.
 - A value object that a contract returns or takes lives beside it in `Crab\Contracts`, as a final readonly class with no I/O (`Contracts\Database\Page`, `Contracts\HttpClient\File`, `Contracts\Queue\Message`), since a contract may not name a component's class.
 - `App` binds each contract in the container, and binds the concrete class to the same object so that asking by class cannot autowire a second one. The glue type-hints contracts too.
-- Every service has a contract of Crab's own, including where a PSR interface covers it completely: the contract then extends the PSR interface and may add nothing (`Contracts\Log\Logger`, `Contracts\Clock\Clock`, `Contracts\Http\Factory`). It is the name applications ask for and the place a method is added when Crab needs one. `App` binds the contract and binds the PSR interface to the same object, so code written against the standard gets it too. What an application implements has one too where it is something Crab runs: `Contracts\Http\Middleware` is PSR-15's middleware under Crab's name.
+- Every service has a contract of Crab's own, including where a PSR interface covers it completely: the contract then extends the PSR interface and may add nothing (`Contracts\Log\Logger`, `Contracts\Clock\Clock`, `Contracts\Http\Factory`). It is the name applications ask for and the place a method is added when Crab needs one. `App` binds the contract and binds the PSR interface to the same object, so code written against the standard gets it too. What an application implements has one too where it is something Crab runs: `Contracts\Http\Middleware`, `handle(Request $request, Handler $next)`.
 - A contract references only PSR interfaces, other contracts and engine types, never a component's class. The component's class implements the contract and shares its short name (`Crab\Http\Request` implements `Crab\Contracts\Http\Request`).
-- Signatures accept the PSR type wherever PSR methods suffice, so third-party implementations plug in; ask for a Crab contract only where its extra methods are used.
+- Signatures accept the PSR type wherever PSR methods suffice, so third-party implementations plug in; ask for a Crab contract only where its extra methods are used. Middleware and handlers are the exception: they are always given Crab's `Contracts\Http\Request`, so `user()`, `ip()` and the rest are at hand without a check.
 
 ## Application wiring
 
@@ -76,8 +76,8 @@
 - A job that follows a write is pushed with `Queue::within($transaction)`: stored by the transaction itself when the jobs are in its database, and otherwise pushed by `Connection::afterCommit()`. Do not push inside a transaction any other way.
 - A count shared by workers is `Cache::increment()`, which every store does as one step; never get, add one and set. `Http\RateLimit` is built on it. Middleware written with options that also needs a service implements `Contracts\Http\UsesContainer`, and does not reach for a global.
 - Take a body as an input class when its fields are many, nest, or are shared by several routes, and as a described `Data` when it is small. An input class is a final readonly class whose constructor declares every field with one type. A file is a field of the body, never a parameter of its own.
-- What a route points at is called an action, in the code, the guide and the skeleton (`app/Actions/`). "Handler" is kept for the PSR-15 interface and what implements it: the router, `ActionHandler`, the error handler, the `$handler` a middleware is given.
-- A class the framework calls for the application does its work in `handle()`: an action, a job, a listener, a scheduled class and a command alike. Do not accept `__invoke()` beside it. A route given a class name treats it as an action when it has `handle()` and is not a PSR-15 `RequestHandlerInterface`.
+- What a route points at is called an action, in the code, the guide and the skeleton (`app/Actions/`). "Handler" is kept for `Contracts\Http\Handler` and what implements it: the application, the router, `ActionHandler`, and the rest of the chain a middleware is given, always named `$next`.
+- A class the framework calls for the application does its work in `handle()`: an action, a middleware, a job, a listener, a scheduled class and a command alike. Do not accept `__invoke()` beside it. A route given a class name treats it as an action when it has `handle()` and is not a `Contracts\Http\Handler`.
 - An action is a class with `handle()`, named verb first after what it does (`ShowUser`, `CreateOrder`), a closure, or `[SomeClass::class, 'method']`. It is a plain class: there is no base class and no helper to inherit.
 - An action returns data, which is sent as JSON with 200, or a response when the status, a header or the body needs saying. Status and headers are set in code with the `Response` factories and nowhere else, so nothing has to be kept in step. Do not add an attribute for something code can say.
 - Crab writes no description of the API (OpenAPI, JSON Schema). It was built and removed: keeping a document true cost every later feature a second thing to maintain, and a document that is partly true misleads. The signatures are the description. Do not add one back, or keep data on a route or a rule for one, until the owner asks.
@@ -119,7 +119,7 @@
 
 ## Middleware
 
-- There is one kind of middleware, PSR-15's, used through `Contracts\Http\Middleware`, and two places it goes: around every request, with `withMiddleware()` in `app.php`, and around some routes, with `->middleware()` on a route or a group. The same class works in both; nothing about a class says where it may be used.
+- There is one kind of middleware, Crab's `Contracts\Http\Middleware`, and two places it goes: around every request, with `withMiddleware()` in `app.php`, and around some routes, with `->middleware()` on a route or a group. The same class works in both; nothing about a class says where it may be used.
 - The framework's own middleware around every request is the list `App::MIDDLEWARE`. An application can put its own before or after it, leave one out, or replace the list; do not hard-wire a middleware into `App` so that it cannot be moved or removed.
 - A feature that runs around requests is middleware an application adds, not a configuration switch: one place says what runs around a request. `RequestId` ships and is not in the default list.
 - A middleware is told its options through its constructor and given as an object. Do not parse options out of a string such as `'throttle:60,1'`.
@@ -130,7 +130,7 @@
 - An application sets the middleware around every request with `withMiddleware()` and a plugin adds to it through the `MiddlewareStack` contract. `App` has no method of its own for it.
 - `Http\AccessLog` writes one line per request and never changes the outcome: a failure of its own goes to the engine's `FailureReporter`, and the response or exception passes through as it was.
 - `Http\Concurrency` is how a worker is kept from working on every request at once: middleware an application adds with a number of its own, around every request or around a route. A request that waits has run none of the application's code; one that waits past `wait` is answered 503 by `Http\ErrorResponse`. Do not add a `server.*` setting or a default limit for it.
-- A way of doing something for some routes, such as authenticating, is a middleware. Do not add a contract and a wrapper middleware around it where PSR-15 already says the same.
+- A way of doing something for some routes, such as authenticating, is a middleware. Do not add a contract and a wrapper middleware around it where `Middleware` already says the same.
 
 ## WebSockets
 

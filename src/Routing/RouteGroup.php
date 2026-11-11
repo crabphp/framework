@@ -4,8 +4,8 @@ declare(strict_types=1);
 
 namespace Crab\Routing;
 
+use Crab\Contracts\Http\Middleware;
 use Crab\Contracts\Routing\RouteGroup as RouteGroupContract;
-use Psr\Http\Server\MiddlewareInterface;
 
 /**
  * A group being described. It holds what was said and hands it to the
@@ -14,8 +14,8 @@ use Psr\Http\Server\MiddlewareInterface;
 final readonly class RouteGroup implements RouteGroupContract
 {
     /**
-     * @param \Closure(string, list<MiddlewareInterface|string>, \Closure): void $declare
-     * @param list<MiddlewareInterface|string> $middleware
+     * @param \Closure(string, list<Middleware|string>, \Closure): void $declare
+     * @param list<Middleware|string> $middleware
      */
     public function __construct(
         private \Closure $declare,
@@ -33,7 +33,7 @@ final readonly class RouteGroup implements RouteGroupContract
         return new static($this->declare, $this->prefix . $prefix, $this->middleware);
     }
 
-    public function middleware(MiddlewareInterface|string ...$middleware): static
+    public function middleware(Middleware|string ...$middleware): static
     {
         return new static($this->declare, $this->prefix, [...$this->middleware, ...array_values($middleware)]);
     }

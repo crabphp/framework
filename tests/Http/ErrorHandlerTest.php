@@ -45,7 +45,7 @@ final class ErrorHandlerTest extends TestCase
 
     public function testAFailureIsLoggedWithoutTheQueryString(): void
     {
-        new ErrorHandler(new Logger($this->log))->process(
+        new ErrorHandler(new Logger($this->log))->handle(
             new Request('GET', '/reset?token=s3cret-reset-token'),
             new ClosureHandler(static fn() => throw new \RuntimeException('failed')),
         );
@@ -92,9 +92,9 @@ final class ErrorHandlerTest extends TestCase
             $login = static fn(string $email, string $typed): never => throw new RuntimeException('database down');
             $action = new Crab\Http\ClosureHandler(static fn() => $login('ann@example.com', 'hunter2'));
             $handler = new Crab\Http\ErrorHandler(new Crab\Log\Logger('php://memory'), true);
-            $text = (string) $handler->process(new Crab\Http\Request('GET', '/fail'), $action)->getBody();
+            $text = (string) $handler->handle(new Crab\Http\Request('GET', '/fail'), $action)->getBody();
             $request = new Crab\Http\Request('GET', '/fail', ['Accept' => 'application/json']);
-            $json = json_decode((string) $handler->process($request, $action)->getBody(), true, flags: JSON_THROW_ON_ERROR);
+            $json = json_decode((string) $handler->handle($request, $action)->getBody(), true, flags: JSON_THROW_ON_ERROR);
             echo json_encode(['text' => $text, 'json' => $json], JSON_THROW_ON_ERROR);
             PHP;
         $process = proc_open(
@@ -211,7 +211,7 @@ final class ErrorHandlerTest extends TestCase
 
     private function handle(\Closure $route, bool $debug = false, string $accept = '*/*'): ResponseInterface
     {
-        return new ErrorHandler(new Logger($this->log), $debug)->process(new Request('GET', '/fail?x=1', [
+        return new ErrorHandler(new Logger($this->log), $debug)->handle(new Request('GET', '/fail?x=1', [
             'Accept' => $accept,
         ]), new ClosureHandler($route));
     }

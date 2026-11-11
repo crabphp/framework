@@ -7,11 +7,12 @@ namespace Crab\Auth;
 use Crab\Contracts\Auth\Identity;
 use Crab\Contracts\Auth\IdentityResolver;
 use Crab\Contracts\Auth\TokenStore;
+use Crab\Contracts\Http\Handler;
 use Crab\Contracts\Http\Middleware;
+use Crab\Contracts\Http\Request;
 use Crab\Http\ErrorResponse;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface;
-use Psr\Http\Server\RequestHandlerInterface;
 
 /**
  * Middleware that lets a request through when it carries a token of a
@@ -46,20 +47,20 @@ final readonly class TokenAuth implements Middleware
         private bool $required = true,
     ) {}
 
-    public function process(ServerRequestInterface $request, RequestHandlerInterface $handler): ResponseInterface
+    public function handle(Request $request, Handler $next): ResponseInterface
     {
-        if ($request->getAttribute(Identity::ATTRIBUTE) instanceof Identity) {
+        if ($request->user() !== null) {
             // Whoever put the user there, middleware before this one or a test, has said who it is.
-            return $handler->handle($request);
+            return $next->handle($request);
         }
         $token = $this->token($request);
         $owner = $token === null ? null : $this->tokens->owner($token);
         $user = $owner === null ? null : $this->users->resolve($owner);
         if ($user !== null) {
-            return $handler->handle($request->withAttribute(Identity::ATTRIBUTE, $user));
+            return $next->handle($request->withAttribute(Identity::ATTRIBUTE, $user));
         }
         if (!$this->required && $token === null) {
-            return $handler->handle($request);
+            return $next->handle($request);
         }
         return ErrorResponse::make($request, 401, 'Authentication is required.', [
             'WWW-Authenticate' => $this->challenge(),

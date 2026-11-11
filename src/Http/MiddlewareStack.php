@@ -4,22 +4,22 @@ declare(strict_types=1);
 
 namespace Crab\Http;
 
+use Crab\Contracts\Http\Handler;
+use Crab\Contracts\Http\Middleware;
 use Crab\Contracts\Http\MiddlewareStack as MiddlewareStackContract;
+use Crab\Contracts\Http\Request;
 use Crab\Contracts\Http\UsesContainer;
 use Psr\Container\ContainerInterface;
 use Psr\Http\Message\ResponseInterface;
-use Psr\Http\Message\ServerRequestInterface;
-use Psr\Http\Server\MiddlewareInterface;
-use Psr\Http\Server\RequestHandlerInterface;
 
 /**
  * Collects middleware in front of a handler and links it into a Pipeline
  * once, on assemble() or on the first request.
  */
-final class MiddlewareStack implements MiddlewareStackContract, RequestHandlerInterface
+final class MiddlewareStack implements MiddlewareStackContract, Handler
 {
     /**
-     * @var list<MiddlewareInterface|string>
+     * @var list<Middleware|string>
      */
     private array $middleware = [];
     private ?Pipeline $pipeline = null;
@@ -28,11 +28,11 @@ final class MiddlewareStack implements MiddlewareStackContract, RequestHandlerIn
      * The container makes middleware that is given by name.
      */
     public function __construct(
-        private readonly RequestHandlerInterface $handler,
+        private readonly Handler $handler,
         private readonly ?ContainerInterface $container = null,
     ) {}
 
-    public function add(MiddlewareInterface|string ...$middleware): static
+    public function add(Middleware|string ...$middleware): static
     {
         foreach ($middleware as $layer) {
             if (is_string($layer) && $this->container === null) {
@@ -49,7 +49,7 @@ final class MiddlewareStack implements MiddlewareStackContract, RequestHandlerIn
 
     public function layers(): array
     {
-        return array_map(static fn(MiddlewareInterface|string $layer): string => is_string($layer)
+        return array_map(static fn(Middleware|string $layer): string => is_string($layer)
             ? $layer
             : $layer::class, $this->middleware);
     }
@@ -64,7 +64,7 @@ final class MiddlewareStack implements MiddlewareStackContract, RequestHandlerIn
         return array_values(array_filter($this->middleware, is_string(...)));
     }
 
-    public function handle(ServerRequestInterface $request): ResponseInterface
+    public function handle(Request $request): ResponseInterface
     {
         return ($this->pipeline ?? $this->assemble())->handle($request);
     }
@@ -73,7 +73,7 @@ final class MiddlewareStack implements MiddlewareStackContract, RequestHandlerIn
      * Checks a declaration without constructing middleware in the parent,
      * so startup can reject settings that cannot serve it across workers.
      *
-     * @param class-string<MiddlewareInterface> $class
+     * @param class-string<Middleware> $class
      */
     public function has(string $class): bool
     {
@@ -96,8 +96,8 @@ final class MiddlewareStack implements MiddlewareStackContract, RequestHandlerIn
             if (is_string($layer)) {
                 $name = $layer;
                 $layer = $this->container->get($name);
-                if (!$layer instanceof MiddlewareInterface) {
-                    throw new \LogicException("{$name} must implement MiddlewareInterface.");
+                if (!$layer instanceof Middleware) {
+                    throw new \LogicException("{$name} must implement " . Middleware::class . '.');
                 }
             }
             if ($layer instanceof UsesContainer && $this->container !== null) {

@@ -4,16 +4,14 @@ declare(strict_types=1);
 
 namespace Crab\Http;
 
-use Crab\Contracts\Auth\Identity;
 use Crab\Contracts\Cache\Cache;
+use Crab\Contracts\Http\Handler;
 use Crab\Contracts\Http\Middleware;
 use Crab\Contracts\Http\Request;
 use Crab\Contracts\Http\UsesContainer;
 use Psr\Clock\ClockInterface;
 use Psr\Container\ContainerInterface;
 use Psr\Http\Message\ResponseInterface;
-use Psr\Http\Message\ServerRequestInterface;
-use Psr\Http\Server\RequestHandlerInterface;
 
 /**
  * Middleware that lets each client make so many requests in a length of
@@ -35,7 +33,7 @@ final readonly class RateLimit implements Middleware, UsesContainer
     /**
      * @param int $limit Requests a client may make in one window.
      * @param int $per The length of a window, in seconds.
-     * @param \Closure(ServerRequestInterface): string|null $by Who the request counts against, in place of the user or the address.
+     * @param \Closure(Request): string|null $by Who the request counts against, in place of the user or the address.
      * @param string $name Tells this limit from another; limits of one name, limit and length count together.
      * @param Cache|null $cache Where the counts are kept; taken from the container when the middleware is on a route.
      */
@@ -77,7 +75,7 @@ final readonly class RateLimit implements Middleware, UsesContainer
         );
     }
 
-    public function process(ServerRequestInterface $request, RequestHandlerInterface $handler): ResponseInterface
+    public function handle(Request $request, Handler $next): ResponseInterface
     {
         if ($this->cache === null) {
             throw new \LogicException(
@@ -100,26 +98,23 @@ final readonly class RateLimit implements Middleware, UsesContainer
                 'Retry-After' => (string) $left,
             ]);
         }
-        $response = $handler->handle($request);
+        $response = $next->handle($request);
         foreach ($headers as $header => $value) {
             $response = $response->withHeader($header, $value);
         }
         return $response;
     }
 
-    private function client(ServerRequestInterface $request): string
+    private function client(Request $request): string
     {
         if ($this->by !== null) {
             return ($this->by)($request);
         }
-        $user = $request->getAttribute(Identity::ATTRIBUTE);
-        if ($user instanceof Identity) {
+        $user = $request->user();
+        if ($user !== null) {
             return 'user ' . $user->id;
         }
-        $address = $request instanceof Request
-            ? $request->ip()
-            : (string) ($request->getServerParams()['REMOTE_ADDR'] ?? '');
-        return 'address ' . self::network($address);
+        return 'address ' . self::network($request->ip());
     }
 
     /**

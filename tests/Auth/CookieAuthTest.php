@@ -14,14 +14,14 @@ use Crab\Contracts\Auth\Identity;
 use Crab\Contracts\Auth\IdentityResolver;
 use Crab\Contracts\Auth\TokenStore;
 use Crab\Contracts\Database\Database;
+use Crab\Contracts\Http\Handler;
+use Crab\Contracts\Http\Request as RequestContract;
 use Crab\Database\DatabasePlugin;
 use Crab\Http\Request;
 use Crab\Http\Response;
 use Crab\Route;
 use PHPUnit\Framework\TestCase;
 use Psr\Http\Message\ResponseInterface;
-use Psr\Http\Message\ServerRequestInterface;
-use Psr\Http\Server\RequestHandlerInterface;
 
 final readonly class Shopper implements Identity
 {
@@ -38,9 +38,9 @@ final class Shoppers implements IdentityResolver
     }
 }
 
-final class Answer implements RequestHandlerInterface
+final class Answer implements Handler
 {
-    public function handle(ServerRequestInterface $request): ResponseInterface
+    public function handle(RequestContract $request): ResponseInterface
     {
         $user = $request->getAttribute(Identity::ATTRIBUTE);
         return Response::text($user instanceof Identity ? "user {$user->id}" : 'nobody');
@@ -86,9 +86,9 @@ final class CookieAuthTest extends TestCase
         self::assertSame(401, $this->through($auth, 'GET', ['Cookie' => 'auth='])[0], 'An empty cookie is no token.');
 
         $login = new CookieAuth(login: '/login', tokens: $tokens, users: new Shoppers(), name: 'auth');
-        $response = $login->process(new Request('GET', 'http://shop.test/account'), new Answer());
+        $response = $login->handle(new Request('GET', 'http://shop.test/account'), new Answer());
         self::assertSame([303, '/login'], [$response->getStatusCode(), $response->getHeaderLine('Location')]);
-        self::assertSame(401, $login->process(new Request('POST', 'http://shop.test/orders', [
+        self::assertSame(401, $login->handle(new Request('POST', 'http://shop.test/orders', [
             'Sec-Fetch-Site' => 'same-origin',
         ]), new Answer())->getStatusCode(), 'Only a page is sent to log in; a form post is refused.');
     }
@@ -173,7 +173,7 @@ final class CookieAuthTest extends TestCase
         // Behind a proxy that ends TLS the request says http://shop.test, and anyone can send any Host.
         $auth = new CookieAuth(tokens: $tokens, users: new Shoppers(), name: 'auth', site: 'https://shop.test');
         self::assertSame(403, $this->through($auth, 'POST', ['Origin' => 'http://shop.test'])[0]);
-        $evil = $auth->process(new Request('POST', 'http://evil.test/login', [
+        $evil = $auth->handle(new Request('POST', 'http://evil.test/login', [
             'Origin' => 'http://evil.test',
         ]), new Answer());
         self::assertSame(403, $evil->getStatusCode());
@@ -186,13 +186,13 @@ final class CookieAuthTest extends TestCase
     {
         [$tokens] = $this->auth();
         $auth = new CookieAuth(required: false, tokens: $tokens, users: new Shoppers(), name: 'auth');
-        $login = new class implements RequestHandlerInterface {
-            public function handle(ServerRequestInterface $request): ResponseInterface
+        $login = new class implements Handler {
+            public function handle(RequestContract $request): ResponseInterface
             {
                 return Response::redirect('/', 303)->withCookie(new \Crab\Http\Cookie('auth', 'new-token'));
             }
         };
-        $response = $auth->process(new Request('POST', 'http://shop.test/login', [
+        $response = $auth->handle(new Request('POST', 'http://shop.test/login', [
             'Cookie' => 'auth=stale',
             'Sec-Fetch-Site' => 'same-origin',
         ]), $login);
@@ -317,7 +317,7 @@ final class CookieAuthTest extends TestCase
             $container,
         );
         self::assertStringStartsWith('route=t; Path=/; Secure;', (string) $route->cookie('t'));
-        $post = static fn(CookieAuth $auth, string $origin): int => $auth->process(new Request(
+        $post = static fn(CookieAuth $auth, string $origin): int => $auth->handle(new Request(
             'POST',
             'http://shop.test/orders',
             ['Origin' => $origin],
@@ -381,7 +381,7 @@ final class CookieAuthTest extends TestCase
      */
     private function through(CookieAuth $auth, string $method, array $headers): array
     {
-        $response = $auth->process(new Request($method, 'http://shop.test/orders', $headers), new Answer());
+        $response = $auth->handle(new Request($method, 'http://shop.test/orders', $headers), new Answer());
         return [
             $response->getStatusCode(),
             trim((string) $response->getBody()),

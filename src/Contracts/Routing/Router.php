@@ -4,11 +4,11 @@ declare(strict_types=1);
 
 namespace Crab\Contracts\Routing;
 
-use Psr\Http\Server\MiddlewareInterface;
-use Psr\Http\Server\RequestHandlerInterface;
+use Crab\Contracts\Http\Handler;
+use Crab\Contracts\Http\Middleware;
 
 /**
- * A PSR-15 handler that dispatches to routes, and the way routes are added.
+ * A handler that dispatches to routes, and the way routes are added.
  *
  * A pattern is a path with {name} or {name:expression} parameters.
  *
@@ -20,7 +20,7 @@ use Psr\Http\Server\RequestHandlerInterface;
  * before the action runs. What it returns is the response: a PSR-7
  * response, a string as text, nothing as 204, and anything else as JSON.
  *
- * A PSR-15 handler, or the name of a container entry that is one, is also
+ * A Handler, or the name of a container entry that is one, is also
  * accepted; it receives the request, with the parameters as attributes.
  *
  * Each route is declared in one statement, which returns the route so
@@ -32,15 +32,11 @@ use Psr\Http\Server\RequestHandlerInterface;
  * A name is how code finds the route again, to write its path with
  * path() or a full URL with Urls. Two routes may not share one.
  *
- * @phpstan-type Action RequestHandlerInterface|\Closure|string|array{class-string, string}
+ * @phpstan-type Action Handler|\Closure|string|array{class-string, string}
  */
-interface Router extends RequestHandlerInterface
+interface Router extends Handler
 {
-    public function add(
-        string $method,
-        string $pattern,
-        RequestHandlerInterface|\Closure|string|array $action,
-    ): DeclaredRoute;
+    public function add(string $method, string $pattern, Handler|\Closure|string|array $action): DeclaredRoute;
 
     /**
      * Starts a group of routes under a path prefix; see RouteGroup.
@@ -50,9 +46,9 @@ interface Router extends RequestHandlerInterface
     /**
      * Starts a group of routes behind middleware; see RouteGroup.
      *
-     * @param MiddlewareInterface|class-string<MiddlewareInterface> ...$middleware
+     * @param Middleware|class-string<Middleware> ...$middleware
      */
-    public function middleware(MiddlewareInterface|string ...$middleware): RouteGroup;
+    public function middleware(Middleware|string ...$middleware): RouteGroup;
 
     /**
      * An action taking a WebSocket Socket, the user, pattern parameters
@@ -61,15 +57,15 @@ interface Router extends RequestHandlerInterface
      */
     public function websocket(string $pattern, \Closure|string|array $action): DeclaredRoute;
 
-    public function get(string $pattern, RequestHandlerInterface|\Closure|string|array $action): DeclaredRoute;
+    public function get(string $pattern, Handler|\Closure|string|array $action): DeclaredRoute;
 
-    public function post(string $pattern, RequestHandlerInterface|\Closure|string|array $action): DeclaredRoute;
+    public function post(string $pattern, Handler|\Closure|string|array $action): DeclaredRoute;
 
-    public function put(string $pattern, RequestHandlerInterface|\Closure|string|array $action): DeclaredRoute;
+    public function put(string $pattern, Handler|\Closure|string|array $action): DeclaredRoute;
 
-    public function patch(string $pattern, RequestHandlerInterface|\Closure|string|array $action): DeclaredRoute;
+    public function patch(string $pattern, Handler|\Closure|string|array $action): DeclaredRoute;
 
-    public function delete(string $pattern, RequestHandlerInterface|\Closure|string|array $action): DeclaredRoute;
+    public function delete(string $pattern, Handler|\Closure|string|array $action): DeclaredRoute;
 
     /**
      * @return list<RouteInfo> Every route, in the order added.
@@ -94,7 +90,7 @@ interface Router extends RequestHandlerInterface
     /**
      * The signature of a route's typed action, for tools that need what it
      * returns as well as what it takes. Null when the route is handled by a
-     * PSR-15 handler of its own.
+     * Handler of its own.
      */
     public function signature(RouteInfo $route): ?\ReflectionFunctionAbstract;
 

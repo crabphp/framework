@@ -5,11 +5,11 @@ declare(strict_types=1);
 namespace Crab\Http;
 
 use Crab\Contracts\Http\ErrorRenderer;
+use Crab\Contracts\Http\Handler;
+use Crab\Contracts\Http\Request;
 use Crab\Engine\Async\CancelledException;
 use Psr\Container\ContainerInterface;
 use Psr\Http\Message\ResponseInterface;
-use Psr\Http\Message\ServerRequestInterface;
-use Psr\Http\Server\RequestHandlerInterface;
 use Psr\Log\LoggerInterface;
 
 /**
@@ -19,16 +19,16 @@ use Psr\Log\LoggerInterface;
  * Being outside every middleware, it also reaches the errors of
  * middleware added in front of the error handler.
  */
-final class RenderedErrors implements RequestHandlerInterface
+final class RenderedErrors implements Handler
 {
     private ?ErrorRenderer $renderer = null;
 
     public function __construct(
-        private readonly RequestHandlerInterface $handler,
+        private readonly Handler $handler,
         private readonly ContainerInterface $container,
     ) {}
 
-    public function handle(ServerRequestInterface $request): ResponseInterface
+    public function handle(Request $request): ResponseInterface
     {
         $response = $this->handler->handle($request);
         $problem = $response instanceof Response ? $response->problem() : null;

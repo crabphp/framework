@@ -20,7 +20,9 @@ use Crab\Contracts\Auth\PasswordHasher as PasswordHasherContract;
 use Crab\Contracts\Auth\TokenStore;
 use Crab\Contracts\Database\Database as DatabaseContract;
 use Crab\Contracts\Database\Migrator;
+use Crab\Contracts\Http\Handler;
 use Crab\Contracts\Http\Middleware;
+use Crab\Contracts\Http\Request as RequestContract;
 use Crab\Database\Database;
 use Crab\Database\DatabasePlugin;
 use Crab\Database\Migrator as DatabaseMigrator;
@@ -36,7 +38,6 @@ use PHPUnit\Framework\TestCase;
 use Psr\Clock\ClockInterface;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface;
-use Psr\Http\Server\RequestHandlerInterface;
 
 final readonly class Member implements Identity
 {
@@ -79,22 +80,22 @@ final readonly class TrustedHeader implements Middleware
         private Members $members,
     ) {}
 
-    public function process(ServerRequestInterface $request, RequestHandlerInterface $handler): ResponseInterface
+    public function handle(RequestContract $request, Handler $next): ResponseInterface
     {
         $user = $this->members->resolve((int) $request->getHeaderLine('X-Member'));
         if ($user === null) {
             return ErrorResponse::make($request, 401, 'Say who you are in X-Member.');
         }
-        return $handler->handle($request->withAttribute('user', $user));
+        return $next->handle($request->withAttribute('user', $user));
     }
 }
 
 /**
  * What stands behind the middleware in a test: answers with who got through.
  */
-final class Reached implements RequestHandlerInterface
+final class Reached implements Handler
 {
-    public function handle(ServerRequestInterface $request): ResponseInterface
+    public function handle(RequestContract $request): ResponseInterface
     {
         $user = $request->getAttribute(Identity::ATTRIBUTE);
         return Response::text($user instanceof Identity ? "user {$user->id}" : 'nobody');
@@ -224,7 +225,7 @@ final class AuthTest extends TestCase
         $token = $tokens->issue(7);
         $orphan = $tokens->issue(99);
         $through = static function (TokenAuth $auth, array $headers): array {
-            $response = $auth->process(new Request('GET', '/', $headers), new Reached());
+            $response = $auth->handle(new Request('GET', '/', $headers), new Reached());
             return [
                 $response->getStatusCode(),
                 trim((string) $response->getBody()),
@@ -298,7 +299,7 @@ final class AuthTest extends TestCase
     {
         $tokens = new DatabaseTokenStore($this->database('sqlite'));
         $optional = new TokenAuth($tokens, new Members(), required: false);
-        $response = $optional->process(new Request('GET', '/', $headers), new Reached());
+        $response = $optional->handle(new Request('GET', '/', $headers), new Reached());
 
         self::assertSame([200, 'nobody', ''], [
             $response->getStatusCode(),
@@ -314,7 +315,7 @@ final class AuthTest extends TestCase
         $members->known[7] = new Member(7, 'Ada');
         $token = $tokens->issue(7);
         $optional = new TokenAuth($tokens, $members, required: false);
-        $response = $optional->process(new Request('GET', '/', ['Authorization' => "Bearer {$token}"]), new Reached());
+        $response = $optional->handle(new Request('GET', '/', ['Authorization' => "Bearer {$token}"]), new Reached());
 
         self::assertSame([200, 'user 7', ''], [
             $response->getStatusCode(),
@@ -327,7 +328,7 @@ final class AuthTest extends TestCase
     {
         $tokens = new DatabaseTokenStore($this->database('sqlite'));
         $optional = new TokenAuth($tokens, new Members(), required: false);
-        $response = $optional->process(new Request('GET', '/', ['Authorization' => 'Bearer unknown']), new Reached());
+        $response = $optional->handle(new Request('GET', '/', ['Authorization' => 'Bearer unknown']), new Reached());
 
         self::assertSame([401, 'Bearer'], [$response->getStatusCode(), $response->getHeaderLine('WWW-Authenticate')]);
     }
@@ -342,9 +343,9 @@ final class AuthTest extends TestCase
         $optional = new TokenAuth($tokens, $members, required: false);
         $request = new Request('GET', '/', ['Authorization' => "Bearer {$token}"]);
 
-        self::assertSame('user 7', (string) $optional->process($request, new Reached())->getBody());
+        self::assertSame('user 7', (string) $optional->handle($request, new Reached())->getBody());
         $clock->advance('+1 hour');
-        $response = $optional->process($request, new Reached());
+        $response = $optional->handle($request, new Reached());
         self::assertSame([401, 'Bearer'], [$response->getStatusCode(), $response->getHeaderLine('WWW-Authenticate')]);
     }
 
@@ -353,7 +354,7 @@ final class AuthTest extends TestCase
         $tokens = new DatabaseTokenStore($this->database('sqlite'));
         $token = $tokens->issue(99);
         $optional = new TokenAuth($tokens, new Members(), required: false);
-        $response = $optional->process(new Request('GET', '/', ['Authorization' => "Bearer {$token}"]), new Reached());
+        $response = $optional->handle(new Request('GET', '/', ['Authorization' => "Bearer {$token}"]), new Reached());
 
         self::assertSame(401, $response->getStatusCode());
     }
@@ -366,26 +367,26 @@ final class AuthTest extends TestCase
         $token = $tokens->issue(7);
         $key = new TokenAuth($tokens, $members, 'X-Service-Key', '', required: false);
 
-        self::assertSame('nobody', (string) $key->process(new Request('GET', '/', [
+        self::assertSame('nobody', (string) $key->handle(new Request('GET', '/', [
             'X-Service-Key' => ' ',
         ]), new Reached())->getBody());
-        self::assertSame('user 7', (string) $key->process(new Request('GET', '/', [
+        self::assertSame('user 7', (string) $key->handle(new Request('GET', '/', [
             'X-Service-Key' => " {$token} ",
         ]), new Reached())->getBody());
-        $refused = $key->process(new Request('GET', '/', ['X-Service-Key' => 'wrong']), new Reached());
+        $refused = $key->handle(new Request('GET', '/', ['X-Service-Key' => 'wrong']), new Reached());
         self::assertSame([401, 'X-Service-Key'], [
             $refused->getStatusCode(),
             $refused->getHeaderLine('WWW-Authenticate'),
         ]);
 
         $scheme = new TokenAuth($tokens, $members, scheme: 'Token', required: false);
-        self::assertSame('nobody', (string) $scheme->process(new Request('GET', '/', [
+        self::assertSame('nobody', (string) $scheme->handle(new Request('GET', '/', [
             'Authorization' => "Bearer {$token}",
         ]), new Reached())->getBody());
-        self::assertSame('user 7', (string) $scheme->process(new Request('GET', '/', [
+        self::assertSame('user 7', (string) $scheme->handle(new Request('GET', '/', [
             'Authorization' => "token   {$token} ",
         ]), new Reached())->getBody());
-        $refused = $scheme->process(new Request('GET', '/', ['Authorization' => 'Token wrong']), new Reached());
+        $refused = $scheme->handle(new Request('GET', '/', ['Authorization' => 'Token wrong']), new Reached());
         self::assertSame([401, 'Token'], [$refused->getStatusCode(), $refused->getHeaderLine('WWW-Authenticate')]);
     }
 

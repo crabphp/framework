@@ -6,13 +6,13 @@ namespace Crab\Auth;
 
 use Crab\Contracts\Auth\Identity;
 use Crab\Contracts\Auth\Tickets;
+use Crab\Contracts\Http\Handler;
 use Crab\Contracts\Http\Middleware;
+use Crab\Contracts\Http\Request;
 use Crab\Contracts\Http\UsesContainer;
 use Crab\Http\ErrorResponse;
 use Psr\Container\ContainerInterface;
 use Psr\Http\Message\ResponseInterface;
-use Psr\Http\Message\ServerRequestInterface;
-use Psr\Http\Server\RequestHandlerInterface;
 
 /**
  * Authenticates a browser's single-use ticket, or delegates to TokenAuth
@@ -41,7 +41,7 @@ final readonly class Ticket implements Middleware, UsesContainer
         );
     }
 
-    public function process(ServerRequestInterface $request, RequestHandlerInterface $handler): ResponseInterface
+    public function handle(Request $request, Handler $next): ResponseInterface
     {
         if ($this->origins !== [] && !in_array($request->getHeaderLine('Origin'), $this->origins, true)) {
             return ErrorResponse::make($request, 403, 'This origin is not allowed.');
@@ -53,7 +53,7 @@ final readonly class Ticket implements Middleware, UsesContainer
         }
         $query = $request->getQueryParams();
         if (!array_key_exists('ticket', $query)) {
-            return $this->tokens->process($request, $handler);
+            return $this->tokens->handle($request, $next);
         }
         $user = is_string($query['ticket']) ? $this->tickets->redeem($query['ticket']) : null;
         if ($user === null) {
@@ -62,6 +62,6 @@ final readonly class Ticket implements Middleware, UsesContainer
                 'WWW-Authenticate' => $this->tokens->challenge(),
             ]);
         }
-        return $handler->handle($request->withAttribute(Identity::ATTRIBUTE, $user));
+        return $next->handle($request->withAttribute(Identity::ATTRIBUTE, $user));
     }
 }

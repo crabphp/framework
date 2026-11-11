@@ -4,6 +4,9 @@ declare(strict_types=1);
 
 namespace Crab\Tests\Routing;
 
+use Crab\Contracts\Http\Handler;
+use Crab\Contracts\Http\Middleware;
+use Crab\Contracts\Http\Request as RequestContract;
 use Crab\Http\Request;
 use Crab\Http\Response;
 use Crab\Routing\FromQuery;
@@ -12,8 +15,6 @@ use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface;
-use Psr\Http\Server\MiddlewareInterface;
-use Psr\Http\Server\RequestHandlerInterface;
 
 final class RouterTest extends TestCase
 {
@@ -114,8 +115,8 @@ final class RouterTest extends TestCase
 
     public function testHandlerObjectsAndOtherMethods(): void
     {
-        $handler = new class implements RequestHandlerInterface {
-            public function handle(ServerRequestInterface $request): ResponseInterface
+        $handler = new class implements Handler {
+            public function handle(RequestContract $request): ResponseInterface
             {
                 return Response::text($request->getMethod() . ' ' . $request->getAttribute('id'));
             }
@@ -182,17 +183,14 @@ final class RouterTest extends TestCase
 
     public function testGroupsSharePrefixAndMiddleware(): void
     {
-        $mark = static fn(string $name): \Psr\Http\Server\MiddlewareInterface => new class($name) implements
-            \Psr\Http\Server\MiddlewareInterface {
+        $mark = static fn(string $name): Middleware => new class($name) implements Middleware {
             public function __construct(
                 private string $name,
             ) {}
 
-            public function process(
-                \Psr\Http\Message\ServerRequestInterface $request,
-                \Psr\Http\Server\RequestHandlerInterface $handler,
-            ): \Psr\Http\Message\ResponseInterface {
-                return $handler->handle($request)->withAddedHeader('X-Mark', $this->name);
+            public function handle(RequestContract $request, Handler $next): \Psr\Http\Message\ResponseInterface
+            {
+                return $next->handle($request)->withAddedHeader('X-Mark', $this->name);
             }
         };
         $container = new \Crab\Container\Container();
@@ -500,19 +498,17 @@ final class RouterTest extends TestCase
     public function testWhatIsChainedOntoARouteSaysMoreAboutIt(): void
     {
         $order = [];
-        $mark = static function (string $name) use (&$order): MiddlewareInterface {
-            return new class($name, $order) implements MiddlewareInterface {
+        $mark = static function (string $name) use (&$order): Middleware {
+            return new class($name, $order) implements Middleware {
                 public function __construct(
                     private string $name,
                     private array &$order,
                 ) {}
 
-                public function process(
-                    ServerRequestInterface $request,
-                    RequestHandlerInterface $handler,
-                ): ResponseInterface {
+                public function handle(RequestContract $request, Handler $next): ResponseInterface
+                {
                     $this->order[] = $this->name;
-                    return $handler->handle($request);
+                    return $next->handle($request);
                 }
             };
         };
@@ -579,8 +575,8 @@ final class RouterTest extends TestCase
         $router = new Router();
         $router->get('/closure/{id}', static fn(int $id): string => (string) $id);
         $router->get('/method', RouteSignatureAction::class);
-        $router->get('/handler', new class implements RequestHandlerInterface {
-            public function handle(ServerRequestInterface $request): ResponseInterface
+        $router->get('/handler', new class implements Handler {
+            public function handle(RequestContract $request): ResponseInterface
             {
                 return Response::noContent();
             }
@@ -605,23 +601,23 @@ final readonly class RouteSignatureAction
     public function handle(): void {}
 }
 
-final class NeedsAnArgument implements \Psr\Http\Server\MiddlewareInterface
+final class NeedsAnArgument implements Middleware
 {
     public function __construct(
         public string $name,
     ) {}
 
-    public function process(ServerRequestInterface $request, RequestHandlerInterface $handler): ResponseInterface
+    public function handle(RequestContract $request, Handler $next): ResponseInterface
     {
-        return $handler->handle($request)->withAddedHeader('X-Name', $this->name);
+        return $next->handle($request)->withAddedHeader('X-Name', $this->name);
     }
 }
 
-final class Passes implements \Psr\Http\Server\MiddlewareInterface
+final class Passes implements Middleware
 {
-    public function process(ServerRequestInterface $request, RequestHandlerInterface $handler): ResponseInterface
+    public function handle(RequestContract $request, Handler $next): ResponseInterface
     {
-        return $handler->handle($request);
+        return $next->handle($request);
     }
 }
 

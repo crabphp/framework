@@ -4,10 +4,10 @@ declare(strict_types=1);
 
 namespace Crab\Http;
 
+use Crab\Contracts\Http\Handler;
 use Crab\Contracts\Http\Middleware;
+use Crab\Contracts\Http\Request;
 use Psr\Http\Message\ResponseInterface;
-use Psr\Http\Message\ServerRequestInterface;
-use Psr\Http\Server\RequestHandlerInterface;
 
 /**
  * Says which proxies stand in front of the application, so that a
@@ -54,11 +54,11 @@ final readonly class TrustedProxies implements Middleware
         }
     }
 
-    public function process(ServerRequestInterface $request, RequestHandlerInterface $handler): ResponseInterface
+    public function handle(Request $request, Handler $next): ResponseInterface
     {
         $peer = (string) ($request->getServerParams()['REMOTE_ADDR'] ?? '');
         if ($peer === '' || !$this->trusts($peer)) {
-            return $handler->handle($request);
+            return $next->handle($request);
         }
         $client = $peer;
         $hops = array_filter(
@@ -75,7 +75,7 @@ final readonly class TrustedProxies implements Middleware
                 break;
             }
         }
-        return $handler->handle($request->withAttribute(self::ATTRIBUTE, $client));
+        return $next->handle($request->withAttribute(self::ATTRIBUTE, $client));
     }
 
     private function trusts(string $address): bool

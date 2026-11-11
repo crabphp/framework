@@ -19,7 +19,9 @@
 
 Middleware is code that runs around a request: before it reaches the route, after the route has answered, or instead of the route. Use it for what many routes share and none should repeat: authentication, a header on every response, a rate limit, a tenant looked up from the host name.
 
-There is one kind, PSR-15's, so middleware from any PSR-15 library works. There are two places to use it, around every request and around some routes, and the same class works in both.
+There is one kind, Crab's `Middleware`, with one method: `handle(Request $request, Handler $next)`. It receives Crab's own `Request`, so `$request->user()`, `$request->ip()` and the rest are at hand. There are two places to use it, around every request and around some routes, and the same class works in both.
+
+It is not PSR-15's `MiddlewareInterface`, whose `process()` is given a bare PSR-7 request; a PSR-15 middleware from a library is not accepted as it is.
 
 ## Writing middleware
 
@@ -32,28 +34,28 @@ writes a pass-through stub at `app/Http/RequireJson.php`. The generator checks t
 ```php
 namespace App\Http;
 
+use Crab\Contracts\Http\Handler;
 use Crab\Contracts\Http\Middleware;
+use Crab\Contracts\Http\Request;
 use Crab\Http\ErrorResponse;
 use Psr\Http\Message\ResponseInterface;
-use Psr\Http\Message\ServerRequestInterface;
-use Psr\Http\Server\RequestHandlerInterface;
 
 final readonly class RequireJson implements Middleware
 {
-    public function process(ServerRequestInterface $request, RequestHandlerInterface $handler): ResponseInterface
+    public function handle(Request $request, Handler $next): ResponseInterface
     {
         if (!str_contains($request->getHeaderLine('Content-Type'), 'json')) {
             return ErrorResponse::make($request, 415, 'Send Content-Type: application/json.');
         }
 
-        $response = $handler->handle($request);                 // let it through
+        $response = $next->handle($request);                 // let it through
 
         return $response->withHeader('X-Api-Version', '2');     // and add to what comes back
     }
 }
 ```
 
-`$handler->handle($request)` is "everything inside this middleware". Code before it runs on the way in, code after it on the way out, and returning without calling it stops the request here.
+`$next->handle($request)` is "everything inside this middleware". Code before it runs on the way in, code after it on the way out, and returning without calling it stops the request here.
 
 A middleware class is made by the container, so its constructor can ask for services. Autowired and singleton middleware are kept per worker; a transient `bind()` may make one per stack, so keep request state out of properties.
 
@@ -116,11 +118,12 @@ In each list the first is outermost: it meets the request first and sees the res
 Options go to the constructor, and you give an object in place of a class name:
 
 ```php
+use App\User;
+use Crab\Contracts\Http\Handler;
 use Crab\Contracts\Http\Middleware;
+use Crab\Contracts\Http\Request;
 use Crab\Http\ErrorResponse;
 use Psr\Http\Message\ResponseInterface;
-use Psr\Http\Message\ServerRequestInterface;
-use Psr\Http\Server\RequestHandlerInterface;
 
 final readonly class RequireRole implements Middleware
 {
@@ -128,14 +131,13 @@ final readonly class RequireRole implements Middleware
     {
     }
 
-    public function process(ServerRequestInterface $request, RequestHandlerInterface $handler): ResponseInterface
+    public function handle(Request $request, Handler $next): ResponseInterface
     {
-        $user = $request->getAttribute('user');
-        if ($user === null || $user->role !== $this->role) {
+        if ($request->user(User::class)?->role !== $this->role) {
             return ErrorResponse::make($request, 403);
         }
 
-        return $handler->handle($request);
+        return $next->handle($request);
     }
 }
 ```
@@ -153,13 +155,13 @@ There are no string options such as `'role:admin'`. Two objects of one class, `n
 An object you make with `new` gets its options and nothing else: no container is at hand in a routes file. Middleware that needs a service as well implements `UsesContainer`, and is asked for itself with the service before the first request:
 
 ```php
+use Crab\Contracts\Http\Handler;
 use Crab\Contracts\Http\Middleware;
+use Crab\Contracts\Http\Request;
 use Crab\Contracts\Http\UsesContainer;
 use Crab\Http\ErrorResponse;
 use Psr\Container\ContainerInterface;
 use Psr\Http\Message\ResponseInterface;
-use Psr\Http\Message\ServerRequestInterface;
-use Psr\Http\Server\RequestHandlerInterface;
 
 final readonly class RequirePlan implements Middleware, UsesContainer
 {
@@ -172,13 +174,13 @@ final readonly class RequirePlan implements Middleware, UsesContainer
         return new self($this->plan, $container->get(Plans::class));
     }
 
-    public function process(ServerRequestInterface $request, RequestHandlerInterface $handler): ResponseInterface
+    public function handle(Request $request, Handler $next): ResponseInterface
     {
-        if (!$this->plans?->allows($request->getAttribute('user'), $this->plan)) {
+        if (!$this->plans?->allows($request->user(), $this->plan)) {
             return ErrorResponse::make($request, 403);
         }
 
-        return $handler->handle($request);
+        return $next->handle($request);
     }
 }
 ```
@@ -196,10 +198,10 @@ Put it on the request as an attribute, and pass the changed request on:
 ```php
 $tenant = $this->tenants->byHost($request->getUri()->getHost());
 
-return $handler->handle($request->withAttribute('tenant', $tenant));
+return $next->handle($request->withAttribute('tenant', $tenant));
 ```
 
-An action that takes the request reads it with `$request->getAttribute('tenant')`. The attribute named `user` is special: an action receives it as a typed parameter; see [Authentication](authentication.md).
+An action that takes the request reads it with `$request->getAttribute('tenant')`. The attribute named `user` is special: an action receives it as a typed parameter, and middleware reads it with `$request->user()`; see [Authentication](authentication.md).
 
 ## Middleware that ships
 
