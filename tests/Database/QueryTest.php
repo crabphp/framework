@@ -1057,6 +1057,58 @@ final class QueryTest extends TestCase
         );
     }
 
+    #[DataProvider('drivers')]
+    public function testDateBindingsUseTheDefaultZoneWithoutChangingTheDate(string $driver): void
+    {
+        $db = $this->database($driver);
+        $zone = date_default_timezone_get();
+        try {
+            foreach (['UTC', 'America/New_York'] as $default) {
+                date_default_timezone_set($default);
+                foreach ([
+                    new \DateTime('2026-11-11T10:00:00+07:00'),
+                    new \DateTimeImmutable('2026-11-11T10:00:00+07:00'),
+                ] as $date) {
+                    $written = \DateTimeImmutable::createFromInterface($date)
+                        ->setTimezone(new \DateTimeZone($default))
+                        ->format('Y-m-d H:i:s');
+                    $db->table('users')->delete();
+                    $id = $db->table('users')->insert(['name' => $written, 'email' => 'date@example.test']);
+                    $db->table('users')->insert(['name' => '2026-11-11 10:00:00', 'email' => 'other@example.test']);
+                    self::assertSame([$id], $db->table('users')->where('name', $date)->pluck('id'));
+                    $db->table('users')->where('id', $id)->update(['name' => $date]);
+                    self::assertSame($written, $db->table('users')->where('id', $id)->value('name'));
+                    self::assertSame('2026-11-11T10:00:00+07:00', $date->format(\DateTimeInterface::ATOM));
+                }
+            }
+        } finally {
+            date_default_timezone_set($zone);
+        }
+    }
+
+    #[DataProvider('drivers')]
+    public function testChunkByIdRefusesAnExistingOrderBeforeCallingBack(string $driver): void
+    {
+        $db = $this->seeded($driver);
+        foreach (['asc', 'desc'] as $direction) {
+            $calls = 0;
+            $error = null;
+            try {
+                $db
+                    ->table('users')
+                    ->orderBy('id', $direction)
+                    ->chunkById(2, static function () use (&$calls): void {
+                        ++$calls;
+                    });
+            } catch (\LogicException $caught) {
+                $error = $caught;
+            }
+            self::assertInstanceOf(\LogicException::class, $error);
+            self::assertStringContainsString('remove the orderBy()', $error->getMessage());
+            self::assertSame(0, $calls);
+        }
+    }
+
     private function database(string $driver): Database
     {
         $db = new Database(fn(): \PDO => $this->pdo($driver), factory: $this->mysqlFactory($driver));

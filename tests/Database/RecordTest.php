@@ -128,9 +128,12 @@ final class RecordTest extends TestCase
         self::assertNull($second->nextCursor);
 
         $chunks = [];
-        $query->chunkById(2, static function (array $records) use (&$chunks): void {
-            $chunks[] = $records;
-        });
+        $db
+            ->table('record_orders')
+            ->into(RecordTotal::class)
+            ->chunkById(2, static function (array $records) use (&$chunks): void {
+                $chunks[] = $records;
+            });
         self::assertEquals([[new RecordTotal(1, 1250), new RecordTotal(2, 400)], [new RecordTotal(3, 80)]], $chunks);
 
         // Plain values stay plain.

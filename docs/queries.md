@@ -130,6 +130,8 @@ There are no models: a record does not load or save itself, has no relationships
 
 A backed enum in a condition or an update is bound as its value, including an integer for an int-backed enum: `where('status', OrderStatus::Shipped)` and `whereIn('status', [OrderStatus::Paid, OrderStatus::Shipped])`.
 
+A bound `DateTimeInterface` is written as `Y-m-d H:i:s` in PHP's default time zone, preserving its instant, just as a record field is. The date object itself is unchanged.
+
 ```php
 $db->table('users')
     ->where('active', true)                         // equals
@@ -366,6 +368,8 @@ A cursor is the order's values from the page's last row, encoded; it is not secr
 ## Large tables
 
 `chunkById()` reads a table in pieces without loading it whole, and is not thrown off by rows added or removed meanwhile:
+
+It reads in ascending order of its cursor column and refuses an existing order; remove `orderBy()` before calling it.
 
 ```php
 $db->table('users')->where('active', true)->chunkById(500, function (array $rows): void {

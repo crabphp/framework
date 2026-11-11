@@ -250,7 +250,9 @@ final class Binary
                 $value = match (true) {
                     is_string($value) => $value,
                     is_float($value) => (string) $value,
-                    $value instanceof \DateTimeInterface => $value->format('Y-m-d H:i:s'),
+                    $value instanceof \DateTimeInterface => \DateTimeImmutable::createFromInterface($value)
+                        ->setTimezone(new \DateTimeZone(date_default_timezone_get()))
+                        ->format('Y-m-d H:i:s'),
                     $value instanceof \Stringable => (string) $value,
                     default => throw new \InvalidArgumentException(
                         'A ' . get_debug_type($value) . ' cannot be bound to a statement.',

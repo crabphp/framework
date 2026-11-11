@@ -372,7 +372,12 @@ final class PdoConnection implements ManagedConnection
             $value === null => [null, \PDO::PARAM_NULL],
             is_string($value) => [$value, \PDO::PARAM_STR],
             is_float($value) => [(string) $value, \PDO::PARAM_STR],
-            $value instanceof \DateTimeInterface => [$value->format('Y-m-d H:i:s'), \PDO::PARAM_STR],
+            $value instanceof \DateTimeInterface => [
+                \DateTimeImmutable::createFromInterface($value)
+                    ->setTimezone(new \DateTimeZone(date_default_timezone_get()))
+                    ->format('Y-m-d H:i:s'),
+                \PDO::PARAM_STR,
+            ],
             $value instanceof \Stringable => [(string) $value, \PDO::PARAM_STR],
             default => throw new \InvalidArgumentException(
                 'A ' . get_debug_type($value) . ' cannot be bound to a statement.',

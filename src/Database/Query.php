@@ -507,6 +507,11 @@ final class Query implements QueryContract
 
     public function chunkById(int $size, \Closure $callback, string $column = 'id'): void
     {
+        if ($this->orders !== []) {
+            throw new \LogicException(
+                'chunkById() reads in the order of its column; remove the orderBy() before calling chunkById().',
+            );
+        }
         if ($size < 1) {
             throw new \InvalidArgumentException('A chunk holds at least one row.');
         }
