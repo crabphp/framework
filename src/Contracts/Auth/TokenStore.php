@@ -14,10 +14,15 @@ interface TokenStore
     /**
      * @param Identity|int|string $for The user, or the user's id.
      * @param string $name What the token is for, to tell a user's tokens apart: "iPhone", "deploy script".
-     * @param \DateTimeInterface|null $expiresAt When it stops working; never when left out.
+     * @param \DateTimeInterface|false|null $expiresAt When it stops working: that time, false for never, or, left
+     *     out, the store's lifetime from now, "auth.token_lifetime", which is never unless set.
      * @return string The token, to hand to the client. It cannot be read again.
      */
-    public function issue(Identity|int|string $for, string $name = '', ?\DateTimeInterface $expiresAt = null): string;
+    public function issue(
+        Identity|int|string $for,
+        string $name = '',
+        \DateTimeInterface|false|null $expiresAt = null,
+    ): string;
 
     /**
      * @return int|string|null The id of the user the token belongs to, or null when it is unknown, revoked or expired.

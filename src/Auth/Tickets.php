@@ -12,6 +12,10 @@ use Crab\Contracts\Cache\Cache;
 /**
  * Exchanges a short-lived random ticket for its user once. The shared
  * cache's atomic take decides which concurrent handshake succeeds.
+ *
+ * A ticket keeps its user's class beside the id, and is redeemed only for
+ * a user of that class: where a Customer and a User can share an id, a
+ * customer's ticket never comes back as the user.
  */
 final readonly class Tickets implements TicketsContract
 {
@@ -31,7 +35,7 @@ final readonly class Tickets implements TicketsContract
     {
         do {
             $ticket = bin2hex(random_bytes(32));
-        } while (!$this->cache->add($this->key($ticket), $user->id, $this->ttl));
+        } while (!$this->cache->add($this->key($ticket), [$user::class, $user->id], $this->ttl));
         return $ticket;
     }
 
@@ -40,8 +44,16 @@ final readonly class Tickets implements TicketsContract
         if (preg_match('/^[0-9a-f]{64}$/D', $ticket) !== 1) {
             return null;
         }
-        $id = $this->cache->take($this->key($ticket));
-        return is_int($id) || is_string($id) ? $this->users->resolve($id) : null;
+        $stored = $this->cache->take($this->key($ticket));
+        if (!is_array($stored) || count($stored) !== 2 || !is_string($stored[0] ?? null)) {
+            return null;
+        }
+        [$class, $id] = $stored;
+        if (!is_int($id) && !is_string($id)) {
+            return null;
+        }
+        $user = $this->users->resolve($id);
+        return $user instanceof $class ? $user : null;
     }
 
     private function key(string $ticket): string

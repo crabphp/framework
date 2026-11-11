@@ -213,6 +213,7 @@ Take `Crab\Contracts\Clock\Clock $clock` in the class's constructor and use it f
 ```php
 $token = $tokens->issue($user, 'mobile app');                               // for a user or an id
 $token = $tokens->issue($user, 'ci', $clock->now()->modify('+30 days'));    // one that expires
+$token = $tokens->issue($user, 'deploy', expiresAt: false);                 // one that never does
 
 $tokens->revoke($token);                // log out: this token stops working at once
 $tokens->revokeAll($user);              // log out everywhere
@@ -220,6 +221,17 @@ $tokens->owner($token);                 // the id it belongs to, or null
 ```
 
 Checking a token is one query by its hash.
+
+A token issued without an expiry lives for `auth.token_lifetime` seconds, and for ever while that is unset, as it is by default. Set it so that a token taken from a client stops working on its own:
+
+```php
+// config/auth.php
+return [
+    'token_lifetime' => 30 * 86_400,    // thirty days
+];
+```
+
+It applies when a token is issued, so tokens already issued keep the expiry they were given. An expiry passed to `issue()` is used in its place, and `expiresAt: false` issues one that never expires, such as a deploy script's.
 
 ### Another header
 
@@ -331,11 +343,12 @@ Route::post('/ws/ticket', IssueTicket::class)->middleware(TokenAuth::class);
 Route::websocket('/orders/{id}/live', WatchOrder::class)->middleware(Ticket::class);
 ```
 
-`AuthPlugin` binds `Crab\Contracts\Auth\Tickets` and the same service as `Crab\Auth\Tickets`. It uses the Cache contract and your IdentityResolver; both are required. TokenAuthPlugin supplies the middleware's header fallback. IssueTicket works with any authentication middleware that supplies an Identity. `Tickets::issue(Identity $user): string` issues a ticket; `redeem(string $ticket): ?Identity` consumes it once and resolves its user. Storage holds only the identity id under a hash of the ticket.
+`AuthPlugin` binds `Crab\Contracts\Auth\Tickets` and the same service as `Crab\Auth\Tickets`. It uses the Cache contract and your IdentityResolver; both are required. TokenAuthPlugin supplies the middleware's header fallback. IssueTicket works with any authentication middleware that supplies an Identity. `Tickets::issue(Identity $user): string` issues a ticket; `redeem(string $ticket): ?Identity` consumes it once and resolves its user. Storage holds only the user's class and id under a hash of the ticket, and a ticket is redeemed only for a user of that class: with a `Customer` and a `User` that share an id, a customer's ticket never comes back as the user.
 
 | Setting | Default | |
 | --- | --- | --- |
 | `auth.ticket_ttl` | `30` | Positive whole seconds a ticket lives; set it in `config/auth.php` |
+| `auth.token_lifetime` | none | Positive whole seconds a token issued without an expiry lives; never while unset. See [Managing tokens](#managing-tokens) |
 
 Ticket middleware consumes a present `ticket` query parameter. Unknown, expired, malformed, already-used tickets and users that no longer exist all receive the same 401. A present invalid ticket never falls back to a bearer token or an existing identity. Without a ticket, TokenAuth handles the header and existing request identity as usual, including `Api::actingAs()`.
 

@@ -7,7 +7,8 @@ namespace Crab\Contracts\Auth;
 /**
  * Short-lived, single-use credentials for a browser's socket handshake.
  * Only the issuing caller sees the ticket; storage keeps its hash and
- * the identity id needed to restore the user.
+ * the identity's class and id needed to restore the user, who must be of
+ * that class again.
  */
 interface Tickets
 {

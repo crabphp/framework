@@ -190,7 +190,7 @@ window.addEventListener('pagehide', () => {
 });
 ```
 
-Do not put a long-lived bearer token in the socket URL: a proxy may retain the whole query in its access log. A ticket is opaque, expires after `auth.ticket_ttl` (30 seconds by default), and is consumed at its first authentication attempt. Your resolver restores the user from the stored id; actions receive the same typed user as with TokenAuth. With no ticket, Ticket delegates to TokenAuth for clients that can send headers. See [Authentication](authentication.md#browser-socket-tickets) for the service and optional `origins:` check, and [Cache stores](cache.md#choosing-a-store) for sharing tickets between workers or machines.
+Do not put a long-lived bearer token in the socket URL: a proxy may retain the whole query in its access log. A ticket is opaque, expires after `auth.ticket_ttl` (30 seconds by default), and is consumed at its first authentication attempt. Your resolver restores the user from the stored id, and the ticket is refused unless the user is of the class it was issued to; actions receive the same typed user as with TokenAuth. With no ticket, Ticket delegates to TokenAuth for clients that can send headers. See [Authentication](authentication.md#browser-socket-tickets) for the service and optional `origins:` check, and [Cache stores](cache.md#choosing-a-store) for sharing tickets between workers or machines.
 
 ## Configuration
 

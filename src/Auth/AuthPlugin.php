@@ -28,10 +28,12 @@ final class AuthPlugin implements Plugin
             'auth',
             [
                 'ticket_ttl' => 30,
+                'token_lifetime' => null,
                 'cookie' => ['name' => null, 'max_age' => null, 'login' => null, 'origins' => [], 'secure' => null],
             ],
             [
                 'ticket_ttl' => ['type' => 'integer', 'minimum' => 1],
+                'token_lifetime' => ['type' => ['integer', 'null'], 'minimum' => 1],
                 'cookie' => [
                     'type' => 'object',
                     'properties' => [

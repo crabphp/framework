@@ -201,6 +201,55 @@ final class AuthTest extends TestCase
         $tokens->revoke('already gone');
     }
 
+    #[DataProvider('drivers')]
+    public function testALifetimeExpiresTokensIssuedWithoutAnExpiryAndFalseIsForever(string $driver): void
+    {
+        $db = $this->database($driver);
+        $clock = new FrozenClock('2026-01-31 12:00:00');
+        $tokens = new DatabaseTokenStore($db, clock: $clock, lifetime: 3600);
+
+        $login = $tokens->issue(7, 'login');
+        $forever = $tokens->issue(7, 'deploy', expiresAt: false);
+        $short = $tokens->issue(7, 'link', $clock->now()->modify('+10 minutes'));
+        self::assertSame(
+            ['2026-01-31 13:00:00', null, '2026-01-31 12:10:00'],
+            $db->table('auth_tokens')->orderBy('id')->pluck('expires_at'),
+        );
+
+        $clock->advance('+10 minutes');
+        self::assertNull($tokens->owner($short), 'An expiry given is kept, shorter than the lifetime.');
+        $clock->advance('+50 minutes');
+        self::assertNull($tokens->owner($login), 'A token issued without an expiry stops at the end of the lifetime.');
+        $clock->advance('+10 years');
+        self::assertSame(7, $tokens->owner($forever));
+
+        $never = new DatabaseTokenStore($db, clock: $clock);
+        $kept = $never->issue(7);
+        self::assertNull($db->table('auth_tokens')->where('token_hash', hash('sha256', $kept))->value('expires_at'));
+        self::assertSame(
+            7,
+            $never->owner($kept),
+            'Without a lifetime, a token issued without an expiry never expires.',
+        );
+
+        $this->expectExceptionMessage("A token's lifetime is at least one second");
+        new DatabaseTokenStore($db, lifetime: 0);
+    }
+
+    public function testTheTokenLifetimeIsReadFromTheAuthSettings(): void
+    {
+        $app = new App(new Config([
+            'database' => ['connections' => ['main' => ['dsn' => 'sqlite:' . $this->file]]],
+            // As env() gives it: text.
+            'auth' => ['token_lifetime' => '60'],
+        ]));
+        $app->register(AuthPlugin::class, DatabasePlugin::class, TokenAuthPlugin::class);
+        $app->container->instance(ClockInterface::class, new FrozenClock('2026-01-31 12:00:00'));
+        $db = $this->database('sqlite');
+        $app->container->get(TokenStore::class)->issue(7);
+        self::assertSame('2026-01-31 12:01:00', $db->table('auth_tokens')->value('expires_at'));
+    }
+
     public function testPasswordsAreHashedAndVerified(): void
     {
         $hasher = new PasswordHasher(['cost' => 4]);

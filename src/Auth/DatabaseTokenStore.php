@@ -18,15 +18,29 @@ final readonly class DatabaseTokenStore implements TokenStore
 {
     /**
      * @param ClockInterface|null $clock Tells whether a token has expired; the real time when left out.
+     * @param int|null $lifetime Seconds a token issued without an expiry works for; null for ever.
      */
     public function __construct(
         private Connection $connection,
         private string $table = 'auth_tokens',
         private ?ClockInterface $clock = null,
-    ) {}
+        private ?int $lifetime = null,
+    ) {
+        if ($lifetime !== null && $lifetime < 1) {
+            throw new \InvalidArgumentException(
+                "A token's lifetime is at least one second, or null for tokens that never expire; {$lifetime} was given.",
+            );
+        }
+    }
 
-    public function issue(Identity|int|string $for, string $name = '', ?\DateTimeInterface $expiresAt = null): string
-    {
+    public function issue(
+        Identity|int|string $for,
+        string $name = '',
+        \DateTimeInterface|false|null $expiresAt = null,
+    ): string {
+        if ($expiresAt === null && $this->lifetime !== null) {
+            $expiresAt = $this->clock()->modify("+{$this->lifetime} seconds");
+        }
         $token = bin2hex(random_bytes(32));
         $this->connection
             ->table($this->table)
@@ -35,11 +49,12 @@ final readonly class DatabaseTokenStore implements TokenStore
                 'name' => $name,
                 'token_hash' => hash('sha256', $token),
                 // As the clock tells the time, so that the two compare whatever zone the expiry was given in.
-                'expires_at' => $expiresAt === null
-                    ? null
-                    : \DateTimeImmutable::createFromInterface($expiresAt)
-                        ->setTimezone($this->clock()->getTimezone())
-                        ->format('Y-m-d H:i:s'),
+                'expires_at' =>
+                    $expiresAt === null || $expiresAt === false
+                        ? null
+                        : \DateTimeImmutable::createFromInterface($expiresAt)
+                            ->setTimezone($this->clock()->getTimezone())
+                            ->format('Y-m-d H:i:s'),
                 'created_at' => $this->now(),
             ]);
         return $token;

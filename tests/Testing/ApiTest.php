@@ -294,7 +294,7 @@ final class ApiTest extends TestCase
             public function issue(
                 Identity|int|string $for,
                 string $name = '',
-                ?\DateTimeInterface $expiresAt = null,
+                \DateTimeInterface|false|null $expiresAt = null,
             ): string {
                 return '';
             }

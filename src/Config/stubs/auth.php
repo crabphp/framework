@@ -6,6 +6,9 @@ declare(strict_types=1);
 return [
     // Positive whole seconds a single-use browser socket ticket lives.
     'ticket_ttl' => 30,
+    // Positive whole seconds a token issued without an expiry lives; null is for ever. expiresAt: false on
+    // TokenStore::issue() is for ever whatever this says.
+    'token_lifetime' => null,
     // CookieAuth: the user's token in a browser cookie.
     'cookie' => [
         // The cookie's name: letters, digits, _, . and -. Null is __Host-auth when secure, which a sibling

@@ -343,7 +343,7 @@ The client then sends `Authorization: Bearer <token>`, and `TokenAuth` is the mi
 
 - **You say how a user is found.** A token records whose it is, not who that is, so bind `Contracts\Auth\IdentityResolver` in your own plugin; its `resolve($id)` returns your user or null.
 - **The table is yours.** `token:install` writes the migration for `auth_tokens` into your migrations folder, where you can read and change it; the framework ships no migration of its own.
-- **`TokenStore`** has `issue($user, $name, $expiresAt)`, `owner($token)`, `revoke($token)` and `revokeAll($user)`. A token is 64 random characters, shown once; only its hash is stored. Checking one is one query, and a revoked token stops working at once.
+- **`TokenStore`** has `issue($user, $name, $expiresAt)`, `owner($token)`, `revoke($token)` and `revokeAll($user)`. A token is 64 random characters, shown once; only its hash is stored. One issued without an expiry lives for `auth.token_lifetime` seconds, for ever while that is unset; `expiresAt: false` is for ever regardless. Checking one is one query, and a revoked token stops working at once.
 - **Another header, or another word before the token,** is an argument, given as an object:
 
 ~~~php

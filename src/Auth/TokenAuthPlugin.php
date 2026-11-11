@@ -34,9 +34,14 @@ final class TokenAuthPlugin implements Plugin
                     'Tokens are kept in the database: register the database plugin, DatabasePlugin, as well as TokenAuthPlugin.',
                 );
             }
+            $config = $container->get(Config::class);
+            $config->check('auth');
+            // The checked value may still be text from env(): "2592000".
+            $lifetime = $config->get('auth.token_lifetime');
             return new DatabaseTokenStore(
                 $container->get(Database::class),
                 clock: $container->has(ClockInterface::class) ? $container->get(ClockInterface::class) : null,
+                lifetime: $lifetime === null ? null : (int) $lifetime,
             );
         });
         $container->singleton(DatabaseTokenStore::class, TokenStore::class);

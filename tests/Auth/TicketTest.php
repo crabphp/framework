@@ -151,12 +151,12 @@ final class TicketTest extends TestCase
         self::assertSame([401, 'Token'], [$response->getStatusCode(), $response->getHeaderLine('WWW-Authenticate')]);
     }
 
-    public function testOnlyTheIdentityIdIsStoredUnderTheTicketsHash(): void
+    public function testOnlyTheIdentitysClassAndIdAreStoredUnderTheTicketsHash(): void
     {
         $ticket = $this->issue();
         $store = $this->app->container->get(Store::class);
         self::assertSame(
-            serialize('0007'),
+            serialize([TicketUser::class, '0007']),
             $store->get('value:auth.ticket.' . hash('sha256', $ticket), $this->clock->now()->getTimestamp()),
         );
         self::assertNull($store->get($ticket, $this->clock->now()->getTimestamp()));
@@ -165,6 +165,18 @@ final class TicketTest extends TestCase
             $this->app->container->get(Tickets::class),
         );
         self::assertNotSame($ticket, $this->issue());
+    }
+
+    public function testATicketIsRedeemedOnlyForAUserOfTheClassItWasIssuedTo(): void
+    {
+        $tickets = $this->app->container->get(Tickets::class);
+        // The resolver finds TicketUser 0007; a customer who shares the id must not become that user.
+        $ticket = $tickets->issue(new TicketCustomer('0007'));
+        self::assertNull($tickets->redeem($ticket));
+        self::assertNull($tickets->redeem($ticket), 'The ticket is consumed even when refused.');
+
+        $ticket = $tickets->issue($this->user);
+        self::assertSame($this->user, $tickets->redeem($ticket));
     }
 
     public function testOriginsAreMatchedExactlyBeforeATicketIsConsumedOrAHeaderIsChecked(): void
@@ -345,6 +357,13 @@ final readonly class TicketUser implements Identity
     ) {}
 }
 
+final readonly class TicketCustomer implements Identity
+{
+    public function __construct(
+        public int|string $id,
+    ) {}
+}
+
 final class TicketUsers implements IdentityResolver
 {
     public function __construct(
@@ -363,8 +382,11 @@ final readonly class TicketTokens implements TokenStore
         private int|string $id,
     ) {}
 
-    public function issue(Identity|int|string $for, string $name = '', ?\DateTimeInterface $expiresAt = null): string
-    {
+    public function issue(
+        Identity|int|string $for,
+        string $name = '',
+        \DateTimeInterface|false|null $expiresAt = null,
+    ): string {
         return 'known';
     }
 
