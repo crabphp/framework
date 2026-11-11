@@ -21,7 +21,7 @@ The framework provides routing, typed actions with validation, middleware, a dat
 > [Views with Arc](views.md) are experimental, may change without backward compatibility, and must not be used in production. Arc is an optional package, not part of the API-focused core.
 
 > [!NOTE]
-> Crab's latest release is v0.6.4, on [Packagist](https://packagist.org/packages/crabphp/framework). Its packages, such as `crabphp/runs` or `crabphp/redis`, are installed the same way, with `composer require`.
+> Crab's latest release is v0.7.0, on [Packagist](https://packagist.org/packages/crabphp/framework). Its packages, such as `crabphp/runs` or `crabphp/redis`, are installed the same way, with `composer require`.
 
 ## Requirements
 
