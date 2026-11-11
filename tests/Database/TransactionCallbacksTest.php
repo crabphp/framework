@@ -199,6 +199,24 @@ final class TransactionCallbacksTest extends TestCase
         @unlink($file);
     }
 
+    public function testACommitPdoRefusesByItselfIsNotTakenForARollback(): void
+    {
+        // As after MySQL commits implicitly for a schema change: PDO says there is no transaction.
+        $db = new Database(static fn(): \PDO => new LocallyEndedPdo('sqlite::memory:'));
+        $ran = [];
+        try {
+            $db->transaction(static function (Connection $tx) use (&$ran): void {
+                $tx->afterRollback(static function () use (&$ran): void {
+                    $ran[] = 'undone';
+                });
+            });
+        } catch (\Throwable $error) {
+            $failure = $error;
+        }
+        self::assertStringContainsString('no active transaction', ($failure ?? null)?->getMessage() ?? '');
+        self::assertSame([], $ran);
+    }
+
     public function testACommitWhoseOutcomeIsUnknownRunsNeitherCallback(): void
     {
         $db = new Database(static fn(): \PDO => new CommitLostPdo('sqlite::memory:'));
@@ -240,6 +258,25 @@ final class CommitLostPdo extends \PDO
     public function commit(): bool
     {
         throw new \PDOException('SQLSTATE[HY000]: General error: 2006 MySQL server has gone away');
+    }
+
+    public function exec(string $statement): int|false
+    {
+        if ($statement === 'COMMIT') {
+            $this->commit();
+        }
+        return parent::exec($statement);
+    }
+}
+
+/**
+ * A connection whose COMMIT PDO refuses by itself, with no answer from the database.
+ */
+final class LocallyEndedPdo extends \PDO
+{
+    public function commit(): bool
+    {
+        throw new \PDOException('There is no active transaction');
     }
 
     public function exec(string $statement): int|false

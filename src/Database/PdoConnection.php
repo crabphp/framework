@@ -240,7 +240,7 @@ final class PdoConnection implements ManagedConnection
         } catch (\Throwable $error) {
             // A database that answered with an error has rolled the transaction back: what was to run
             // after a rollback runs. One whose answer was lost may have committed: then nothing runs.
-            if ($depth === 0 && !self::mentions($error->getMessage(), self::LOST)) {
+            if ($depth === 0 && self::refused($error)) {
                 $this->afterRollback = $undo;
             }
             // Its state is unknown now; a fresh connection is the only safe one.
@@ -363,6 +363,21 @@ final class PdoConnection implements ManagedConnection
             },
             $sql,
         );
+    }
+
+    /**
+     * Whether the database answered with an error of its own: PDO then carries the driver's code.
+     * A connection lost on the way, or an error PDO raised itself, as "There is no active
+     * transaction" after a statement committed implicitly, leaves unknown what the database did.
+     */
+    private static function refused(\Throwable $error): bool
+    {
+        for ($cause = $error; $cause !== null; $cause = $cause->getPrevious()) {
+            if ($cause instanceof \PDOException) {
+                return ($cause->errorInfo[1] ?? null) !== null && !self::mentions($cause->getMessage(), self::LOST);
+            }
+        }
+        return false;
     }
 
     /**
