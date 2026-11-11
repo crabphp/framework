@@ -1090,13 +1090,13 @@ final class QueryTest extends TestCase
     public function testChunkByIdRefusesAnExistingOrderBeforeCallingBack(string $driver): void
     {
         $db = $this->seeded($driver);
-        foreach (['asc', 'desc'] as $direction) {
+        foreach ([['id', 'desc'], ['name', 'asc']] as [$column, $direction]) {
             $calls = 0;
             $error = null;
             try {
                 $db
                     ->table('users')
-                    ->orderBy('id', $direction)
+                    ->orderBy($column, $direction)
                     ->chunkById(2, static function () use (&$calls): void {
                         ++$calls;
                     });
@@ -1104,9 +1104,33 @@ final class QueryTest extends TestCase
                 $error = $caught;
             }
             self::assertInstanceOf(\LogicException::class, $error);
-            self::assertStringContainsString('remove the orderBy()', $error->getMessage());
+            self::assertStringContainsString('remove the other orderBy()', $error->getMessage());
             self::assertSame(0, $calls);
         }
+        // Its own order, written out, is the order it reads in anyway.
+        $ids = [];
+        $all = $db->table('users')->orderBy('id')->pluck('id');
+        $db
+            ->table('users')
+            ->orderBy('id')
+            ->chunkById(2, static function (array $rows) use (&$ids): void {
+                $ids = [...$ids, ...array_column($rows, 'id')];
+            });
+        self::assertSame($all, $ids);
+    }
+
+    #[DataProvider('drivers')]
+    public function testFindKeepsAnOrAmongTheConditionsFromLettingAnotherRowThrough(string $driver): void
+    {
+        $db = $this->seeded($driver);
+        $ids = $db->table('users')->orderBy('id')->pluck('id');
+        $names = $db->table('users')->orderBy('id')->pluck('name');
+        $query = $db->table('users')->where('name', $names[0])->orWhere('name', $names[1]);
+        self::assertSame($ids[1], $query->find($ids[1])['id'] ?? null);
+        self::assertSame($ids[0], $query->find($ids[0])['id'] ?? null);
+        // A row the conditions leave out is not found, and neither is one that does not exist.
+        self::assertNull($query->find($ids[2]));
+        self::assertNull($query->find(999_999));
     }
 
     private function database(string $driver): Database

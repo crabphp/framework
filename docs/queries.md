@@ -369,7 +369,7 @@ A cursor is the order's values from the page's last row, encoded; it is not secr
 
 `chunkById()` reads a table in pieces without loading it whole, and is not thrown off by rows added or removed meanwhile:
 
-It reads in ascending order of its cursor column and refuses an existing order; remove `orderBy()` before calling it.
+It reads in ascending order of its cursor column and refuses any other order; remove such an `orderBy()` before calling it.
 
 ```php
 $db->table('users')->where('active', true)->chunkById(500, function (array $rows): void {
@@ -379,7 +379,7 @@ $db->table('users')->where('active', true)->chunkById(500, function (array $rows
 });
 ```
 
-Use it in commands and jobs that walk a whole table, on an otherwise unordered query; select the cursor column and do not change it while walking the rows.
+Use it in commands and jobs that walk a whole table, on a query with no other order; select the cursor column and do not change it while walking the rows.
 
 ## In a transaction
 

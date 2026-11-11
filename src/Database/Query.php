@@ -448,6 +448,10 @@ final class Query implements QueryContract
     public function find(int|string $id, string $column = 'id'): array|object|null
     {
         $query = clone $this;
+        // The query's own conditions as one, so that an "or" among them does not let another row through.
+        if ($query->wheres !== []) {
+            $query->wheres = [['type' => 'nested', 'boolean' => 'and', 'wheres' => $query->wheres]];
+        }
         return $query->where($column, $id)->first();
     }
 
@@ -507,9 +511,11 @@ final class Query implements QueryContract
 
     public function chunkById(int $size, \Closure $callback, string $column = 'id'): void
     {
-        if ($this->orders !== []) {
+        // Its own order is the one it reads in; any other would skip rows and repeat others.
+        $own = [['column' => $column, 'direction' => 'asc']];
+        if ($this->orders !== [] && $this->orders !== $own) {
             throw new \LogicException(
-                'chunkById() reads in the order of its column; remove the orderBy() before calling chunkById().',
+                "chunkById() reads in ascending order of \"{$column}\"; remove the other orderBy() before calling chunkById().",
             );
         }
         if ($size < 1) {
@@ -526,7 +532,8 @@ final class Query implements QueryContract
                 }
                 $part->where($column, '>', $last);
             }
-            $rows = $part->orderBy($column)->limit($size)->read();
+            $part->orders = $own;
+            $rows = $part->limit($size)->read();
             if ($rows === [] || $callback($this->records($rows)) === false) {
                 return;
             }
