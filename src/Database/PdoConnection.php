@@ -363,6 +363,9 @@ final class PdoConnection implements ManagedConnection
      */
     private static function bound(mixed $value): array
     {
+        if ($value instanceof \BackedEnum) {
+            $value = $value->value;
+        }
         return match (true) {
             is_int($value) => [$value, \PDO::PARAM_INT],
             is_bool($value) => [$value, \PDO::PARAM_BOOL],

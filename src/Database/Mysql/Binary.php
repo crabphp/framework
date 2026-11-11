@@ -237,6 +237,9 @@ final class Binary
         $bitmap = str_repeat("\0", intdiv(count($values) + 7, 8));
         $types = $data = '';
         foreach ($values as $index => $value) {
+            if ($value instanceof \BackedEnum) {
+                $value = $value->value;
+            }
             if ($value === null) {
                 $bitmap[intdiv($index, 8)] = chr(ord($bitmap[intdiv($index, 8)]) | (1 << ($index % 8)));
                 $types .= chr(self::NULL) . "\0";

@@ -20,6 +20,13 @@ final class Database implements DatabaseContract
 {
     private ?Pool $pool = null;
     /**
+     * Loans belong to the calling fiber, not to fibers it starts.
+     *
+     * @var \WeakMap<object, list<Connection>>
+     */
+    private readonly \WeakMap $current;
+    private readonly object $main;
+    /**
      * The event loop the pool waits on.
      */
     private ?EventLoop $loop = null;
@@ -46,6 +53,8 @@ final class Database implements DatabaseContract
         private readonly ?DatabaseManager $manager = null,
         private readonly ?\Closure $factory = null,
     ) {
+        $this->current = new \WeakMap();
+        $this->main = new \stdClass();
         if ($max < 1 || !is_finite($timeout) || $timeout <= 0) {
             throw new \InvalidArgumentException(
                 'A database needs a positive pool size and a finite, positive timeout.',
@@ -112,12 +121,29 @@ final class Database implements DatabaseContract
         $pool->release($connection);
     }
 
+    public function current(): Connection
+    {
+        $stack = $this->current[\Fiber::getCurrent() ?? $this->main] ?? [];
+        return $stack === [] ? $this : $stack[array_key_last($stack)];
+    }
+
     public function run(\Closure $callback): mixed
     {
         $connection = $this->acquire();
+        $caller = \Fiber::getCurrent() ?? $this->main;
+        $stack = $this->current[$caller] ?? [];
+        $stack[] = $connection;
+        $this->current[$caller] = $stack;
         try {
             return $callback($connection);
         } finally {
+            $stack = $this->current[$caller];
+            array_pop($stack);
+            if ($stack === []) {
+                unset($this->current[$caller]);
+            } else {
+                $this->current[$caller] = $stack;
+            }
             $this->release($connection);
         }
     }

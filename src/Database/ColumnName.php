@@ -10,7 +10,7 @@ namespace Crab\Database;
  *
  *     public function __construct(#[ColumnName('created_at')] public \DateTimeImmutable $createdAt) {}
  */
-#[\Attribute(\Attribute::TARGET_PARAMETER)]
+#[\Attribute(\Attribute::TARGET_PARAMETER | \Attribute::TARGET_PROPERTY)]
 final readonly class ColumnName
 {
     public function __construct(

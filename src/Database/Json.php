@@ -12,7 +12,7 @@ use Crab\Contracts\Database\Cast;
  *
  *     public function __construct(#[Json] public array $settings) {}
  */
-#[\Attribute(\Attribute::TARGET_PARAMETER)]
+#[\Attribute(\Attribute::TARGET_PARAMETER | \Attribute::TARGET_PROPERTY)]
 final readonly class Json implements Cast
 {
     public function read(mixed $value): mixed

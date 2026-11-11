@@ -4,6 +4,11 @@ Crab follows [semantic versioning](https://semver.org). Before 1.0, a minor vers
 
 ## Unreleased
 
+- **The current loan:** `Database::current()` returns the connection lent to the calling fiber by `run()` or `transaction()`, with nested loans restored on return; outside a loan it returns the database.
+- **Mapping attributes on properties:** `#[Json]` and `#[ColumnName]` may be written on a property as well as a constructor parameter.
+- **Shared field conversion:** `Contracts\Database\Field` reads and writes one declared property's value; records keep their existing mapping and messages. The internal `Database\RecordField` is removed.
+- **Enums in statements:** PDO and async MySQL bind backed enums by their integer or string value, including conditions and updates without `into()`.
+
 - **Benchmarks live separately:** benchmark fixtures, research and recorded results are removed from the framework. Use [crabphp/benchmarks](https://github.com/crabphp/benchmarks) for performance work and its engine maintainer tools for request-path and soak checks; the framework no longer provides `composer soak`. Historical research remains in Git.
 - **TLS for engine protocols:** `Crab::listen(tls: ...)` negotiates implicit TLS before protocol dispatch. `Connection::startTls()` upgrades an existing connection as a server or client, with a bounded handshake and verified clients by default. The protocol owner flushes its positive reply, passes all unread parser bytes to `unread:`, and discards pre-upgrade protocol and authentication state. Engine-created streams have private SSL contexts; an outside stream must supply its own context. See [the engine guide](src/Engine/README.md#tls-and-mail-dns).
 - **Local TLS failures are visible:** certificate and private-key files are checked in the worker at listener startup and again for upgrades. Local handshake setup failures report their PHP and OpenSSL reasons through `FailureReporter`; a peer's bad handshake closes quietly. `shutdownWrite()` on an encrypted connection flushes and closes fully: TLS has no half-close here.

@@ -1032,6 +1032,31 @@ final class QueryTest extends TestCase
         return $db;
     }
 
+    #[DataProvider('drivers')]
+    public function testBackedEnumsAreBoundInConditionsListsAndUpdates(string $driver): void
+    {
+        $db = $this->database($driver);
+        $id = $db->table('users')->insert([
+            'name' => QueryName::Ada,
+            'email' => 'enum@example.test',
+            'votes' => QueryVotes::One,
+        ]);
+        self::assertSame($id, $db->table('users')->where('name', QueryName::Ada)->value('id'));
+        self::assertSame(1, $db->table('users')->whereIn('votes', [QueryVotes::One, QueryVotes::Two])->count());
+        self::assertSame(1, $db
+            ->table('users')
+            ->where('id', $id)
+            ->update(['name' => QueryName::Grace, 'votes' => QueryVotes::Two]));
+        self::assertSame(
+            1,
+            $db
+                ->table('users')
+                ->where('votes', QueryVotes::Two)
+                ->whereIn('name', [QueryName::Ada, QueryName::Grace])
+                ->count(),
+        );
+    }
+
     private function database(string $driver): Database
     {
         $db = new Database(fn(): \PDO => $this->pdo($driver), factory: $this->mysqlFactory($driver));
@@ -1066,4 +1091,16 @@ final class QueryTest extends TestCase
         }
         return new \PDO('sqlite:' . $this->file);
     }
+}
+
+enum QueryName: string
+{
+    case Ada = 'Ada';
+    case Grace = 'Grace';
+}
+
+enum QueryVotes: int
+{
+    case One = 1;
+    case Two = 2;
 }

@@ -124,7 +124,11 @@ public function __construct(#[AsMoney] public Money $price) {}
 
 There are no models: a record does not load or save itself, has no relationships and changes nothing behind your back. A related row is read with a query of its own, a `whereIn()` on the ids you hold.
 
+`#[Json]` and `#[ColumnName]` also work on plain properties. A package that maps properties can use `Crab\Contracts\Database\Field::of($property, $column, $hasDefault, $default)`, then `fromColumn()` and `toColumn()`, to share the record mapper's type conversions. The caller reads the column name; `Field` only converts its value.
+
 ## Conditions
+
+A backed enum in a condition or an update is bound as its value, including an integer for an int-backed enum: `where('status', OrderStatus::Shipped)` and `whereIn('status', [OrderStatus::Paid, OrderStatus::Shipped])`.
 
 ```php
 $db->table('users')

@@ -145,6 +145,16 @@ $db->transaction(function (Connection $tx) use ($from, $to, $amount): void {
 
 `transaction()` returns what the callback returns. A transaction inside a transaction is a savepoint: the inner one can roll back alone.
 
+`$db->current()` gives the connection lent to this fiber by `transaction()` or `run()`, or `$db` outside a callback. Use it when a helper needs to share the caller's transaction:
+
+```php
+$db->transaction(function (Connection $tx) use ($db, $id): void {
+    $db->current()->table('users')->where('id', $id)->update(['active' => true]);
+});
+```
+
+A nested call on `$db` borrows another connection; `current()` restores the outer loan when it returns. A nested call on `$tx` uses a savepoint on that connection. Fibers started inside the callback do not inherit its loan, and connections borrowed by hand with `acquire()` are not current. The pool's own statements still borrow separately.
+
 `afterCommit()` runs something once the transaction has committed, and never when it, or the inner transaction that asked, rolls back. Use it for what must not happen for a write that was undone:
 
 ```php

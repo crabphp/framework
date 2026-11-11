@@ -25,6 +25,14 @@ interface Database extends Connection
     public function owns(Connection $connection): bool;
 
     /**
+     * The connection the calling fiber was lent by this database's
+     * transaction() or run(), the innermost when one is inside another, and
+     * this database itself when there is none. What runs on it shares that
+     * transaction.
+     */
+    public function current(): Connection;
+
+    /**
      * Borrows a connection, waiting for one to be free when every one is
      * in use. Whatever is acquired must be released; prefer run().
      */

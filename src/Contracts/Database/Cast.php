@@ -7,9 +7,9 @@ namespace Crab\Contracts\Database;
 /**
  * Turns a column's value into a record's property and back, for a type
  * the mapper does not know by itself. Written as an attribute on the
- * constructor parameter, as #[Json] is:
+ * constructor parameter or property, as #[Json] is:
  *
- *     #[\Attribute(\Attribute::TARGET_PARAMETER)]
+ *     #[\Attribute(\Attribute::TARGET_PARAMETER | \Attribute::TARGET_PROPERTY)]
  *     final readonly class AsMoney implements Cast { ... }
  *
  *     public function __construct(#[AsMoney] public Money $price) {}
