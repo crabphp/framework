@@ -4,6 +4,8 @@ Crab follows [semantic versioning](https://semver.org). Before 1.0, a minor vers
 
 ## Unreleased
 
+- **Typed rows for static analysis:** `Contracts\Database\Query` is generic over its row. A query from `table()` is a `Query<array<string, mixed>>`, and `into(Order::class)` makes it a `Query<Order>`, so `get()` is a `list<Order>`, `first()` and `find()` an `?Order`, the pages `Page<Order>` and `CursorPage<Order>`, and `chunkById()`'s parts `list<Order>`. Nothing changes at run time.
+
 ## 0.7.1 — 2026-11-12
 
 Breaking, each with what an application changes:

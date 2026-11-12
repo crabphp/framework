@@ -72,6 +72,9 @@ final class Connection implements ManagedConnection
         return 'mysql';
     }
 
+    /**
+     * @return Query<array<string, mixed>>
+     */
     public function table(string|QueryContract $table, ?string $as = null): Query
     {
         return new Query($this, $table, as: $as);

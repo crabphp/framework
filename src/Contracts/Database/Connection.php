@@ -17,6 +17,8 @@ interface Connection
      * an alias, "users as u" or table('users', 'u'). Given another query,
      * it reads that query's rows as a table named $as, which only reads:
      * table($db->table('posts')->select('user_id')->selectRaw('count(*) as posts')->groupBy('user_id'), 'totals').
+     *
+     * @return Query<array<string, mixed>>
      */
     public function table(string|Query $table, ?string $as = null): Query;
 

@@ -14,6 +14,9 @@ use Crab\Contracts\Database\Query as QueryContract;
  * Collects what a statement should say and hands it to a Grammar to be
  * written as SQL when it runs. It holds no SQL of its own, so the same
  * query runs on MySQL and on SQLite.
+ *
+ * @template TRow
+ * @implements QueryContract<TRow>
  */
 final class Query implements QueryContract
 {

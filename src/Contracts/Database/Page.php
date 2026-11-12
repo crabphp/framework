@@ -9,7 +9,8 @@ namespace Crab\Contracts\Database;
  * be looped over and counted like the rows themselves, and returned as
  * JSON with the keys Laravel's paginator uses.
  *
- * @implements \IteratorAggregate<int, array<string, mixed>|object>
+ * @template TItem
+ * @implements \IteratorAggregate<int, TItem>
  */
 final readonly class Page implements \IteratorAggregate, \Countable, \JsonSerializable
 {
@@ -27,7 +28,7 @@ final readonly class Page implements \IteratorAggregate, \Countable, \JsonSerial
     public ?int $to;
 
     /**
-     * @param list<array<string, mixed>|object> $items The rows of this page, records after Query::into().
+     * @param list<TItem> $items The rows of this page, records after Query::into().
      * @param bool $hasMore Whether a page follows this one.
      * @param int|null $total Every row the query matches; null from simplePaginate(), which does not count them.
      */
@@ -43,6 +44,9 @@ final readonly class Page implements \IteratorAggregate, \Countable, \JsonSerial
         $this->to = $items === [] ? null : $this->from + count($items) - 1;
     }
 
+    /**
+     * @return \ArrayIterator<int, TItem>
+     */
     public function getIterator(): \ArrayIterator
     {
         return new \ArrayIterator($this->items);

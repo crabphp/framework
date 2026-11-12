@@ -29,6 +29,11 @@ namespace Crab\Contracts\Database;
  *
  * Rows are arrays of column to value, or records after into(): objects
  * of a class whose constructor declares the columns with their types.
+ * The row's type follows for static analysis: a query from
+ * Connection::table() is a Query<array<string, mixed>>, and into(Order::class)
+ * makes it a Query<Order>, so get() is a list<Order> and first() an ?Order.
+ *
+ * @template TRow
  */
 interface Query
 {
@@ -290,23 +295,25 @@ interface Query
      *
      * value(), pluck() and the aggregates read plain values, as before.
      *
-     * @param class-string $class
+     * @template TRecord of object
+     * @param class-string<TRecord> $class
+     * @return static<TRecord>
      * @throws \LogicException When the class cannot be a record, saying what to change.
      */
     public function into(string $class): static;
 
     /**
-     * @return list<array<string, mixed>|object> Every matching row, as column name to value, or as a record after into().
+     * @return list<TRow> Every matching row, as column name to value, or as a record after into().
      */
     public function get(): array;
 
     /**
-     * @return array<string, mixed>|object|null The first matching row, or null when there is none.
+     * @return TRow|null The first matching row, or null when there is none.
      */
     public function first(): array|object|null;
 
     /**
-     * @return array<string, mixed>|object|null The row with this id, or null when there is none.
+     * @return TRow|null The row with this id, or null when there is none.
      */
     public function find(int|string $id, string $column = 'id'): array|object|null;
 
@@ -349,7 +356,7 @@ interface Query
      * and passes each part to the callback. Rows added or removed while it
      * runs do not shift the parts. Return false from the callback to stop.
      *
-     * @param \Closure(list<array<string, mixed>|object>): mixed $callback
+     * @param \Closure(list<TRow>): mixed $callback
      */
     public function chunkById(int $size, \Closure $callback, string $column = 'id'): void;
 
@@ -359,6 +366,8 @@ interface Query
      * read as 1, so the number can come straight from a request:
      * paginate(20, (int) $request->query('page', 1)). Order the query, or
      * the pages are not stable.
+     *
+     * @return Page<TRow>
      */
     public function paginate(int $perPage = 15, int $page = 1): Page;
 
@@ -366,6 +375,8 @@ interface Query
      * The same without counting: the page knows whether another follows
      * but not the total, which is what a "next" link needs and is cheaper
      * on a large table.
+     *
+     * @return Page<TRow>
      */
     public function simplePaginate(int $perPage = 15, int $page = 1): Page;
 
@@ -386,6 +397,7 @@ interface Query
      * Null comes first in an ascending order and last in a descending one,
      * as both databases sort it, and the pages follow that.
      *
+     * @return CursorPage<TRow>
      * @throws InvalidCursor When the cursor is not one this order gave: answered with a 422.
      */
     public function cursorPaginate(int $perPage = 15, ?string $cursor = null, string $unique = 'id'): CursorPage;

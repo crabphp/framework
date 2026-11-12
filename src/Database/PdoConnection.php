@@ -77,6 +77,9 @@ final class PdoConnection implements ManagedConnection
         $this->scope = new SessionScope();
     }
 
+    /**
+     * @return Query<array<string, mixed>>
+     */
     public function table(string|QueryContract $table, ?string $as = null): Query
     {
         return new Query($this, $table, as: $as);
