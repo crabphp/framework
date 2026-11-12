@@ -17,8 +17,8 @@ Crab is a PHP framework focused on JSON APIs and services. It runs your applicat
 
 The framework provides routing, typed actions with validation, middleware, a database layer with a query builder and migrations, token and cookie authentication, sessions, a cache, events, a queue, a scheduler, an HTTP client and streaming responses, with durable runs and actors as packages of their own. There is no ORM.
 
-> [!WARNING]
-> [Views with Arc](views.md) are experimental, may change without backward compatibility, and must not be used in production. Arc is an optional package, not part of the API-focused core.
+> [!NOTE]
+> For HTML pages, [Arc](views.md) is an optional package of templates and typed components, not part of the API-focused core.
 
 > [!NOTE]
 > Crab's latest release is v0.7.0, on [Packagist](https://packagist.org/packages/crabphp/framework). Its packages, such as `crabphp/runs` or `crabphp/redis`, are installed the same way, with `composer require`.

@@ -80,7 +80,7 @@ The framework does not look for folders, so these are suggestions that keep appl
 | --- | --- | --- |
 | A route | `routes/web.php` | Nothing; it is loaded by `app.php` |
 | An action class | `app/Actions/` | Name it in the route |
-| An experimental HTML template or component | `resources/views/`, or `resources/views/components/` | [Arc/views](views.md) are experimental, subject to breaking changes and not for production |
+| An HTML template or component | `resources/views/`, or `resources/views/components/` | With [Arc](views.md) installed |
 | Middleware | `app/Http/` | Name it on a route, a group or in `app.php` |
 | A command | `routes/console.php`, or a class in `app/Console/` | Register it with `Command::add('area:action', YourCommand::class)` in `routes/console.php`, then `php cua area:action` |
 | A queue job | `app/Actions/` | Push it with the queue |

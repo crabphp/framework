@@ -13,10 +13,10 @@
 
 ## Introduction
 
-> [!WARNING]
-> **Experimental — not for production.** Arc and Crab's views integration are an experiment. Their APIs, template syntax and behaviour may change without backward compatibility. Do not use them in production.
+Crab focuses on JSON APIs and services. [Arc](https://github.com/crabphp/arc) is an optional template engine for the pages a browser loads: server-rendered HTML with layouts and reusable components, typed props and compile-time checks. Templates compile to PHP closures, which a worker loads once and keeps. An API does not need this package.
 
-Crab focuses on JSON APIs and services. [Arc](https://github.com/crabphp/arc) is an optional template engine for experimenting with server-rendered HTML, layouts and reusable components. Templates compile to PHP closures, which a worker loads once and keeps. An API does not need this package.
+> [!NOTE]
+> Arc is before 1.0. A minor version may change template syntax or behaviour, and its [changelog](https://github.com/crabphp/arc/blob/main/CHANGELOG.md) says what to change; a patch version never does.
 
 ## Installation
 
@@ -90,6 +90,17 @@ Templates are HTML with PHP expressions and a small set of directives:
 | `@unless(...)`, `@endunless` | The inverse of `@if` |
 | `@foreach(...)`, `@endforeach` | Rendering a list |
 | `@for(...)`, `@endfor`, `@while(...)`, `@endwhile` | Other loops, with `@break` and `@continue` |
+| `@json($value)` | A value as JSON inside `<script>`; see [HTML safety](#html-safety) |
+| `@attributes($attributes, $defaults)` | A component's other attributes; see [Components and layouts](#components-and-layouts) |
+
+A `<?php` block at the very top of a template may start with `use` statements, so the rest names classes by their short names:
+
+```html
+<?php
+use App\Models\Product;
+?>
+@props(Product $product)
+```
 
 You may use complete `<?php ... ?>` statements to prepare a local value. Do not echo or use `<?=`: Arc builds a string, rather than using the process-wide output buffer that overlapping requests would share. Use Arc directives to control markup; PHP control flow cannot span separate PHP blocks. Names beginning with `$__` belong to the compiler.
 
@@ -127,13 +138,28 @@ Replace `resources/views/hello.arc.php` with a page that uses it:
 
 The markup between the tags becomes `$slot`. A named `<Slot>` fills a declared string prop, here `$head`; its default applies when no slot is supplied. Use `{!! !!}` for slot markup, but escape its data with `{{ }}` inside the calling template.
 
-An attribute such as `title="Greeting"` passes text; a colon-prefixed attribute such as `:total="$total"` passes a PHP expression. Props must be declared with `@props`. Missing required props, unknown props and missing components are compile errors. Layouts are components: there is no separate `@extends` or `@section` system. See the [Arc reference](https://github.com/crabphp/arc#components) for nested component names and more prop examples.
+An attribute such as `title="Greeting"` passes text; a colon-prefixed attribute such as `:total="$total"` passes a PHP expression. Props must be declared with `@props`. Missing required props, unknown props and missing components are compile errors. Layouts are components: there is no separate `@extends` or `@section` system.
+
+A component that declares `array $attributes = []` also takes every attribute it does not declare, such as `class`, `id`, `aria-*`, `data-*` or htmx's, and writes them with `@attributes`, joining `class` with its own:
+
+```html
+@props(string $variant = 'primary', array $attributes = [])
+<button @attributes($attributes, ['type' => 'submit', 'class' => "button button-{$variant}"])>{!! $slot !!}</button>
+```
+
+`<Button variant="ghost" class="wide" hx-post="/cart" disabled>` then renders `class="button button-ghost wide"` with the rest beside it. See the [Arc reference](https://github.com/crabphp/arc#components) for nested component names and more prop examples.
 
 ## HTML safety
 
 `{{ }}` escapes `<`, `>`, `&` and both quotes. Always quote attribute values. Use `{!! !!}` only for HTML you trust, never for user input.
 
-HTML escaping does not validate a URL scheme or make a value safe inside JavaScript, CSS, a `style` attribute or an event-handler attribute. Keep untrusted data out of executable contexts. Build local URLs from fixed paths and encoded path segments; validate external URLs and allow only the schemes your application intends. The [Arc escaping guide](https://github.com/crabphp/arc#escaping-by-context) shows these cases.
+HTML escaping does not validate a URL scheme or make a value safe inside JavaScript, CSS, a `style` attribute or an event-handler attribute. Keep untrusted data out of executable contexts. To hand data to JavaScript, write `@json($value)` inside a `<script>`, which escapes everything that could end it, and `{{ json_encode($value) }}` inside an attribute:
+
+```html
+<script>window.cart = @json($cart);</script>
+<div x-data="{{ json_encode($cart) }}"></div>
+```
+ Build local URLs from fixed paths and encoded path segments; validate external URLs and allow only the schemes your application intends. The [Arc escaping guide](https://github.com/crabphp/arc#escaping-by-context) shows these cases.
 
 ## Forms and errors
 
@@ -177,7 +203,7 @@ php cua reload
 
 The plugin registers `view:cache` to compile every template, and `view:clear` to remove compiled templates and dependency indexes. Clearing the cache is maintenance, not a substitute for reloading workers. A changed component invalidates its callers when templates are next compiled or loaded by a fresh worker. See [Deployment](deployment.md) for the full release sequence, including migrations.
 
-Compilation validates the generated PHP using an isolated `php -l` process. It needs `proc_open`, a writable temporary directory and the PHP CLI at `PHP_BINARY`. An invalid template fails compilation; warm rendering needs no further file checks. The configured cache directory must be writable by the application's user.
+Compiling checks the generated PHP in a `php -l` process of its own, so `view:cache` needs `proc_open`, a writable temporary directory and the PHP CLI at `PHP_BINARY`. An invalid template fails compilation with its file and line. A worker loads a compiled template after comparing the hash it was written with, in its own process: serving templates compiled at deployment starts no process and needs no `proc_open`. A compiled template changed since, or written by another PHP version, is compiled again rather than loaded. The configured cache directory must be writable by the application's user.
 
 ## Testing a view
 

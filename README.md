@@ -405,9 +405,7 @@ $this->broadcast->within($transaction)->to("orders.{$id}")->send(['status' => 's
 
 ## Views
 
-> **Experimental — not for production.** Arc and Crab's views integration may change without backward compatibility. Do not use them in production.
-
-Crab focuses on JSON APIs and services. [Arc](https://github.com/crabphp/arc) is an optional package for experimenting with HTML templates, typed components and layouts compiled to PHP closures. See [Views](docs/views.md) for the experimental integration.
+Crab focuses on JSON APIs and services. For the pages a browser loads, [Arc](https://github.com/crabphp/arc) is an optional package of HTML templates, typed components and layouts compiled to PHP closures: `composer require crabphp/arc`, list `ArcPlugin`, and an action returns `view('orders.index', $data)`. Arc is before 1.0, so a minor version may change template syntax, with its changelog saying what to change. See [Views](docs/views.md).
 
 ## Requests and responses
 
