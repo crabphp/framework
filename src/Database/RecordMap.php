@@ -18,8 +18,10 @@ use Crab\Contracts\Database\Field;
  *         public function __construct(
  *             public int $id,
  *             public OrderStatus $status,
- *             #[Json] public array $meta,
- *             #[ColumnName('created_at')] public \DateTimeImmutable $createdAt,
+ *             #[Json]
+ *             public array $meta,
+ *             #[ColumnName('created_at')]
+ *             public \DateTimeImmutable $createdAt,
  *         ) {}
  *     }
  *

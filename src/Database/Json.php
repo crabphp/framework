@@ -10,7 +10,10 @@ use Crab\Contracts\Database\Cast;
  * A column that holds JSON, read into the record's array and written back
  * as JSON text:
  *
- *     public function __construct(#[Json] public array $settings) {}
+ *     public function __construct(
+ *         #[Json]
+ *         public array $settings,
+ *     ) {}
  */
 #[\Attribute(\Attribute::TARGET_PARAMETER | \Attribute::TARGET_PROPERTY)]
 final readonly class Json implements Cast

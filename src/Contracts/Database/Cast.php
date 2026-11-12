@@ -12,7 +12,10 @@ namespace Crab\Contracts\Database;
  *     #[\Attribute(\Attribute::TARGET_PARAMETER | \Attribute::TARGET_PROPERTY)]
  *     final readonly class AsMoney implements Cast { ... }
  *
- *     public function __construct(#[AsMoney] public Money $price) {}
+ *     public function __construct(
+ *         #[AsMoney]
+ *         public Money $price,
+ *     ) {}
  *
  * Null never reaches a cast: it is null in the column and in the property.
  */

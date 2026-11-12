@@ -8,7 +8,10 @@ namespace Crab\Database;
  * The column a record's property is read from and written to, when its
  * name is not the property's:
  *
- *     public function __construct(#[ColumnName('created_at')] public \DateTimeImmutable $createdAt) {}
+ *     public function __construct(
+ *         #[ColumnName('created_at')]
+ *         public \DateTimeImmutable $createdAt,
+ *     ) {}
  */
 #[\Attribute(\Attribute::TARGET_PARAMETER | \Attribute::TARGET_PROPERTY)]
 final readonly class ColumnName

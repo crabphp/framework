@@ -71,7 +71,8 @@ final readonly class Order
         public OrderStatus $status,           // a backed enum, stored as its value
         public int $total,
         public bool $paid,                    // 0 and 1 in SQLite, a bool here
-        #[Json] public array $meta,           // a JSON column, decoded
+        #[Json]
+        public array $meta,                   // a JSON column, decoded
         public \DateTimeImmutable $placed_at,
         public ?string $note,                 // nullable: the column may be null
     ) {}
@@ -97,7 +98,8 @@ final readonly class NewOrder
     public function __construct(
         public OrderStatus $status,
         public int $total,
-        #[Json] public array $meta,
+        #[Json]
+        public array $meta,
         public \DateTimeImmutable $placed_at,
     ) {}
 }
@@ -119,7 +121,10 @@ final readonly class AsMoney implements Cast
     public function write(mixed $value): mixed { return $value->cents; }
 }
 
-public function __construct(#[AsMoney] public Money $price) {}
+public function __construct(
+    #[AsMoney]
+    public Money $price,
+) {}
 ```
 
 There are no models: a record does not load or save itself, has no relationships and changes nothing behind your back. A related row is read with a query of its own, a `whereIn()` on the ids you hold.
