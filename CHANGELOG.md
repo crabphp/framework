@@ -4,6 +4,8 @@ Crab follows [semantic versioning](https://semver.org). Before 1.0, a minor vers
 
 ## Unreleased
 
+## 0.7.3 — 2026-11-13
+
 - **Sessions:** a new opt-in component keeps temporary data for one browser between its requests. List `SessionPlugin` in `app.php`, put the `StartSession` middleware around the routes that use it, and an action takes `Crab\Contracts\Session\Session` as a parameter, with `get()`, `put()`, `forget()`, `pull()`, `flash()`, `regenerate()` and `invalidate()`. Sessions are read when first used and written only when they change. `session.driver` is `file` (the default), `cookie` (signed with `app.key`, readable by the visitor), `memory` (refused with more than one worker) or `redis` with crabphp/redis. Expired file and memory sessions are swept by `session.lottery`, or by the new `session:prune` command. See docs/sessions.md.
 - **Application key:** `app.key` is the application's secret for what it signs, read from `APP_KEY` by `config/app.php`. The new `php cua key:generate` writes one into `.env`, keeps a key already set unless given `--force`, and prints one without writing with `--show`.
 - **Settings:** a list setting's rule may say `maxItems`, and a rule with `minItems` and `maxItems` is described by its count ("a list of 2 whole numbers").
