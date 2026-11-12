@@ -4,8 +4,9 @@ Crab follows [semantic versioning](https://semver.org). Before 1.0, a minor vers
 
 ## Unreleased
 
-- **A query cannot outlive its loan (safety fix):** a query built on a connection lent by `run()`, `transaction()` or `acquire()` is refused once that loan ends, even when the same connection is lent again. It used to run on the connection wherever it had gone next, which could be another fiber's open transaction, reading its uncommitted rows or writing into it. Build such a query inside the callback, or on the database itself.
+## 0.7.2 — 2026-11-12
 
+- **A query cannot outlive its loan (safety fix, behaviour change):** a query built on a connection lent by `run()`, `transaction()` or `acquire()` is refused once that loan ends, even when the same connection is lent again. It used to run on the connection wherever it had gone next, which could be another fiber's open transaction, reading its uncommitted rows or writing into it. Build such a query inside the callback, or on the database itself.
 - **Typed rows for static analysis:** `Contracts\Database\Query` is generic over its row. A query from `table()` is a `Query<array<string, mixed>>`, and `into(Order::class)` makes it a `Query<Order>`, so `get()` is a `list<Order>`, `first()` and `find()` an `?Order`, the pages `Page<Order>` and `CursorPage<Order>`, and `chunkById()`'s parts `list<Order>`. Nothing changes at run time.
 
 ## 0.7.1 — 2026-11-12
