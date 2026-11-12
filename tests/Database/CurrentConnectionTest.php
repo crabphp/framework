@@ -154,6 +154,43 @@ final class CurrentConnectionTest extends TestCase
         self::assertSame($db, $db->current());
     }
 
+    #[DataProvider('drivers')]
+    public function testAQueryBuiltDuringALoanRefusesToRunAfterIt(string $driver): void
+    {
+        $db = $this->database($driver);
+        $db->run(static function (Connection $connection): void {
+            $connection->execute('drop table if exists crab_loans');
+            $connection->execute('create table crab_loans (id integer primary key, name varchar(20) not null)');
+            $connection->table('crab_loans')->insert(['id' => 1, 'name' => 'first']);
+        });
+        $kept = $db->run(static function (Connection $connection): \Crab\Contracts\Database\Query {
+            $query = $connection->table('crab_loans')->where('id', 1);
+            // Within its loan the query and its copies run.
+            self::assertSame('first', $query->value('name'));
+            self::assertSame('first', (clone $query)->value('name'));
+            return $query;
+        });
+        $refused = static function (\Closure $run): void {
+            try {
+                $run();
+                self::fail('A query of an ended loan ran.');
+            } catch (\LogicException $error) {
+                self::assertStringContainsString('that loan has ended', $error->getMessage());
+            }
+        };
+        $refused(static fn() => $kept->get());
+        $refused(static fn() => (clone $kept)->orderBy('id')->cursorPaginate(5));
+        $refused(static fn() => $kept->update(['name' => 'late']));
+        // Lent again, the same physical connection is a new loan, not the old one come back.
+        $db->transaction(static function () use ($kept, $refused): void {
+            $refused(static fn() => $kept->first());
+        });
+        // A query on the database itself takes a connection for each statement, whenever it runs.
+        $pooled = $db->table('crab_loans')->where('id', 1);
+        self::assertSame('first', $pooled->value('name'));
+        $db->execute('drop table crab_loans');
+    }
+
     private function database(string $driver): Database
     {
         return new Database(static fn(): \PDO => $driver === 'sqlite'

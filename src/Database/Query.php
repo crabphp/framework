@@ -71,6 +71,11 @@ final class Query implements QueryContract
     private ?RecordMap $record = null;
 
     /**
+     * The loan of the connection the query was built on, when it was lent by run() or transaction().
+     */
+    private readonly ?object $loan;
+
+    /**
      * @param string|QueryContract $table A table, or a query whose rows are read as one.
      * @param Grammar|null $grammar The SQL dialect to write; left out, it follows the connection's driver.
      * @param string|null $as The table's alias; the name of a query's rows, which they must have.
@@ -81,6 +86,7 @@ final class Query implements QueryContract
         private ?Grammar $grammar = null,
         ?string $as = null,
     ) {
+        $this->loan = Loans::of($connection);
         if ($table instanceof QueryContract) {
             if ($as === null || trim($as) === '') {
                 throw new \InvalidArgumentException(
@@ -444,7 +450,7 @@ final class Query implements QueryContract
         $one = clone $this->selecting();
         $one->limit = 1;
         $statement = $this->grammar()->select($one);
-        $row = $this->connection->first($statement->sql, $statement->bindings);
+        $row = $this->lent()->first($statement->sql, $statement->bindings);
         return $row === null || $this->record === null ? $row : $this->record->make($row);
     }
 
@@ -480,7 +486,7 @@ final class Query implements QueryContract
     public function exists(): bool
     {
         $statement = $this->grammar()->exists($this);
-        $row = $this->connection->first($statement->sql, $statement->bindings);
+        $row = $this->lent()->first($statement->sql, $statement->bindings);
         return (bool) $row['found'];
     }
 
@@ -582,6 +588,8 @@ final class Query implements QueryContract
         $inner->limit = null;
         $inner->offset = null;
         $inner->lock = false;
+        // Checked here: the page is a query of its own, which would take whatever loan is current.
+        $this->lent();
         $page = new self($this->connection, $inner, $this->grammar, 'crab_cursor');
         $page->lock = $this->lock;
         if ($cursor !== null) {
@@ -610,7 +618,7 @@ final class Query implements QueryContract
             );
         }
         $statement = $this->grammar()->insert($this, [$values]);
-        return $this->connection->insert($statement->sql, $statement->bindings);
+        return $this->lent()->insert($statement->sql, $statement->bindings);
     }
 
     public function insertMany(array $rows): int
@@ -621,7 +629,7 @@ final class Query implements QueryContract
             return 0;
         }
         $statement = $this->grammar()->insert($this, $rows);
-        return $this->connection->execute($statement->sql, $statement->bindings);
+        return $this->lent()->execute($statement->sql, $statement->bindings);
     }
 
     public function insertOrIgnore(array|object $rows): int
@@ -632,7 +640,7 @@ final class Query implements QueryContract
             return 0;
         }
         $statement = $this->grammar()->insertOrIgnore($this, $rows);
-        return $this->connection->execute($statement->sql, $statement->bindings);
+        return $this->lent()->execute($statement->sql, $statement->bindings);
     }
 
     public function upsert(array|object $rows, string|array $uniqueBy, ?array $update = null): int
@@ -653,7 +661,7 @@ final class Query implements QueryContract
         $statement = $update === []
             ? $this->grammar()->insertOrIgnore($this, $rows)
             : $this->grammar()->upsert($this, $rows, array_values($uniqueBy), array_values($update));
-        return $this->connection->execute($statement->sql, $statement->bindings);
+        return $this->lent()->execute($statement->sql, $statement->bindings);
     }
 
     public function update(array $values): int
@@ -667,7 +675,7 @@ final class Query implements QueryContract
             self::wholeColumn((string) $column);
         }
         $statement = $this->grammar()->update($this, $values, []);
-        return $this->connection->execute($statement->sql, $statement->bindings);
+        return $this->lent()->execute($statement->sql, $statement->bindings);
     }
 
     public function increment(string $column, int|float $amount = 1, array $extra = []): int
@@ -679,7 +687,7 @@ final class Query implements QueryContract
             self::wholeColumn((string) $other);
         }
         $statement = $this->grammar()->update($this, $extra, [$column => $amount]);
-        return $this->connection->execute($statement->sql, $statement->bindings);
+        return $this->lent()->execute($statement->sql, $statement->bindings);
     }
 
     public function decrement(string $column, int|float $amount = 1, array $extra = []): int
@@ -691,7 +699,7 @@ final class Query implements QueryContract
     {
         $this->wheresOnly('delete');
         $statement = $this->grammar()->delete($this);
-        return $this->connection->execute($statement->sql, $statement->bindings);
+        return $this->lent()->execute($statement->sql, $statement->bindings);
     }
 
     public function toSql(): string
@@ -712,7 +720,7 @@ final class Query implements QueryContract
     private function read(): array
     {
         $statement = $this->grammar()->select($this->selecting());
-        return $this->connection->select($statement->sql, $statement->bindings);
+        return $this->lent()->select($statement->sql, $statement->bindings);
     }
 
     /**
@@ -728,6 +736,20 @@ final class Query implements QueryContract
      * The query as it runs: reading the record's columns, of this table,
      * when into() named a class and nothing chose the columns.
      */
+    /**
+     * The connection to run on, refused when it was lent for a loan that has ended: it may be
+     * another fiber's now, in a transaction of its own, or lent again as a new loan.
+     */
+    private function lent(): Connection
+    {
+        if ($this->loan !== null && Loans::of($this->connection) !== $this->loan) {
+            throw new \LogicException(
+                'This query was built on a connection lent by run() or transaction(), and that loan has ended; build the query where it runs, inside the callback, or on the database itself.',
+            );
+        }
+        return $this->connection;
+    }
+
     private function selecting(): self
     {
         if ($this->record === null || $this->columns !== []) {
@@ -790,7 +812,7 @@ final class Query implements QueryContract
     private function aggregate(string $function, string $column): mixed
     {
         $statement = $this->grammar()->aggregate($this, $function, $column);
-        $row = $this->connection->first($statement->sql, $statement->bindings);
+        $row = $this->lent()->first($statement->sql, $statement->bindings);
         return $row['aggregate'];
     }
 

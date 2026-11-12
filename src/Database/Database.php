@@ -105,6 +105,7 @@ final class Database implements DatabaseContract
         }
         $this->connections ??= new \WeakMap();
         $this->connections[$connection] = $pool;
+        Loans::lend($connection);
         return $connection;
     }
 
@@ -116,6 +117,8 @@ final class Database implements DatabaseContract
             );
         }
         $pool = $this->connections[$connection];
+        // A query built during this loan cannot run once the connection may be another's.
+        Loans::end($connection);
         if ($connection->inTransaction()) {
             // Validate the loan before closing it; the next borrower must not inherit the transaction.
             $pool->discard($connection);
