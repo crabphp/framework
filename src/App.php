@@ -12,6 +12,7 @@ use Crab\Cache\CachePlugin;
 use Crab\Clock\SystemClock;
 use Crab\Commands\Describe;
 use Crab\Commands\Dev;
+use Crab\Commands\GenerateKey;
 use Crab\Commands\MakeCommand;
 use Crab\Commands\MakeMiddleware;
 use Crab\Commands\PublishConfig;
@@ -197,6 +198,7 @@ final class App implements Handler, Runner
                 'debug' => false,
                 'url' => null,
                 'timezone' => 'UTC',
+                'key' => null,
                 'path' => $basePath,
                 'storage' => $this->storage,
             ],
@@ -205,6 +207,8 @@ final class App implements Handler, Runner
                 'debug' => ['type' => 'boolean'],
                 'timezone' => ['type' => 'string', 'format' => 'timezone', 'examples' => ['UTC', 'Europe/Paris']],
                 'url' => ['type' => ['string', 'null'], 'examples' => ['https://api.example.com']],
+                // The secret things are signed with; php cua key:generate writes one.
+                'key' => ['type' => ['string', 'null'], 'minLength' => 32],
                 'path' => ['type' => ['string', 'null']],
                 'storage' => ['type' => ['string', 'null']],
                 // The application's own settings may sit beside these.
@@ -337,6 +341,7 @@ final class App implements Handler, Runner
         $this->console->add('make:middleware', MakeMiddleware::class);
         $this->console->add('make:command', MakeCommand::class);
         $this->console->add('config:publish', PublishConfig::class);
+        $this->console->add('key:generate', GenerateKey::class);
         $container->instance(ConsoleContract::class, $this->console);
         $container->singleton(Console::class, ConsoleContract::class);
     }

@@ -48,7 +48,6 @@ Route::middleware(StartSession::class)->group(static function (): void {
 | `session.driver` | `file` | Where sessions are kept: `file`, `cookie` or `memory`, or `redis` with crabphp/redis |
 | `session.lifetime` | `7200` | Seconds a session lasts without being used |
 | `session.directory` | `storage/sessions` | The file driver's folder |
-| `session.key` | none | The secret the cookie driver signs with, at least 32 bytes |
 | `session.cookie` | `__Host-session` | The cookie's name; `session` when the cookie is not secure |
 | `session.secure` | `true` | Whether the cookie is sent only over HTTPS |
 | `session.lottery` | `[2, 100]` | The chances that writing a session sweeps expired ones |
@@ -64,14 +63,14 @@ The cookie is `HttpOnly` and `SameSite=Lax`. A session lasts while its browser k
 | `cookie` | In the cookie itself, signed | Nothing on the server at all, for small data that is not secret |
 | `memory` | In one worker's memory | Tests, and development with one worker |
 
-The `file`, `redis` and `memory` drivers keep what a session holds on the server, and the cookie carries only a random id. The `cookie` driver puts the whole session in the cookie, signed with HMAC-SHA256 under `session.key` so that the browser cannot change it:
+The `file`, `redis` and `memory` drivers keep what a session holds on the server, and the cookie carries only a random id. The `cookie` driver puts the whole session in the cookie, signed with HMAC-SHA256 under the [application key](configuration.md#the-application-key), `app.key`, so that the browser cannot change it. Write one before using it:
 
 ```sh
-php -r 'echo bin2hex(random_bytes(32)), PHP_EOL;'   # a value for SESSION_KEY
+php cua key:generate
 ```
 
 > [!WARNING]
-> The cookie driver signs its cookie but does not encrypt it: the visitor can read everything the session holds. Keep nothing secret in it. A cookie carries about 3,800 bytes; a session that holds more is refused with an error. And since nothing is kept on the server, a copy of the cookie keeps working until it expires: invalidating the session only clears the cookie in the browser that asked.
+> The cookie driver signs its cookie but does not encrypt it: the visitor can read everything the session holds. Keep nothing secret in it. A cookie carries about 3,800 bytes; a session that holds more is refused with an error. And since nothing is kept on the server, a copy of the cookie keeps working until it expires: invalidating the session only clears the cookie in the browser that asked. Replacing `app.key` ends every cookie session at once.
 
 The `memory` driver keeps sessions in the worker that wrote them, and a browser's next request may reach another worker, so the server refuses to start with it when more than one worker serves. Every session is lost when the worker restarts.
 

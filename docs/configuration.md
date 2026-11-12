@@ -5,6 +5,7 @@
 - [Configuration files](#configuration-files)
 - [Reading configuration](#reading-configuration)
 - [Time zone](#time-zone)
+- [The application key](#the-application-key)
 - [Checked at startup](#checked-at-startup)
 - [Describing the application](#describing-the-application)
     - [Plugins](#plugins)
@@ -114,6 +115,26 @@ Configuration is fixed once the application is defined. Do not change it at run 
 Keep it in UTC. A column of type `DATETIME` holds no zone, so a date written in a zone with daylight saving cannot tell the two 01:30s of an autumn night apart, and the second is read back an hour early. In UTC no hour repeats. Show a person their own time where the date is shown, `$date->setTimezone(new DateTimeZone('Europe/Paris'))`, and give the scheduler the zone its times mean with `schedule.timezone`.
 
 A zone that does not exist, `Asia/Hanoi`, stops the application at start with the other settings. An application whose dates were stored in another zone before keeps that zone by setting it here.
+
+## The application key
+
+`app.key` is the application's secret for what it signs, such as [cookie sessions](sessions.md#choosing-a-driver). Write one into `.env`:
+
+```sh
+php cua key:generate
+# Wrote a new APP_KEY into /srv/orders/.env. A running server takes it when it restarts.
+```
+
+It is 64 random hexadecimal characters, and `config/app.php` reads it:
+
+```php
+// config/app.php
+return [
+    'key' => env('APP_KEY'),
+];
+```
+
+A key that is already set is kept: `key:generate` refuses to replace it unless you add `--force`, because a new key ends every cookie session. `--show` prints a new key and writes nothing, for a deploy tool or a secret store. Keep the key out of version control, give each environment its own, and set it in the real environment in production. A key shorter than 32 bytes is refused at startup.
 
 ## Checked at startup
 

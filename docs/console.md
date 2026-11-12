@@ -195,6 +195,7 @@ Print results with `line()` and problems with `error()`, so that a script can pi
 | `make:middleware` | Writes a middleware class in `app/Http/` |
 | `make:command` | Writes a command class in `app/Console/` and registers it in `routes/console.php` |
 | `config:publish` | Writes a framework section's complete configuration file into `config/` |
+| `key:generate` | Writes a new application key, `APP_KEY`, into `.env`; see [Configuration](configuration.md#the-application-key) |
 | `describe` | Prints the whole application for coding agents, as text or `--json` |
 
 `status` and `stop` run even when the application cannot be loaded, as described in [When the new code does not load](deployment.md#when-the-new-code-does-not-load); `--pid` points them at another server's process id file.

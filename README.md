@@ -894,7 +894,7 @@ The session travels on its request, never in the worker: there is no `$_SESSION`
 | --- | --- | --- |
 | `file` (default) | Files under `session.directory` | One machine |
 | `redis` | Redis, with crabphp/redis | Several machines |
-| `cookie` | The cookie itself, signed with `session.key`, readable by the visitor | No server storage, data that is not secret |
+| `cookie` | The cookie itself, signed with `app.key` (`php cua key:generate`), readable by the visitor | No server storage, data that is not secret |
 | `memory` | The worker's memory; refused with more than one worker | Tests |
 
 `session.lifetime` is the seconds a session lasts unused, 7200. Expired file and memory sessions are swept now and then as sessions are written (`session.lottery`, 2 in 100), or by `php cua session:prune`. `regenerate()` after logging in and `invalidate()` when logging out keep an id from outliving its user. See [docs/sessions.md](docs/sessions.md).

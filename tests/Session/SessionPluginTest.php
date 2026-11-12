@@ -67,14 +67,17 @@ final class SessionPluginTest extends TestCase
         $file->register(SessionPlugin::class);
         self::assertInstanceOf(StoreDriver::class, $file->container->get(Driver::class));
 
-        $cookie = self::app(['session' => ['driver' => 'cookie', 'key' => str_repeat('k', 32)]]);
+        $cookie = self::app(['session' => ['driver' => 'cookie'], 'app' => ['key' => str_repeat('k', 32)]]);
         self::assertInstanceOf(CookieDriver::class, $cookie->container->get(Driver::class));
 
         try {
             self::app(['session' => ['driver' => 'cookie']])->container->get(Driver::class);
             self::fail('The cookie driver was made without a key.');
         } catch (\LogicException $error) {
-            self::assertStringContainsString('signs its cookie with session.key', $error->getMessage());
+            self::assertStringContainsString(
+                'signs its cookie with app.key: run php cua key:generate',
+                $error->getMessage(),
+            );
         }
         try {
             self::app([])->container->get(Driver::class);

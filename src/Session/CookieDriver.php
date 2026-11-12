@@ -31,7 +31,7 @@ final readonly class CookieDriver implements Driver
     ) {
         if (strlen($key) < 32) {
             throw new \InvalidArgumentException(
-                'The cookie session driver needs a key of at least 32 bytes: set session.key, made with php -r \'echo bin2hex(random_bytes(32)), PHP_EOL;\'.',
+                'The cookie session driver needs a key of at least 32 bytes: set app.key, which php cua key:generate writes.',
             );
         }
     }

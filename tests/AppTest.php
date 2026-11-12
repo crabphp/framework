@@ -165,7 +165,15 @@ final class AppTest extends TestCase
     {
         $app = new App();
         self::assertSame(
-            ['name' => 'Crab', 'debug' => false, 'url' => null, 'timezone' => 'UTC', 'path' => null, 'storage' => null],
+            [
+                'name' => 'Crab',
+                'debug' => false,
+                'url' => null,
+                'timezone' => 'UTC',
+                'key' => null,
+                'path' => null,
+                'storage' => null,
+            ],
             $app->config->get('app'),
         );
         self::assertSame(['path' => 'php://stderr', 'level' => 'debug'], $app->config->get('log'));

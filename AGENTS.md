@@ -219,12 +219,16 @@
 - Times are passed to a store, never read by it, so that every store can be tested with a frozen clock.
 - A cache is chosen with `cache.store`, and anything else by binding `Contracts\Cache\Store` after the plugin. There is one cache per application; do not add named caches until the owner asks.
 
+## Secrets
+
+- An application has one secret for what it signs, `app.key`, read from `APP_KEY` and written by `key:generate`, which never replaces a key already set without `--force`. A component that signs uses it; it does not declare a key of its own.
+
 ## Sessions
 
 - A session is request state: `StartSession` puts one request's session on the request's `session` attribute, and it reaches an action as a parameter typed `Contracts\Session\Session`. There is no static accessor, no helper and no `$_SESSION`, and none may be added: a worker serves overlapping requests.
 - A request that never uses its session reads and writes nothing. A session is written only when it changed, saw a flash, needs a new id or is past half its lifetime, and then this request's changes are laid over the copy the driver holds by then, so that overlapping requests of one browser each keep what they changed.
 - A session keeps JSON values, checked where they are put; nothing is ever unserialized. An id the server did not give out is never adopted, and the cookie is `HttpOnly` and `SameSite=Lax`, `__Host-` when secure.
-- A driver implements `Contracts\Session\Driver`. One that keeps sessions on the server keeps them in a cache `Store` of their own (`FileStore` in `session.directory`, `ArrayStore`), never in the application's cache, so that clearing the cache ends no session. The cookie driver signs with HMAC and does not encrypt, so that sessions need no PHP extension; the guide says the visitor can read it. The memory driver is refused where more than one HTTP worker serves.
+- A driver implements `Contracts\Session\Driver`. One that keeps sessions on the server keeps them in a cache `Store` of their own (`FileStore` in `session.directory`, `ArrayStore`), never in the application's cache, so that clearing the cache ends no session. The cookie driver signs with HMAC under `app.key` and does not encrypt, so that sessions need no PHP extension; the guide says the visitor can read it. The memory driver is refused where more than one HTTP worker serves.
 - Expired sessions that do not expire by themselves are swept by `session.lottery` after a session is written, and by `session:prune`. A sweep that fails is logged and never fails the request it runs after. Correctness never depends on a sweep: an expired session is never read.
 
 ## Events

@@ -22,12 +22,12 @@ use Psr\Log\LoggerInterface;
  *     driver     "file", "cookie" or "memory"; file unless set
  *     lifetime   seconds a session lasts without being used; 7200
  *     directory  the file driver's folder; storage/sessions in the application
- *     key        the secret the cookie driver signs with, at least 32 bytes
  *     cookie     the cookie's name; "__Host-session" when secure, "session" otherwise
  *     secure     whether the cookie is sent only over HTTPS; true
  *     lottery    the chances a write sweeps expired sessions; [2, 100], [0, 1] never
  *
- * The memory driver keeps sessions in one worker and is refused where more
+ * The cookie driver signs its cookie with app.key, which php cua key:generate
+ * writes. The memory driver keeps sessions in one worker and is refused where more
  * than one serves. To keep sessions elsewhere, bind Contracts\Session\Driver
  * to a driver of your own after registering this plugin.
  */
@@ -41,7 +41,6 @@ final class SessionPlugin implements Plugin
                 'driver' => 'file',
                 'lifetime' => 7_200,
                 'directory' => null,
-                'key' => null,
                 'cookie' => null,
                 'secure' => true,
                 'lottery' => [2, 100],
@@ -53,7 +52,6 @@ final class SessionPlugin implements Plugin
                 ],
                 'lifetime' => ['type' => 'integer', 'minimum' => 1],
                 'directory' => ['type' => ['string', 'null'], 'minLength' => 1],
-                'key' => ['type' => ['string', 'null'], 'minLength' => 32],
                 'cookie' => ['type' => ['string', 'null'], 'pattern' => '^[A-Za-z0-9_.-]+$'],
                 'secure' => ['type' => 'boolean'],
                 'lottery' => [
@@ -87,10 +85,11 @@ final class SessionPlugin implements Plugin
                 return new StoreDriver(new ArrayStore());
             }
             if ($driver === 'cookie') {
-                $key = $config->get('session.key');
+                $config->check('app');
+                $key = $config->get('app.key');
                 if (!is_string($key)) {
                     throw new \LogicException(
-                        'The cookie session driver signs its cookie with session.key: set it to a secret of at least 32 bytes, such as one made with php -r \'echo bin2hex(random_bytes(32)), PHP_EOL;\'.',
+                        'The cookie session driver signs its cookie with app.key: run php cua key:generate, which writes APP_KEY into .env, and read it in config/app.php with \'key\' => env(\'APP_KEY\').',
                     );
                 }
                 return new CookieDriver($key);

@@ -150,6 +150,42 @@ final class GeneratorsTest extends TestCase
      * values deliberately differ: the connection the skeleton describes,
      * and the servers named, though off.
      */
+    public function testKeyGenerateWritesAKeyIntoEnvAndKeepsOneAlreadySet(): void
+    {
+        $app = new App(basePath: $this->directory);
+        $env = $this->directory . '/.env';
+
+        [$status, $output] = $this->command($app, ['key:generate', '--show']);
+        self::assertSame(0, $status);
+        self::assertMatchesRegularExpression('/^[0-9a-f]{64}$/', trim($output));
+        self::assertFileDoesNotExist($env, '--show writes nothing.');
+
+        self::assertSame(0, $this->command($app, ['key:generate'])[0]);
+        self::assertMatchesRegularExpression('/^APP_KEY=[0-9a-f]{64}\n$/', (string) file_get_contents($env));
+        self::assertSame(0o600, fileperms($env) & 0o777, 'A new .env is readable by its owner only.');
+
+        file_put_contents($env, "APP_NAME=Orders\nAPP_KEY=\nDB_PASSWORD=secret");
+        chmod($env, 0o640);
+        self::assertSame(0, $this->command($app, ['key:generate'])[0], 'An empty key is filled in.');
+        $text = (string) file_get_contents($env);
+        self::assertMatchesRegularExpression('/^APP_NAME=Orders\nAPP_KEY=[0-9a-f]{64}\nDB_PASSWORD=secret$/', $text);
+        self::assertSame(0o640, fileperms($env) & 0o777, 'The file keeps its permissions.');
+
+        [$status, $output] = $this->command($app, ['key:generate']);
+        self::assertSame(1, $status);
+        self::assertStringContainsString('already sets APP_KEY', $output);
+        self::assertStringContainsString('--force', $output);
+        self::assertSame($text, (string) file_get_contents($env), 'A key already set is kept.');
+
+        self::assertSame(0, $this->command($app, ['key:generate', '--force'])[0]);
+        self::assertNotSame($text, (string) file_get_contents($env));
+        self::assertStringContainsString("APP_NAME=Orders\n", (string) file_get_contents($env));
+
+        [$status, $output] = $this->command(new App(), ['key:generate']);
+        self::assertSame(1, $status);
+        self::assertStringContainsString('no folder to keep a .env file in', $output);
+    }
+
     public function testEveryPublishedFileHoldsTheFrameworksDefaults(): void
     {
         $app = new App(basePath: $this->directory);
