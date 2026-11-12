@@ -42,7 +42,7 @@ The last row is the rule that keeps the framework replaceable piece by piece: a 
 
 ### Enforcing the layers *(today)*
 
-`tests/LayerBoundaryTest.php` fails when a contract references a component, or when a component references the glue or a component it is not listed as built on. Today the listed pairs are `Routing` on `Http`, `Validation` and `WebSocket`, `WebSocket` on `Http`, `Auth` on `Http`, `HttpClient` on `Http`, and `Testing` on `Container` and `Http`. The cache, the queue and the scheduler need none: where one uses the database, the queue or the cache, it asks for that component's contract. `tests/EngineBoundaryTest.php` does the same for the engine. A rule that is only written down drifts.
+`tests/LayerBoundaryTest.php` fails when a contract references a component, or when a component references the glue or a component it is not listed as built on. Today the listed pairs are `Routing` on `Http`, `Validation` and `WebSocket`, `WebSocket` on `Http`, `Auth` on `Http`, `HttpClient` on `Http`, `Session` on `Http` and `Cache`, and `Testing` on `Container` and `Http`. The cache, the queue and the scheduler need none: where one uses the database, the queue or the cache, it asks for that component's contract. `tests/EngineBoundaryTest.php` does the same for the engine. A rule that is only written down drifts.
 
 ## Contracts
 
@@ -80,6 +80,9 @@ A contract exists for everything a package touches, including where no PSR exist
 | `WebSocket\Channels`, `WebSocket\Recipient` | none; how a socket joins without naming `Broadcast` | today |
 | `Cache\Cache` | PSR-16 `CacheInterface` | today |
 | `Cache\Store` | none; where a cache keeps its entries | today |
+| `Session\Session` | none; one request's session, on its `session` attribute | today |
+| `Session\Driver` | none; where sessions are kept | today |
+| `Session\Record` | none; a value object | today |
 | `Events\Dispatcher` | PSR-14 `EventDispatcherInterface` | today |
 | `Queue\Queue`, `Queue\Store` | none | today |
 | `Queue\Message` | none; a value object | today |
@@ -296,7 +299,7 @@ A PSR implementation should also pass that PSR's public conformance suite where 
 4. **Small PSR components:** clock (PSR-20), events (PSR-14), cache (PSR-16), HTTP client (PSR-18). *Done.* The client speaks HTTP/2 and HTTP/1.1 on the event loop, with TLS through PHP's streams, an HTTP proxy, a cookie jar, retries and a fake for tests, and finds addresses with the engine's `DnsResolver`. The cache keeps its entries in files, in a database table or in memory, behind a `Store` contract that a Redis store can later implement. File storage keeps files on named disks behind `Contracts\Storage\Disk`: a local folder and a memory disk in the framework, S3 and the services that speak its API in `crabphp/s3`, on the HTTP client rather than a blocking SDK.
 5. **Database.** *Connection pool, the thin query layer, the query builder, the schema builder and migrations are done, tested on SQLite and MySQL.* Models with relationships are not planned; see the decisions. `into()` reads rows into readonly record classes of the application's, with casts from their types, and writes them back. Crab's own MySQL driver waits on the event loop behind the `Connection` contract, so a worker serves other requests while a query runs; it is a connection's `async`.
 6. **Queue**, then **Scheduling**, each as its own worker group. *Done.* Jobs are kept in a database table and run by `queue:work`; scheduled tasks are run by `schedule:work`, with no cron entry. `start` starts both beside the HTTP workers when their plugins are listed, under the keeper, through the `Servers` contract, so that one command and one reload cover all three; a plugin offers a server of its own the same way.
-7. **Validation, Auth.** *Validation is done, together with typed actions. Authentication is done: a way of authenticating is middleware that puts the user on the request, an action takes the user as a parameter, and tokens in the database are one such way, opt-in, with a migration the application owns, sent in a header by programs or in a cookie by browsers, whose changing requests must come from the application's own pages.* Roles and permissions, and sessions, are not planned; see the decisions.
+7. **Validation, Auth.** *Validation is done, together with typed actions. Authentication is done: a way of authenticating is middleware that puts the user on the request, an action takes the user as a parameter, and tokens in the database are one such way, opt-in, with a migration the application owns, sent in a header by programs or in a cookie by browsers, whose changing requests must come from the application's own pages.* Roles and permissions are not planned; see the decisions. Sessions are done, as their own opt-in component (decision 13).
 8. **Application skeleton** (`crabphp/crab`) and the `make:*` commands. *The skeleton exists, kept minimal; it grows a folder when a component arrives. The `make:*` commands are `make:migration`, `make:middleware` and `make:command`; `config:publish` writes a section's complete configuration file, and `migrate:fresh` starts a development database over.*
 9. **Per-component packages**, CI and the first tagged release. Nothing above needs to be finished first: what exists is a usable API framework, and use will say what is missing.
 
@@ -324,7 +327,7 @@ All agreed on 2026-10-04:
 
 Agreed on 2026-10-10:
 
-6. **Scope:** Crab is not a Laravel on another engine. It stays a framework for JSON APIs that is long-running by design, and leaves out what that does not need: there is no model layer over the query builder, no session and no roles or permissions component. An application that wants one writes it over what is there, or brings a library.
+6. **Scope:** Crab is not a Laravel on another engine. It stays a framework for JSON APIs that is long-running by design, and leaves out what that does not need: there is no model layer over the query builder and no roles or permissions component. An application that wants one writes it over what is there, or brings a library. Sessions were left out here too, and were added by decision 13.
 7. **Own components first:** events, cache, queue, runs, actors and scheduling are Crab's own, because each is small and the queue and the scheduler must run on the engine's worker groups, which a library with a worker loop of its own would sit beside. A third-party library remains welcome behind a contract, as a store or a driver: a Symfony cache adapter as a `Cache\Store`, for one.
 8. **Guide:** the usage of every component is written for application developers in `docs/`, one page per topic, and kept in step with the code by the `sync-docs` skill.
 
@@ -334,3 +337,7 @@ Agreed on 2026-10-23:
 10. **PSR-7 stays,** although converting to and from it is a measurable share of the cost of the smallest request. There is no second, raw kind of route.
 11. **`describe` is text first.** Agents shown the same application as this text, as TOML and as JSON answered questions about it equally well, so the cheapest form is the default: one thing to a line, each input in TypeScript notation with JSON Schema's names for its limits. `--json` gives the same with each input as JSON Schema, for tools.
 12. **A connection is described by name:** `driver`, `host`, `port`, `database`, `username` and `password`, from which Crab writes the data source name. A `dsn` is accepted in their place.
+
+Agreed on 2026-11-12:
+
+13. **Sessions:** an application that renders pages needs somewhere to keep a visit's temporary data, so `Session` is an opt-in component after all. Its state is request scope: `StartSession` puts one request's session on the request, and an action takes it as a parameter; there is no `$_SESSION`, which a worker serving overlapping requests would share between them. It is read on first use and written only when it changed, laying each request's changes over the latest copy, and it keeps JSON values. Drivers: `file` (the default, on the cache's file store), `cookie` (signed with HMAC, not encrypted, so that no PHP extension is needed), `memory` (refused with more than one worker) and `redis` in `crabphp/redis`. Expired file and memory sessions are swept by a lottery as sessions are written, so no scheduled task is needed. Logging in stays with tokens and `CookieAuth`; carts, checkouts and orders stay in tables of their own.

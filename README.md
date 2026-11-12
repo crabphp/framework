@@ -353,7 +353,7 @@ new TokenAuth($tokens, $users, scheme: 'Token');         // Authorization: Token
 new TokenAuth($tokens, $users, required: false);         // lets a request without a token through, with no user
 ~~~
 
-Roles and permissions, and sessions with cookies, are not built and not planned: each is a few lines of middleware over what an application already has.
+Roles and permissions are not built and not planned: they are a few lines of middleware over what an application already has. Logging in needs no session; for other data a browser keeps between requests, see [Sessions](#sessions).
 
 ## Streaming
 
@@ -870,6 +870,34 @@ It is PSR-16's cache under the contract `Contracts\Cache\Cache`, which adds `rem
 | `array` | The worker's memory | Tests |
 
 `cache.prefix` keeps two applications apart in one store and `cache.ttl` is the seconds an entry lives when none is given, forever unless set. `php cua cache:clear` empties it, locks included, and `php cua cache:prune` removes what has outlived its time. A store of your own implements `Contracts\Cache\Store` and is bound under that name. See [docs/cache.md](docs/cache.md).
+
+## Sessions
+
+A session keeps temporary data for one browser between its requests: a form's step, a message to show after a redirect. List `SessionPlugin` in `app.php`, put `StartSession` around the routes that use it, and an action takes the session as a parameter:
+
+~~~php
+use Crab\Contracts\Session\Session;
+use Crab\Session\StartSession;
+
+Route::middleware(StartSession::class)->group(static function (): void {
+    Route::post('/profile', static function (Session $session): Response {
+        $session->put('name', 'Ada');
+        $session->flash('status', 'Profile saved.');                  // for the next request only
+        return Response::redirect('/profile', 303);
+    });
+});
+~~~
+
+The session travels on its request, never in the worker: there is no `$_SESSION`, since a worker serves many requests at once. It is read when first used and written only when it changed, and two requests from one browser at once each keep what they changed. Values are JSON values. `session.driver` chooses where sessions are kept:
+
+| Driver | Kept | For |
+| --- | --- | --- |
+| `file` (default) | Files under `session.directory` | One machine |
+| `redis` | Redis, with crabphp/redis | Several machines |
+| `cookie` | The cookie itself, signed with `session.key`, readable by the visitor | No server storage, data that is not secret |
+| `memory` | The worker's memory; refused with more than one worker | Tests |
+
+`session.lifetime` is the seconds a session lasts unused, 7200. Expired file and memory sessions are swept now and then as sessions are written (`session.lottery`, 2 in 100), or by `php cua session:prune`. `regenerate()` after logging in and `invalidate()` when logging out keep an id from outliving its user. See [docs/sessions.md](docs/sessions.md).
 
 ## File storage
 

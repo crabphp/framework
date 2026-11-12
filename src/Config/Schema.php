@@ -24,6 +24,7 @@ final class Schema
         'format',
         'items',
         'minItems',
+        'maxItems',
         'properties',
         'additionalProperties',
         'examples',
@@ -152,8 +153,7 @@ final class Schema
                 'boolean' => 'true or false',
                 'string' => self::string($schema),
                 'array' => isset($schema['items'])
-                    ? (($schema['minItems'] ?? 0) > 0 ? 'a non-empty list of ' : 'a list of ')
-                        . self::plural(self::describe($schema['items']))
+                    ? self::count($schema) . self::plural(self::describe($schema['items']))
                     : 'a list',
                 'object' => self::object($schema),
             };
@@ -223,8 +223,28 @@ final class Schema
                     || in_array($value, \DateTimeZone::listIdentifiers(), true)
                     || $value === 'UTC'
                 ),
-            'array' => is_array($value) && array_is_list($value) && count($value) >= ($schema['minItems'] ?? 0),
+            'array' => is_array($value)
+                && array_is_list($value)
+                && count($value) >= ($schema['minItems'] ?? 0)
+                && count($value) <= ($schema['maxItems'] ?? PHP_INT_MAX),
             'object' => is_array($value) && ($value === [] || !array_is_list($value)),
+        };
+    }
+
+    /**
+     * How many items a list takes, as the start of its description.
+     *
+     * @param array<string, mixed> $schema
+     */
+    private static function count(array $schema): string
+    {
+        $min = (int) ($schema['minItems'] ?? 0);
+        $max = isset($schema['maxItems']) ? (int) $schema['maxItems'] : null;
+        return match (true) {
+            $max !== null && $min === $max => "a list of {$min} ",
+            $max !== null => "a list of {$min} to {$max} ",
+            $min > 0 => 'a non-empty list of ',
+            default => 'a list of ',
         };
     }
 

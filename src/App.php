@@ -72,6 +72,7 @@ use Crab\Routing\Router;
 use Crab\Routing\Urls;
 use Crab\Schedule\SchedulePlugin;
 use Crab\Schedule\Task;
+use Crab\Session\SessionPlugin;
 use Crab\Storage\StoragePlugin;
 use Crab\Validation\Validator;
 use Crab\WebSocket\Connections;
@@ -173,6 +174,7 @@ final class App implements Handler, Runner
         SchedulePlugin::class,
         BroadcastPlugin::class,
         TokenAuthPlugin::class,
+        SessionPlugin::class,
     ];
 
     /**
@@ -608,6 +610,15 @@ final class App implements Handler, Runner
         $with = $servers ? $this->with() : [];
         if ($held !== null) {
             $with = array_values(array_filter($with, fn(string $id): bool => $this->servers->reloads($id) !== $held));
+        }
+        if (
+            max($workers, (int) $this->config->get('server.workers')) > 1
+            && $this->container->has(\Crab\Contracts\Session\Driver::class)
+            && $this->config->get('session.driver') === 'memory'
+        ) {
+            throw new \LogicException(
+                'The memory session driver keeps sessions in one worker, and a browser\'s next request may reach another. Set session.driver to file on one machine, or to redis with crabphp/redis, before serving multiple workers.',
+            );
         }
         if (max($workers, (int) $this->config->get('server.workers')) > 1) {
             $tickets = $this->stack->has(\Crab\Auth\Ticket::class);

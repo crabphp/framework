@@ -4,6 +4,9 @@ Crab follows [semantic versioning](https://semver.org). Before 1.0, a minor vers
 
 ## Unreleased
 
+- **Sessions:** a new opt-in component keeps temporary data for one browser between its requests. List `SessionPlugin` in `app.php`, put the `StartSession` middleware around the routes that use it, and an action takes `Crab\Contracts\Session\Session` as a parameter, with `get()`, `put()`, `forget()`, `pull()`, `flash()`, `regenerate()` and `invalidate()`. Sessions are read when first used and written only when they change. `session.driver` is `file` (the default), `cookie` (signed with `session.key`, readable by the visitor), `memory` (refused with more than one worker) or `redis` with crabphp/redis. Expired file and memory sessions are swept by `session.lottery`, or by the new `session:prune` command. See docs/sessions.md.
+- **Settings:** a list setting's rule may say `maxItems`, and a rule with `minItems` and `maxItems` is described by its count ("a list of 2 whole numbers").
+
 ## 0.7.2 — 2026-11-12
 
 - **A query cannot outlive its loan (safety fix, behaviour change):** a query built on a connection lent by `run()`, `transaction()` or `acquire()` is refused once that loan ends, even when the same connection is lent again. It used to run on the connection wherever it had gone next, which could be another fiber's open transaction, reading its uncommitted rows or writing into it. Build such a query inside the callback, or on the database itself.

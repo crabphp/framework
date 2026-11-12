@@ -248,7 +248,7 @@ Use `required: false` for a route that serves both anonymous and logged-in calle
 
 ## Cookie authentication
 
-For pages a browser loads, such as server-rendered HTML, the user's token travels in a cookie. It is the same database token that `TokenAuth` reads from a header, with the same `TokenStore` and `IdentityResolver`, so there is no session: the cookie holds the token, and the token store says whose it is. `TokenAuthPlugin` binds `CookieAuth`.
+For pages a browser loads, such as server-rendered HTML, the user's token travels in a cookie. It is the same database token that `TokenAuth` reads from a header, with the same `TokenStore` and `IdentityResolver`, so logging in needs no session: the cookie holds the token, and the token store says whose it is. `TokenAuthPlugin` binds `CookieAuth`. For other data a browser keeps between requests, a form's step or a message after a redirect, see [Sessions](sessions.md).
 
 ### Logging in and out
 

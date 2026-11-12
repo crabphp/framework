@@ -30,6 +30,8 @@ final class LayerBoundaryTest extends TestCase
         'Routing' => ['Http', 'Validation', 'WebSocket'],
         // Its work travels as a queue job, which says its own tries.
         'Runs' => ['Queue'],
+        // It sets its cookie, and keeps sessions on the server in a cache store of their own.
+        'Session' => ['Http', 'Cache'],
         'Actors' => ['Broadcast'],
         'Testing' => ['Container', 'Http'],
         // Socket admission returns an HTTP upgrade through the middleware.

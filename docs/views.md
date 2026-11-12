@@ -139,7 +139,7 @@ HTML escaping does not validate a URL scheme or make a value safe inside JavaScr
 
 A rendered page can use ordinary HTML forms. Crab parses URL-encoded forms and multipart uploads, and validates them through the same [typed action inputs](actions.md) as JSON. After a successful write, return a [redirect](responses.md#redirects) when the browser should load another page.
 
-For browser login, use [cookie authentication](authentication.md#cookie-authentication); it uses an HttpOnly token cookie, not a PHP session. Crab does not add a session or flash-message system when Arc is installed.
+For browser login, use [cookie authentication](authentication.md#cookie-authentication); it uses an HttpOnly token cookie, not a PHP session. For a message to show after a redirect, flash it in the [session](sessions.md#flash-messages) and pass it to the view.
 
 Arc adds no error middleware. Default validation and error responses remain JSON or plain text according to the request. To render HTML error pages, bind an [error renderer](errors.md#your-own-error-format); pass the safe message and field problems to a view, and keep the error status. Templates are not selected automatically by status code.
 

@@ -16,6 +16,7 @@ use Crab\Events\EventsPlugin;
 use Crab\HttpClient\HttpClientPlugin;
 use Crab\Queue\QueuePlugin;
 use Crab\Schedule\SchedulePlugin;
+use Crab\Session\SessionPlugin;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 
@@ -34,6 +35,7 @@ final class SettingsTest extends TestCase
         HttpClientPlugin::class,
         QueuePlugin::class,
         SchedulePlugin::class,
+        SessionPlugin::class,
     ];
 
     /**
@@ -88,6 +90,15 @@ final class SettingsTest extends TestCase
                 }
                 if (($rule['minLength'] ?? 0) > 0) {
                     yield "{$section}.{$key} empty" => ["{$section}.{$key}", ''];
+                }
+                if (($rule['minItems'] ?? 0) > 0) {
+                    yield "{$section}.{$key} too few" => ["{$section}.{$key}", array_fill(0, $rule['minItems'] - 1, 1)];
+                }
+                if (isset($rule['maxItems'])) {
+                    yield "{$section}.{$key} too many" => [
+                        "{$section}.{$key}",
+                        array_fill(0, $rule['maxItems'] + 1, 1),
+                    ];
                 }
             }
         }
@@ -263,6 +274,14 @@ final class SettingsTest extends TestCase
         yield 'list' => [
             ['type' => 'array', 'items' => ['type' => 'integer', 'minimum' => 0]],
             'a list of whole numbers, at least 0',
+        ];
+        yield 'pair' => [
+            ['type' => 'array', 'items' => ['type' => 'integer', 'minimum' => 0], 'minItems' => 2, 'maxItems' => 2],
+            'a list of 2 whole numbers, at least 0',
+        ];
+        yield 'bounded list' => [
+            ['type' => 'array', 'items' => ['type' => 'string'], 'minItems' => 1, 'maxItems' => 3],
+            'a list of 1 to 3 strings',
         ];
         yield 'names' => [
             ['type' => 'object', 'additionalProperties' => ['type' => 'string']],

@@ -15,7 +15,7 @@
 
 Crab is a PHP framework focused on JSON APIs and services. It runs your application as a long-lived server: the code is loaded once, and worker processes then answer requests for as long as they live, without PHP-FPM, Nginx or Apache in front.
 
-The framework provides routing, typed actions with validation, middleware, a database layer with a query builder and migrations, token and cookie authentication, a cache, events, a queue, a scheduler, an HTTP client and streaming responses, with durable runs and actors as packages of their own. There is no ORM or session component.
+The framework provides routing, typed actions with validation, middleware, a database layer with a query builder and migrations, token and cookie authentication, sessions, a cache, events, a queue, a scheduler, an HTTP client and streaming responses, with durable runs and actors as packages of their own. There is no ORM.
 
 > [!WARNING]
 > [Views with Arc](views.md) are experimental, may change without backward compatibility, and must not be used in production. Arc is an optional package, not part of the API-focused core.

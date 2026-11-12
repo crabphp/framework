@@ -7,6 +7,7 @@ namespace Crab\Routing;
 use Crab\Contracts\Auth\Identity;
 use Crab\Contracts\Http\Handler;
 use Crab\Contracts\Http\Request;
+use Crab\Contracts\Session\Session;
 use Crab\Contracts\Validation\ObjectRule;
 use Crab\Contracts\Validation\Rule;
 use Crab\Contracts\Validation\Validator;
@@ -40,6 +41,8 @@ use Psr\Http\Message\UploadedFileInterface;
  *     the request          typed as a PSR-7 server request
  *     the user             typed as a class that implements Identity: whoever
  *                          middleware put on the request's "user" attribute
+ *     the session          typed as Session: the one StartSession put on the
+ *                          request's "session" attribute
  *
  * A request whose path, query or body does not fit is answered with 422
  * and the problems by field, and one with no user where the action takes
@@ -65,6 +68,12 @@ final class ActionHandler implements Handler
      * @var list<string>
      */
     private array $requests = [];
+    /**
+     * Parameters that receive the request's session.
+     *
+     * @var list<string>
+     */
+    private array $sessions = [];
     /**
      * Parameters that are route parameters, with the type each is asked for as.
      *
@@ -186,6 +195,15 @@ final class ActionHandler implements Handler
         $errors = [];
         foreach ($this->requests as $name) {
             $arguments[$name] = $request;
+        }
+        foreach ($this->sessions as $name) {
+            $session = $request->getAttribute(Session::ATTRIBUTE);
+            if (!$session instanceof Session) {
+                throw new \LogicException(
+                    "The action {$this->name} takes the session, and no StartSession runs around its route: add it with ->middleware(StartSession::class), and list SessionPlugin in app.php.",
+                );
+            }
+            $arguments[$name] = $session;
         }
         foreach ($this->users as $name => [$class, $optional]) {
             $user = $request->getAttribute(Identity::ATTRIBUTE);
@@ -446,6 +464,16 @@ final class ActionHandler implements Handler
                 throw $marked('the request');
             }
             $this->requests[] = $name;
+        } elseif (is_a($typeName, Session::class, true)) {
+            if ($fromQuery) {
+                throw $marked('the session');
+            }
+            if ($typeName !== Session::class) {
+                throw new \LogicException(
+                    "The action of {$route} takes the session as {$typeName}; type it as " . Session::class . '.',
+                );
+            }
+            $this->sessions[] = $name;
         } elseif (is_a($typeName, Identity::class, true)) {
             if ($fromQuery) {
                 throw $marked('the logged-in user');
