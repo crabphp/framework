@@ -4,6 +4,8 @@ Crab follows [semantic versioning](https://semver.org). Before 1.0, a minor vers
 
 ## Unreleased
 
+## 0.7.4 — 2026-11-17
+
 - **`--port`:** `start`, `dev`, `reload` and `restart` take `--port=8081`, which listens on that port at the host of `server.address` (`127.0.0.1` unless set), so a second application on one machine needs no full address. It is kept across reloads like `--address`, and refused beside it.
 
 ## 0.7.3 — 2026-11-13
