@@ -23,6 +23,7 @@ final readonly class Reload implements Command
 
             Options:
               --address=tcp://127.0.0.1:8080   Where to listen; default as the server was started
+              --port=8081                      Listen on this port, at the host the server was started with
               --workers=1                      Worker processes; default as the server was started
 
             The server starts a new process, with the code and configuration as they are
@@ -30,14 +31,14 @@ final readonly class Reload implements Command
             connections, the old one finishes the requests it has and stops. If the new
             one cannot start, the old one goes on serving and this command fails.
 
-            An --address or --workers given to `start`, or to an earlier reload, is kept;
+            An --address, --port or --workers given to `start`, or to an earlier reload, is kept;
             one left to "server.address" or "server.workers" follows it as it is now.
             TEXT;
     }
 
     public function handle(Input $input, Output $output): int
     {
-        Start::requireValues($input, ['address', 'workers']);
+        Start::requireValues($input, ['address', 'port', 'workers']);
         Start::checkTyped($this->app, $input);
         $server = new Server($this->app);
         // As the server was started, but for what is typed now.

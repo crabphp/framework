@@ -310,6 +310,14 @@ final class ValueOptionsTest extends TestCase
             ] as $value) {
                 yield $command . ' address ' . $value => [$command, ['--address=' . $value], '--address='];
             }
+            foreach (['', 'http', '80a', '-1', '+80', '1.5', '65536', '123456', "80\n"] as $value) {
+                yield $command . ' port ' . $value => [$command, ['--port=' . $value], '--port='];
+            }
+            yield $command . ' port beside address' => [
+                $command,
+                ['--address=tcp://127.0.0.1:8080', '--port=8081'],
+                '--port=8081',
+            ];
         }
     }
 

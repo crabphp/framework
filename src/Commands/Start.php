@@ -23,6 +23,7 @@ final readonly class Start implements Command
 
             Options:
               --address=tcp://127.0.0.1:8080   Where to listen; default from "server.address"
+              --port=8081                      Listen on this port, at the host of "server.address"
               --workers=1                      Worker processes; default from "server.workers"
               --single                         Serve in this process, without pcntl and posix
               --daemon, -d                     Serve in the background and return once it is up
@@ -35,7 +36,7 @@ final readonly class Start implements Command
 
     public function handle(Input $input, Output $output): int
     {
-        self::requireValues($input, ['address', 'workers']);
+        self::requireValues($input, ['address', 'port', 'workers']);
         if ($input->option('watch') !== null || $input->flag('no-watch')) {
             $output->error('`start` does not watch files; `dev` restarts the server when a file is saved.');
             return 1;
@@ -53,11 +54,7 @@ final readonly class Start implements Command
 
         if ($input->flag('generation')) {
             // How the keeper of a server in the background starts the server proper; see Server::start().
-            $server->generation(
-                is_string($input->option('address')) ? $address : null,
-                $workers,
-                held: $input->flag('held'),
-            );
+            $server->generation(self::typedAddress($input) ? $address : null, $workers, held: $input->flag('held'));
         }
         if ($daemon) {
             if ($single) {
@@ -89,9 +86,7 @@ final readonly class Start implements Command
             if (!str_starts_with($error->getMessage(), 'Could not bind ')) {
                 throw $error;
             }
-            $output->error(
-                $error->getMessage() . '. Free the address or choose another --address=tcp://127.0.0.1:8081.',
-            );
+            $output->error($error->getMessage() . '. Free the address or choose another port, such as --port=8081.');
             return 1;
         }
         return 0;
@@ -200,14 +195,14 @@ final readonly class Start implements Command
     }
 
     /**
-     * Refuses a typed --address or --workers of the wrong form before the
+     * Refuses a typed --address, --port or --workers of the wrong form before the
      * running server's state is read.
      *
      * @internal Shared by the server commands.
      */
     public static function checkTyped(App $app, Input $input): void
     {
-        if ($input->option('address') !== null) {
+        if ($input->option('address') !== null || $input->option('port') !== null) {
             self::address($app, $input);
         }
         if ($input->option('workers') !== null) {
@@ -226,7 +221,7 @@ final readonly class Start implements Command
     public static function given(Input $input, string $address, int $workers, array $kept = []): array
     {
         $given = [];
-        if (is_string($input->option('address')) || isset($kept['address'])) {
+        if (self::typedAddress($input) || isset($kept['address'])) {
             $given['address'] = $address;
         }
         if (is_string($input->option('workers')) || isset($kept['workers'])) {
@@ -236,13 +231,32 @@ final readonly class Start implements Command
     }
 
     /**
+     * Whether where to listen was typed, as --address or --port.
+     */
+    private static function typedAddress(Input $input): bool
+    {
+        return is_string($input->option('address')) || is_string($input->option('port'));
+    }
+
+    /**
      * Where to listen: the option, else what the running server was started
-     * with ($kept), else the configuration.
+     * with ($kept), else the configuration. --port replaces only the port of
+     * that address, so the host stays what it was: 127.0.0.1 by default.
      */
     public static function address(App $app, Input $input, ?string $kept = null): string
     {
-        $address = $input->value('address', 'tcp://127.0.0.1:8080');
-        $address ??= $kept ?? $app->config->get('server.address');
+        $typed = $input->value('address', 'tcp://127.0.0.1:8080');
+        $port = $input->value('port', '8081');
+        if ($typed !== null && $port !== null) {
+            throw new \InvalidArgumentException(
+                '--address and --port both say where to listen; give one, such as --port=8081 or --address=tcp://127.0.0.1:8081.',
+            );
+        }
+        if ($port !== null && (preg_match('/^[0-9]{1,5}$/D', $port) !== 1 || (int) $port > 65_535)) {
+            throw new \InvalidArgumentException('--port must be a whole number from 0 to 65535; use --port=8081.');
+        }
+        $address = $typed ?? $kept ?? $app->config->get('server.address');
+        $parts = [];
         $valid =
             is_string($address) && preg_match('~^tcp://(\[[^\]]+\]|[^:/?#\s]+):([0-9]+)$~D', $address, $parts) === 1;
         if ($valid) {
@@ -259,6 +273,9 @@ final readonly class Start implements Command
             throw new \InvalidArgumentException(
                 '--address (server.address) must be tcp://host:port, with a port from 0 to 65535; use --address=tcp://127.0.0.1:8080.',
             );
+        }
+        if ($port !== null) {
+            return 'tcp://' . $parts[1] . ':' . (int) $port;
         }
         return $address;
     }

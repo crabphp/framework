@@ -4,6 +4,8 @@ Crab follows [semantic versioning](https://semver.org). Before 1.0, a minor vers
 
 ## Unreleased
 
+- **`--port`:** `start`, `dev`, `reload` and `restart` take `--port=8081`, which listens on that port at the host of `server.address` (`127.0.0.1` unless set), so a second application on one machine needs no full address. It is kept across reloads like `--address`, and refused beside it.
+
 ## 0.7.3 — 2026-11-13
 
 - **Sessions:** a new opt-in component keeps temporary data for one browser between its requests. List `SessionPlugin` in `app.php`, put the `StartSession` middleware around the routes that use it, and an action takes `Crab\Contracts\Session\Session` as a parameter, with `get()`, `put()`, `forget()`, `pull()`, `flash()`, `regenerate()` and `invalidate()`. Sessions are read when first used and written only when they change. `session.driver` is `file` (the default), `cookie` (signed with `app.key`, readable by the visitor), `memory` (refused with more than one worker) or `redis` with crabphp/redis. Expired file and memory sessions are swept by `session.lottery`, or by the new `session:prune` command. See docs/sessions.md.

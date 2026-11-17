@@ -19,7 +19,7 @@ final class StartTest extends TestCase
      */
     public static function missingValues(): iterable
     {
-        foreach (['address', 'workers'] as $name) {
+        foreach (['address', 'port', 'workers'] as $name) {
             yield $name . ' omitted' => [$name, ['--' . $name]];
             yield $name . ' separated' => [$name, ['--' . $name, 'value']];
         }
@@ -52,6 +52,31 @@ final class StartTest extends TestCase
         self::assertSame('tcp://127.0.0.1:28481', Start::address($app, new Input(['--address=tcp://127.0.0.1:28481'])));
         self::assertSame(4, Start::workers($app, new Input(['--workers=4'])));
         self::assertSame(2, Start::workers($app, new Input()));
+    }
+
+    public function testAPortKeepsTheHostOfTheAddressItReplaces(): void
+    {
+        $default = new App();
+        self::assertSame('tcp://127.0.0.1:8081', Start::address($default, new Input(['--port=8081'])));
+        self::assertSame('tcp://127.0.0.1:0', Start::address($default, new Input(['--port=0'])));
+        self::assertSame('tcp://127.0.0.1:80', Start::address($default, new Input(['--port=00080'])));
+
+        $configured = new App(new Config(['server' => ['address' => 'tcp://[::]:8080']]));
+        self::assertSame('tcp://[::]:9000', Start::address($configured, new Input(['--port=9000'])));
+        self::assertSame('tcp://0.0.0.0:9001', Start::address(
+            $configured,
+            new Input(['--port=9001']),
+            kept: 'tcp://0.0.0.0:9000',
+        ));
+    }
+
+    public function testATypedPortIsKeptAsTheAddressForAReload(): void
+    {
+        $input = new Input(['--port=8082']);
+        self::assertSame(
+            ['address' => 'tcp://127.0.0.1:8082', 'workers' => 2],
+            Start::given($input, Start::address(new App(), $input), 2, ['workers' => '2']),
+        );
     }
 
     public function testStartPointsAtDevWhenAskedToWatch(): void

@@ -1007,7 +1007,7 @@ php cua start                # in the foreground, as it is: for a container
 php cua start --daemon       # in the background, returning once it is up: for a machine you deploy to
 ~~~
 
-`--address=tcp://0.0.0.0:8080` and `--workers=4` override the `server.address` and `server.workers` settings. `--single` serves in one process, without PHP's `pcntl` and `posix` extensions.
+`--address=tcp://0.0.0.0:8080` and `--workers=4` override the `server.address` and `server.workers` settings, and `--port=8081` changes only the port of `server.address`. `--single` serves in one process, without PHP's `pcntl` and `posix` extensions.
 
 ### In development
 

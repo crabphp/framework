@@ -23,6 +23,7 @@ final readonly class Restart implements Command
 
             Options:
               --address=tcp://127.0.0.1:8080   Where to listen; default as the server was started
+              --port=8081                      Listen on this port, at the host the server was started with
               --workers=1                      Worker processes; default as the server was started
               --timeout=15                     Graceful wait in seconds; if omitted, read from the running server
               --force                          Cut requests and end every old server process now
@@ -34,7 +35,7 @@ final readonly class Restart implements Command
 
     public function handle(Input $input, Output $output): int
     {
-        Start::requireValues($input, ['address', 'workers', 'timeout']);
+        Start::requireValues($input, ['address', 'port', 'workers', 'timeout']);
         Start::checkTyped($this->app, $input);
         $seconds = Stop::timeout($input);
         $server = new Server($this->app);

@@ -28,6 +28,7 @@ final readonly class Dev implements Command
 
             Options:
               --address=tcp://127.0.0.1:8080   Where to listen; default from "server.address"
+              --port=8081                      Listen on this port, at the host of "server.address"
               --workers=1                      Worker processes; default from "server.workers"
               --single                         Serve in one process, without pcntl and posix
               --watch=app,config               What to watch instead of "server.watch"
@@ -38,7 +39,7 @@ final readonly class Dev implements Command
 
     public function handle(Input $input, Output $output): int
     {
-        Start::requireValues($input, ['address', 'workers', 'watch']);
+        Start::requireValues($input, ['address', 'port', 'workers', 'watch']);
         $address = Start::address($this->app, $input);
         $workers = Start::workers($this->app, $input);
         $paths = $this->watched($input);

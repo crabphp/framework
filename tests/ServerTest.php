@@ -160,6 +160,25 @@ final class ServerTest extends TestCase
         self::assertSame('one', $this->get());
     }
 
+    public function testAPortServesAtTheConfiguredHostAndIsKeptOnReload(): void
+    {
+        // The configuration names the host; the port it names is one nothing could take over.
+        $this->configure('tcp://127.0.0.1:9', 1);
+        $port = (string) parse_url($this->address, PHP_URL_PORT);
+        [$status, $output] = $this->cua('start', '-d', "--port={$port}");
+        self::assertSame(0, $status, $output);
+        self::assertStringContainsString("server running on {$this->url}\n", $output);
+        self::assertSame('one', $this->get());
+        $keeper = $this->pid();
+
+        [$status, $output] = $this->cua('reload');
+        self::assertSame(0, $status, $output);
+        self::assertStringStartsWith("Reloaded the server, pid {$keeper}, on {$this->url}.", $output);
+        $server = $this->awaitStatus(static fn(array $server): bool => $server['state'] === 'running');
+        self::assertSame($this->address, $server['about']['address']);
+        self::assertSame('one', $this->get());
+    }
+
     public function testWhatWasLeftToTheConfigurationFollowsItOnReload(): void
     {
         $this->configure($this->address, 1);
@@ -234,7 +253,7 @@ final class ServerTest extends TestCase
         self::assertSame(1, $status, 'A second server in the foreground cannot take the address by accident.');
         self::assertStringContainsString('Address already in use', $output);
         self::assertStringNotContainsString('server running', $output);
-        self::assertStringContainsString('choose another --address=', $output);
+        self::assertStringContainsString('choose another port, such as --port=8081', $output);
 
         self::assertSame([0, "Stopped the server, pid {$pid}.\n"], $this->cua('stop'));
         self::assertFalse(posix_kill($pid, 0), 'The process has gone.');

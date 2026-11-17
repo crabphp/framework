@@ -36,12 +36,20 @@ php cua start --daemon       # in the background, returning once it is up
 | Option | |
 | --- | --- |
 | `--address=tcp://0.0.0.0:8080` | Where to listen; the default is `server.address` |
+| `--port=8081` | Listen on this port, at the host of `server.address` (`127.0.0.1` unless set) |
 | `--workers=4` | Worker processes; the default is `server.workers` |
 | `--single` | Serve in this one process, without the `pcntl` and `posix` extensions |
 | `--daemon`, `-d` | Serve in the background; `start` only |
 | `--watch=app,config` | What to watch, in place of `server.watch`; `dev` only |
 
-Value options are checked before server control: `--workers` and `SERVER_WORKERS` in the skeleton are positive whole numbers within PHP's integer range; `--address` is `tcp://host:port` (bracket IPv6 hosts); and `--watch` lists existing readable local files or folders without empty entries. Mistyped values fail before startup, reload or restart contacts the running server.
+Value options are checked before server control: `--workers` and `SERVER_WORKERS` in the skeleton are positive whole numbers within PHP's integer range; `--address` is `tcp://host:port` (bracket IPv6 hosts); `--port` is a whole number from 0 to 65535, and is refused beside `--address`; and `--watch` lists existing readable local files or folders without empty entries. Mistyped values fail before startup, reload or restart contacts the running server.
+
+Two applications on one machine each need a port of their own. `--port` changes only the port, so the host stays the one `server.address` names:
+
+```sh
+php cua start --daemon              # 127.0.0.1:8080
+php cua start --daemon --port=8081  # another application, on 127.0.0.1:8081
+```
 
 ### While developing
 
@@ -179,7 +187,7 @@ The server starts a new process, with the code and configuration as they are now
 
 - **Connections keep being accepted.** The old and the new process accept from the same socket. Requests already in flight finish within the old workers' `server.drain` limit; connections still open at that limit are cut.
 - **A reload that fails at startup leaves the old process serving.** Settings that do not fit are refused before the running server is touched. So is a service the code names and the container cannot make, as described in [Services that cannot be made](#services-that-cannot-be-made). Syntax errors, middleware construction and plugin start hooks fail here too. What a constructor or a closure binding does when it runs is still found by the first request that needs it.
-- **It starts the server as it was started.** An `--address` or `--workers` typed to `start` is kept by every `reload` and `restart` after it; one left to `server.address` or `server.workers` follows the configuration as it is now. Typing one to `reload` changes it without refusing a connection, and it is kept from then on:
+- **It starts the server as it was started.** An `--address`, `--port` or `--workers` typed to `start` is kept by every `reload` and `restart` after it; one left to `server.address` or `server.workers` follows the configuration as it is now. Typing one to `reload` changes it without refusing a connection, and it is kept from then on:
 
 ```sh
 php cua start --daemon --workers=4   # four workers, whatever server.workers says
@@ -187,7 +195,7 @@ php cua reload                       # still four
 php cua reload --workers=8           # eight from now on, with no gap
 ```
 
-A new `--address` is bound before the new process starts, and the old one lets the old address go when it stops.
+A new `--address` or `--port` is bound before the new process starts, and the old one lets the old address go when it stops.
 
 **After upgrading the framework, restart once.** `reload` gives the new code to a new server process, but the process that holds the socket and starts each one stays as it is for as long as the service runs, and keeps the framework it started with. Its fixes, and any change to how it talks to its server processes, apply only after `php cua restart` (with systemd, `systemctl restart`), at the cost of a short gap. Upgrading your own code or other packages needs only `reload`.
 
