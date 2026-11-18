@@ -2,7 +2,20 @@
 
 Crab follows [semantic versioning](https://semver.org). Before 1.0, a minor version may break what an application writes; the entry says what to change.
 
-## Unreleased
+## 0.7.5 — 2026-11-18
+
+Contracts for packages that add a protocol of their own beside the application's routes, such as crabphp/psx. An application that uses none of them behaves as before, except for the one change under "Behaviour change".
+
+- **Behaviour change, `CookieAuth` with `login`:** a refused `GET` or `HEAD` is sent to the login page only when it takes a page (its `Accept` allows `text/html`). One that asks for JSON or another type alone is answered `401`, with the address as its problem's `login`. A script that fetched a guarded address used to be handed the login page's HTML; follow `login` from the 401 instead.
+- **Prepared actions:** `Contracts\Routing\Actions::prepare($method, $pattern, $action)` reads an action's signature by the router's own rules and returns a `PreparedAction`. `invoke($request)` gives an `ActionOutcome`: what the action returned, or the rejection the request earned without the action being called. A package decides what to send; nothing is added to the router. An `InputProjection` leaves out the query fields that belong to other actions sharing one request, so `#[RejectUnknown]` refuses only a field none of them declares.
+- **Definitions:** a plugin adds a `Contracts\Definition` to `Contracts\Definitions`. `finish()` runs once, after every plugin, the setup and the route files, and before anything serves: it adds the routes the package's declarations stand for and refuses what cannot be honoured. Its entries appear in `php cua describe`.
+- **Errors in a protocol's own form:** a `Contracts\Http\Representation` added to `Representations` writes the errors of its own requests, the router's 404 and a middleware's 401 included. `Contracts\Http\Errors` makes an error response that carries its `Problem`, and reads the problem of one. `Problem` gains `context`, for what a representation needs beside the public fields.
+- **Strict decoding:** a `Contracts\Http\DecodePolicy` added to `DecodePolicies` chooses a `Decoding` for a request from its method, path and headers, before any middleware reads it. Strict reading refuses a repeated scalar field, mixed or skipping list indexes, a JSON body that is not one object or repeats a member's name (400), input over its bounds (413) and a body type it does not read (415). Other requests are read as before.
+- **Strict reading keeps shapes and exact numbers:** a request read strictly binds its input by what was written. An object of a JSON body is never taken for a list nor a list for an object, empty ones and `{"0": 7}` included, and a whole number declared `int` or `float` is refused beyond 2^53 - 1 either way, in a JSON body, a form, the query string and the path, since a browser would read another number. `Validator::validate()` and `validateParameters()` take `$strict` for this; `Http\Request::exactBody()` is the JSON body with its objects apart from its lists. A request read the ordinary way binds as before.
+- **Whether the action was entered:** when an application has a `Representation`, each request carries a `Contracts\Routing\Entered` as the attribute `Entered::ATTRIBUTE`. The router marks it just before it calls the action, so whoever writes an error can say whether the action ran, whatever the error's status and wherever it came from: a guard, the binder, the action, or a middleware answering after it. Without a representation nothing is added to a request.
+- **Which route a request is for:** `Contracts\Routing\Router::match($method, $path)` gives the route dispatch would choose, running nothing. A `DecodePolicy` uses it to choose by the route's name, before any middleware runs.
+- **Development:** `Contracts\Development` lets a plugin have `php cua dev` watch more files, run a step before each server it starts, and run a program beside it that the first server waits for. `Contracts\Invocation` says which command started the process and whether `dev` did.
+- **Same-origin check as its own class:** `Http\SameOrigin` holds the check `CookieAuth` makes of requests that change something.
 
 ## 0.7.4 — 2026-11-17
 
