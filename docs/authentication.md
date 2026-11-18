@@ -302,7 +302,7 @@ Route::middleware(CookieAuth::class)->group(function () {
 Route::get('/', ShowHome::class)->middleware(new CookieAuth(required: false));    // a user when there is one
 ```
 
-Actions take `User $user` as with tokens. A request without a known user is answered `401`, or, with `login: '/login'` on the middleware or `auth.cookie.login` set, a `GET` or `HEAD` request is sent to that page. A cookie whose token no longer works, because it expired or was revoked elsewhere, is cleared in the same response; with `required: false` the page is served without a user.
+Actions take `User $user` as with tokens. A request without a known user is answered `401`, or, with `login: '/login'` on the middleware or `auth.cookie.login` set, a `GET` or `HEAD` request that takes a page is sent to that page. A request that asks for JSON or another type alone, as a script's `fetch` does, is answered `401` with the address as its problem's `login`, so it is never handed the login page's HTML. A cookie whose token no longer works, because it expired or was revoked elsewhere, is cleared in the same response; with `required: false` the page is served without a user.
 
 ### Requests from other sites
 

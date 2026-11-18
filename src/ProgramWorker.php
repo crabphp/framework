@@ -194,7 +194,7 @@ final class ProgramWorker
      *
      * @return list<int>
      */
-    private static function descendants(int $pid): array
+    public static function descendants(int $pid): array
     {
         $children = [];
         if (PHP_OS_FAMILY === 'Linux') {

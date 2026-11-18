@@ -135,7 +135,18 @@ final class DescribeTest extends TestCase
         $described = $this->describe($app);
 
         self::assertSame(
-            ['app', 'routes', 'middleware', 'commands', 'schedule', 'listeners', 'servers', 'database', 'config'],
+            [
+                'app',
+                'routes',
+                'middleware',
+                'commands',
+                'schedule',
+                'listeners',
+                'servers',
+                'packages',
+                'database',
+                'config',
+            ],
             array_keys($described),
         );
         self::assertSame(

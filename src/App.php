@@ -32,15 +32,22 @@ use Crab\Contracts\Clock\Clock as ClockContract;
 use Crab\Contracts\Config\Config as ConfigContract;
 use Crab\Contracts\Console\Console as ConsoleContract;
 use Crab\Contracts\Container\Container as ContainerContract;
+use Crab\Contracts\Definitions as DefinitionsContract;
+use Crab\Contracts\Development as DevelopmentContract;
 use Crab\Contracts\Events\Dispatcher as DispatcherContract;
+use Crab\Contracts\Http\DecodePolicies as DecodePoliciesContract;
 use Crab\Contracts\Http\ErrorRenderer;
+use Crab\Contracts\Http\Errors as ErrorsContract;
 use Crab\Contracts\Http\Factory as FactoryContract;
 use Crab\Contracts\Http\Handler;
 use Crab\Contracts\Http\Middleware;
 use Crab\Contracts\Http\MiddlewareStack as MiddlewareStackContract;
+use Crab\Contracts\Http\Representations as RepresentationsContract;
 use Crab\Contracts\Http\Request;
+use Crab\Contracts\Invocation;
 use Crab\Contracts\Log\Logger as LoggerContract;
 use Crab\Contracts\Plugin;
+use Crab\Contracts\Routing\Actions as ActionsContract;
 use Crab\Contracts\Routing\Router as RouterContract;
 use Crab\Contracts\Routing\Urls as UrlsContract;
 use Crab\Contracts\Runner;
@@ -60,15 +67,20 @@ use Crab\Engine\Process\Worker;
 use Crab\Engine\Runtime;
 use Crab\Engine\Server\HttpServer;
 use Crab\Events\EventsPlugin;
+use Crab\Http\DecodePolicies;
 use Crab\Http\EngineHandler;
 use Crab\Http\ErrorHandler;
+use Crab\Http\Errors;
 use Crab\Http\Factory;
 use Crab\Http\MiddlewareStack;
 use Crab\Http\RenderedErrors;
+use Crab\Http\Representations;
+use Crab\Http\SelectDecoding;
 use Crab\Http\StaticFiles;
 use Crab\HttpClient\HttpClientPlugin;
 use Crab\Log\Logger;
 use Crab\Queue\QueuePlugin;
+use Crab\Routing\Actions;
 use Crab\Routing\Router;
 use Crab\Routing\Urls;
 use Crab\Schedule\SchedulePlugin;
@@ -111,6 +123,11 @@ final class App implements Handler, Runner
     private static ?string $preparing = null;
 
     /**
+     * How the process about to build an application was started; see invoked().
+     */
+    private static ?Invocation $invoked = null;
+
+    /**
      * Where the application writes: logs, the pid file, the file cache, the
      * local disk, a SQLite file. Null for one with nowhere of its own.
      */
@@ -122,6 +139,16 @@ final class App implements Handler, Runner
      * The servers `start` can run beside HTTP, as plugins have registered them.
      */
     public readonly Servers $servers;
+    /**
+     * What plugins have asked `dev` to do beside watching PHP files.
+     */
+    public readonly Development $development;
+    /**
+     * The declarations packages make beside the routes, finished by define().
+     */
+    private readonly Definitions $definitions;
+    private readonly Representations $representations;
+    private readonly DecodePolicies $decodePolicies;
     private readonly MiddlewareStack $stack;
     private ?Handler $entry = null;
     /**
@@ -250,6 +277,22 @@ final class App implements Handler, Runner
         $this->servers = new Servers();
         $container->instance(ServersContract::class, $this->servers);
         $container->singleton(Servers::class, ServersContract::class);
+        $this->development = new Development();
+        $container->instance(DevelopmentContract::class, $this->development);
+        $container->singleton(Development::class, DevelopmentContract::class);
+        $this->definitions = new Definitions();
+        $container->instance(DefinitionsContract::class, $this->definitions);
+        $container->singleton(Definitions::class, DefinitionsContract::class);
+        // How the process was started, for a plugin whose declarations depend on it.
+        $container->instance(Invocation::class, self::$invoked ?? new Invocation());
+        $this->representations = new Representations();
+        $container->instance(RepresentationsContract::class, $this->representations);
+        $container->singleton(Representations::class, RepresentationsContract::class);
+        $this->decodePolicies = new DecodePolicies();
+        $container->instance(DecodePoliciesContract::class, $this->decodePolicies);
+        $container->singleton(DecodePolicies::class, DecodePoliciesContract::class);
+        $container->singleton(ErrorsContract::class, static fn(): Errors => new Errors());
+        $container->singleton(Errors::class, ErrorsContract::class);
         $container->instance(ConfigContract::class, $config);
         // Asking by class must not autowire a second, empty one.
         $container->singleton($config::class, ConfigContract::class);
@@ -319,6 +362,9 @@ final class App implements Handler, Runner
         $this->routes = $router;
         $container->instance(RouterContract::class, $this->router);
         $container->singleton(Router::class, RouterContract::class);
+        // Actions a package calls itself are read by the router's own rules.
+        $container->instance(ActionsContract::class, new Actions($validator, $container));
+        $container->singleton(Actions::class, ActionsContract::class);
         $container->singleton(UrlsContract::class, fn(): Urls => new Urls($this->router, $config->get('app.url')));
         $container->singleton(Urls::class, UrlsContract::class);
         // The error handler is the entry bound as ErrorHandler; rebinding it to
@@ -458,6 +504,46 @@ final class App implements Handler, Runner
     }
 
     /**
+     * Says how the process was started, for the application about to be
+     * built: the command typed and whether `dev` started it. Plugins read
+     * it as Contracts\Invocation.
+     *
+     * @internal For Cua.
+     */
+    public static function invoked(?Invocation $invocation): void
+    {
+        self::$invoked = $invocation;
+    }
+
+    /**
+     * Finishes what packages declare beside the routes; see
+     * Contracts\Definition. AppBuilder::create() calls it after the
+     * plugins, the setup and the route files; an application built by
+     * hand is defined when it first serves, works or is described.
+     * Calling it again does nothing.
+     */
+    public function define(): static
+    {
+        $this->definitions->finish();
+        return $this;
+    }
+
+    /**
+     * What packages declare beside the routes, by name, for `describe`.
+     *
+     * @return array<string, list<string>>
+     */
+    public function declared(): array
+    {
+        $this->define();
+        $declared = [];
+        foreach ($this->definitions->all() as $definition) {
+            $declared[$definition->name()] = $definition->describe();
+        }
+        return $declared;
+    }
+
+    /**
      * The application most recently created in this process; the global
      * helpers read from it, and Route and Command declare on it.
      */
@@ -499,14 +585,26 @@ final class App implements Handler, Runner
     }
 
     /**
-     * What a request enters: the middleware stack, behind the
-     * application's ErrorRenderer when it binds one.
+     * What a request enters: the middleware stack, behind whatever
+     * chooses how the request is read when a plugin added a decode
+     * policy, and behind the application's ErrorRenderer and the
+     * representations when there are any.
      */
     private function entry(): Handler
     {
-        return $this->entry ??= $this->container->has(ErrorRenderer::class)
-            ? new RenderedErrors($this->stack, $this->container)
-            : $this->stack;
+        if ($this->entry !== null) {
+            return $this->entry;
+        }
+        // Before the first request, whoever built the application.
+        $this->define();
+        $entry = $this->stack;
+        if ($this->decodePolicies->all() !== []) {
+            $entry = new SelectDecoding($entry, $this->decodePolicies);
+        }
+        if ($this->container->has(ErrorRenderer::class) || $this->representations->all() !== []) {
+            $entry = new RenderedErrors($entry, $this->container, $this->representations);
+        }
+        return $this->entry = $entry;
     }
 
     /**
@@ -530,6 +628,7 @@ final class App implements Handler, Runner
             // Another container keeps its own counsel.
             return [];
         }
+        $this->define();
         // Each entry once, where it is first named.
         $named = [];
         foreach ($this->stack->named() as $middleware) {
@@ -562,6 +661,11 @@ final class App implements Handler, Runner
                 }
             }
         }
+        foreach ($this->definitions->all() as $definition) {
+            foreach ($definition->entries() as $entry => $where) {
+                $named[$entry] ??= $where;
+            }
+        }
         $problems = [];
         foreach ($named as $entry => $where) {
             $problem = $this->container->problem((string) $entry);
@@ -592,6 +696,7 @@ final class App implements Handler, Runner
     ): Runtime {
         // Before anything starts, so that every setting that does not fit is said at once.
         $this->config->check();
+        $this->define();
         $drain = $this->drain();
         $maxConnections = (int) $this->config->get('server.max_connections');
         $backend = $this->config->get('server.loop');

@@ -11,6 +11,7 @@ use Crab\Console\Output;
 use Crab\Contracts\Config\InvalidSettings;
 use Crab\Contracts\Console\Output as OutputContract;
 use Crab\Contracts\Container\MissingServices;
+use Crab\Contracts\Invocation;
 
 /**
  * What `php cua` runs: it loads the application app.php describes and
@@ -34,6 +35,14 @@ final class Cua
     public const LAUNCH = '--crab-launch';
 
     /**
+     * The environment variable `dev` sets for the server it starts, so
+     * that the server knows a developer's launcher is behind it.
+     *
+     * @internal For Server.
+     */
+    public const DEVELOPMENT = 'CRAB_DEVELOPMENT';
+
+    /**
      * The commands that run without the application.
      */
     private const WITHOUT = ['status', 'stop'];
@@ -48,6 +57,14 @@ final class Cua
         if (($arguments[0] ?? null) === self::LAUNCH) {
             return self::launch(array_slice($arguments, 1));
         }
+        // Said before the application is described, since a plugin's declarations may depend on it.
+        App::invoked(
+            new Invocation(
+                $arguments[0] ?? null,
+                array_slice($arguments, 1),
+                ($arguments[0] ?? null) === 'dev' || getenv(self::DEVELOPMENT) === '1',
+            ),
+        );
         try {
             $application = require $app;
         } catch (\Throwable $error) {

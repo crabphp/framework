@@ -29,6 +29,12 @@ use Psr\Http\Message\UploadedFileInterface;
 final class Validator implements ValidatorContract
 {
     /**
+     * The largest whole number every reader of JSON holds exactly, 2^53 - 1.
+     */
+    private const int SAFE = 9_007_199_254_740_991;
+    private const string INEXACT = 'must be a whole number from -9007199254740991 to 9007199254740991';
+
+    /**
      * What was read from each class, kept because a class does not change.
      *
      * @var array<class-string, list<Property>>
@@ -54,10 +60,10 @@ final class Validator implements ValidatorContract
         $this->functions = new \WeakMap();
     }
 
-    public function validate(string $class, array $data, bool $coerce = false): object
+    public function validate(string $class, array $data, bool $coerce = false, bool $strict = false): object
     {
         $errors = [];
-        $object = $this->build($class, $data, $coerce, '', $errors);
+        $object = $this->build($class, $data, $coerce, '', $errors, $strict);
         if ($object === null) {
             throw new ValidationException($errors);
         }
@@ -77,9 +83,10 @@ final class Validator implements ValidatorContract
         array $names,
         array $data,
         bool $coerce = false,
+        bool $strict = false,
     ): array {
         $errors = [];
-        $values = $this->values($this->parameters($function, $names), $data, $coerce, '', $errors);
+        $values = $this->values($this->parameters($function, $names), $data, $coerce, '', $errors, $strict);
         if ($errors !== []) {
             throw new ValidationException($errors);
         }
@@ -108,13 +115,19 @@ final class Validator implements ValidatorContract
      * @param string $path The name of the field this object is, with a trailing dot; empty at the top.
      * @param array<string, list<string>> $errors
      */
-    private function build(string $class, array $data, bool $coerce, string $path, array &$errors): ?object
-    {
+    private function build(
+        string $class,
+        array $data,
+        bool $coerce,
+        string $path,
+        array &$errors,
+        bool $strict = false,
+    ): ?object {
         $found = count($errors);
         $properties = $this->properties($class);
-        [$strict, $rules] = $this->shape($class);
-        $arguments = $this->values($properties, $data, $coerce, $path, $errors);
-        if ($strict) {
+        [$closed, $rules] = $this->shape($class);
+        $arguments = $this->values($properties, $data, $coerce, $path, $errors, $strict);
+        if ($closed) {
             self::unknown($properties, $data, $path, $errors);
         }
         if (count($errors) > $found) {
@@ -180,8 +193,14 @@ final class Validator implements ValidatorContract
      * @param array<string, list<string>> $errors
      * @return array<string, mixed>
      */
-    private function values(iterable $properties, array $data, bool $coerce, string $path, array &$errors): array
-    {
+    private function values(
+        iterable $properties,
+        array $data,
+        bool $coerce,
+        string $path,
+        array &$errors,
+        bool $strict = false,
+    ): array {
         $values = [];
         foreach ($properties as $property) {
             $field = $path . $property->name;
@@ -200,7 +219,14 @@ final class Validator implements ValidatorContract
                 }
                 continue;
             }
-            $values[$property->name] = $this->value($property, $data[$property->name], $coerce, $field, $errors);
+            $values[$property->name] = $this->value(
+                $property,
+                $data[$property->name],
+                $coerce,
+                $field,
+                $errors,
+                $strict,
+            );
         }
         return $values;
     }
@@ -211,8 +237,14 @@ final class Validator implements ValidatorContract
      *
      * @param array<string, list<string>> $errors
      */
-    private function value(Property $property, mixed $value, bool $coerce, string $field, array &$errors): mixed
-    {
+    private function value(
+        Property $property,
+        mixed $value,
+        bool $coerce,
+        string $field,
+        array &$errors,
+        bool $strict = false,
+    ): mixed {
         $text = $property->type === Property::STRING || in_array(Property::STRING, $property->types, true);
         if ($coerce && $value === '' && $property->nullable && !$text) {
             // "?age=" in a query string is an age that was not given.
@@ -225,7 +257,7 @@ final class Validator implements ValidatorContract
             return null;
         }
         $found = count($errors);
-        $value = $this->typed($property, $value, $coerce, $field, $errors);
+        $value = $this->typed($property, $value, $coerce, $field, $errors, $strict);
         if (count($errors) > $found) {
             return null;
         }
@@ -245,18 +277,25 @@ final class Validator implements ValidatorContract
     /**
      * @param array<string, list<string>> $errors
      */
-    private function typed(Property $property, mixed $value, bool $coerce, string $field, array &$errors): mixed
-    {
+    private function typed(
+        Property $property,
+        mixed $value,
+        bool $coerce,
+        string $field,
+        array &$errors,
+        bool $strict = false,
+    ): mixed {
         switch ($property->type) {
             case Property::MIXED:
-                return $value;
+                return $strict ? self::plain($value) : $value;
             case Property::FIELDS:
-                if (!is_array($value) || $value !== [] && array_is_list($value)) {
+                $value = self::members($value, $strict);
+                if ($value === null) {
                     $errors[$field][] = 'must be an object';
                     return null;
                 }
                 $found = count($errors);
-                $values = $this->values($property->fields ?? [], $value, $coerce, $field . '.', $errors);
+                $values = $this->values($property->fields ?? [], $value, $coerce, $field . '.', $errors, $strict);
                 if ($property->strict) {
                     self::unknown($property->fields ?? [], $value, $field . '.', $errors);
                 }
@@ -270,7 +309,16 @@ final class Validator implements ValidatorContract
                 );
                 return self::checked($data, $property->objectRules, $field . '.', $errors) ? $data : null;
             case Property::UNION:
-                return self::union($property, $value, $coerce, $field, $errors);
+                if ($strict && is_int($value) && !self::exact($value)) {
+                    $errors[$field][] = self::INEXACT;
+                    return null;
+                }
+                $read = self::union($property, $value, $coerce, $field, $errors);
+                if ($strict && is_int($read) && !self::exact($read)) {
+                    $errors[$field][] = self::INEXACT;
+                    return null;
+                }
+                return $read;
             case Property::STRING:
                 if (is_string($value)) {
                     return $value;
@@ -278,18 +326,25 @@ final class Validator implements ValidatorContract
                 $errors[$field][] = 'must be text';
                 return null;
             case Property::INT:
+                $integer = $coerce && is_string($value) ? self::integer($value) : null;
                 if (is_int($value)) {
-                    return $value;
+                    $integer = $value;
                 }
-                if ($coerce && is_string($value)) {
-                    $integer = self::integer($value);
-                    if ($integer !== null) {
-                        return $integer;
-                    }
+                if ($integer === null) {
+                    $errors[$field][] = 'must be a whole number';
+                    return null;
                 }
-                $errors[$field][] = 'must be a whole number';
-                return null;
+                if ($strict && !self::exact($integer)) {
+                    $errors[$field][] = self::INEXACT;
+                    return null;
+                }
+                return $integer;
             case Property::FLOAT:
+                if ($strict && is_int($value) && !self::exact($value)) {
+                    // As a number with a fraction it would be another number than the one written.
+                    $errors[$field][] = self::INEXACT;
+                    return null;
+                }
                 if (is_int($value) || is_float($value) || $coerce && is_string($value) && is_numeric($value)) {
                     $number = (float) $value;
                     if (is_finite($number)) {
@@ -308,21 +363,71 @@ final class Validator implements ValidatorContract
                 $errors[$field][] = 'must be true or false';
                 return null;
             case Property::ENUM:
-                return $this->enum($property, $value, $coerce, $field, $errors);
+                return $this->enum($property, $value, $coerce, $field, $errors, $strict);
             case Property::DATE:
                 return $this->date($property, $value, $field, $errors);
             case Property::OBJECT:
-                if (!is_array($value) || $value !== [] && array_is_list($value)) {
+                $value = self::members($value, $strict);
+                if ($value === null) {
                     $errors[$field][] = 'must be an object';
                     return null;
                 }
-                return $this->build($property->class, $value, $coerce, $field . '.', $errors);
+                return $this->build($property->class, $value, $coerce, $field . '.', $errors, $strict);
             case Property::ARRAY:
-                return $this->list($property, $value, $coerce, $field, $errors);
+                return $this->list($property, $value, $coerce, $field, $errors, $strict);
             case Property::FILE:
                 return self::file($value, $field, $errors);
         }
         throw new \LogicException("A property has the unknown type \"{$property->type}\".");
+    }
+
+    /**
+     * The members of a value that is an object, by name, or null when it
+     * is not one. An object read from JSON with its lists kept apart is a
+     * stdClass. An array is one unless it is a list with something in it;
+     * read strictly, an empty array is a list too, which no form or query
+     * string can say and which JSON says as [].
+     *
+     * @return array<mixed>|null
+     */
+    private static function members(mixed $value, bool $strict): ?array
+    {
+        if ($value instanceof \stdClass) {
+            return get_object_vars($value);
+        }
+        if (!is_array($value) || array_is_list($value) && ($strict || $value !== [])) {
+            return null;
+        }
+        return $value;
+    }
+
+    /**
+     * A value as code is given it: an object read from JSON as the array
+     * of its members, at every depth.
+     */
+    private static function plain(mixed $value): mixed
+    {
+        if ($value instanceof \stdClass) {
+            $value = get_object_vars($value);
+        }
+        if (is_array($value)) {
+            foreach ($value as $key => $item) {
+                if (!is_array($item) && !$item instanceof \stdClass) {
+                    continue;
+                }
+                $value[$key] = self::plain($item);
+            }
+        }
+        return $value;
+    }
+
+    /**
+     * Whether every reader of JSON holds this whole number as it is
+     * written: beyond 2^53 - 1 a browser reads another number.
+     */
+    private static function exact(int $integer): bool
+    {
+        return $integer >= -self::SAFE && $integer <= self::SAFE;
     }
 
     /**
@@ -406,12 +511,23 @@ final class Validator implements ValidatorContract
     /**
      * @param array<string, list<string>> $errors
      */
-    private function enum(Property $property, mixed $value, bool $coerce, string $field, array &$errors): ?\BackedEnum
-    {
+    private function enum(
+        Property $property,
+        mixed $value,
+        bool $coerce,
+        string $field,
+        array &$errors,
+        bool $strict = false,
+    ): ?\BackedEnum {
         $class = $property->class;
         $integers = is_int($class::cases()[0]->value ?? '');
         if ($integers && $coerce && is_string($value)) {
             $value = self::integer($value);
+        }
+        if ($strict && is_int($value) && !self::exact($value)) {
+            // Read strictly, no whole number past what is exact is one of anything: a case that is one cannot be named.
+            $errors[$field][] = self::INEXACT;
+            return null;
         }
         $validType = $integers ? is_int($value) : is_string($value);
         $case = $validType ? $class::tryFrom($value) : null;
@@ -466,14 +582,23 @@ final class Validator implements ValidatorContract
      * @param array<string, list<string>> $errors
      * @return array<mixed>|null
      */
-    private function list(Property $property, mixed $value, bool $coerce, string $field, array &$errors): ?array
-    {
+    private function list(
+        Property $property,
+        mixed $value,
+        bool $coerce,
+        string $field,
+        array &$errors,
+        bool $strict = false,
+    ): ?array {
+        if ($property->items === null && $value instanceof \stdClass) {
+            return self::plain($value);
+        }
         if (!is_array($value)) {
             $errors[$field][] = $property->items === null ? 'must be a list or an object' : 'must be a list';
             return null;
         }
         if ($property->items === null) {
-            return $value;
+            return $strict ? self::plain($value) : $value;
         }
         if (!array_is_list($value)) {
             $errors[$field][] = 'must be a list';
@@ -503,7 +628,7 @@ final class Validator implements ValidatorContract
         }
         $items = [];
         foreach ($value as $index => $item) {
-            $items[] = $this->value($property->items, $item, $coerce, $field . '.' . $index, $errors);
+            $items[] = $this->value($property->items, $item, $coerce, $field . '.' . $index, $errors, $strict);
         }
         return $items;
     }

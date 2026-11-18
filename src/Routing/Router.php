@@ -60,6 +60,12 @@ final class Router implements RouterContract
      */
     private array $combined = [];
     /**
+     * Per method, the key in $routes of each dynamic route by its place.
+     *
+     * @var array<string, array<int, string>>
+     */
+    private array $slots = [];
+    /**
      * Every route, in the order added and keyed by method and pattern.
      *
      * @var array<string, RouteInfo>
@@ -173,6 +179,7 @@ final class Router implements RouterContract
         $slot = null;
         if ($names !== []) {
             $slot = count($this->dynamic[$method] ?? []);
+            $this->slots[$method][$slot] = $key;
             unset($this->combined[$method]);
         }
         $this->declared[$key] = [$handler, [], $expression, $names, $slot];
@@ -419,6 +426,41 @@ final class Router implements RouterContract
         return $handler instanceof ActionHandler ? $handler->signature() : null;
     }
 
+    public function match(string $method, string $path): ?RouteInfo
+    {
+        if ($path === '') {
+            $path = '/';
+        }
+        $key = $this->locate($method, $path);
+        if ($key === null && $method === 'HEAD') {
+            $key = $this->locate('GET', $path);
+        }
+        return $key === null ? null : $this->routes[$key];
+    }
+
+    /**
+     * The key of the route a method and a path are answered by, found as
+     * handle() finds its handler.
+     */
+    private function locate(string $method, string $path): ?string
+    {
+        if (isset($this->static[$method][$path])) {
+            return "{$method} {$path}";
+        }
+        if (str_contains($path, '%') && isset($this->static[$method][rawurldecode($path)])) {
+            return $method . ' ' . rawurldecode($path);
+        }
+        if (!isset($this->dynamic[$method])) {
+            return null;
+        }
+        foreach ($this->combined[$method] ??= $this->combine($method) as $expression) {
+            if (preg_match($expression, $path, $match) === 1) {
+                return $this->slots[$method][(int) $match['MARK']];
+            }
+        }
+        return null;
+    }
+
     public function route(string $name): ?RouteInfo
     {
         return isset($this->names[$name]) ? $this->routes[$this->names[$name]] : null;
@@ -613,6 +655,17 @@ final class Router implements RouterContract
             $expressions[] = '~^(?|' . implode('|', $branches) . ')$~D';
         }
         return $expressions;
+    }
+
+    /**
+     * The names of a pattern's parameters, in order; a pattern that
+     * cannot be a route's throws, as adding the route would.
+     *
+     * @return list<string>
+     */
+    public static function names(string $pattern): array
+    {
+        return self::compile($pattern)[1];
     }
 
     /**

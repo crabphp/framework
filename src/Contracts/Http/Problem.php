@@ -19,6 +19,7 @@ final readonly class Problem
      * @param array<string, list<string>> $path What is wrong with the parameters of its path, by name.
      * @param \Throwable|null $cause The exception the request was answered for, when there was one; not for the client unless $debug.
      * @param bool $debug Whether app.debug is on and $cause may be described in full.
+     * @param array<string, string|int|bool> $context Safe values whoever writes the problem may use, by name: "login", where a browser signs in, on a refusal for want of a user. Crab's own format does not show them.
      */
     public function __construct(
         public int $status,
@@ -28,5 +29,6 @@ final readonly class Problem
         public array $path = [],
         public ?\Throwable $cause = null,
         public bool $debug = false,
+        public array $context = [],
     ) {}
 }

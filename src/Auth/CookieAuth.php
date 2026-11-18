@@ -14,6 +14,7 @@ use Crab\Contracts\Http\UsesContainer;
 use Crab\Http\Cookie;
 use Crab\Http\ErrorResponse;
 use Crab\Http\Response;
+use Crab\Http\SameOrigin;
 use Psr\Container\ContainerInterface;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface;
@@ -48,11 +49,9 @@ use Psr\Http\Message\ServerRequestInterface;
  */
 final readonly class CookieAuth implements Middleware, UsesContainer
 {
-    private const array SAFE = ['GET' => true, 'HEAD' => true, 'OPTIONS' => true, 'TRACE' => true];
-
     /**
      * @param bool $required Whether a request without a known user is refused. When not, it goes through with no user.
-     * @param string|null $login Where a refused GET or HEAD request is sent instead of being answered 401, such as '/login'.
+     * @param string|null $login Where a refused GET or HEAD request that takes a page is sent instead of being answered 401, such as '/login'. One that asks for JSON or another type alone is answered 401, with the address as its problem's "login".
      * @param TokenStore|null $tokens Taken from the bound CookieAuth, with every option left null, when given on a route.
      * @param string|null $name The cookie's name. Without one, "__Host-auth" when the cookie is secure, which a
      *     browser keeps only for this host, path / and HTTPS, so a sibling subdomain cannot set one to shadow it;
@@ -89,7 +88,7 @@ final readonly class CookieAuth implements Middleware, UsesContainer
             throw new \InvalidArgumentException('A cookie that keeps the user logged in lasts at least one second.');
         }
         foreach ([$site, ...($origins ?? [])] as $origin) {
-            if ($origin !== null && self::origin($origin) === null) {
+            if ($origin !== null && SameOrigin::origin($origin) === null) {
                 throw new \InvalidArgumentException(
                     "\"{$origin}\" is not an origin: write its scheme and host, such as https://shop.example.com.",
                 );
@@ -128,8 +127,8 @@ final readonly class CookieAuth implements Middleware, UsesContainer
                 'CookieAuth needs the token store and your IdentityResolver: list TokenAuthPlugin in app.php.',
             );
         }
-        if (self::changes($request) && !$this->fromOwnPages($request)) {
-            return ErrorResponse::make($request, 403, 'This request did not come from this application\'s pages.');
+        if (SameOrigin::changes($request) && !new SameOrigin($this->site, $this->origins ?? [])->allows($request)) {
+            return SameOrigin::refusal($request);
         }
         if ($request->user() !== null) {
             // Whoever put the user there, middleware before this one or a test, has said who it is.
@@ -146,9 +145,16 @@ final readonly class CookieAuth implements Middleware, UsesContainer
             // unless the response sets it anew, as a login does.
             return $this->clearStale($next->handle($request), $token);
         }
-        $refused = $this->login !== null && in_array(strtoupper($request->getMethod()), ['GET', 'HEAD'], true)
+        $reads = in_array(strtoupper($request->getMethod()), ['GET', 'HEAD'], true);
+        $refused = $this->login !== null && $reads && self::takesPage($request)
             ? Response::redirect($this->login, 303)
-            : ErrorResponse::make($request, 401, 'Authentication is required.');
+            // A client that takes no page is told, and told where a browser signs in, rather than sent there.
+            : ErrorResponse::make(
+                $request,
+                401,
+                'Authentication is required.',
+                context: $this->login === null ? [] : ['login' => $this->login],
+            );
         return $this->clearStale($refused, $token);
     }
 
@@ -189,6 +195,31 @@ final readonly class CookieAuth implements Middleware, UsesContainer
         return is_string($token) && $token !== '' ? $token : null;
     }
 
+    /**
+     * Whether whoever asked can be sent to the login page: a browser
+     * opening a page says it accepts text/html, and a request that names
+     * no type, or any, is taken as one. A script that asks for JSON alone,
+     * or for a protocol's own type, cannot show a page it is redirected to.
+     */
+    private static function takesPage(ServerRequestInterface $request): bool
+    {
+        $accept = strtolower($request->getHeaderLine('Accept'));
+        if ($accept === '') {
+            return true;
+        }
+        foreach (explode(',', $accept) as $range) {
+            $parts = array_map(trim(...), explode(';', $range));
+            if (!in_array($parts[0], ['text/html', 'application/xhtml+xml', 'text/*', '*/*'], true)) {
+                continue;
+            }
+            // "q=0" says the type is not wanted at all.
+            if (preg_grep('/^q\s*=\s*0(?:\.0*)?$/', array_slice($parts, 1)) === []) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     private function cookieName(): string
     {
         return $this->name ?? ($this->secure ?? true ? '__Host-auth' : 'auth');
@@ -211,84 +242,5 @@ final readonly class CookieAuth implements Middleware, UsesContainer
             }
         }
         return $response->withAddedHeader('Set-Cookie', (string) $this->forget());
-    }
-
-    /**
-     * Whether a request can change something: a method other than reading, or a
-     * WebSocket handshake, which a browser makes with the page's cookies too.
-     */
-    private static function changes(ServerRequestInterface $request): bool
-    {
-        return (
-            !isset(self::SAFE[strtoupper($request->getMethod())])
-            || stripos($request->getHeaderLine('Upgrade'), 'websocket') !== false
-        );
-    }
-
-    /**
-     * Whether a browser says the request comes from the application's own pages.
-     */
-    private function fromOwnPages(ServerRequestInterface $request): bool
-    {
-        if (strtolower($request->getHeaderLine('Sec-Fetch-Site')) === 'same-origin') {
-            return true;
-        }
-        $origin = self::origin($request->getHeaderLine('Origin'));
-        if ($origin === null) {
-            return false;
-        }
-        if ($origin === ($this->site !== null ? self::origin($this->site) : $this->requestOrigin($request))) {
-            return true;
-        }
-        foreach ($this->origins ?? [] as $allowed) {
-            if (self::origin($allowed) === $origin) {
-                return true;
-            }
-        }
-        return false;
-    }
-
-    /**
-     * The request's own origin, as its scheme and Host say, for an application with no app.url.
-     */
-    private function requestOrigin(ServerRequestInterface $request): ?string
-    {
-        $uri = $request->getUri();
-        $host = $uri->getHost() !== '' ? $uri->getHost() : $request->getHeaderLine('Host');
-        if ($host === '') {
-            return null;
-        }
-        $port = $uri->getPort();
-        return self::origin(
-            ($uri->getScheme() !== '' ? $uri->getScheme() : 'http')
-            . '://'
-            . $host
-            . ($port !== null ? ':' . $port : ''),
-        );
-    }
-
-    /**
-     * An origin in one form: lowercase scheme and host, the port only when not the scheme's own.
-     */
-    private static function origin(string $url): ?string
-    {
-        if ($url === '' || $url === 'null') {
-            return null;
-        }
-        $parts = parse_url($url);
-        if (!is_array($parts) || !isset($parts['scheme'], $parts['host'])) {
-            return null;
-        }
-        $scheme = strtolower($parts['scheme']);
-        $port = $parts['port'] ?? null;
-        $default = match ($scheme) {
-            'https' => 443,
-            'http' => 80,
-            default => null,
-        };
-        if ($port === $default) {
-            $port = null;
-        }
-        return $scheme . '://' . strtolower($parts['host']) . ($port === null ? '' : ':' . $port);
     }
 }

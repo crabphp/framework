@@ -88,6 +88,16 @@ final class CookieAuthTest extends TestCase
         $login = new CookieAuth(login: '/login', tokens: $tokens, users: new Shoppers(), name: 'auth');
         $response = $login->handle(new Request('GET', 'http://shop.test/account'), new Answer());
         self::assertSame([303, '/login'], [$response->getStatusCode(), $response->getHeaderLine('Location')]);
+        // A browser opening a page is sent to the login page; a script that takes no page is told instead.
+        $page = $login->handle(new Request('GET', 'http://shop.test/account', [
+            'Accept' => 'text/html,*/*;q=0.8',
+        ]), new Answer());
+        self::assertSame(303, $page->getStatusCode());
+        foreach (['application/json', 'application/vnd.crab.psx+json', 'application/json, text/html;q=0'] as $accept) {
+            $told = $login->handle(new Request('GET', 'http://shop.test/account', ['Accept' => $accept]), new Answer());
+            self::assertSame(401, $told->getStatusCode(), $accept);
+            self::assertSame(['login' => '/login'], $told->problem()?->context);
+        }
         self::assertSame(401, $login->handle(new Request('POST', 'http://shop.test/orders', [
             'Sec-Fetch-Site' => 'same-origin',
         ]), new Answer())->getStatusCode(), 'Only a page is sent to log in; a form post is refused.');

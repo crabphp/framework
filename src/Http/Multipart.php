@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Crab\Http;
 
+use Crab\Contracts\Http\Decoding;
 use Crab\Contracts\HttpClient\File;
 use Psr\Http\Message\UploadedFileInterface;
 
@@ -46,6 +47,7 @@ final class Multipart
      *
      * @param resource $stream The body, seekable. It is read from its start, and the uploaded files go on reading from it afterwards.
      * @param int $maxFieldBytes How many bytes all the fields together may be; a file may be any size the body may.
+     * @param Decoding|null $strict Reads the names strictly, refusing a repeated or ambiguous one; see StrictDecoder.
      * @return array{array<string, mixed>, array<string, mixed>} The fields, and the UploadedFile tree.
      */
     public static function parse(
@@ -53,6 +55,7 @@ final class Multipart
         mixed $stream,
         int $maxParts = 1000,
         int $maxFieldBytes = 1_048_576,
+        ?Decoding $strict = null,
     ): array {
         if (preg_match('/boundary=(?:"([^"]+)"|([^;\s]+))/i', $contentType, $match) !== 1) {
             throw new HttpException(400, 'The multipart body has no boundary.');
@@ -69,6 +72,8 @@ final class Multipart
         $fields = [];
         $names = [];
         $files = [];
+        // Read strictly: every part's name as it was written, with its text or its file.
+        $pairs = [];
         $fieldBytes = 0;
         for ($parts = 0;; ++$parts) {
             $next = $body->take($position, 2);
@@ -106,6 +111,9 @@ final class Multipart
             if (preg_match('/\bfilename="((?:[^"\\\\]|\\\\.)*)"/', $disposition[1], $filename) === 1) {
                 $type = preg_match('/^content-type:[ \t]*(.+)$/mi', $head, $match) === 1 ? trim($match[1]) : null;
                 $names[] = $key . '=' . count($files);
+                if ($strict !== null) {
+                    $pairs[] = [stripslashes($name[1]), count($files)];
+                }
                 // A file input left empty arrives as a part with no file name.
                 $files[] =
                     $filename[1] === '' && $size === 0
@@ -122,9 +130,16 @@ final class Multipart
                 if ($fieldBytes > $maxFieldBytes) {
                     throw new HttpException(413, 'The form\'s fields are too large. Send large content as a file.');
                 }
-                $fields[] = $key . '=' . urlencode($body->take($start, $size));
+                $text = $body->take($start, $size);
+                $fields[] = $key . '=' . urlencode($text);
+                if ($strict !== null) {
+                    $pairs[] = [stripslashes($name[1]), $text];
+                }
             }
             $position = $end + 2 + strlen($delimiter);
+        }
+        if ($strict !== null) {
+            return self::strict($pairs, $files, $strict);
         }
         @parse_str(implode('&', $fields), $parsed);
         @parse_str(implode('&', $names), $tree);
@@ -132,6 +147,54 @@ final class Multipart
             $index = $files[(int) $index];
         });
         return [$parsed, $tree];
+    }
+
+    /**
+     * The fields and the files of a form read strictly, as two trees of
+     * one shape: a name given twice, or a list given two ways, is refused
+     * whether its values are text, files or both.
+     *
+     * @param list<array{string, string|int}> $pairs Each part's name with its text, or the index of its file.
+     * @param list<UploadedFile> $files
+     * @return array{array<string, mixed>, array<string, mixed>}
+     */
+    private static function strict(array $pairs, array $files, Decoding $strict): array
+    {
+        foreach ($pairs as $index => [$name, $value]) {
+            if (!mb_check_encoding($name, 'UTF-8') || is_string($value) && !mb_check_encoding($value, 'UTF-8')) {
+                throw new HttpException(400, 'The form is not valid UTF-8.');
+            }
+            if (is_int($value)) {
+                $pairs[$index][1] = $files[$value];
+            }
+        }
+        return self::apart(StrictDecoder::fields($pairs, $strict, 'form'));
+    }
+
+    /**
+     * @param array<mixed> $tree
+     * @return array{array<mixed>, array<mixed>} The text values, and the files, each where it was.
+     */
+    private static function apart(array $tree): array
+    {
+        $fields = [];
+        $files = [];
+        foreach ($tree as $key => $value) {
+            if ($value instanceof UploadedFile) {
+                $files[$key] = $value;
+            } elseif (is_array($value)) {
+                [$inner, $innerFiles] = self::apart($value);
+                if ($inner !== [] || $innerFiles === []) {
+                    $fields[$key] = $inner;
+                }
+                if ($innerFiles !== []) {
+                    $files[$key] = $innerFiles;
+                }
+            } else {
+                $fields[$key] = $value;
+            }
+        }
+        return [$fields, $files];
     }
 
     /**

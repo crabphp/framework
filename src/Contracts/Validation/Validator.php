@@ -20,9 +20,10 @@ interface Validator
      * @param class-string<T> $class
      * @param array<mixed> $data
      * @param bool $coerce Whether values that arrive as text, as a query string's do, may be read as numbers and booleans.
+     * @param bool $strict Whether the data was read strictly, see Contracts\Http\Decoding: an object of a JSON body is then a stdClass and a list an array, so that neither is taken for the other, empty ones included, and a whole number is refused beyond what JSON's readers hold exactly, 2^53 - 1 either way.
      * @return T
      */
-    public function validate(string $class, array $data, bool $coerce = false): object;
+    public function validate(string $class, array $data, bool $coerce = false, bool $strict = false): object;
 
     /**
      * Reads the class now, and every class inside it, and throws a
@@ -46,6 +47,7 @@ interface Validator
         array $names,
         array $data,
         bool $coerce = false,
+        bool $strict = false,
     ): array;
 
     /**

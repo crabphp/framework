@@ -320,7 +320,8 @@ final class AppBuilder
         foreach ($files as $file) {
             self::load($file);
         }
-        return $app;
+        // Everything is declared: what packages declare beside the routes is resolved and checked.
+        return $app->define();
     }
 
     /**

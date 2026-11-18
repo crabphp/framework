@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Crab\Http;
 
 use Crab\Contracts\Auth\Identity;
+use Crab\Contracts\Http\Decoding;
 use Crab\Contracts\Http\Request as RequestContract;
 use Crab\Engine\Async\Cancellation;
 use Crab\Engine\Http\Request as EngineRequest;
@@ -48,6 +49,15 @@ final class Request extends Message implements RequestContract
     private bool $parsedKnown = false;
     private array $attributes = [];
     private ?Cancellation $token = null;
+    /**
+     * How the query string and body are read when a DecodePolicy chose a
+     * strict reading for this request; null for the ordinary one.
+     */
+    private ?Decoding $decoding = null;
+    /**
+     * The JSON body as strictBody() read it, objects apart from lists.
+     */
+    private ?\stdClass $exact = null;
 
     /**
      * @param array<string, string|list<string>> $headers
@@ -249,6 +259,43 @@ final class Request extends Message implements RequestContract
         return $new;
     }
 
+    /**
+     * The same request, its query string and body read strictly from now
+     * on; see Contracts\Http\Decoding. What was already read, or set
+     * with withQueryParams() and the like, stays as it is: a policy is
+     * applied before anything reads the request.
+     */
+    public function withDecoding(Decoding $decoding): static
+    {
+        $new = clone $this;
+        $new->decoding = $decoding;
+        return $new;
+    }
+
+    /**
+     * The JSON body of a request read strictly, as it was written: each
+     * object a stdClass and each list an array, which the parsed body
+     * does not tell apart when they are empty or an object's names are
+     * 0, 1, 2. Null for any other body, and once the parsed body was
+     * replaced. It is what an action's input is checked against.
+     */
+    public function exactBody(): ?\stdClass
+    {
+        if ($this->decoding === null) {
+            return null;
+        }
+        $this->getParsedBody();
+        return $this->exact;
+    }
+
+    /**
+     * The strict reading chosen for this request, or null.
+     */
+    public function decoding(): ?Decoding
+    {
+        return $this->decoding;
+    }
+
     public function getQueryParams(): array
     {
         if ($this->query === null) {
@@ -259,8 +306,12 @@ final class Request extends Message implements RequestContract
             } else {
                 $string = $this->uri->getQuery();
             }
-            // Beyond max_input_vars PHP keeps what it has read and warns; keep that, without the warning.
-            @parse_str($string, $this->query);
+            if ($this->decoding !== null) {
+                $this->query = StrictDecoder::urlencoded($string, $this->decoding, 'query string');
+            } else {
+                // Beyond max_input_vars PHP keeps what it has read and warns; keep that, without the warning.
+                @parse_str($string, $this->query);
+            }
         }
         return $this->query;
     }
@@ -298,6 +349,10 @@ final class Request extends Message implements RequestContract
 
     public function getParsedBody(): array|object|null
     {
+        if (!$this->parsedKnown && $this->decoding !== null) {
+            $this->parsed = $this->strictBody($this->decoding);
+            $this->parsedKnown = true;
+        }
         if (!$this->parsedKnown) {
             $type = strtolower($this->getHeaderLine('content-type'));
             if (str_starts_with($type, 'application/x-www-form-urlencoded')) {
@@ -320,6 +375,7 @@ final class Request extends Message implements RequestContract
         $new = clone $this;
         $new->parsed = $data;
         $new->parsedKnown = true;
+        $new->exact = null;
         return $new;
     }
 
@@ -394,12 +450,49 @@ final class Request extends Message implements RequestContract
     }
 
     /**
+     * The body read strictly: a JSON object, a form or a multipart form,
+     * in UTF-8, and nothing else.
+     *
+     * @return array<string, mixed>|null Null when there is no body.
+     */
+    private function strictBody(Decoding $decoding): ?array
+    {
+        $type = strtolower($this->getHeaderLine('content-type'));
+        if (preg_match('/;\s*charset\s*=\s*"?([^";\s]+)/', $type, $charset) === 1 && $charset[1] !== 'utf-8') {
+            throw new HttpException(415, 'The body must be in UTF-8.');
+        }
+        if (str_starts_with($type, 'multipart/form-data')) {
+            $this->readMultipart();
+            return $this->parsed;
+        }
+        $body = $this->bodyText();
+        if ($type === '' && $body === '') {
+            return null;
+        }
+        if (str_starts_with($type, 'application/x-www-form-urlencoded')) {
+            return StrictDecoder::urlencoded($body, $decoding, 'form');
+        }
+        if (preg_match('~^application/(?:[a-z0-9.-]+\+)?json\b~', $type) === 1) {
+            if ($body === '') {
+                throw new HttpException(400, 'The JSON body must be one object.');
+            }
+            $this->exact = StrictDecoder::json($body, $decoding);
+            return StrictDecoder::plain($this->exact);
+        }
+        throw new HttpException(415, 'The body must be JSON, a form or a multipart form.');
+    }
+
+    /**
      * Fills the parsed body and the uploaded files from one reading of a
      * multipart body, leaving alone whichever was set explicitly.
      */
     private function readMultipart(): void
     {
-        [$fields, $files] = Multipart::parse($this->getHeaderLine('content-type'), $this->bodyResource());
+        [$fields, $files] = Multipart::parse(
+            $this->getHeaderLine('content-type'),
+            $this->bodyResource(),
+            strict: $this->decoding,
+        );
         if (!$this->filesKnown) {
             $this->files = $files;
             $this->filesKnown = true;
@@ -470,14 +563,14 @@ final class Request extends Message implements RequestContract
      * @throws \LengthException When an object has more than 1000 members.
      * @throws \JsonException When the text is not JSON within the native depth limit.
      */
-    public static function decodeJson(string $json): mixed
+    public static function decodeJson(string $json, bool $objects = false): mixed
     {
         // Most messages cannot contain a wide object; colons inside strings
         // only cause an unnecessary scan, never a refusal.
         if (substr_count($json, ':') > self::MAX_JSON_MEMBERS) {
             self::limitJsonObjects($json);
         }
-        return json_decode($json, true, flags: JSON_THROW_ON_ERROR);
+        return json_decode($json, !$objects, flags: JSON_THROW_ON_ERROR);
     }
 
     /**

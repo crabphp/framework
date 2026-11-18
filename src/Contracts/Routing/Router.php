@@ -73,6 +73,15 @@ interface Router extends Handler
     public function routes(): array;
 
     /**
+     * The route a request of this method to this path would be answered
+     * by, or null when none would: the same answer dispatch gives, found
+     * without running anything. It is for what must know which route a
+     * request is for before the middleware runs, such as a DecodePolicy;
+     * a WebSocket upgrade is not looked for.
+     */
+    public function match(string $method, string $path): ?RouteInfo;
+
+    /**
      * The route of that name, or null when there is none.
      */
     public function route(string $name): ?RouteInfo;

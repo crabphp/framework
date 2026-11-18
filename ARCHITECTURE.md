@@ -264,7 +264,16 @@ Small and explicit; there are six, and no others are planned.
 | Worker processes | The `Runner` contract: `run($group, $work, $workers)` from a command, or `runAll()` for several groups under one parent | today |
 | Servers beside HTTP | The `Servers` contract: `add('chat', fn () => [new Workers(...)])` joins `start` as its own workers, `command()` and `process()` run in a process of their own; every one registered runs with `start`; `reloads: false` keeps one across reloads | today |
 
-No auto-discovery, no `boot()` phase, no global container accessor. `Route::get()` and `Command::add()` are static names for `$app->router` and `$app->console`, for declaring routes and commands before workers start; they are the only ones, and there is none for anything a request or a worker owns.
+A package that adds a protocol of its own beside the application's routes, such as crabphp/psx, uses four more contracts. They are for such packages, not for applications:
+
+| Point | How | Status |
+| --- | --- | --- |
+| Declarations beside routes | `Definitions::add(Definition)`: `finish()` runs once after every plugin, the setup and the route files, adds the routes the declarations stand for, and is described with them | today |
+| Calling actions | `Actions::prepare()` gives a `PreparedAction` whose `invoke()` returns the action's value or its rejection, bound by the router's own rules | today |
+| Errors and input of a protocol | `Representations::add(Representation)` writes that protocol's errors, and is told by the request's `Entered` record whether the action was called; `DecodePolicies::add(DecodePolicy)` chooses strict decoding before middleware reads the request, by `Router::match()` where it goes by route; `Errors` makes and reads problem responses | today |
+| The developer's launcher | `Development`: more watched files, a step before each server, a program beside it; `Invocation` says what started the process | today |
+
+No auto-discovery, no `boot()` phase, no global container accessor. A definition's `finish()` ends defining: it opens nothing, makes no service and reads no request. `Route::get()` and `Command::add()` are static names for `$app->router` and `$app->console`, for declaring routes and commands before workers start; they are the only ones, and there is none for anything a request or a worker owns.
 
 ## Errors and observability
 

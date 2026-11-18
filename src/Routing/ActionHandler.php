@@ -7,12 +7,17 @@ namespace Crab\Routing;
 use Crab\Contracts\Auth\Identity;
 use Crab\Contracts\Http\Handler;
 use Crab\Contracts\Http\Request;
+use Crab\Contracts\Routing\ActionOutcome;
+use Crab\Contracts\Routing\Entered;
+use Crab\Contracts\Routing\InputProjection;
+use Crab\Contracts\Routing\PreparedAction;
 use Crab\Contracts\Session\Session;
 use Crab\Contracts\Validation\ObjectRule;
 use Crab\Contracts\Validation\Rule;
 use Crab\Contracts\Validation\Validator;
 use Crab\Contracts\WebSocket\Socket;
 use Crab\Http\ErrorResponse;
+use Crab\Http\Request as HttpRequest;
 use Crab\Http\Response;
 use Crab\Validation\Data;
 use Crab\Validation\Fields;
@@ -54,8 +59,12 @@ use Psr\Http\Message\UploadedFileInterface;
  * The signature is read once, when the route is added, so an action that
  * asks for something else, or for a body on a request that has none,
  * stops the application from starting.
+ *
+ * It is also what Contracts\Routing\Actions prepares for a package:
+ * invoke() does the same validation and call, and gives what the action
+ * returned instead of a response.
  */
-final class ActionHandler implements Handler
+final class ActionHandler implements Handler, PreparedAction
 {
     /**
      * A name for the action, for the route list: "Closure", its class, or "Class::method".
@@ -189,6 +198,79 @@ final class ActionHandler implements Handler
 
     public function handle(Request $request): ResponseInterface
     {
+        $arguments = $this->arguments($request, null);
+        if ($arguments instanceof ResponseInterface) {
+            return $arguments;
+        }
+        // By name, so that a field the request leaves out takes the default the action gives it.
+        if ($this->socket !== null) {
+            $action = $this->closure ??= $this->callable();
+            $name = $this->socket;
+            try {
+                $logger = $this->container !== null && $this->container->has(\Psr\Log\LoggerInterface::class)
+                    ? $this->container->get(\Psr\Log\LoggerInterface::class)
+                    : null;
+                return $this->websockets->upgrade(
+                    $request,
+                    $this->route,
+                    static function (Socket $socket) use ($action, $name, $arguments): mixed {
+                        return $action(...[$name => $socket, ...$arguments]);
+                    },
+                    $logger,
+                );
+            } catch (ValidationException $invalid) {
+                return ErrorResponse::make($request, 422, 'The request is invalid.', fields: $invalid->errors);
+            }
+        }
+        $action = $this->closure ??= $this->callable();
+        $request->getAttribute(Entered::ATTRIBUTE)?->mark();
+        $result = $action(...$arguments);
+        if ($result instanceof ResponseInterface) {
+            return $result;
+        }
+        if (is_string($result)) {
+            return Response::text($result);
+        }
+        if ($result === null) {
+            return Response::noContent();
+        }
+        if ($result instanceof \Generator) {
+            // What it yields is sent as it is yielded.
+            return Response::events($result);
+        }
+        return Response::json($result);
+    }
+
+    public function invoke(Request $request, ?InputProjection $projection = null): ActionOutcome
+    {
+        if ($this->socket !== null) {
+            throw new \LogicException(
+                "The action of {$this->route} lasts for a socket's connection, and is answered by its route alone; it cannot be invoked.",
+            );
+        }
+        $arguments = $this->arguments($request, $projection);
+        if ($arguments instanceof Response) {
+            return ActionOutcome::rejected($arguments, $arguments->problem());
+        }
+        // Made before it is marked: a class that cannot be made was not entered.
+        $action = $this->closure ??= $this->callable();
+        $request->getAttribute(Entered::ATTRIBUTE)?->mark();
+        return ActionOutcome::returned($action(...$arguments));
+    }
+
+    public function dependencies(): array
+    {
+        return $this->method === null ? [] : [$this->method[0]];
+    }
+
+    /**
+     * The action's arguments by name, read from the request and checked,
+     * or the response that refuses a request that does not fit.
+     *
+     * @return array<string, mixed>|Response
+     */
+    private function arguments(Request $request, ?InputProjection $projection): array|Response
+    {
         $arguments = [];
         $pathErrors = [];
         $queryErrors = [];
@@ -215,8 +297,16 @@ final class ActionHandler implements Handler
             }
             $arguments[$name] = $user;
         }
+        // Read strictly, a request's input is held to what was written: see Contracts\Http\Decoding.
+        $strict = $request instanceof HttpRequest && $request->decoding() !== null;
         foreach ($this->parameters as $name => $type) {
-            $arguments[$name] = self::parameter((string) $request->getAttribute($name), $type, $name, $pathErrors);
+            $arguments[$name] = self::parameter(
+                (string) $request->getAttribute($name),
+                $type,
+                $name,
+                $pathErrors,
+                $strict,
+            );
             foreach ($arguments[$name] === null ? [] : $this->rules[$name] ?? [] as $rule) {
                 $problem = $rule->check($arguments[$name]);
                 if ($problem !== null) {
@@ -227,11 +317,21 @@ final class ActionHandler implements Handler
         if ($this->query !== [] || $this->queryInput !== null) {
             // A query string carries everything as text, "3" for 3.
             $query = $request->getQueryParams();
+            if ($projection !== null && $projection->foreignQuery !== []) {
+                // Fields of the others sharing this request are theirs to read, and not unknown to this one.
+                $query = array_diff_key($query, array_flip($projection->foreignQuery));
+            }
             try {
                 if ($this->queryInput === null) {
-                    $arguments += $this->validator->validateParameters($this->signature, $this->query, $query, true);
+                    $arguments += $this->validator->validateParameters(
+                        $this->signature,
+                        $this->query,
+                        $query,
+                        true,
+                        $strict,
+                    );
                 } else {
-                    $arguments += $this->whole($this->queryInput, $query, true);
+                    $arguments += $this->whole($this->queryInput, $query, true, $strict);
                 }
             } catch (ValidationException $invalid) {
                 $queryErrors = $invalid->errors;
@@ -253,8 +353,13 @@ final class ActionHandler implements Handler
                 // A form's files are its fields too, where its text fields would be: "photos[]" beside "title".
                 $data = array_replace_recursive($data, $request->getUploadedFiles());
             }
+            if ($strict && !$form && $request instanceof HttpRequest) {
+                // The JSON as it was written, an object apart from a list; the parsed body where a middleware replaced it.
+                $exact = $request->exactBody();
+                $data = $exact === null ? $data : get_object_vars($exact);
+            }
             try {
-                $arguments += $this->whole($this->body, $data, $form);
+                $arguments += $this->whole($this->body, $data, $form, $strict);
             } catch (ValidationException $invalid) {
                 $errors = $invalid->errors;
             }
@@ -269,46 +374,7 @@ final class ActionHandler implements Handler
                 path: $pathErrors,
             );
         }
-        // By name, so that a field the request leaves out takes the default the action gives it.
-        if ($this->socket !== null) {
-            if (!$request instanceof Request) {
-                throw new \LogicException(
-                    'A socket route needs a Crab HTTP request; use Http\\Request or the engine adapter.',
-                );
-            }
-            $action = $this->closure ??= $this->callable();
-            $name = $this->socket;
-            try {
-                $logger = $this->container !== null && $this->container->has(\Psr\Log\LoggerInterface::class)
-                    ? $this->container->get(\Psr\Log\LoggerInterface::class)
-                    : null;
-                return $this->websockets->upgrade(
-                    $request,
-                    $this->route,
-                    static function (Socket $socket) use ($action, $name, $arguments): mixed {
-                        return $action(...[$name => $socket, ...$arguments]);
-                    },
-                    $logger,
-                );
-            } catch (ValidationException $invalid) {
-                return ErrorResponse::make($request, 422, 'The request is invalid.', fields: $invalid->errors);
-            }
-        }
-        $result = ($this->closure ??= $this->callable())(...$arguments);
-        if ($result instanceof ResponseInterface) {
-            return $result;
-        }
-        if (is_string($result)) {
-            return Response::text($result);
-        }
-        if ($result === null) {
-            return Response::noContent();
-        }
-        if ($result instanceof \Generator) {
-            // What it yields is sent as it is yielded.
-            return Response::events($result);
-        }
-        return Response::json($result);
+        return $arguments;
     }
 
     /**
@@ -376,14 +442,21 @@ final class ActionHandler implements Handler
      * @param array<mixed> $data
      * @return array<string, object>
      */
-    private function whole(array $input, array $data, bool $text): array
+    private function whole(array $input, array $data, bool $text, bool $strict = false): array
     {
         [$name, $class] = $input;
         if ($class !== Data::class) {
-            return [$name => $this->validator->validate($class, $data, $text)];
+            return [$name => $this->validator->validate($class, $data, $text, $strict)];
         }
         try {
-            return $this->validator->validateParameters($this->signature, [$name], [$name => $data], $text);
+            return $this->validator->validateParameters(
+                $this->signature,
+                [$name],
+                // The whole of it is an object, whatever it holds: read strictly, an empty array would be a list.
+                [$name => $strict ? (object) $data : $data],
+                $text,
+                $strict,
+            );
         } catch (ValidationException $invalid) {
             $errors = [];
             foreach ($invalid->errors as $field => $problems) {
@@ -607,21 +680,33 @@ final class ActionHandler implements Handler
         string $type,
         string $name,
         array &$errors,
+        bool $strict = false,
     ): string|int|float|bool|null {
         if ($type === 'string') {
             return $value;
         }
-        // The usual id: digits, no leading zero, and too few to pass what an integer holds.
-        if ($type === 'int' && ctype_digit($value) && strlen($value) < 19 && ($value[0] !== '0' || $value === '0')) {
-            return (int) $value;
-        }
-        // Only when the number read is the number written: one past what an integer holds would be another.
-        if (
-            $type === 'int'
-            && preg_match('/^-?\d+$/D', $value) === 1
-            && (string) (int) $value === preg_replace('/^(-?)0+(?=\d)/', '$1', $value)
-        ) {
-            return (int) $value;
+        if ($type === 'int') {
+            $integer = null;
+            if (ctype_digit($value) && strlen($value) < 19 && ($value[0] !== '0' || $value === '0')) {
+                // The usual id: digits, no leading zero, and too few to pass what an integer holds.
+                $integer = (int) $value;
+            } elseif (
+                preg_match('/^-?\d+$/D', $value) === 1
+                && (string) (int) $value === preg_replace('/^(-?)0+(?=\d)/', '$1', $value)
+            ) {
+                // Only when the number read is the number written: one past what an integer holds would be another.
+                $integer = (int) $value;
+            }
+            if ($integer === null) {
+                $errors[$name][] = 'must be a whole number';
+                return null;
+            }
+            if ($strict && ($integer > 9_007_199_254_740_991 || $integer < -9_007_199_254_740_991)) {
+                // Read strictly, a whole number is one every reader of JSON holds as written: up to 2^53 - 1.
+                $errors[$name][] = 'must be a whole number from -9007199254740991 to 9007199254740991';
+                return null;
+            }
+            return $integer;
         }
         if ($type === 'float' && is_numeric($value)) {
             $number = (float) $value;
@@ -632,11 +717,7 @@ final class ActionHandler implements Handler
         if ($type === 'bool' && in_array($value, ['true', '1', 'false', '0'], true)) {
             return $value === 'true' || $value === '1';
         }
-        $errors[$name][] = match ($type) {
-            'int' => 'must be a whole number',
-            'float' => 'must be a number',
-            default => 'must be true or false',
-        };
+        $errors[$name][] = $type === 'float' ? 'must be a number' : 'must be true or false';
         return null;
     }
 }

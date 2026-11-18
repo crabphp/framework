@@ -27,6 +27,7 @@ final class ErrorResponse
      * @param array<string, list<string>> $path What is wrong with the parameters of its path, by name.
      * @param \Throwable|null $cause The exception the request is answered for.
      * @param bool $debug Whether a failure's cause may be described in full, without its calls' arguments.
+     * @param array<string, string|int|bool> $context Safe values for whatever writes the problem; see Problem::$context.
      */
     public static function make(
         ServerRequestInterface $request,
@@ -38,6 +39,7 @@ final class ErrorResponse
         array $path = [],
         ?\Throwable $cause = null,
         bool $debug = false,
+        array $context = [],
     ): Response {
         $problem = new Problem(
             $status,
@@ -47,6 +49,7 @@ final class ErrorResponse
             $path,
             $cause,
             $debug,
+            $context,
         );
         return self::render($problem, $request, $headers)->withProblem($problem);
     }

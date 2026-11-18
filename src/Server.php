@@ -322,7 +322,21 @@ final class Server
     public function watch(array $command, array $paths, \Closure $say): int
     {
         $grace = $this->grace();
+        $development = $this->app->development;
         $watcher = new FileWatcher(array_map($this->path(...), $paths));
+        // What plugins asked to have watched as well, each path with its own extensions.
+        $others = [];
+        foreach ($development->watched() as $path => $extensions) {
+            $others[] = new FileWatcher([$this->path($path)], $extensions);
+        }
+        $changes = static function () use ($watcher, $others): array {
+            $own = $watcher->changes();
+            $extra = [];
+            foreach ($others as $other) {
+                $extra = [...$extra, ...$other->changes()];
+            }
+            return [$own, $extra];
+        };
 
         $stopping = false;
         if (extension_loaded('pcntl')) {
@@ -333,7 +347,23 @@ final class Server
             pcntl_signal(SIGINT, $stop);
             pcntl_signal(SIGTERM, $stop);
         }
-        [$process, $report] = self::spawn($command);
+        $programs = self::programs($development, $say, $stopping);
+        $address = null;
+        foreach (preg_grep('/^--address=/', $command) ?: [] as $word) {
+            $address = substr($word, strlen('--address='));
+        }
+        $process = null;
+        $report = null;
+        // Whether the listeners have yet to be told that the server now running accepts connections.
+        $awaited = false;
+        $first = true;
+        if (!$stopping && self::prepared($development, null, $say) !== null) {
+            [$process, $report] = self::spawn($command);
+            $awaited = true;
+            $first = false;
+        } elseif (!$stopping) {
+            $say('The server was not started. Save a file to try again.');
+        }
         while (!$stopping) {
             usleep(300_000);
             $grace = self::reportedGrace($report, $grace);
@@ -342,27 +372,44 @@ final class Server
                 if (!$status['running']) {
                     proc_close($process);
                     $process = null;
+                    $awaited = false;
                     if (!$stopping) {
                         $say("The server stopped (status {$status['exitcode']}). Save a file to start it again.");
                     }
                 }
             }
-            $changed = $watcher->changes();
-            if ($changed === [] || $stopping) {
+            if ($awaited && $report === null && ($address === null || self::accepts($address))) {
+                $awaited = false;
+                foreach ($development->listeners() as $listener) {
+                    $listener();
+                }
+            }
+            [$own, $extra] = $changes();
+            if ($own === [] && $extra === [] || $stopping) {
                 continue;
             }
             // Saving, or switching branch, touches several files; wait until it is over.
             do {
                 usleep(150_000);
-                $more = $watcher->changes();
-                $changed = [...$changed, ...$more];
-            } while ($more !== []);
-            $changed = array_values(array_unique($changed));
-            $others = count($changed) - 1;
+                [$more, $moreExtra] = $changes();
+                $own = [...$own, ...$more];
+                $extra = [...$extra, ...$moreExtra];
+            } while ($more !== [] || $moreExtra !== []);
+            $changed = array_values(array_unique([...$own, ...$extra]));
+            // A step that fails leaves the server that last worked running.
+            $anew = self::prepared($development, $changed, $say);
+            if ($anew === null) {
+                continue;
+            }
+            // The application's own files always start it anew; what a plugin watches does when its step says so.
+            if ($process !== null && $own === [] && !$anew && $development->steps() !== []) {
+                continue;
+            }
+            $rest = count($changed) - 1;
             $say(
-                'Restarted: '
+                ($first ? 'Started: ' : 'Restarted: ')
                 . $this->shortened($changed[0])
-                . ($others > 0 ? " and {$others} more" : '')
+                . ($rest > 0 ? " and {$rest} more" : '')
                 . ' changed.',
             );
             $grace = self::reportedGrace($report, $grace);
@@ -371,14 +418,101 @@ final class Server
                 fclose($report);
             }
             // It said where it serves the first time; once is enough.
-            [$process, $report] = self::spawn([...$command, '--quiet']);
+            [$process, $report] = self::spawn($first ? $command : [...$command, '--quiet']);
+            $awaited = true;
+            $first = false;
         }
         $grace = self::reportedGrace($report, $grace);
         self::terminate($process, $grace);
         if (is_resource($report)) {
             fclose($report);
         }
+        foreach ($programs as $program) {
+            self::end($program);
+        }
         return 0;
+    }
+
+    /**
+     * Runs the steps plugins asked for before a server starts; see
+     * Contracts\Development::prepare().
+     *
+     * @param list<string>|null $changed The files that changed, or null before the first server.
+     * @return bool|null Whether a step asks for the server to start anew; null when one failed, having said why.
+     */
+    private static function prepared(Development $development, ?array $changed, \Closure $say): ?bool
+    {
+        $anew = false;
+        foreach ($development->steps() as $id => $step) {
+            try {
+                $anew = $step($changed) || $anew;
+            } catch (\Throwable $error) {
+                $say("{$id} failed, so the server was left as it was: {$error->getMessage()}");
+                return null;
+            }
+        }
+        return $anew;
+    }
+
+    /**
+     * Starts the programs plugins asked `dev` to run beside the server,
+     * and waits for each to be ready.
+     *
+     * @return list<resource>
+     */
+    private static function programs(Development $development, \Closure $say, bool &$stopping): array
+    {
+        $programs = [];
+        foreach ($development->processes() as $id => [$line, $ready]) {
+            $program = proc_open(['/bin/sh', '-c', $line], [], $pipes);
+            if ($program === false) {
+                throw new \RuntimeException("Could not start the development process \"{$id}\": {$line}");
+            }
+            $programs[] = $program;
+            $deadline = microtime(true) + 60.0;
+            while ($ready !== null && !$stopping && !$ready()) {
+                if (!proc_get_status($program)['running']) {
+                    $say("The development process \"{$id}\" stopped before it was ready: {$line}");
+                    break;
+                }
+                if (microtime(true) > $deadline) {
+                    $say("The development process \"{$id}\" was not ready after 60 seconds; going on without waiting.");
+                    break;
+                }
+                usleep(100_000);
+            }
+        }
+        return $programs;
+    }
+
+    /**
+     * Ends a program started through the shell, with everything it started.
+     *
+     * @param resource $program
+     */
+    private static function end(mixed $program): void
+    {
+        $status = proc_get_status($program);
+        if ($status['running'] && function_exists('posix_kill')) {
+            // The shell does not pass a signal on: its descendants are signalled, deepest first.
+            foreach (ProgramWorker::descendants($status['pid']) as $pid) {
+                @posix_kill($pid, 15);
+            }
+        }
+        self::terminate($program, 5.0);
+    }
+
+    /**
+     * Whether something accepts connections at a server address.
+     */
+    private static function accepts(string $address): bool
+    {
+        $socket = @stream_socket_client($address, $code, $message, 0.2);
+        if ($socket === false) {
+            return false;
+        }
+        fclose($socket);
+        return true;
     }
 
     /**
@@ -490,6 +624,8 @@ final class Server
             [...Interpreter::prefix(), ...$command, '--watch-report'],
             [self::WATCH_REPORT => ['pipe', 'w']],
             $pipes,
+            // The server it starts knows a developer's launcher is behind it; see Contracts\Invocation.
+            env_vars: [...getenv(), Cua::DEVELOPMENT => '1'],
         );
         if ($process === false) {
             throw new \RuntimeException('Could not start the server process.');

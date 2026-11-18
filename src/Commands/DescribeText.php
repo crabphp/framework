@@ -46,6 +46,7 @@ final class DescribeText
                 'schedule' => self::schedule($value),
                 'listeners' => self::listeners((array) $value),
                 'servers' => self::servers($value),
+                'packages' => self::packages((array) $value),
                 'database' => self::database($value),
                 'config' => self::config($value),
             };
@@ -203,6 +204,24 @@ final class DescribeText
         }
         if ($listeners === []) {
             $lines[] = '  none';
+        }
+        return implode("\n", $lines);
+    }
+
+    /**
+     * @param array<string, list<string>> $packages What each package declares, one thing to a line.
+     */
+    private static function packages(array $packages): string
+    {
+        $lines = ['packages'];
+        if ($packages === []) {
+            $lines[] = '  none';
+        }
+        foreach ($packages as $name => $declared) {
+            $lines[] = "  {$name}";
+            foreach ($declared as $line) {
+                $lines[] = "    {$line}";
+            }
         }
         return implode("\n", $lines);
     }

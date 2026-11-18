@@ -29,6 +29,7 @@ final readonly class Describe implements Command
         'schedule',
         'listeners',
         'servers',
+        'packages',
         'database',
         'config',
     ];
@@ -48,7 +49,7 @@ final readonly class Describe implements Command
             Describe the application, for coding agents and tools
 
             Arguments:
-              section   app, routes, middleware, commands, schedule, listeners, servers, database or config; more than one may be given. Without one, all.
+              section   app, routes, middleware, commands, schedule, listeners, servers, packages, database or config; more than one may be given. Without one, all.
 
             Options:
               --json    The same as JSON; each route's input is JSON Schema
@@ -201,6 +202,17 @@ final readonly class Describe implements Command
             ? $this->app->container->get(Dispatcher::class)->listeners()
             : [];
         return $listeners === [] ? new \stdClass() : $listeners;
+    }
+
+    /**
+     * What packages declare beside the routes, such as pages, by package; see Contracts\Definition.
+     *
+     * @return array<string, list<string>>|\stdClass
+     */
+    private function packages(): array|\stdClass
+    {
+        $declared = $this->app->declared();
+        return $declared === [] ? new \stdClass() : $declared;
     }
 
     /**

@@ -12,6 +12,7 @@
     - [Reaching the application from a plugin](#reaching-the-application-from-a-plugin)
 - [Work in each worker](#work-in-each-worker)
 - [Worker processes of your own](#worker-processes-of-your-own)
+- [A package with routes of its own](#a-package-with-routes-of-its-own)
 - [Rules for a service](#rules-for-a-service)
 
 ## Introduction
@@ -350,6 +351,32 @@ Under `start --daemon` such a server runs in a process of its own beside the one
 - **It holds the old code's connections to the database and other services,** so keep what it shares with HTTP backward compatible across a deploy, as for the moment between a migration and a reload.
 
 A group given to `add()` has a `setup`, which has it listen on an address of its own, or `work`, a loop that runs until it is told to stop, or both. The closure that returns the groups runs when the server starts, so it may read the configuration and what later plugins bound.
+
+## A package with routes of its own
+
+Most plugins bind services. A few add a whole kind of route: pages made of several loaders, a protocol with its own errors. These contracts are for them. An application never needs one.
+
+| Contract | What it gives a package |
+| --- | --- |
+| `Crab\Contracts\Definitions` | `add()` a `Definition`. Its `finish()` runs once, after every plugin, your setup and the route files, and before anything serves. It adds the routes the package's declarations stand for and refuses what cannot be honoured. It opens nothing and reads no request. |
+| `Crab\Contracts\Routing\Actions` | `prepare($method, $pattern, $action)` reads an action's signature the way the router does. `invoke($request)` on the result gives an `ActionOutcome`: the value the action returned, or the rejection the request earned without the action being called. |
+| `Crab\Contracts\Http\Representations` | `add()` a `Representation`, which writes the errors of its own requests in its own form, the router's 404 and a middleware's 401 included. Every other request keeps your format. The request it is given carries a `Crab\Contracts\Routing\Entered` as the attribute `Entered::ATTRIBUTE`, which says whether the route's action was called before the error, whatever the error's status. |
+| `Crab\Contracts\Http\Errors` | Makes an error response that carries its `Problem`, and reads the problem of one. |
+| `Crab\Contracts\Http\DecodePolicies` | `add()` a `DecodePolicy`, which chooses strict reading of the query string and body for its own requests, before middleware can read them. `Router::match($method, $path)` says which route a request is for without running it, so a policy can choose by the route's name. Input read strictly is bound as it was written: an object is not a list, and a whole number stays within 2^53 - 1 either way. |
+| `Crab\Contracts\Development` | Under `php cua dev` only: watch more files, run a step before each server, and run a program beside it that the first server waits for. |
+| `Crab\Contracts\Invocation` | Which command started the process, and whether `dev` did. |
+
+```php
+public function register(Container $container): void
+{
+    $container->get(Definitions::class)->add(new PagesDefinition($pages));
+    $container->get(Representations::class)->add(new PagesErrors());
+
+    if ($container->get(Invocation::class)->command === 'dev') {
+        $container->get(Development::class)->watch('resources', 'psx');
+    }
+}
+```
 
 ## Rules for a service
 
