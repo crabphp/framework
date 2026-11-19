@@ -19,8 +19,8 @@ return [
     // HTTP and upgraded connections per worker; at most 900 on the select loop.
     'max_connections' => 512,
 
-    // The event loop: select, or ev, uv or event, each needing its PHP extension.
-    'loop' => 'select',
+    // The event loop: auto is poll on PHP 8.6 and later, select before; or ev, uv or event, each needing its PHP extension.
+    'loop' => 'auto',
 
     // The largest request body taken, in bytes, and how many seconds a client has to send one. Raise both for uploads.
     'max_body' => 1024 * 1024,

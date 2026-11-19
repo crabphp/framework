@@ -136,7 +136,7 @@ final class GeneratorsTest extends TestCase
 
         self::assertSame(0, $this->command($app, ['config:publish', 'server', '--force'])[0]);
         self::assertStringContainsString(
-            "'loop' => 'select'",
+            "'loop' => 'auto'",
             (string) file_get_contents($this->directory . '/config/server.php'),
         );
 

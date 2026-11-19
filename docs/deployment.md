@@ -279,9 +279,11 @@ Workers share nothing. Anything two requests must both see, a cache entry, a rat
 
 Every open connection is a file descriptor, and so is every open file, database or Redis connection and log. Each worker is its own process, so these limits apply per worker; four workers hold four times as many connections.
 
-On the default `select` loop a worker holds at most 900 connections (`server.max_connections`), whatever the system allows. PHP's `stream_select()` cannot watch a descriptor numbered 1024 or higher (FD_SETSIZE is compiled into PHP), and the rest of the 1024 is left for files, the database and Redis. Raising the system's descriptor limit does not change this; more workers do.
+`server.loop` is `auto` by default: the `poll` loop on PHP 8.6 and later, which waits with PHP's `Io\Poll` (epoll on Linux, kqueue on macOS and BSD), and the `select` loop before.
 
-For more connections per worker, install `ev`, `event` or `uv`, set `server.loop` to it, raise `server.max_connections`, and raise the per-process descriptor limit too, which is often 1024 by default. Allow `server.max_connections` plus a hundred or so for everything else:
+On the `select` loop a worker holds at most 900 connections (`server.max_connections`), whatever the system allows. PHP's `stream_select()` cannot watch a descriptor numbered 1024 or higher (FD_SETSIZE is compiled into PHP), and the rest of the 1024 is left for files, the database and Redis. Raising the system's descriptor limit does not change this; more workers do. Each turn of the `select` loop also checks every open connection, so idle ones slow the busy ones: on one worker with 800 idle keep-alive connections beside 64 busy ones, `select` served about 52,900 requests a second and `poll` about 65,000.
+
+For more connections per worker, run PHP 8.6 or later, or install `ev`, `event` or `uv` and set `server.loop` to it. Then raise `server.max_connections`, and raise the per-process descriptor limit too, which is often 1024 by default. Allow `server.max_connections` plus a hundred or so for everything else:
 
 ```text
 # systemd, in [Service]
@@ -448,7 +450,7 @@ An application can ship as one file that holds PHP and the application together:
 - Choose `SERVER_WORKERS` explicitly; the skeleton starts with one for development.
 - List the plugins the application uses in `app.php`, and apply the database queue migration before starting. With more than one server, each runs the scheduler: mark tasks `onOneServer()`.
 - The `pcntl` and `posix` extensions, for workers and the background server.
-- Connections per worker within the loop's reach: at most 900 on `select`; beyond that a native `server.loop` and a raised descriptor limit, as in [How many connections](#how-many-connections).
+- Connections per worker within the loop's reach: at most 900 on `select`; beyond that PHP 8.6's `poll` loop or a native `server.loop`, and a raised descriptor limit, as in [How many connections](#how-many-connections).
 - OPcache on, with `opcache.enable_cli=1`: the server runs under PHP's command line.
 - The JIT on, with `opcache.jit=tracing` and a `opcache.jit_buffer_size` such as `64M`: about 12% more requests on a small JSON response. PHP 8.4 ships with `opcache.jit=disable`, which cannot be changed once PHP has started, so set it in `php.ini` or with `php -d opcache.jit=tracing cua start`.
 - A proxy with TLS in front, and the server on `127.0.0.1`.

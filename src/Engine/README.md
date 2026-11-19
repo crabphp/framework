@@ -2,7 +2,7 @@
 
 A PHP 8.4 networking engine with TCP, HTTP/1.1, WebSocket, coroutines, timers, and supervised worker processes.
 
-The engine has its own event loop type, `Crab\Engine\EventLoop`, which everything is written against; `EventLoop::current()` is the loop of the running process. `StreamSelectEventLoop`, the default, is the engine's own pure-PHP loop on `stream_select()`; backend-neutral scheduling lives in `FiberEventLoop`, so a native backend only adds how streams and signals are watched. `RevoltEventLoop` extends `EventLoop` on `revolt/event-loop` for the native ev, event and uv backends, and is the only code that names Revolt. Swoole and OpenSwoole are not required. A native backend is chosen through the loop factory: `new Runtime(loopFactory: fn () => RevoltEventLoop::create('uv'))`.
+The engine has its own event loop type, `Crab\Engine\EventLoop`, which everything is written against; `EventLoop::current()` is the loop of the running process. The default, `EventLoop::defaultLoop()`, is `PollEventLoop` on PHP 8.6 and later, on PHP's `Io\Poll` (epoll, kqueue), and `StreamSelectEventLoop` before, on `stream_select()`; both are the engine's own; backend-neutral scheduling lives in `FiberEventLoop`, so a native backend only adds how streams and signals are watched. `RevoltEventLoop` extends `EventLoop` on `revolt/event-loop` for the native ev, event and uv backends, and is the only code that names Revolt. Swoole and OpenSwoole are not required. A native backend is chosen through the loop factory: `new Runtime(loopFactory: fn () => RevoltEventLoop::create('uv'))`.
 
 ## Run it
 
@@ -217,7 +217,7 @@ TLS reads drain decrypted records beyond short reads, with a deferred continuati
 
 Defaults include 512 owned TCP connections/pending connects (including closed connections still running service cleanup) and 1,024 tracked tasks per worker; 1 MiB and 4,096 entries per TCP output queue; and bounded protocol input/output buffers. Configure lower limits for the application's memory budget. These bounds do not cap memory allocated independently by application code.
 
-The select backend has platform descriptor limits and scanning costs. Linux/macOS CLI are the intended targets; this change was exercised on macOS. Single-process operation does not require process extensions, but cannot forcibly interrupt blocked PHP code. Optional backends are selected through `new Runtime(loopFactory: ...)`, and a loop of your own is any class that extends `Crab\Engine\EventLoop`.
+The select backend, the default before PHP 8.6, has platform descriptor limits and scanning costs. The poll backend has no descriptor limit; PHP 8.6's `Io\Poll` still checks every level-triggered stream's read buffer on each wait, so a very large number of idle connections costs about 12 ns each per turn. Linux/macOS CLI are the intended targets; this change was exercised on macOS. Single-process operation does not require process extensions, but cannot forcibly interrupt blocked PHP code. Optional backends are selected through `new Runtime(loopFactory: ...)`, and a loop of your own is any class that extends `Crab\Engine\EventLoop`.
 
 HTTP/2, HTTP/3, generic framed-protocol helpers, a cross-process job pool, and the later web framework are outside this implementation. HTTP and WebSocket are protocol servers without routing, middleware containers, ORM, templates or agent-specific features.
 

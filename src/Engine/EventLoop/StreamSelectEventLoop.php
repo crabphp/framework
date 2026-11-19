@@ -11,6 +11,8 @@ namespace Crab\Engine\EventLoop;
  */
 final class StreamSelectEventLoop extends FiberEventLoop
 {
+    use PcntlSignals;
+
     /**
      * @var array<int, resource>
      */
@@ -31,39 +33,10 @@ final class StreamSelectEventLoop extends FiberEventLoop
      */
     private array $writeWatchers = [];
 
-    /**
-     * @var array<int, array<string, Watcher>>
-     */
-    private array $signalWatchers = [];
-
-    /**
-     * @var list<int> Signals received and not yet dispatched.
-     */
-    private array $signals = [];
-
-    private readonly bool $signalHandling;
-
     public function __construct()
     {
         parent::__construct();
-        $this->signalHandling = function_exists('pcntl_signal') && function_exists('pcntl_signal_dispatch');
-    }
-
-    public function __destruct()
-    {
-        foreach ($this->signalWatchers as $watchers) {
-            foreach ($watchers as $watcher) {
-                $this->unwatch($watcher);
-            }
-        }
-    }
-
-    public function onSignal(int $signal, \Closure $callback): string
-    {
-        if (!$this->signalHandling) {
-            throw new \RuntimeException('Signal handling requires the pcntl extension.');
-        }
-        return parent::onSignal($signal, $callback);
+        $this->initSignals();
     }
 
     protected function watch(Watcher $watcher): void
@@ -75,13 +48,7 @@ final class StreamSelectEventLoop extends FiberEventLoop
             $this->writeWatchers[(int) $watcher->subject][$watcher->id] = $watcher;
             $this->writeStreams[(int) $watcher->subject] = $watcher->subject;
         } else {
-            $signal = (int) $watcher->subject;
-            if (!isset($this->signalWatchers[$signal]) && !@pcntl_signal($signal, $this->receiveSignal(...))) {
-                $error = error_get_last()['message'] ?? '';
-                error_clear_last();
-                throw new \RuntimeException("Cannot handle signal {$signal}. {$error}");
-            }
-            $this->signalWatchers[$signal][$watcher->id] = $watcher;
+            $this->watchSignal($watcher);
         }
     }
 
@@ -101,14 +68,7 @@ final class StreamSelectEventLoop extends FiberEventLoop
                 unset($this->writeWatchers[$stream], $this->writeStreams[$stream]);
             }
         } else {
-            $signal = (int) $watcher->subject;
-            if (isset($this->signalWatchers[$signal])) {
-                unset($this->signalWatchers[$signal][$id]);
-                if ($this->signalWatchers[$signal] === []) {
-                    unset($this->signalWatchers[$signal]);
-                    @pcntl_signal($signal, SIG_DFL);
-                }
-            }
+            $this->unwatchSignal($watcher);
         }
     }
 
@@ -159,32 +119,6 @@ final class StreamSelectEventLoop extends FiberEventLoop
         }
     }
 
-    /**
-     * Queues the watchers of every signal received so far; whether there was one.
-     */
-    private function receivedSignals(): bool
-    {
-        if (!$this->signalHandling) {
-            return false;
-        }
-        pcntl_signal_dispatch();
-        if ($this->signals === []) {
-            return false;
-        }
-        $this->dispatchSignals();
-        return true;
-    }
-
-    private function dispatchSignals(): void
-    {
-        foreach ($this->signals as $signal) {
-            foreach ($this->signalWatchers[$signal] ?? [] as $watcher) {
-                $this->ready($watcher);
-            }
-        }
-        $this->signals = [];
-    }
-
     private function selectFailed(): void
     {
         $message = error_get_last()['message'] ?? 'Unknown error during stream_select().';
@@ -205,14 +139,5 @@ final class StreamSelectEventLoop extends FiberEventLoop
                 . 'Lower the number of connections a worker accepts, use a native loop backend, or look for descriptors that are never closed.';
         }
         throw new \RuntimeException($message);
-    }
-
-    /**
-     * Only queues the signal: pcntl_signal_dispatch() blocks signals while
-     * it runs, so a callback must not suspend inside it.
-     */
-    private function receiveSignal(int $signal): void
-    {
-        $this->signals[] = $signal;
     }
 }

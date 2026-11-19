@@ -213,9 +213,9 @@ return [
 | `websocket.send_timeout` | `5.0` | Seconds one send may wait for room, or a broadcast recipient may take to catch up; a slow reader closes with 1008 |
 | `websocket.max_connections` | `256` | Open or reserved socket handshakes per worker; excess receives HTTP 503 and `Retry-After: 1` before application code runs |
 
-`server.max_connections` defaults to `512` for HTTP and upgraded connections together. When socket routes exist, their limit must not exceed it; unused socket settings do not constrain an HTTP-only app. `server.loop` defaults to `select`, whose server limit must be at most `900`, leaving descriptors for files, database and Redis. Other open descriptors still consume that budget.
+`server.max_connections` defaults to `512` for HTTP and upgraded connections together. When socket routes exist, their limit must not exceed it; unused socket settings do not constrain an HTTP-only app. `server.loop` defaults to `auto`: `poll` on PHP 8.6 and later, `select` before. On `select` the server limit must be at most `900`, leaving descriptors for files, database and Redis. Other open descriptors still consume that budget.
 
-For more connections, install and enable `ev`, `uv` or `event`, choose it with `server.loop`, and raise `server.max_connections`. Missing extensions and unsafe limits are refused before binding a port. A native loop does not remove descriptor or memory limits.
+For more connections, run PHP 8.6 or later, or install and enable `ev`, `uv` or `event` and choose it with `server.loop`; then raise `server.max_connections`. Missing extensions, `poll` before PHP 8.6 and unsafe limits are refused before binding a port. A native loop does not remove descriptor or memory limits.
 
 ## Sending and receiving
 

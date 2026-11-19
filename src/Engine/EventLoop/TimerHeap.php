@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace Crab\Engine\EventLoop;
 
 /**
- * The enabled timers of a StreamSelectEventLoop, soonest first, as a binary
+ * The enabled timers of a FiberEventLoop, soonest first, as a binary
  * heap in an array. Ported from Revolt's TimerQueue (MIT).
  *
  * @internal

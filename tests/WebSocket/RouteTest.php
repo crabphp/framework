@@ -15,6 +15,7 @@ use Crab\Contracts\WebSocket\Socket;
 use Crab\Engine\Async\Async;
 use Crab\Engine\Async\Task;
 use Crab\Engine\EventLoop;
+use Crab\Engine\EventLoop\PollEventLoop;
 use Crab\Engine\EventLoop\StreamSelectEventLoop;
 use Crab\Engine\FailureReporter;
 use Crab\Http\AccessLog;
@@ -765,10 +766,10 @@ final class RouteTest extends TestCase
     {
         $cases = [
             [['websocket' => ['max_connections' => 513]], 'websocket.max_connections exceeds'],
-            [['server' => ['max_connections' => 901]], 'up to 900'],
+            [['server' => ['max_connections' => 901, 'loop' => 'select']], 'up to 900'],
             [
                 ['server' => ['loop' => 'missing']],
-                'server.loop is "missing"; it takes "select", "ev", "uv" or "event".',
+                'server.loop is "missing"; it takes "auto", "select", "poll", "ev", "uv" or "event".',
             ],
             [
                 ['server' => ['max_connections' => 1.5]],
@@ -778,6 +779,9 @@ final class RouteTest extends TestCase
             [['websocket' => ['send_timeout' => 0]], 'websocket.send_timeout'],
             [['websocket' => ['max_message' => 0]], 'websocket.max_message is 0; it takes a whole number, at least 1.'],
         ];
+        if (!PollEventLoop::isSupported()) {
+            $cases[] = [['server' => ['loop' => 'poll']], 'needs PHP 8.6 or later'];
+        }
         foreach (['ev', 'uv', 'event'] as $backend) {
             if (extension_loaded($backend)) {
                 continue;

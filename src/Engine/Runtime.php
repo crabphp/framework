@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace Crab\Engine;
 
-use Crab\Engine\EventLoop\StreamSelectEventLoop;
 use Crab\Engine\Network\Listener;
 use Crab\Engine\Process\StatsFile;
 use Crab\Engine\Process\Supervisor;
@@ -31,9 +30,10 @@ final class Runtime
     private array $about = [];
 
     /**
-     * The factory makes each process's EventLoop; without one it is a
-     * StreamSelectEventLoop. `fn () => RevoltEventLoop::create('uv')` chooses
-     * a native backend.
+     * The factory makes each process's EventLoop; without one it is
+     * EventLoop::defaultLoop(): Io\Poll on PHP 8.6 and later, stream_select()
+     * before. `fn () => RevoltEventLoop::create('uv')` chooses a native
+     * backend.
      */
     public function __construct(
         ?callable $loopFactory = null,
@@ -42,9 +42,7 @@ final class Runtime
         if (!is_finite($shutdownTimeout) || $shutdownTimeout <= 0) {
             throw new \InvalidArgumentException('Shutdown timeout must be finite and positive.');
         }
-        $this->loopFactory = $loopFactory === null
-            ? static fn(): EventLoop => new StreamSelectEventLoop()
-            : $loopFactory(...);
+        $this->loopFactory = $loopFactory === null ? EventLoop::defaultLoop(...) : $loopFactory(...);
     }
 
     /**

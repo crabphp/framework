@@ -339,7 +339,7 @@ final class SettingsTest extends TestCase
             self::assertSame(
                 "2 settings do not fit:\n"
                 . "  server.drain is 0; it takes a number greater than 0.\n"
-                . "  server.loop is \"epoll\"; it takes \"select\", \"ev\", \"uv\" or \"event\".\n",
+                . "  server.loop is \"epoll\"; it takes \"auto\", \"select\", \"poll\", \"ev\", \"uv\" or \"event\".\n",
                 stream_get_contents($stream),
             );
         } finally {

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Crab\Engine;
 
+use Crab\Engine\EventLoop\PollEventLoop;
 use Crab\Engine\EventLoop\StreamSelectEventLoop;
 
 /**
@@ -21,14 +22,23 @@ abstract class EventLoop
     private static ?self $current = null;
 
     /**
-     * The event loop of the current process; without one, a stream-select
-     * loop is installed. A worker installs its own after it is forked, so
+     * A new loop of the default backend: Io\Poll on PHP 8.6 and later,
+     * stream_select() before.
+     */
+    final public static function defaultLoop(): self
+    {
+        return PollEventLoop::isSupported() ? new PollEventLoop() : new StreamSelectEventLoop();
+    }
+
+    /**
+     * The event loop of the current process; without one, a loop of the
+     * default backend is installed. A worker installs its own after it is forked, so
      * code that outlives a fork asks each time it needs one and does not
      * keep the answer.
      */
     final public static function current(): self
     {
-        return self::$current ?? self::install(new StreamSelectEventLoop());
+        return self::$current ?? self::install(self::defaultLoop());
     }
 
     /**

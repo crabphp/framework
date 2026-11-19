@@ -2,6 +2,10 @@
 
 Crab follows [semantic versioning](https://semver.org). Before 1.0, a minor version may break what an application writes; the entry says what to change.
 
+## Unreleased
+
+- **The poll loop, on PHP 8.6:** `server.loop` defaults to `auto`, which is the new `poll` loop on PHP 8.6 and later and `select` before. It waits with PHP 8.6's `Io\Poll` (epoll on Linux, kqueue on macOS and BSD), has no 900-connection limit, and does not slow down as idle connections pile up: on one worker with 800 idle keep-alive connections beside 64 busy ones it served about 65,000 requests a second where `select` served 52,900, with p99 latency at 1.09 ms instead of 1.37 ms. With no idle connections the two are within 1.5%. It still served 57,500 a second beside 5,000 idle connections. `select` stays available by name. In the engine, `EventLoop::defaultLoop()` makes the default loop and `Runtime` uses it; `PollEventLoop` can be named directly.
+
 ## 0.7.5 — 2026-11-18
 
 Contracts for packages that add a protocol of their own beside the application's routes, such as crabphp/psx. An application that uses none of them behaves as before, except for the one change under "Behaviour change".

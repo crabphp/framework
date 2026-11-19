@@ -50,7 +50,7 @@ final class Server
         'body_timeout' => 30,
         'drain' => 5.0,
         'max_connections' => 512,
-        'loop' => 'select',
+        'loop' => 'auto',
         'pid' => ServerFiles::PID,
         'log' => ServerFiles::LOG,
     ];
@@ -71,7 +71,7 @@ final class Server
         'body_timeout' => ['type' => 'number', 'exclusiveMinimum' => 0],
         'drain' => ['type' => 'number', 'exclusiveMinimum' => 0],
         'max_connections' => ['type' => 'integer', 'minimum' => 1],
-        'loop' => ['enum' => ['select', 'ev', 'uv', 'event']],
+        'loop' => ['enum' => ['auto', 'select', 'poll', 'ev', 'uv', 'event']],
         'pid' => ['type' => 'string', 'minLength' => 1],
         'log' => ['type' => 'string', 'minLength' => 1],
     ];

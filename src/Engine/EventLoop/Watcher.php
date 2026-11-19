@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace Crab\Engine\EventLoop;
 
 /**
- * One timer, stream, signal or deferred callback of a StreamSelectEventLoop.
+ * One timer, stream, signal or deferred callback of a FiberEventLoop.
  *
  * @internal
  */

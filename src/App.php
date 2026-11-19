@@ -59,6 +59,7 @@ use Crab\Contracts\WorkerPlugin;
 use Crab\Contracts\Workers;
 use Crab\Database\DatabasePlugin;
 use Crab\Engine\Async\Cancellation;
+use Crab\Engine\EventLoop\PollEventLoop;
 use Crab\Engine\EventLoop\RevoltEventLoop;
 use Crab\Engine\EventLoop\StreamSelectEventLoop;
 use Crab\Engine\FailureReporter;
@@ -700,7 +701,15 @@ final class App implements Handler, Runner
         $drain = $this->drain();
         $maxConnections = (int) $this->config->get('server.max_connections');
         $backend = $this->config->get('server.loop');
-        if ($backend !== 'select' && !extension_loaded($backend)) {
+        if ($backend === 'auto') {
+            $backend = PollEventLoop::isSupported() ? 'poll' : 'select';
+        }
+        if ($backend === 'poll' && !PollEventLoop::isSupported()) {
+            throw new \InvalidArgumentException(
+                'The server.loop backend poll needs PHP 8.6 or later, for Io\\Poll. Upgrade PHP, or set server.loop to select.',
+            );
+        }
+        if (!in_array($backend, ['select', 'poll'], true) && !extension_loaded($backend)) {
             throw new \InvalidArgumentException(
                 "The server.loop backend {$backend} needs the {$backend} PHP extension. Install and enable it, or set server.loop to select.",
             );
@@ -712,7 +721,7 @@ final class App implements Handler, Runner
         }
         if ($backend === 'select' && $maxConnections > 900) {
             throw new \InvalidArgumentException(
-                'The select loop supports server.max_connections up to 900, leaving descriptors for files, database and Redis. Reduce the limit or install a native extension and select it with server.loop.',
+                'The select loop supports server.max_connections up to 900, leaving descriptors for files, database and Redis. Reduce the limit, run PHP 8.6 or later for the poll loop, or install a native extension and select it with server.loop.',
             );
         }
         // Beside HTTP, every server registered. In one
@@ -777,9 +786,11 @@ final class App implements Handler, Runner
         }
         // Long enough for the slowest of them to finish what it has in hand.
         $runtime = new Runtime(
-            loopFactory: static fn() => $backend === 'select'
-                ? new StreamSelectEventLoop()
-                : RevoltEventLoop::create($backend),
+            loopFactory: static fn() => match ($backend) {
+                'select' => new StreamSelectEventLoop(),
+                'poll' => new PollEventLoop(),
+                default => RevoltEventLoop::create($backend),
+            },
             shutdownTimeout: max($drain, $this->servers->grace($with)),
         );
         foreach ($groups as [$group, $reloads]) {

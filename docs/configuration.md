@@ -253,7 +253,7 @@ It says that this worker answers, and asks nothing of the database. That is deli
 | `server.watch` | `app`, `app.php`, `config`, `routes`, `.env` | What `dev` watches |
 | `server.public` | `public` | The directory for static files used after no application route matches; `null` disables it |
 | `server.max_connections` | `512` | Total HTTP and upgraded connections per worker; at most `900` on the select backend |
-| `server.loop` | `select` | `select`, `ev`, `uv` or `event`; a native backend needs its PHP extension |
+| `server.loop` | `auto` | `auto` (`poll` on PHP 8.6 and later, `select` before), `select`, `poll` (PHP 8.6 and later), `ev`, `uv` or `event`; `ev`, `uv` and `event` need their PHP extension |
 | `server.max_body` | `1048576` | The largest request body taken, in bytes |
 | `server.body_timeout` | `30` | Seconds a client has to send a body |
 | `server.drain` | `5.0` | Seconds an HTTP worker has to finish in-flight requests on stop, reload or restart; unfinished requests at the limit are cut and counted in one warning per worker. Idle keep-alive connections do not count. Must be a finite number greater than zero |
