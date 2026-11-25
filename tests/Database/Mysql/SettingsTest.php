@@ -106,32 +106,32 @@ final class SettingsTest extends TestCase
         self::assertSame(
             [
                 \PDO::ATTR_TIMEOUT => 3,
-                \PDO::MYSQL_ATTR_SSL_VERIFY_SERVER_CERT => true,
-                \PDO::MYSQL_ATTR_SSL_CA => '/ca',
-                \PDO::MYSQL_ATTR_SSL_CAPATH => '/trust',
-                \PDO::MYSQL_ATTR_SSL_CERT => '/cert',
-                \PDO::MYSQL_ATTR_SSL_KEY => '/key',
-                \PDO::MYSQL_ATTR_SSL_CIPHER => 'HIGH',
+                \Pdo\Mysql::ATTR_SSL_VERIFY_SERVER_CERT => true,
+                \Pdo\Mysql::ATTR_SSL_CA => '/ca',
+                \Pdo\Mysql::ATTR_SSL_CAPATH => '/trust',
+                \Pdo\Mysql::ATTR_SSL_CERT => '/cert',
+                \Pdo\Mysql::ATTR_SSL_KEY => '/key',
+                \Pdo\Mysql::ATTR_SSL_CIPHER => 'HIGH',
             ],
             $map->invoke(null, [\PDO::ATTR_TIMEOUT => 3, 'ssl' => $ssl]),
         );
         self::assertSame(
             [
-                \PDO::MYSQL_ATTR_SSL_VERIFY_SERVER_CERT => true,
-                \PDO::MYSQL_ATTR_SSL_CIPHER => 'DEFAULT',
+                \Pdo\Mysql::ATTR_SSL_VERIFY_SERVER_CERT => true,
+                \Pdo\Mysql::ATTR_SSL_CIPHER => 'DEFAULT',
             ],
             $map->invoke(null, ['ssl' => true]),
         );
         self::assertSame(
             [
-                \PDO::MYSQL_ATTR_SSL_VERIFY_SERVER_CERT => false,
-                \PDO::MYSQL_ATTR_SSL_CIPHER => 'DEFAULT',
+                \Pdo\Mysql::ATTR_SSL_VERIFY_SERVER_CERT => false,
+                \Pdo\Mysql::ATTR_SSL_CIPHER => 'DEFAULT',
             ],
             $map->invoke(null, ['ssl' => ['verify_peer' => false, 'verify_peer_name' => false]]),
         );
         self::assertSame(
-            [\PDO::MYSQL_ATTR_SSL_CA => '/same', \PDO::MYSQL_ATTR_SSL_VERIFY_SERVER_CERT => true],
-            $map->invoke(null, [\PDO::MYSQL_ATTR_SSL_CA => '/same', 'ssl' => ['cafile' => '/same']]),
+            [\Pdo\Mysql::ATTR_SSL_CA => '/same', \Pdo\Mysql::ATTR_SSL_VERIFY_SERVER_CERT => true],
+            $map->invoke(null, [\Pdo\Mysql::ATTR_SSL_CA => '/same', 'ssl' => ['cafile' => '/same']]),
         );
         self::assertSame([\PDO::ATTR_TIMEOUT => 3], $map->invoke(null, [\PDO::ATTR_TIMEOUT => 3, 'ssl' => false]));
     }
@@ -145,9 +145,9 @@ final class SettingsTest extends TestCase
             [['ssl' => ['peer_name' => 'other.example']], 'peer_name'],
             [['ssl' => ['peer_fingerprint' => 'abc']], 'peer_fingerprint'],
             [['ssl' => ['crypto_method' => 1]], 'crypto_method'],
-            [['ssl' => true, \PDO::MYSQL_ATTR_SSL_VERIFY_SERVER_CERT => false], 'conflicts'],
-            [['ssl' => ['cafile' => '/ca'], \PDO::MYSQL_ATTR_SSL_CA => '/other'], 'conflicts'],
-            [['ssl' => ['ciphers' => 'HIGH'], \PDO::MYSQL_ATTR_SSL_CIPHER => 'DEFAULT'], 'conflicts'],
+            [['ssl' => true, \Pdo\Mysql::ATTR_SSL_VERIFY_SERVER_CERT => false], 'conflicts'],
+            [['ssl' => ['cafile' => '/ca'], \Pdo\Mysql::ATTR_SSL_CA => '/other'], 'conflicts'],
+            [['ssl' => ['ciphers' => 'HIGH'], \Pdo\Mysql::ATTR_SSL_CIPHER => 'DEFAULT'], 'conflicts'],
         ] as [$options, $reason]) {
             try {
                 $map->invoke(null, $options);

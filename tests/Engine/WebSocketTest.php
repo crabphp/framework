@@ -1453,7 +1453,7 @@ final class WebSocketTest extends TestCase
     {
         foreach (['pingInterval', 'idleTimeout'] as $option) {
             foreach ([0, -1, INF, NAN] as $value) {
-                yield $option . ' ' . (string) $value => [[$option => $value]];
+                yield $option . ' ' . (is_nan($value) ? 'NAN' : (string) $value) => [[$option => $value]];
             }
         }
         yield 'overflowing implicit idle timeout' => [['pingInterval' => PHP_FLOAT_MAX]];

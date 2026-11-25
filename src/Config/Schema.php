@@ -286,6 +286,7 @@ final class Schema
             is_array($value) && array_is_list($value) => 'a list',
             is_array($value) => 'settings by name',
             is_object($value) => 'an object of ' . $value::class,
+            is_float($value) && is_nan($value) => 'NAN',
             is_float($value) && !is_finite($value) => (string) $value,
             // A password inside a URL, "redis://:secret@host" or "?password=secret", is not repeated.
             is_string($value) => self::json((string) preg_replace(

@@ -62,8 +62,10 @@ final class Task implements TaskContract
     public function everySeconds(int|float $seconds): static
     {
         if (!is_finite($seconds) || $seconds < 0.01) {
+            // PHP 8.5 and later warn when NAN becomes a string.
+            $shown = is_nan($seconds) ? 'NAN' : (string) $seconds;
             throw new \InvalidArgumentException(
-                "everySeconds({$seconds}) cannot be scheduled: give at least 0.01 of a second.",
+                "everySeconds({$shown}) cannot be scheduled: give at least 0.01 of a second.",
             );
         }
         $this->seconds = (float) $seconds;

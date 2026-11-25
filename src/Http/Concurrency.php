@@ -45,8 +45,10 @@ final class Concurrency implements Middleware
             throw new \InvalidArgumentException("A worker works on at least one request at once, not {$limit}.");
         }
         if (!is_finite($wait) || $wait <= 0) {
+            // PHP 8.5 and later warn when NAN becomes a string.
+            $shown = is_nan($wait) ? 'NAN' : (string) $wait;
             throw new \InvalidArgumentException(
-                "A request waits a finite number of seconds greater than zero for its turn, not {$wait}.",
+                "A request waits a finite number of seconds greater than zero for its turn, not {$shown}.",
             );
         }
     }

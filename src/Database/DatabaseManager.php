@@ -314,11 +314,11 @@ final class DatabaseManager implements Migrators
         }
         $ssl = $ssl === true ? [] : $ssl;
         $attributes = [
-            'cafile' => \PDO::MYSQL_ATTR_SSL_CA,
-            'capath' => \PDO::MYSQL_ATTR_SSL_CAPATH,
-            'local_cert' => \PDO::MYSQL_ATTR_SSL_CERT,
-            'local_pk' => \PDO::MYSQL_ATTR_SSL_KEY,
-            'ciphers' => \PDO::MYSQL_ATTR_SSL_CIPHER,
+            'cafile' => \Pdo\Mysql::ATTR_SSL_CA,
+            'capath' => \Pdo\Mysql::ATTR_SSL_CAPATH,
+            'local_cert' => \Pdo\Mysql::ATTR_SSL_CERT,
+            'local_pk' => \Pdo\Mysql::ATTR_SSL_KEY,
+            'ciphers' => \Pdo\Mysql::ATTR_SSL_CIPHER,
         ];
         foreach ($ssl as $key => $value) {
             if (!array_key_exists($key, $attributes) && !in_array($key, ['verify_peer', 'verify_peer_name'], true)) {
@@ -334,7 +334,7 @@ final class DatabaseManager implements Migrators
                 'PDO couples certificate and name verification; set verify_peer and verify_peer_name to the same boolean.',
             );
         }
-        $mapped = [\PDO::MYSQL_ATTR_SSL_VERIFY_SERVER_CERT => $verify];
+        $mapped = [\Pdo\Mysql::ATTR_SSL_VERIFY_SERVER_CERT => $verify];
         foreach ($attributes as $key => $attribute) {
             if (!array_key_exists($key, $ssl)) {
                 continue;
@@ -354,7 +354,7 @@ final class DatabaseManager implements Migrators
             $pdo[$attribute] = $value;
         }
         if (array_intersect_key($pdo, array_flip($attributes)) === []) {
-            $pdo[\PDO::MYSQL_ATTR_SSL_CIPHER] = 'DEFAULT';
+            $pdo[\Pdo\Mysql::ATTR_SSL_CIPHER] = 'DEFAULT';
         }
         return $pdo;
     }
