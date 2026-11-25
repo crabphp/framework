@@ -2,7 +2,9 @@
 
 Crab follows [semantic versioning](https://semver.org). Before 1.0, a minor version may break what an application writes; the entry says what to change.
 
-## Unreleased
+## 0.7.6 — 2026-11-25
+
+HTTP workers are replaced by fresh ones past their requests or memory, and the poll loop is the default on PHP 8.6.
 
 - **Fresh workers:** an HTTP worker is replaced by a fresh one after about `server.max_requests` requests (10,000, spread by a tenth) and once PHP holds more than `server.max_memory` for it (`128M`), so memory one large request took, or a slow leak, does not stay for the life of the server. The replacement starts first and the old worker finishes what it has in hand, as on a reload: no request is refused, even with one worker, and being replaced does not count as a restart. `status` shows how often and why. `server.memory_limit` (`512M`) caps each HTTP worker where php.ini sets no limit. **Behaviour change:** an application that sets nothing gets these limits; set `SERVER_MAX_REQUESTS=0` and `SERVER_MAX_MEMORY=0` to keep workers for as long as the server, and `SERVER_MEMORY_LIMIT=0` to leave PHP's limit as it is. In the engine, `Crab::maxRequests()` and `Crab::maxMemory()` set them for any worker group, `Worker::recycle()` asks for a replacement, and the stats file carries `recycles` and `recycled` for each worker.
 - **The poll loop, on PHP 8.6:** `server.loop` defaults to `auto`, which is the new `poll` loop on PHP 8.6 and later and `select` before. It waits with PHP 8.6's `Io\Poll` (epoll on Linux, kqueue on macOS and BSD), has no 900-connection limit, and does not slow down as idle connections pile up: on one worker with 800 idle keep-alive connections beside 64 busy ones it served about 65,000 requests a second where `select` served 52,900, with p99 latency at 1.09 ms instead of 1.37 ms. With no idle connections the two are within 1.5%. It still served 57,500 a second beside 5,000 idle connections. `select` stays available by name. In the engine, `EventLoop::defaultLoop()` makes the default loop and `Runtime` uses it; `PollEventLoop` can be named directly.
