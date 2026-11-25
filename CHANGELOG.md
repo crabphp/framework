@@ -2,7 +2,9 @@
 
 Crab follows [semantic versioning](https://semver.org). Before 1.0, a minor version may break what an application writes; the entry says what to change.
 
-## Unreleased
+## 0.7.7 — 2026-11-26
+
+Runs on PHP 8.4, 8.5 and 8.6 without deprecations or warnings, and the poll loop is safe across a fork.
 
 - **PHP 8.5 and 8.6:** CI runs the tests on PHP 8.4, 8.5 and 8.6. Crab no longer triggers PHP 8.5's deprecation of the `PDO::MYSQL_ATTR_*` constants (it uses `Pdo\Mysql::ATTR_*`) or its warning when NAN becomes a string.
 - **The poll loop across a fork:** a process forked while it has a `PollEventLoop` takes a poll context of its own the next time it uses the loop, and keeps watching what it watched. It used to share the parent's epoll or kqueue instance, so each side could be woken for the other's streams and given a watcher from the other's memory, and crash. Crab's own workers make a fresh loop after forking and were not affected.

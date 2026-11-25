@@ -21,11 +21,11 @@ The framework provides routing, typed actions with validation, middleware, a dat
 > For HTML pages, [Arc](views.md) is an optional package of templates and typed components, not part of the API-focused core.
 
 > [!NOTE]
-> Crab's latest release is v0.7.6, on [Packagist](https://packagist.org/packages/crabphp/framework). Its packages, such as `crabphp/runs` or `crabphp/redis`, are installed the same way, with `composer require`.
+> Crab's latest release is v0.7.7, on [Packagist](https://packagist.org/packages/crabphp/framework). Its packages, such as `crabphp/runs` or `crabphp/redis`, are installed the same way, with `composer require`.
 
 ## Requirements
 
-- PHP 8.4 or newer.
+- PHP 8.4 or newer; it is tested on 8.4, 8.5 and 8.6.
 - The `mbstring` extension, which comes with most installations of PHP.
 - For development, the `dom` and `xmlwriter` extensions. The skeleton's tests run on PHPUnit, a development dependency that needs them, and `composer create-project` checks for them even with `--no-dev`. A production install, `composer install --no-dev` from the lock file, does not need them.
 - The `pcntl` and `posix` extensions to run more than one worker or a server in the background. Without them, `start --single` runs HTTP alone; run `queue:work --single` and `schedule:work --single` separately when needed.
