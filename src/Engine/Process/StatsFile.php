@@ -15,7 +15,8 @@ namespace Crab\Engine\Process;
  *     {"pid": 4120, "identity": "…", "started": 1761300000.5, "updated": 1761300042.1,
  *      "about": {…}, "state": "running",
  *      "workers": [{"group": "http", "index": 0, "pid": 4121, "state": "ready", "started": …,
- *                   "restarts": 0, "reported": …, "connections": 3, "tasks": 0,
+ *                   "restarts": 0, "recycles": 1, "recycled": "memory", "reported": …,
+ *                   "connections": 3, "tasks": 0,
  *                   "memory": 4194304, "counts": {"requests": 1200}}]}
  */
 final class StatsFile
@@ -76,6 +77,8 @@ final class StatsFile
      *
      * @param array<string, mixed> $stats What Worker::stats() gave, or [] before its first report.
      * @param string $state starting, ready, retiring, restarting or stopped.
+     * @param int $recycles How many times the slot's worker was replaced because it asked to be, by its limits.
+     * @param string|null $recycled Why it last asked: "requests", "memory" or what Worker::recycle() was told.
      * @return array<string, mixed>
      */
     public static function worker(
@@ -86,6 +89,8 @@ final class StatsFile
         array $stats = [],
         int $restarts = 0,
         ?float $reported = null,
+        int $recycles = 0,
+        ?string $recycled = null,
     ): array {
         return [
             'group' => $group,
@@ -94,6 +99,8 @@ final class StatsFile
             'state' => $state,
             'started' => $stats['started'] ?? null,
             'restarts' => $restarts,
+            'recycles' => $recycles,
+            'recycled' => $recycled,
             'reported' => $reported,
             'connections' => $stats['connections'] ?? 0,
             'tasks' => $stats['tasks'] ?? 0,

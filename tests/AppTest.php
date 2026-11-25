@@ -213,6 +213,73 @@ final class AppTest extends TestCase
         self::assertSame(3, \Crab\Commands\Start::workers($app, new \Crab\Console\Input()));
     }
 
+    public function testHttpWorkersAreReplacedByTheServerLimitsAndCanBeLeftAlone(): void
+    {
+        $limits = static function (App $app): array {
+            $groups = new \ReflectionProperty(Runtime::class, 'groups')->getValue($app->runtime('tcp://127.0.0.1:0'));
+            return $groups['http']->limits();
+        };
+
+        self::assertSame(
+            ['requests' => 10_000, 'count' => 'requests', 'memory' => 128 * 1024 * 1024],
+            $limits(new App()),
+            'An application that sets nothing has the defaults.',
+        );
+        self::assertSame(
+            ['requests' => 500, 'count' => 'requests', 'memory' => 2 * (1024 ** 3)],
+            $limits(new App(new Config(['server' => ['max_requests' => '500', 'max_memory' => '2G']]))),
+        );
+        self::assertSame(
+            ['requests' => 0, 'count' => 'requests', 'memory' => 4096],
+            $limits(new App(new Config(['server' => ['max_requests' => 0, 'max_memory' => 4096]]))),
+        );
+        self::assertSame(
+            ['requests' => 0, 'count' => 'requests', 'memory' => 0],
+            $limits(new App(new Config(['server' => ['max_requests' => '0', 'max_memory' => '0']]))),
+        );
+    }
+
+    public function testAnHttpWorkerHasAMemoryLimitWherePhpSetsNone(): void
+    {
+        $script = <<<'PHP'
+            <?php
+            require $argv[1];
+            $app = new Crab\App(new Crab\Config\Config(['server' => ['memory_limit' => $argv[2]]]));
+            $app->register(new class implements Crab\Contracts\WorkerPlugin {
+                public function register(Crab\Contracts\Container\Container $container): void {}
+
+                public function start(Crab\Engine\Process\Worker $worker, Crab\Contracts\Container\Container $container): void
+                {
+                    echo ini_get('memory_limit');
+                    $worker->loop->defer(static fn() => $worker->stop());
+                }
+
+                public function stop(Crab\Engine\Process\Worker $worker, Crab\Contracts\Container\Container $container): void {}
+            });
+            $app->runtime('tcp://127.0.0.1:0')->run(singleProcess: true);
+            PHP;
+        $file = tempnam(sys_get_temp_dir(), 'crab-memory-');
+        self::assertNotFalse($file);
+        file_put_contents($file, $script);
+        $seen = static function (string $php, string $setting) use ($file): string {
+            $autoload = dirname(__DIR__) . '/vendor/autoload.php';
+            $command = [PHP_BINARY, '-n', '-d', "memory_limit={$php}", $file, $autoload, $setting];
+            $process = proc_open($command, [1 => ['pipe', 'w'], 2 => ['pipe', 'w']], $pipes);
+            self::assertIsResource($process);
+            $out = stream_get_contents($pipes[1]);
+            $errors = stream_get_contents($pipes[2]);
+            self::assertSame(0, proc_close($process), $errors);
+            return (string) $out;
+        };
+        try {
+            self::assertSame('512M', $seen('-1', '512M'), 'Where PHP sets no limit, the setting is the limit.');
+            self::assertSame('256M', $seen('256M', '512M'), 'A limit PHP was given is kept.');
+            self::assertSame('-1', $seen('-1', '0'), '0 leaves PHP as it is.');
+        } finally {
+            unlink($file);
+        }
+    }
+
     public function testApplicationHandlesRequestsAndBuildsARuntime(): void
     {
         $app = new App();

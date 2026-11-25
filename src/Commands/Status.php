@@ -148,6 +148,11 @@ final readonly class Status implements Command
             if ($restarts > 0) {
                 $state .= ', restarted ' . ($restarts === 1 ? 'once' : "{$restarts} times");
             }
+            $recycles = (int) ($worker['recycles'] ?? 0);
+            if ($recycles > 0) {
+                $times = $recycles === 1 ? 'once' : "{$recycles} times";
+                $state .= ", replaced {$times}, last for its " . (string) ($worker['recycled'] ?? 'limits');
+            }
             $rows[] = [
                 "{$worker['group']} #{$worker['index']}",
                 (string) ($worker['pid'] ?? '-'),

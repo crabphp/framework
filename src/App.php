@@ -110,8 +110,11 @@ use Psr\Log\LoggerInterface;
  * default logger writes (standard error when unset) and "log.level" is
  * the least severe level it writes. Of the server it serves requests
  * with, "server.max_body" is the largest request body it takes, in bytes
- * (1 MiB unless set), and "server.body_timeout" how many seconds a client
- * has to send one (30).
+ * (1 MiB unless set), "server.body_timeout" how many seconds a client
+ * has to send one (30), "server.max_requests" and "server.max_memory"
+ * when an HTTP worker is replaced by a fresh one (10,000 requests, 128M),
+ * and "server.memory_limit" the PHP memory limit of each HTTP worker
+ * where php.ini sets none (512M).
  */
 final class App implements Handler, Runner
 {
@@ -801,8 +804,11 @@ final class App implements Handler, Runner
             return $runtime;
         }
         $handler = new EngineHandler($this->entry());
+        $memoryLimit = (string) $this->config->get('server.memory_limit');
         $runtime
             ->group('http', $workers, maxConnections: $maxConnections, shutdownTimeout: $drain)
+            ->maxRequests((int) $this->config->get('server.max_requests'))
+            ->maxMemory(self::bytes($this->config->get('server.max_memory')))
             ->listen(
                 $address,
                 new HttpServer(
@@ -812,7 +818,11 @@ final class App implements Handler, Runner
                 ),
                 socket: $socket,
             )
-            ->onStart(function (Worker $worker) use ($handler): void {
+            ->onStart(function (Worker $worker) use ($handler, $memoryLimit): void {
+                // A cap for one request that runs away, where PHP itself sets none.
+                if ($memoryLimit !== '0' && ini_get('memory_limit') === '-1') {
+                    ini_set('memory_limit', $memoryLimit);
+                }
                 $handler->countOn($worker);
                 $this->start($worker, serving: true);
             })
@@ -865,6 +875,23 @@ final class App implements Handler, Runner
             // Keep that window inside even a short worker allowance.
             closeTimeout: min(5.0, $this->drain()),
         );
+    }
+
+    /**
+     * Bytes from a setting given as a number of bytes or as php.ini
+     * writes them ("128M"), already checked by its rule.
+     */
+    private static function bytes(mixed $value): int
+    {
+        $text = (string) $value;
+        $unit = strtoupper(substr($text, -1));
+        $multiplier = match ($unit) {
+            'K' => 1024,
+            'M' => 1024 ** 2,
+            'G' => 1024 ** 3,
+            default => 1,
+        };
+        return (int) ($multiplier === 1 ? $text : substr($text, 0, -1)) * $multiplier;
     }
 
     /**

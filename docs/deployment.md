@@ -275,6 +275,25 @@ A worker serves many requests at once as long as they wait through Crab, as call
 
 Workers share nothing. Anything two requests must both see, a cache entry, a rate limit, a session, belongs in the database, the cache or a store they share, never in a worker's memory: with more than one machine, keep [sessions](sessions.md#choosing-a-driver) in Redis.
 
+## Fresh workers
+
+A worker lives for as long as the server does, and PHP seldom gives back memory it has taken: one large request leaves its worker at that size. So each HTTP worker is replaced by a fresh one after about `server.max_requests` requests (10,000, give or take a tenth so that workers started together are not replaced together) and once PHP holds more than `server.max_memory` for it (`128M`), checked as each request arrives. The new worker starts first and the old one stops once it is ready, finishing what it has in hand as on a reload, so no request waits or is refused, even with one worker. Being replaced is not a restart: it does not count toward the five restarts a minute that stop the server. `php cua status` shows how often each worker was replaced and why:
+
+```text
+http #0   4122   3h 2m   9,412 requests   2   38 MB   ready, replaced 3 times, last for its requests
+```
+
+A worker replaced now and then is healthy. One replaced for its memory every few minutes is holding on to something; look for what grows. Set either to `0` to turn it off, or raise it for an application that starts large:
+
+```text
+SERVER_MAX_REQUESTS=50000
+SERVER_MAX_MEMORY=256M
+```
+
+`server.memory_limit` (`512M`) is PHP's memory limit in each HTTP worker where php.ini sets none (`-1`, the default of PHP's command line), so one request that runs away ends its own worker, which is started again, rather than taking the machine's memory. A limit php.ini sets is kept; `0` leaves PHP as it is.
+
+A worker is replaced only under a supervisor, with PHP's `pcntl` extension; a server started with `--single` carries on past both limits. In the engine, these are `Crab::maxRequests()` and `Crab::maxMemory()` on a worker group, and `Worker::recycle($reason)` asks for a replacement from code.
+
 ## How many connections
 
 Every open connection is a file descriptor, and so is every open file, database or Redis connection and log. Each worker is its own process, so these limits apply per worker; four workers hold four times as many connections.

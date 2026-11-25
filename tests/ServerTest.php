@@ -91,6 +91,36 @@ final class ServerTest extends TestCase
         rmdir($this->directory);
     }
 
+    public function testAnHttpWorkerPastItsRequestsIsReplacedWhileEveryRequestIsAnswered(): void
+    {
+        mkdir($this->directory . '/config');
+        file_put_contents($this->directory . '/config/server.php', "<?php return ['max_requests' => 2];");
+        [$status, $output] = $this->cua('start', '--daemon', "--address={$this->address}", '--workers=1');
+        self::assertSame(0, $status, $output);
+        $first = $this->awaitStatus(static fn(array $server): bool => $server['state'] === 'running');
+        $pids = [$first['workers'][0]['pid']];
+
+        for ($i = 1; $i <= 3; ++$i) {
+            self::assertSame('one', $this->get());
+            self::assertSame('one', $this->get(), 'A request during the handover is answered.');
+            $server = $this->awaitStatus(
+                static fn(array $server): bool => (
+                    $server['workers'][0]['recycles'] === $i
+                    && count($server['workers']) === 1
+                    && $server['workers'][0]['state'] === 'ready'
+                ),
+            );
+            $pids[] = $server['workers'][0]['pid'];
+        }
+
+        self::assertCount(4, array_unique($pids), 'Each time, a fresh worker.');
+        self::assertSame(0, $server['workers'][0]['restarts']);
+        self::assertMatchesRegularExpression(
+            '~  http #0 .+ ready, replaced 3 times, last for its requests\n~',
+            $this->cua('status')[1],
+        );
+    }
+
     public function testStatusShowsWhatEachWorkerHandledAndWhetherItWasStartedAgain(): void
     {
         [$status, $output] = $this->cua('start', '--daemon', "--address={$this->address}", '--workers=2');

@@ -50,9 +50,22 @@ final class Server
         'body_timeout' => 30,
         'drain' => 5.0,
         'max_connections' => 512,
+        'max_requests' => 10_000,
+        'max_memory' => '128M',
+        'memory_limit' => '512M',
         'loop' => 'auto',
         'pid' => ServerFiles::PID,
         'log' => ServerFiles::LOG,
+    ];
+
+    /**
+     * A size in bytes, as a whole number or as php.ini writes it ("128M"); 0 for none.
+     */
+    private const BYTES = [
+        'type' => ['integer', 'string'],
+        'minimum' => 0,
+        'pattern' => '^(0|[1-9][0-9]*[KMG]?)$',
+        'examples' => ['128M', '1G', 0],
     ];
 
     /**
@@ -71,6 +84,9 @@ final class Server
         'body_timeout' => ['type' => 'number', 'exclusiveMinimum' => 0],
         'drain' => ['type' => 'number', 'exclusiveMinimum' => 0],
         'max_connections' => ['type' => 'integer', 'minimum' => 1],
+        'max_requests' => ['type' => 'integer', 'minimum' => 0],
+        'max_memory' => self::BYTES,
+        'memory_limit' => self::BYTES,
         'loop' => ['enum' => ['auto', 'select', 'poll', 'ev', 'uv', 'event']],
         'pid' => ['type' => 'string', 'minLength' => 1],
         'log' => ['type' => 'string', 'minLength' => 1],

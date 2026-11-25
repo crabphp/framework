@@ -29,6 +29,9 @@ final class Crab
      */
     private array $failureCallbacks = [];
     private bool $frozen = false;
+    private int $maxRequests = 0;
+    private string $requestCount = 'requests';
+    private int $maxMemory = 0;
 
     /**
      * @param float|null $shutdownTimeout Seconds this group's workers have to drain; null uses the runtime's deadline.
@@ -93,6 +96,53 @@ final class Crab
             'handshakeTimeout' => $handshakeTimeout,
         ];
         return $this;
+    }
+
+    /**
+     * Replaces each worker once it has counted this many of $count with
+     * Worker::count(), give or take a tenth so that workers started
+     * together are not replaced together. The supervisor starts the
+     * replacement first and stops this worker once it is ready, so
+     * nothing waits; a worker run alone is never replaced. 0 never does.
+     */
+    public function maxRequests(int $requests, string $count = 'requests'): self
+    {
+        $this->assertMutable();
+        if ($requests < 0 || $count === '') {
+            throw new \InvalidArgumentException(
+                'Set the requests a worker serves before it is replaced to 0 (never) or more, and name the count they are counted under.',
+            );
+        }
+        $this->maxRequests = $requests;
+        $this->requestCount = $count;
+        return $this;
+    }
+
+    /**
+     * Replaces each worker, as maxRequests() does, once the memory PHP
+     * holds for it (memory_get_usage(true)) has grown past $bytes when it
+     * counts something with Worker::count(). PHP rarely gives memory back,
+     * so one large request leaves a worker at its size until it is
+     * replaced. 0 never does.
+     */
+    public function maxMemory(int $bytes): self
+    {
+        $this->assertMutable();
+        if ($bytes < 0) {
+            throw new \InvalidArgumentException(
+                'Set the memory a worker may hold before it is replaced to 0 (never) or more bytes.',
+            );
+        }
+        $this->maxMemory = $bytes;
+        return $this;
+    }
+
+    /**
+     * @return array{requests:int, count:string, memory:int} The limits set by maxRequests() and maxMemory(); 0 is none.
+     */
+    public function limits(): array
+    {
+        return ['requests' => $this->maxRequests, 'count' => $this->requestCount, 'memory' => $this->maxMemory];
     }
 
     public function onStart(callable $callback): self

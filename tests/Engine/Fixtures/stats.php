@@ -17,8 +17,15 @@ if (function_exists('posix_setsid') && posix_setsid() === -1) {
 $single = $mode === 'single';
 $runtime = new Runtime(shutdownTimeout: 0.3);
 $current = null;
-$runtime
-    ->group('echo', workers: $single ? 1 : 2, maxConnections: 8)
+// "requests" replaces its one worker after every message and "memory" after any, by what PHP holds for it.
+$group = $runtime->group('echo', workers: $single || $mode !== 'supervised' ? 1 : 2, maxConnections: 8);
+if ($mode === 'requests') {
+    $group->maxRequests(1, 'messages');
+}
+if ($mode === 'memory') {
+    $group->maxMemory(1);
+}
+$group
     ->listen("tcp://127.0.0.1:{$port}", static function (Connection $connection) use (&$current): void {
         $connection->onData(static function (Connection $connection, string $bytes) use (&$current): void {
             $current?->count('messages', substr_count($bytes, "\n"));

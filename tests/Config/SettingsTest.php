@@ -116,7 +116,14 @@ final class SettingsTest extends TestCase
     public function testStringsFromTheEnvironmentAreTakenForTheNumbersAndSwitchesTheySpell(): void
     {
         $app = self::app([
-            'server' => ['workers' => '4', 'drain' => '2.5', 'max_body' => '1048576'],
+            'server' => [
+                'workers' => '4',
+                'drain' => '2.5',
+                'max_body' => '1048576',
+                'max_requests' => '0',
+                'max_memory' => '96M',
+                'memory_limit' => '1G',
+            ],
             'app' => ['debug' => '1'],
             'http_client' => ['http2' => '0', 'timeout' => '10'],
             'database' => ['connections' => ['main' => ['driver' => 'mysql', 'port' => '3306', 'pool' => null]]],
@@ -126,8 +133,13 @@ final class SettingsTest extends TestCase
             [
                 'server.workers is "4.0"; it takes a whole number, at least 1.',
                 'server.drain is "-2"; it takes a number greater than 0.',
+                'server.max_memory is "128 MB"; it takes a whole number, at least 0 or a string, such as "128M".',
             ],
-            self::app(['server' => ['workers' => '4.0', 'drain' => '-2']])->config->problems(),
+            self::app(['server' => [
+                'workers' => '4.0',
+                'drain' => '-2',
+                'max_memory' => '128 MB',
+            ]])->config->problems(),
         );
     }
 
@@ -233,7 +245,7 @@ final class SettingsTest extends TestCase
         ]);
         self::assertSame(
             [
-                'server.wokers is not a setting; server takes address, workers, watch, public, max_body, body_timeout, drain, max_connections, loop, pid and log. Did you mean server.workers?',
+                'server.wokers is not a setting; server takes address, workers, watch, public, max_body, body_timeout, drain, max_connections, max_requests, max_memory, memory_limit, loop, pid and log. Did you mean server.workers?',
             ],
             $app->config->problems(),
             "The application's own settings may sit in app, and a section of its own has no rules.",

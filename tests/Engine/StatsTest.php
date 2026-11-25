@@ -107,6 +107,97 @@ final class StatsTest extends TestCase
         self::assertFileDoesNotExist("{$this->directory}/{$pid}.json");
     }
 
+    #[RequiresPhpExtension('pcntl')]
+    #[RequiresPhpExtension('posix')]
+    public function testAWorkerPastItsRequestsIsReplacedWithoutARestartOrAnUnansweredRequest(): void
+    {
+        $pid = $this->start('requests');
+        $server = $this->await($pid, static fn(array $server): bool => self::ready($server) === 1);
+        $first = $server['workers'][0]['pid'];
+
+        // More times than the five restarts a minute that would end the server.
+        $seen = [$first];
+        for ($i = 1; $i <= 7; ++$i) {
+            $this->send(1);
+            $server = $this->await(
+                $pid,
+                static fn(array $server): bool => (
+                    $server['workers'][0]['recycles'] === $i
+                    && count($server['workers']) === 1
+                    && self::ready($server) === 1
+                ),
+            );
+            self::assertNotContains($server['workers'][0]['pid'], $seen, 'A fresh worker took its place.');
+            $seen[] = $server['workers'][0]['pid'];
+        }
+
+        self::assertSame('running', $server['state']);
+        self::assertSame('requests', $server['workers'][0]['recycled']);
+        self::assertSame(0, $server['workers'][0]['restarts'], 'Being replaced is not a restart.');
+        foreach (array_slice($seen, 0, -1) as $replaced) {
+            self::assertFalse(posix_kill($replaced, 0), "Replaced worker {$replaced} has exited.");
+        }
+        $this->stop();
+    }
+
+    #[RequiresPhpExtension('pcntl')]
+    #[RequiresPhpExtension('posix')]
+    public function testAWorkerHoldingMoreMemoryThanItsLimitIsReplaced(): void
+    {
+        $pid = $this->start('memory');
+        $server = $this->await($pid, static fn(array $server): bool => self::ready($server) === 1);
+        $first = $server['workers'][0]['pid'];
+
+        $this->send(1);
+        $server = $this->await(
+            $pid,
+            static fn(array $server): bool => (
+                $server['workers'][0]['recycles'] === 1
+                && self::ready($server) === 1
+                && count($server['workers']) === 1
+            ),
+        );
+
+        self::assertNotSame($first, $server['workers'][0]['pid']);
+        self::assertSame('memory', $server['workers'][0]['recycled']);
+        self::assertSame(0, $server['workers'][0]['restarts']);
+        $this->stop();
+    }
+
+    public function testAWorkerWithoutASupervisorCarriesOnPastItsLimits(): void
+    {
+        $group = new Crab('web')
+            ->maxRequests(1)
+            ->maxMemory(1);
+        $worker = new Worker(new StreamSelectEventLoop(), $group, 0, ['tcp' => []], 1.0);
+
+        $worker->count('requests');
+        $worker->count('requests');
+
+        self::assertSame('requests', $worker->stats()['recycling'], 'It knows it asked, once.');
+        self::assertFalse($worker->isDraining(), 'With no one to replace it, it keeps serving.');
+    }
+
+    public function testLimitsTheyCannotHoldAreRefused(): void
+    {
+        $group = new Crab('web');
+        self::assertSame(['requests' => 0, 'count' => 'requests', 'memory' => 0], $group->limits(), 'None by default.');
+        foreach ([
+            static fn() => $group->maxRequests(-1),
+            static fn() => $group->maxRequests(5, ''),
+            static fn() => $group->maxMemory(-1),
+        ] as $set) {
+            try {
+                $set();
+                self::fail('A limit below zero, or a count with no name, is refused.');
+            } catch (\InvalidArgumentException $error) {
+                $message = $error->getMessage();
+            }
+            self::assertStringContainsString('replaced', $message);
+        }
+        self::assertSame(['requests' => 0, 'count' => 'requests', 'memory' => 0], $group->limits());
+    }
+
     #[RequiresPhpExtension('posix')]
     public function testAServerInOneProcessWritesItsOwnFile(): void
     {

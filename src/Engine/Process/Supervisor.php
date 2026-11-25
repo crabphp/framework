@@ -39,6 +39,13 @@ final class Supervisor
      * @var array<string, int>
      */
     private array $restarts = [];
+    /**
+     * How many times each slot's worker has been replaced because it asked
+     * to be (Worker::recycle()), and the reason it last gave.
+     *
+     * @var array<string, array{count:int, reason:string}>
+     */
+    private array $recycles = [];
     private float $written = -INF;
     private bool $changed = true;
 
@@ -219,6 +226,8 @@ final class Supervisor
             // The time the worker asked to be ended at if it still runs then; see Worker::deadline().
             'limit' => null,
             'retiring' => false,
+            // Why the worker asked to be replaced, once it has; see Worker::recycle().
+            'recycle' => null,
             'replaces' => $replaces,
             'stats' => [],
             'reported' => null,
@@ -362,6 +371,11 @@ final class Supervisor
                     $child['ready'] = true;
                     $this->changed = true;
                     if ($child['replaces'] !== null && isset($this->children[$child['replaces']])) {
+                        $reason = $this->children[$child['replaces']]['recycle'];
+                        if ($reason !== null) {
+                            $count = ($this->recycles[$child['slot']]['count'] ?? 0) + 1;
+                            $this->recycles[$child['slot']] = ['count' => $count, 'reason' => $reason];
+                        }
                         $this->retire($child['replaces']);
                     }
                     if ($this->replacement === $pid) {
@@ -370,6 +384,22 @@ final class Supervisor
                 } elseif (str_starts_with($line, 'deadline ')) {
                     $seconds = substr($line, 9);
                     $child['limit'] = is_numeric($seconds) ? self::now() + max(0.0, (float) $seconds) : null;
+                } elseif (str_starts_with($line, 'recycle ')) {
+                    // Replaced the way a reload replaces it: the new worker first, then this one stops.
+                    $slot = $child['slot'];
+                    if (
+                        !$this->stopping
+                        && $child['ready']
+                        && !$child['retiring']
+                        && $child['recycle'] === null
+                        && $this->slots[$slot]['pid'] === $pid
+                    ) {
+                        $child['recycle'] = substr($line, 8);
+                        $this->changed = true;
+                        if (!in_array($slot, $this->reloadQueue, true)) {
+                            $this->reloadQueue[] = $slot;
+                        }
+                    }
                 } elseif (str_starts_with($line, 'stats ')) {
                     $stats = json_decode(substr($line, 6), true);
                     if (is_array($stats)) {
@@ -411,6 +441,8 @@ final class Supervisor
                 $child['stats'],
                 $this->restarts[$child['slot']] ?? 0,
                 $child['reported'],
+                $this->recycles[$child['slot']]['count'] ?? 0,
+                $this->recycles[$child['slot']]['reason'] ?? null,
             );
         };
         foreach ($this->slots as $slot => $definition) {
@@ -425,6 +457,8 @@ final class Supervisor
                 null,
                 $this->stopping ? 'stopped' : 'restarting',
                 restarts: $this->restarts[$slot] ?? 0,
+                recycles: $this->recycles[$slot]['count'] ?? 0,
+                recycled: $this->recycles[$slot]['reason'] ?? null,
             );
         }
         // A worker being replaced, after the one that replaces it.

@@ -52,6 +52,17 @@ final class Worker
      */
     private array $deadlines = [];
     private int $nextDeadline = 0;
+    /**
+     * The count of the group's maxRequests() after which this worker asks
+     * to be replaced, spread by a tenth either way; 0 for never.
+     */
+    private readonly int $requestLimit;
+    private readonly string $requestCount;
+    private readonly int $memoryLimit;
+    /**
+     * Why this worker asked to be replaced, once it has.
+     */
+    private ?string $recycling = null;
 
     /**
      * Under a supervisor, the worker reports its stats() over the control
@@ -70,6 +81,12 @@ final class Worker
         private readonly ?\Closure $report = null,
     ) {
         $this->started = microtime(true);
+        $limits = $group->limits();
+        $requests = $limits['requests'];
+        $this->requestCount = $limits['count'];
+        $this->memoryLimit = $limits['memory'];
+        $spread = intdiv($requests, 10);
+        $this->requestLimit = $requests === 0 ? 0 : max(1, $requests + random_int(-$spread, $spread));
     }
 
     public function run(): void
@@ -232,6 +249,35 @@ final class Worker
     public function count(string $name, int $by = 1): void
     {
         $this->counts[$name] = ($this->counts[$name] ?? 0) + $by;
+        if ($this->recycling !== null) {
+            return;
+        }
+        if ($this->requestLimit > 0 && $name === $this->requestCount && $this->counts[$name] >= $this->requestLimit) {
+            $this->recycle('requests');
+        } elseif ($this->memoryLimit > 0 && memory_get_usage(true) > $this->memoryLimit) {
+            $this->recycle('memory');
+        }
+    }
+
+    /**
+     * Asks the supervisor, once, to put a new worker in this one's place:
+     * it starts the replacement and, once that is ready, stops this
+     * worker as a reload does, letting it finish what it has in hand.
+     * The group's maxRequests() and maxMemory() ask this way; $reason is
+     * what the server's stats show. A worker run alone, without a
+     * supervisor, has no one to replace it and carries on.
+     */
+    public function recycle(string $reason): void
+    {
+        if ($this->recycling !== null || $this->draining) {
+            return;
+        }
+        $this->recycling = preg_replace('/[^a-z0-9_-]/i', '', $reason) ?: 'asked';
+        if (!is_resource($this->control)) {
+            return;
+        }
+        $this->unsent .= "recycle {$this->recycling}\n";
+        $this->flush();
     }
 
     /**
@@ -278,6 +324,7 @@ final class Worker
             'memoryBytes' => memory_get_usage(true),
             'draining' => $this->draining,
             'cutConnections' => $this->cutConnections,
+            'recycling' => $this->recycling,
             'counts' => $this->counts,
         ];
     }
