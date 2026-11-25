@@ -306,7 +306,13 @@ final class ProcessToolsTest extends TestCase
                 }
                 $runtime->stop();
             });
-            $runtime->onReady(static fn () => fwrite(STDOUT, "ready\n"));
+            $runtime->onReady(static function (): void {
+                // A supervised worker wakes each second to report its stats, which bounds how long a
+                // signal that lands just before a wait goes unseen; this lone process does the same.
+                $loop = Crab\Engine\EventLoop::current();
+                $loop->unreference($loop->repeat(1.0, static function (): void {}));
+                fwrite(STDOUT, "ready\n");
+            });
             $runtime->run(singleProcess: true);
             PHP;
         $server = proc_open(
