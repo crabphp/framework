@@ -122,6 +122,54 @@ final class PollEventLoopTest extends TestCase
     }
 
     /**
+     * A forked process shares the epoll or kqueue instance it inherited, so
+     * each side would be woken for streams the other adds and handed a
+     * watcher that only exists in the other's memory. The loop takes a
+     * context of its own in the new process, keeping what it watched.
+     */
+    #[RequiresPhpExtension('pcntl')]
+    public function testEachSideOfAForkWaitsOnItsOwnContext(): void
+    {
+        $loop = new PollEventLoop();
+        [$inherited, $inheritedPeer] = $this->pair();
+        [$control, $controlPeer] = $this->pair();
+        $loop->onReadable($inherited, static function (string $id) use ($loop): void {
+            $loop->cancel($id);
+        });
+        $child = pcntl_fork();
+        self::assertNotSame(-1, $child);
+        if ($child === 0) {
+            // Once the parent has added its own stream, add one here and read from both.
+            fread($control, 2);
+            [$own, $ownPeer] = stream_socket_pair(STREAM_PF_UNIX, STREAM_SOCK_STREAM, STREAM_IPPROTO_IP);
+            $read = [];
+            $loop->onReadable($own, static function (string $id, mixed $stream) use ($loop, &$read): void {
+                $read[] = fread($stream, 16);
+                $loop->cancel($id);
+            });
+            fwrite($ownPeer, 'child');
+            fwrite($inheritedPeer, 'x');
+            $loop->run();
+            fwrite($control, $read === ['child'] ? 'ok' : 'no');
+            exit(0);
+        }
+        [$parents, $parentsPeer] = $this->pair();
+        $read = [];
+        $loop->onReadable($parents, static function (string $id, mixed $stream) use ($loop, &$read): void {
+            $read[] = fread($stream, 16);
+            $loop->cancel($id);
+        });
+        fwrite($parentsPeer, 'parent');
+        fwrite($controlPeer, 'go');
+        $loop->run();
+        $answer = fread($controlPeer, 2);
+        pcntl_waitpid($child, $status);
+        self::assertSame(['parent'], $read);
+        self::assertTrue(pcntl_wifexited($status), 'The child must not crash.');
+        self::assertSame('ok', $answer, 'The child must be woken for its own stream.');
+    }
+
+    /**
      * @return array{resource, resource}
      */
     private function pair(): array

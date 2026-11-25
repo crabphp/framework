@@ -15,13 +15,19 @@ use Io\Poll\FailedPollWaitException;
  * FD_SETSIZE limit, and a wait costs what is ready rather than what is
  * watched. Each stream has one poll watcher, whose events are the union of
  * its read and write watchers. A closed stream leaves the poll context by
- * itself.
+ * itself. A forked process takes a poll context of its own when it next
+ * uses the loop, since the one it inherited is shared with its parent.
  */
 final class PollEventLoop extends FiberEventLoop
 {
     use PcntlSignals;
 
-    private readonly Context $context;
+    private Context $context;
+
+    /**
+     * The process the poll context belongs to.
+     */
+    private int $pid;
 
     /**
      * @var array<int, \Io\Poll\Watcher> Each watched stream's poll watcher, by resource id.
@@ -45,6 +51,7 @@ final class PollEventLoop extends FiberEventLoop
         }
         parent::__construct();
         $this->context = new Context();
+        $this->pid = getmypid();
         $this->initSignals();
     }
 
@@ -58,7 +65,7 @@ final class PollEventLoop extends FiberEventLoop
      */
     public function backend(): string
     {
-        return $this->context->getBackend()->name;
+        return $this->context()->getBackend()->name;
     }
 
     protected function watch(Watcher $watcher): void
@@ -99,11 +106,13 @@ final class PollEventLoop extends FiberEventLoop
 
     protected function wait(float $timeout): void
     {
+        // Before the signal check, to keep the time from it to the wait short.
+        $context = $this->context();
         if ($this->receivedSignals()) {
             $timeout = 0.0;
         }
         try {
-            $ready = $this->context->wait(
+            $ready = $context->wait(
                 $timeout < 0 ? null : \Time\Duration::fromNanoseconds((int) ($timeout * 1_000_000_000)),
             );
         } catch (FailedPollWaitException $error) {
@@ -141,6 +150,8 @@ final class PollEventLoop extends FiberEventLoop
      */
     private function sync(int $stream, mixed $resource): void
     {
+        // In a forked process, before an inherited watcher is changed for the parent too.
+        $context = $this->context();
         $events = [];
         if (isset($this->readWatchers[$stream])) {
             $events[] = Event::Read;
@@ -165,6 +176,29 @@ final class PollEventLoop extends FiberEventLoop
             $polled->modifyEvents($events);
             return;
         }
-        $this->polled[$stream] = $this->context->add(new \StreamPollHandle($resource), $events, $stream);
+        $this->polled[$stream] = $context->add(new \StreamPollHandle($resource), $events, $stream);
+    }
+
+    /**
+     * The poll context of this process. After a fork, the inherited one is
+     * the parent's too: what either side adds wakes the other with a
+     * watcher it does not have, and removing a stream removes it for both.
+     * The child leaves it untouched and adds what it watches to its own.
+     */
+    private function context(): Context
+    {
+        if ($this->pid !== getmypid()) {
+            $this->pid = getmypid();
+            $this->context = new Context();
+            $this->polled = [];
+            foreach ($this->readWatchers + $this->writeWatchers as $stream => $watchers) {
+                $resource = reset($watchers)->subject;
+                // A closed stream's watchers are cancelled as they come up.
+                if (is_resource($resource)) {
+                    $this->sync($stream, $resource);
+                }
+            }
+        }
+        return $this->context;
     }
 }
