@@ -41,6 +41,7 @@ final class Connection
      * @var resource|null
      */
     private mixed $stream;
+    private bool $encrypted = false;
     /**
      * The waits on the socket that are under way: the watcher of each and what ends it.
      *
@@ -135,6 +136,17 @@ final class Connection
             if ($bytes === false || $this->stream === null || feof($this->stream)) {
                 return null;
             }
+            if ($this->encrypted) {
+                // feof() peeks through OpenSSL, which can take the next record off the socket and keep it,
+                // decrypted: read it now, as no poll on the socket reports it (stream_select() looks; Io\Poll does not).
+                $bytes = @fread($this->stream, 65_536);
+                if ($bytes !== false && $bytes !== '') {
+                    return $bytes;
+                }
+                if ($bytes === false) {
+                    return null;
+                }
+            }
             $this->wait(false, $deadline, $cancellation, 'waiting for the answer', $background);
         }
     }
@@ -217,6 +229,7 @@ final class Connection
             error_clear_last();
             $done = @stream_socket_enable_crypto($this->stream(), true, STREAM_CRYPTO_METHOD_TLS_CLIENT);
             if ($done === true) {
+                $this->encrypted = true;
                 $this->protocol = (string) (
                     stream_get_meta_data($this->stream())['crypto']['alpn_protocol'] ?? 'http/1.1'
                 );

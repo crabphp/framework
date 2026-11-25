@@ -201,6 +201,14 @@ final class Stream
             if ($bytes === false || $bytes === '' && $woken && feof($stream)) {
                 throw new StreamFailure('MySQL closed the connection while reading its answer.');
             }
+            if ($bytes === '' && $woken && $this->encrypted) {
+                // feof() peeks through OpenSSL, which can take the next record off the socket and keep it,
+                // decrypted: read it now, as no poll on the socket reports it (stream_select() looks; Io\Poll does not).
+                $bytes = @fread($stream, self::READ_SIZE);
+                if ($bytes === false) {
+                    throw new StreamFailure('MySQL closed the connection while reading its answer.');
+                }
+            }
             if ($bytes === '') {
                 $this->wait(false, $deadline, $cancellation);
                 $woken = true;

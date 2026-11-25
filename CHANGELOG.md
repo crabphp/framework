@@ -2,6 +2,12 @@
 
 Crab follows [semantic versioning](https://semver.org). Before 1.0, a minor version may break what an application writes; the entry says what to change.
 
+## 0.7.8 — 2026-11-26
+
+A fix for encrypted connections on the poll loop, the default on PHP 8.6.
+
+- **TLS reads on the poll loop:** a MySQL connection over TLS, an `https` request from the HTTP client or an encrypted connection to the server could wait until its timeout for bytes that had already arrived. After an empty read, PHP's `feof()` peeks through OpenSSL, which can take the next record off the socket and keep it decrypted; `stream_select()` looks for such bytes, but `Io\Poll` sees only the socket, so the wait was never woken. Each reader now reads once more when `feof()` finds the encrypted stream still open. On the MySQL test server about one connection in fifteen used to stall for its 5-second connect timeout.
+
 ## 0.7.7 — 2026-11-26
 
 Runs on PHP 8.4, 8.5 and 8.6 without deprecations or warnings, and the poll loop is safe across a fork.

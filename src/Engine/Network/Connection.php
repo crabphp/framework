@@ -660,8 +660,21 @@ final class Connection
                 if ($bytes === '') {
                     if (feof($this->stream)) {
                         $this->receiveEof();
+                        return;
                     }
-                    return;
+                    if (!$this->encrypted) {
+                        return;
+                    }
+                    // feof() peeks through OpenSSL, which can take the next record off the socket and keep it,
+                    // decrypted: read it now, as no poll on the socket reports it (stream_select() looks; Io\Poll does not).
+                    $bytes = @fread($this->stream, $readSize);
+                    if ($bytes === false) {
+                        $this->close();
+                        return;
+                    }
+                    if ($bytes === '') {
+                        return;
+                    }
                 }
                 $received = strlen($bytes);
                 try {
